@@ -1,0 +1,28 @@
+{
+  "theme": {
+    "electric_blue": "#00f0ff",
+    "purple": "#a259ff",
+    "teal": "#00ffc8",
+    "white": "#ffffff",
+    "glass": "rgba(0, 20, 40, 0.35)",
+    "glow": "rgba(0, 240, 255, 0.18)"
+  },
+  "left_panel": {
+    "width": 220,
+    "widgets": [
+      {"id": "rkt-logo", "type": "logo"},
+      {"id": "cpu-text", "type": "text_block", "label": "CPU", "source": "cpu", "suffix": "%"},
+      {"id": "mem-text", "type": "text_block", "label": "MEM", "source": "mem_used", "suffix": " GB"},
+      {"id": "load-text", "type": "text_block", "label": "LD", "source": "load_1"},
+      {"id": "net-bar", "type": "bar_gauge", "label": "NET", "source": "net_down", "max": 5000}
+    ]
+  },
+  "right_panel": {
+    "width": 260,
+    "widgets": [
+      {"id": "clock-analog", "type": "clock"},
+      {"id": "cpu-dial", "type": "dial", "label": "CPU", "source": "cpu", "max": 100},
+      {"id": "mem-dial", "type": "dial", "label": "MEM", "source": "mem_pct", "max": 100}
+    ]
+  }
+}
