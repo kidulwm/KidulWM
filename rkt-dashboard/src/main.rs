@@ -80,9 +80,15 @@ fn read_net_rate(prev: &mut Vec<(String, u64, u64)>) -> String {
             if iface == "lo" {
                 continue;
             }
-            let recv = parts.next().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            let recv = parts
+                .next()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
             parts.nth(6);
-            let send = parts.next().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            let send = parts
+                .next()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
             new.push((iface.to_string(), recv, send));
 
             if let Some(old) = prev.iter().find(|p| p.0 == iface) {
@@ -94,7 +100,11 @@ fn read_net_rate(prev: &mut Vec<(String, u64, u64)>) -> String {
         }
     }
     *prev = new;
-    format!("↑ {:.1} KB/s\n↓ {:.1} KB/s", total_up / 1024.0, total_down / 1024.0)
+    format!(
+        "↑ {:.1} KB/s\n↓ {:.1} KB/s",
+        total_up / 1024.0,
+        total_down / 1024.0
+    )
 }
 
 fn build_dashboard() -> gtk4::Box {
