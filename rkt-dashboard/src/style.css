@@ -1,0 +1,52 @@
+.dashboard {
+    background: linear-gradient(135deg, #5e2a8a 0%, #1e66b8 50%, #2fa8a0 100%);
+    color: #ffffff;
+}
+
+.logo-button {
+    font-weight: 900;
+    font-size: 2rem;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.25);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    min-height: 64px;
+}
+
+.logo-button:hover {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.control-center {
+    background: rgba(30, 30, 45, 0.95);
+    padding: 12px;
+    border-radius: 12px;
+}
+
+.control-center button {
+    background: transparent;
+    color: #ffffff;
+    border: none;
+    padding: 8px 12px;
+}
+
+.widgets {
+    color: #ffffff;
+}
+
+.widget-frame {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    color: #ffffff;
+}
+
+.widget-frame label {
+    color: #ffffff;
+}
+
+.frame > label {
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 700;
+    padding: 4px 8px;
+}
