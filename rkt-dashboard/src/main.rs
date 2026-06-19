@@ -74,29 +74,23 @@ fn read_net_rate(prev: &mut Vec<(String, u64, u64)>) -> String {
     let mut total_up = 0f64;
     let mut total_down = 0f64;
     for line in data.lines().skip(2) {
-        let mut parts = line.split_whitespace();
-        if let Some(iface_raw) = parts.next() {
-            let iface = iface_raw.trim_end_matches(':');
-            if iface == "lo" {
-                continue;
-            }
-            let recv = parts
-                .next()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
-            parts.nth(6);
-            let send = parts
-                .next()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
-            new.push((iface.to_string(), recv, send));
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.is_empty() {
+            continue;
+        }
+        let iface = cols[0].trim_end_matches(':');
+        if iface == "lo" || cols.len() < 10 {
+            continue;
+        }
+        let recv = cols[1].parse::<u64>().unwrap_or(0);
+        let send = cols[9].parse::<u64>().unwrap_or(0);
+        new.push((iface.to_string(), recv, send));
 
-            if let Some(old) = prev.iter().find(|p| p.0 == iface) {
-                let dr = recv.saturating_sub(old.1) as f64;
-                let ds = send.saturating_sub(old.2) as f64;
-                total_down += dr;
-                total_up += ds;
-            }
+        if let Some(old) = prev.iter().find(|p| p.0 == iface) {
+            let dr = recv.saturating_sub(old.1) as f64;
+            let ds = send.saturating_sub(old.2) as f64;
+            total_down += dr;
+            total_up += ds;
         }
     }
     *prev = new;
