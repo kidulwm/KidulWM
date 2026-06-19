@@ -1,0 +1,21 @@
+{
+  "id": "rkt-dashboard",
+  "name": "RKT Mission Control",
+  "version": "0.1.0",
+  "minNoctaliaVersion": "4.7.0",
+  "author": "Ratu Kidul Tech",
+  "official": false,
+  "license": "GPL-3.0",
+  "repository": "https://github.com/kidulwm/KidulWM",
+  "description": "Transparent, text-only mission control panel and network river for RKT machines.",
+  "tags": ["System", "Utilities"],
+  "entryPoints": {
+    "main": "Main.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "defaultSettings": {}
+  }
+}

@@ -1,8 +1,10 @@
 use std::cell::RefCell;
 use std::fs;
+use std::net::Ipv4Addr;
 use std::rc::Rc;
 
 use gtk4::gdk::Display;
+use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 
@@ -101,11 +103,49 @@ fn read_net_rate(prev: &mut Vec<(String, u64, u64)>) -> String {
     )
 }
 
+fn decode_ipv4_port(raw: &str) -> Option<String> {
+    let (ip_hex, port_hex) = raw.split_once(':')?;
+    if ip_hex.len() != 8 {
+        return None;
+    }
+    let ip_u32 = u32::from_str_radix(ip_hex, 16).ok()?;
+    let ip = Ipv4Addr::from(ip_u32.to_le_bytes());
+    let port = u16::from_str_radix(port_hex, 16).ok()?;
+    Some(format!("{}:{}", ip, port))
+}
+
+fn read_tcp_connections() -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    for path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let data = fs::read_to_string(path).unwrap_or_default();
+        for (idx, line) in data.lines().enumerate() {
+            if idx == 0 {
+                // header
+                continue;
+            }
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() < 4 {
+                continue;
+            }
+            let st = u8::from_str_radix(cols[3], 16).unwrap_or(0);
+            if st != 0x01 {
+                // only ESTABLISHED
+                continue;
+            }
+            let local = decode_ipv4_port(cols[1]).unwrap_or_else(|| cols[1].to_string());
+            let remote = decode_ipv4_port(cols[2]).unwrap_or_else(|| cols[2].to_string());
+            let uid = cols[7].parse::<u32>().unwrap_or(0);
+            out.push((format!("uid:{}", uid), local, remote));
+        }
+    }
+    out
+}
+
 fn build_dashboard() -> gtk4::Box {
     let dashboard = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
     dashboard.add_css_class("dashboard");
-    dashboard.set_margin_top(12);
-    dashboard.set_margin_bottom(12);
+    dashboard.set_margin_top(16);
+    dashboard.set_margin_bottom(16);
     dashboard.set_margin_start(12);
     dashboard.set_margin_end(12);
 
@@ -127,9 +167,30 @@ fn build_dashboard() -> gtk4::Box {
     popover.set_parent(&logo_btn);
     popover.set_position(gtk4::PositionType::Right);
 
+    // Click: toggle Noctalia launcher and popover stays open / opens on hover too.
+    let pc = popover.clone(); // actuallypopover need not be held
     logo_btn.connect_clicked(move |_| {
-        popover.popup();
+        let _ = std::process::Command::new("qs")
+            .args(["-c", "noctalia-shell", "ipc", "call", "launcher", "toggle"])
+            .spawn();
+        pc.popup();
     });
+
+    /* Hover: show Noctalia launcher (disabled for now; click toggles).
+    let last_toggle: Rc<RefCell<std::time::Instant>> =
+        Rc::new(RefCell::new(std::time::Instant::now()));
+    let hover = gtk4::EventControllerMotion::new();
+    hover.connect_enter(move |_, _, _| {
+        let mut last = last_toggle.borrow_mut();
+        if last.elapsed().as_secs() >= 2 {
+            *last = std::time::Instant::now();
+            let _ = std::process::Command::new("qs")
+                .args(["-c", "noctalia-shell", "ipc", "call", "launcher", "toggle"])
+                .spawn();
+        }
+    });
+    logo_btn.add_controller(hover);
+    */
 
     dashboard.append(&logo_btn);
 
@@ -138,7 +199,7 @@ fn build_dashboard() -> gtk4::Box {
     scroll.set_vexpand(true);
     scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
 
-    let widgets = gtk4::Box::new(gtk4::Orientation::Vertical, 12);
+    let widgets = gtk4::Box::new(gtk4::Orientation::Vertical, 14);
     widgets.add_css_class("widgets");
 
     // System vitals
@@ -150,8 +211,11 @@ fn build_dashboard() -> gtk4::Box {
     vbox.set_margin_start(8);
     vbox.set_margin_end(8);
     let cpu_lbl = gtk4::Label::new(Some("CPU: ...%"));
+    cpu_lbl.add_css_class("top-text");
     let mem_lbl = gtk4::Label::new(Some("MEM: ...%"));
+    mem_lbl.add_css_class("mid-text");
     let load_lbl = gtk4::Label::new(Some("Load: ..."));
+    load_lbl.add_css_class("bottom-text");
     vbox.append(&cpu_lbl);
     vbox.append(&mem_lbl);
     vbox.append(&load_lbl);
@@ -169,6 +233,13 @@ fn build_dashboard() -> gtk4::Box {
     let net_lbl = gtk4::Label::new(Some("↑ ... KB/s\n↓ ... KB/s"));
     net_lbl.set_single_line_mode(false);
     nbox.append(&net_lbl);
+
+    // Live connections list
+    let conn_box = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
+    conn_box.set_margin_top(4);
+    let conn_list = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
+    conn_box.append(&conn_list);
+    nbox.append(&conn_box);
     net.set_child(Some(&nbox));
     widgets.append(&net);
 
@@ -191,12 +262,29 @@ fn build_dashboard() -> gtk4::Box {
     let cpu_state: Rc<RefCell<(u64, u64)>> = Rc::new(RefCell::new((0, 0)));
     let net_state: Rc<RefCell<Vec<(String, u64, u64)>>> = Rc::new(RefCell::new(Vec::new()));
 
-    gtk4::glib::source::timeout_add_seconds_local(1, move || {
+    glib::source::timeout_add_seconds_local(1, move || {
         cpu_lbl.set_text(&read_cpu_delta(&mut *cpu_state.borrow_mut()));
         mem_lbl.set_text(&read_mem());
         load_lbl.set_text(&read_load());
         net_lbl.set_text(&read_net_rate(&mut *net_state.borrow_mut()));
-        gtk4::glib::ControlFlow::Continue
+
+        // refresh connections list (keep last 5)
+        let conns = read_tcp_connections();
+        while conn_list.first_child().is_some() {
+            conn_list.remove(&conn_list.first_child().unwrap());
+        }
+        for (user, local, remote) in conns.iter().take(5) {
+            let row = gtk4::Label::new(Some(&format!("{} → {}", local, remote)));
+            row.add_css_class("connection-row");
+            row.set_xalign(0.0);
+            conn_list.append(&row);
+            let sub = gtk4::Label::new(Some(&format!("  {}", user)));
+            sub.add_css_class("connection-row");
+            sub.set_xalign(0.0);
+            conn_list.append(&sub);
+        }
+
+        glib::ControlFlow::Continue
     });
 
     dashboard
@@ -220,9 +308,9 @@ fn activate(app: &gtk4::Application) {
 
     window.set_child(Some(&build_dashboard()));
 
-    // Layer-shell setup
+    // Layer-shell setup: sit above windows, anchored to left gap.
     window.init_layer_shell();
-    window.set_layer(Layer::Top);
+    window.set_layer(Layer::Overlay);
     window.auto_exclusive_zone_enable();
     window.set_anchor(Edge::Left, true);
     window.set_anchor(Edge::Top, true);

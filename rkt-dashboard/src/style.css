@@ -1,26 +1,47 @@
+window.background {
+    background: transparent;
+}
+
 .dashboard {
-    background: linear-gradient(135deg, #5e2a8a 0%, #1e66b8 50%, #2fa8a0 100%);
+    background: transparent;
     color: #ffffff;
+}
+
+/* Text-only RKT gradient. GTK can't gradient-fill live text easily, so we tint
+   the most prominent labels by vertical zone: purple top, blue middle, teal bottom. */
+.top-text {
+    color: #c49dff;
+}
+
+.mid-text {
+    color: #75c5ff;
+}
+
+.bottom-text {
+    color: #9dffee;
 }
 
 .logo-button {
     font-weight: 900;
-    font-size: 2rem;
+    font-size: 2.5rem;
     color: #ffffff;
-    background: rgba(0, 0, 0, 0.25);
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    border-radius: 12px;
-    min-height: 64px;
+    background: transparent;
+    border: 2px solid rgba(255, 255, 255, 0.45);
+    border-radius: 14px;
+    min-height: 72px;
+    text-shadow: 0 0 8px rgba(110, 50, 160, 0.8);
 }
 
 .logo-button:hover {
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #b97aff;
 }
 
 .control-center {
-    background: rgba(30, 30, 45, 0.95);
+    background: rgba(20, 20, 30, 0.85);
     padding: 12px;
     border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .control-center button {
@@ -35,10 +56,9 @@
 }
 
 .widget-frame {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 12px;
-    color: #ffffff;
 }
 
 .widget-frame label {
@@ -46,7 +66,12 @@
 }
 
 .frame > label {
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(255, 255, 255, 0.95);
     font-weight: 700;
     padding: 4px 8px;
+}
+
+.connection-row {
+    color: #d6e6ff;
+    font-size: 0.85rem;
 }
