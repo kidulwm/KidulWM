@@ -2,6 +2,8 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CPU_FILE: &str = "/tmp/.rkt-stats-cpu-prev";
 const NET_FILE: &str = "/tmp/.rkt-stats-net-prev";
@@ -15,6 +17,17 @@ struct Stats {
     net_up: f64,
     net_down: f64,
     connections: Vec<Connection>,
+    battery: f64,
+    volume: f64,
+    brightness: f64,
+    clock_pct: f64,
+    cpu_temp: f64,
+    gpu_temp: f64,
+    cpu_freq: f64,
+    disk_pct: f64,
+    swap_pct: f64,
+    fan_rpm: f64,
+    power_w: f64,
 }
 
 #[derive(Serialize)]
@@ -49,7 +62,10 @@ fn cpu_usage() -> f64 {
     let (total, _, idle) = read_cpu();
     let prev = fs::read_to_string(CPU_FILE).ok().and_then(|s| {
         let mut it = s.split(',');
-        Some((it.next()?.parse::<u64>().ok()?, it.next()?.parse::<u64>().ok()?))
+        Some((
+            it.next()?.parse::<u64>().ok()?,
+            it.next()?.parse::<u64>().ok()?,
+        ))
     });
     let usage = if let Some((p_total, p_idle)) = prev {
         let dt = total.saturating_sub(p_total);
@@ -72,9 +88,23 @@ fn read_mem() -> (f64, f64) {
     let mut available = 0.0;
     for line in data.lines() {
         if let Some(val) = line.strip_prefix("MemTotal:") {
-            total = val.trim().split_whitespace().next().unwrap_or("0").parse::<f64>().unwrap_or(0.0) / 1_048_576.0;
+            total = val
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("0")
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                / 1_048_576.0;
         } else if let Some(val) = line.strip_prefix("MemAvailable:") {
-            available = val.trim().split_whitespace().next().unwrap_or("0").parse::<f64>().unwrap_or(0.0) / 1_048_576.0;
+            available = val
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("0")
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                / 1_048_576.0;
         }
     }
     (total - available, total)
@@ -127,9 +157,15 @@ fn read_connections() -> Vec<Connection> {
             if st != 0x01 {
                 continue;
             }
-            let Some((local_ip, local_port)) = parse_addr(cols[1]) else { continue };
-            let Some((remote_ip, remote_port)) = parse_addr(cols[2]) else { continue };
-            let Ok(uid) = cols[7].parse::<u32>() else { continue };
+            let Some((local_ip, local_port)) = parse_addr(cols[1]) else {
+                continue;
+            };
+            let Some((remote_ip, remote_port)) = parse_addr(cols[2]) else {
+                continue;
+            };
+            let Ok(uid) = cols[7].parse::<u32>() else {
+                continue;
+            };
             out.push(Connection {
                 local: format!("{}:{}", local_ip, local_port),
                 remote: format!("{}:{}", remote_ip, remote_port),
@@ -151,10 +187,13 @@ fn read_net() -> HashMap<String, (u64, u64)> {
         if iface == "lo" {
             continue;
         }
-        let Some(recv) = parts.next().and_then(|s| s.parse::<u64>().ok()) else { continue };
-        // skip 7 columns to send
+        let Some(recv) = parts.next().and_then(|s| s.parse::<u64>().ok()) else {
+            continue;
+        };
         parts.nth(6);
-        let Some(send) = parts.next().and_then(|s| s.parse::<u64>().ok()) else { continue };
+        let Some(send) = parts.next().and_then(|s| s.parse::<u64>().ok()) else {
+            continue;
+        };
         map.insert(iface.to_string(), (recv, send));
     }
     map
@@ -184,9 +223,300 @@ fn net_rates() -> (f64, f64) {
             }
         }
     }
-    let out: Vec<String> = cur.iter().map(|(k, (r, s))| format!("{},{},{}", k, r, s)).collect();
+    let out: Vec<String> = cur
+        .iter()
+        .map(|(k, (r, s))| format!("{},{},{}", k, r, s))
+        .collect();
     let _ = fs::write(NET_FILE, out.join("\n"));
     (up, down)
+}
+
+fn read_battery() -> f64 {
+    let Ok(entries) = fs::read_dir("/sys/class/power_supply") else {
+        return -1.0;
+    };
+    for entry in entries.flatten() {
+        if let Some(name) = entry.file_name().to_str() {
+            if name.starts_with("BAT") {
+                let path = entry.path().join("capacity");
+                if let Ok(s) = fs::read_to_string(&path) {
+                    return s.trim().parse::<f64>().unwrap_or(-1.0);
+                }
+            }
+        }
+    }
+    -1.0
+}
+
+fn read_brightness() -> f64 {
+    let Ok(entries) = fs::read_dir("/sys/class/backlight") else {
+        return -1.0;
+    };
+    for entry in entries.flatten() {
+        let b = entry.path().join("brightness");
+        let m = entry.path().join("max_brightness");
+        if let (Ok(bv), Ok(mv)) = (fs::read_to_string(&b), fs::read_to_string(&m)) {
+            let bval = bv.trim().parse::<f64>().unwrap_or(0.0);
+            let mval = mv.trim().parse::<f64>().unwrap_or(1.0);
+            if mval > 0.0 {
+                return (bval / mval) * 100.0;
+            }
+        }
+    }
+    -1.0
+}
+
+fn read_volume() -> f64 {
+    let output = Command::new("pactl").args(["list", "sinks"]).output();
+    if let Ok(out) = output {
+        if out.status.success() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                let line = line.trim();
+                if line.starts_with("Volume:") {
+                    if let Some(pct) = line
+                        .split_whitespace()
+                        .find(|s| s.ends_with('%'))
+                        .and_then(|s| s.trim_end_matches('%').parse::<f64>().ok())
+                    {
+                        return pct;
+                    }
+                }
+            }
+        }
+    }
+    -1.0
+}
+
+fn read_clock_pct() -> f64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as f64;
+    let secs_in_day = now % 86_400.0;
+    (secs_in_day / 86_400.0) * 100.0
+}
+
+fn read_cpu_temp() -> f64 {
+    // Try hwmon coretemp first.
+    if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
+        for entry in entries.flatten() {
+            let name_path = entry.path().join("name");
+            if let Ok(name) = fs::read_to_string(&name_path) {
+                let name = name.trim();
+                if name == "coretemp" || name == "k10temp" || name == "zenpower" {
+                    for i in 1..=8 {
+                        let p = entry.path().join(format!("temp{}_input", i));
+                        if let Ok(s) = fs::read_to_string(&p) {
+                            if let Ok(v) = s.trim().parse::<f64>() {
+                                return v / 1000.0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback: thermal zones.
+    if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
+        let mut max = -1.0;
+        for entry in entries.flatten() {
+            let p = entry.path().join("temp");
+            if let Ok(s) = fs::read_to_string(&p) {
+                if let Ok(v) = s.trim().parse::<f64>() {
+                    let c = v / 1000.0;
+                    if c > max {
+                        max = c;
+                    }
+                }
+            }
+        }
+        if max > 0.0 {
+            return max;
+        }
+    }
+    -1.0
+}
+
+fn read_gpu_temp() -> f64 {
+    if Command::new("which")
+        .arg("nvidia-smi")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        if let Ok(out) = Command::new("nvidia-smi")
+            .args([
+                "--query-gpu=temperature.gpu",
+                "--format=csv,noheader,nounits",
+            ])
+            .output()
+        {
+            if out.status.success() {
+                if let Ok(s) = String::from_utf8(out.stdout) {
+                    if let Ok(v) = s.trim().parse::<f64>() {
+                        return v;
+                    }
+                }
+            }
+        }
+    }
+    // Try amdgpu sysfs.
+    if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
+        for entry in entries.flatten() {
+            let name_path = entry.path().join("name");
+            if let Ok(name) = fs::read_to_string(&name_path) {
+                if name.trim().starts_with("amdgpu") {
+                    let p = entry.path().join("temp1_input");
+                    if let Ok(s) = fs::read_to_string(&p) {
+                        if let Ok(v) = s.trim().parse::<f64>() {
+                            return v / 1000.0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    -1.0
+}
+
+fn read_cpu_freq() -> f64 {
+    let mut total = 0.0;
+    let mut count = 0;
+    if let Ok(entries) = fs::read_dir("/sys/devices/system/cpu") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("cpu") && name[3..].parse::<u32>().is_ok() {
+                let p = entry.path().join("cpufreq/scaling_cur_freq");
+                if let Ok(s) = fs::read_to_string(&p) {
+                    if let Ok(v) = s.trim().parse::<f64>() {
+                        total += v / 1000.0; // kHz -> MHz
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    if count > 0 {
+        return total / count as f64;
+    }
+    // Fallback to cpuinfo.
+    let data = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+    let mut sum = 0.0;
+    let mut n = 0;
+    for line in data.lines() {
+        if let Some(val) = line.strip_prefix("cpu MHz\t\t:") {
+            if let Ok(v) = val.trim().parse::<f64>() {
+                sum += v;
+                n += 1;
+            }
+        }
+    }
+    if n > 0 {
+        sum / n as f64
+    } else {
+        -1.0
+    }
+}
+
+fn read_disk_pct() -> f64 {
+    // Use df for root partition used percentage.
+    if let Ok(out) = Command::new("df").args(["-P", "/"]).output() {
+        let text = String::from_utf8_lossy(&out.stdout);
+        if let Some(line) = text.lines().nth(1) {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() >= 5 {
+                if let Ok(pct) = cols[4].trim_end_matches('%').parse::<f64>() {
+                    return pct;
+                }
+            }
+        }
+    }
+    -1.0
+}
+
+fn read_swap_pct() -> f64 {
+    let data = fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let mut total = 0.0;
+    let mut free = 0.0;
+    for line in data.lines() {
+        if let Some(val) = line.strip_prefix("SwapTotal:") {
+            total = val
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("0")
+                .parse::<f64>()
+                .unwrap_or(0.0);
+        } else if let Some(val) = line.strip_prefix("SwapFree:") {
+            free = val
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("0")
+                .parse::<f64>()
+                .unwrap_or(0.0);
+        }
+    }
+    if total > 0.0 {
+        ((total - free) / total) * 100.0
+    } else {
+        0.0
+    }
+}
+
+fn read_fan_rpm() -> f64 {
+    let mut max = -1.0;
+    if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
+        for entry in entries.flatten() {
+            for i in 1..=4 {
+                let p = entry.path().join(format!("fan{}_input", i));
+                if let Ok(s) = fs::read_to_string(&p) {
+                    if let Ok(v) = s.trim().parse::<f64>() {
+                        if v > max {
+                            max = v;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    max
+}
+
+fn read_power_w() -> f64 {
+    // Try battery power_now (µW -> W).
+    if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
+        for entry in entries.flatten() {
+            let p = entry.path().join("power_now");
+            if let Ok(s) = fs::read_to_string(&p) {
+                if let Ok(v) = s.trim().parse::<f64>() {
+                    return v / 1_000_000.0;
+                }
+            }
+        }
+    }
+    // Fallback to nvidia-smi power.draw.
+    if Command::new("which")
+        .arg("nvidia-smi")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        if let Ok(out) = Command::new("nvidia-smi")
+            .args(["--query-gpu=power.draw", "--format=csv,noheader,nounits"])
+            .output()
+        {
+            if out.status.success() {
+                if let Ok(s) = String::from_utf8(out.stdout) {
+                    if let Ok(v) = s.trim().parse::<f64>() {
+                        return v;
+                    }
+                }
+            }
+        }
+    }
+    -1.0
 }
 
 fn main() {
@@ -198,6 +528,17 @@ fn main() {
         net_up: net_rates().0 / 1024.0,
         net_down: net_rates().1 / 1024.0,
         connections: read_connections(),
+        battery: read_battery(),
+        volume: read_volume(),
+        brightness: read_brightness(),
+        clock_pct: read_clock_pct(),
+        cpu_temp: read_cpu_temp(),
+        gpu_temp: read_gpu_temp(),
+        cpu_freq: read_cpu_freq(),
+        disk_pct: read_disk_pct(),
+        swap_pct: read_swap_pct(),
+        fan_rpm: read_fan_rpm(),
+        power_w: read_power_w(),
     };
     println!("{}", serde_json::to_string(&stats).unwrap());
     io::Write::flush(&mut io::stdout()).unwrap();

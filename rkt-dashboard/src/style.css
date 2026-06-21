@@ -5,3 +5,79 @@ window.background {
 .rkt-panel {
     background: transparent;
 }
+
+.rkt-dial {
+    background: transparent;
+    border-radius: 16px;
+    padding: 8px 6px;
+    transition-property: background-color, border-color;
+    transition-duration: 180ms;
+}
+
+.rkt-dial.dragging {
+    background: transparent;
+}
+
+.rkt-dial-label {
+    color: rgba(255, 255, 255, 0.85);
+    font-family: "Adwaita Sans", sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-top: 2px;
+}
+
+.rkt-dial.active .rkt-dial-label {
+    color: rgba(0, 240, 255, 0.95);
+    text-shadow: 0 0 6px rgba(0, 240, 255, 0.45);
+}
+
+.rkt-logo {
+    background: transparent;
+    border-radius: 16px;
+    padding: 6px;
+}
+
+.rkt-clock-date {
+    color: rgba(255, 255, 255, 0.60);
+    font-family: "Adwaita Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.rkt-clock-wrap.active .rkt-clock-date {
+    color: rgba(0, 240, 255, 0.95);
+}
+
+.rkt-catchy {
+    color: rgba(255, 255, 255, 0.55);
+    font-family: "Adwaita Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+}
+
+.rkt-panel-separator {
+    background: rgba(0, 240, 255, 0.22);
+    min-height: 1px;
+}
+
+.rkt-dial-fade-top {
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.82) 0%,
+        rgba(0, 0, 0, 0.55) 50%,
+        transparent 100%
+    );
+}
+
+.rkt-dial-fade-bottom {
+    background: linear-gradient(
+        to top,
+        rgba(0, 0, 0, 0.82) 0%,
+        rgba(0, 0, 0, 0.55) 50%,
+        transparent 100%
+    );
+}
+
