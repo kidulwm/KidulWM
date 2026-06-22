@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""rkt-email-view — open a terminal summary of Bob's ProtonMail inbox."""
+import imaplib
+import json
+import ssl
+import subprocess
+import sys
+from pathlib import Path
+
+CONFIG_PATH = Path.home() / ".config" / "bobmail" / "config.json"
+
+
+def unread_count(config: dict) -> int:
+    c = imaplib.IMAP4(config["imap"]["host"], config["imap"]["port"])
+    c.starttls(ssl._create_unverified_context())
+    c.login(config["imap"]["user"], config["imap"]["pass"])
+    c.select("INBOX", readonly=True)
+    _, data = c.search(None, "UNSEEN")
+    count = len(data[0].split())
+    c.logout()
+    return count
+
+
+def main():
+    if not CONFIG_PATH.exists():
+        print(f"No bobmail config at {CONFIG_PATH}", file=sys.stderr)
+        sys.exit(1)
+
+    config = json.loads(CONFIG_PATH.read_text())
+
+    print("Syncing mail…")
+    try:
+        subprocess.run(["bobmail", "check", "--all"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Sync failed: {e}", file=sys.stderr)
+
+    try:
+        n = unread_count(config)
+    except Exception as e:
+        print(f"Unread query failed: {e}", file=sys.stderr)
+        n = -1
+
+    print(f"\nUnread: {n if n >= 0 else '?'}")
+    print("\nRecent mail:")
+    try:
+        subprocess.run(["bobmail", "list", "-n", "20"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"List failed: {e}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

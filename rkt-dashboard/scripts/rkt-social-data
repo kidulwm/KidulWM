@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""rkt-social-data — poll Telegram and Discord for unread-like counts.
+
+Outputs a single JSON object with telegram and discord sections, plus writes
+~/.cache/rkt-dashboard/social.json for rkt-panel-data to consume.
+"""
+
+import datetime
+import json
+import os
+import ssl
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+SECRETS = Path.home() / ".hermes" / "secrets" / "social"
+CACHE_DIR = Path.home() / ".cache" / "rkt-dashboard"
+CACHE_FILE = CACHE_DIR / "social.json"
+TELEGRAM_OFFSET_FILE = Path.home() / ".hermes" / "telegram_social_offset"
+UTC = datetime.timezone.utc
+
+
+def load_secrets():
+    data = {}
+    if not SECRETS.exists():
+        return data
+    text = SECRETS.read_text()
+    for line in text.splitlines():
+        line = line.strip()
+        if "=" in line and line.count('"') >= 2:
+            key, _, val = line.partition("=")
+            data[key] = val.strip().strip('"')
+    return data
+
+
+def https_get_json(url, headers=None, timeout=20):
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(url, headers=headers or {})
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        return json.loads(resp.read())
+
+
+def https_post_json(url, data, headers=None, timeout=20):
+    ctx = ssl.create_default_context()
+    payload = json.dumps(data).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={**(headers or {}), "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        return json.loads(resp.read())
+
+
+def load_json(path, default=None):
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            pass
+    return default if default is not None else {}
+
+
+def get_telegram_counts(secrets):
+    token = secrets.get("telegram_bot_token", "")
+    allowed_id = secrets.get("telegram_user_id", "")
+    if not token:
+        return {"unread": -1, "error": "no telegram token", "label": "telegram: -"}
+
+    try:
+        offset = 0
+        try:
+            offset = int(TELEGRAM_OFFSET_FILE.read_text().strip())
+        except Exception:
+            pass
+
+        url = f"https://api.telegram.org/bot{token}/getUpdates?offset={offset}&limit=100"
+        data = https_get_json(url, timeout=30)
+        if not data.get("ok"):
+            return {"unread": -1, "error": "telegram api error", "label": "telegram: -"}
+
+        updates = data.get("result", [])
+        count = 0
+        latest_text = ""
+        new_offset = offset
+        for update in updates:
+            new_offset = max(new_offset, update.get("update_id", 0) + 1)
+            msg = update.get("message") or update.get("edited_message") or update.get("channel_post")
+            if not msg:
+                continue
+            # Count messages from allowed user if configured, else all
+            user_id = msg.get("from", {}).get("id")
+            if allowed_id and str(user_id) != str(allowed_id):
+                continue
+            text = msg.get("text", "")
+            if text:
+                count += 1
+                if not latest_text:
+                    latest_text = text[:30]
+
+        if new_offset > offset:
+            TELEGRAM_OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
+            TELEGRAM_OFFSET_FILE.write_text(str(new_offset))
+            TELEGRAM_OFFSET_FILE.chmod(0o600)
+
+        label = f"telegram: {count}" if count else "telegram: clear"
+        return {
+            "unread": count,
+            "label": label,
+            "latest": latest_text,
+            "last_check": datetime.datetime.now(UTC).isoformat(),
+        }
+    except Exception as e:
+        return {"unread": -1, "error": str(e), "label": "telegram: err"}
+
+
+def get_discord_counts(secrets):
+    token = secrets.get("discord_bot_token", "")
+    if not token:
+        return {"unread": -1, "error": "no discord token", "label": "discord: -"}
+
+    headers = {
+        "Authorization": f"Bot {token}",
+        "User-Agent": "rkt-social-data/1.0",
+    }
+
+    try:
+        me = https_get_json("https://discord.com/api/v10/users/@me", headers=headers, timeout=20)
+        bot_id = me.get("id")
+
+        channels = https_get_json("https://discord.com/api/v10/users/@me/channels", headers=headers, timeout=20)
+        if not isinstance(channels, list):
+            return {"unread": -1, "error": "discord channels response invalid", "label": "discord: -"}
+
+        count = 0
+        latest_text = ""
+        now = datetime.datetime.now(UTC)
+        cutoff = now - datetime.timedelta(hours=24)
+
+        for channel in channels[:10]:
+            cid = channel.get("id")
+            if not cid:
+                continue
+            try:
+                msgs = https_get_json(
+                    f"https://discord.com/api/v10/channels/{cid}/messages?limit=10",
+                    headers=headers,
+                    timeout=20,
+                )
+            except urllib.error.HTTPError as e:
+                # Missing access is fine for some channels
+                if e.code in (403, 404):
+                    continue
+                raise
+            if not isinstance(msgs, list):
+                continue
+            for msg in msgs:
+                author = msg.get("author", {})
+                if author.get("id") == bot_id:
+                    continue
+                ts_str = msg.get("timestamp", "")
+                if ts_str:
+                    try:
+                        ts = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        if ts < cutoff:
+                            continue
+                    except Exception:
+                        pass
+                count += 1
+                text = msg.get("content", "").strip()
+                if text and not latest_text:
+                    latest_text = text[:30]
+
+        label = f"discord: {count}" if count else "discord: clear"
+        return {
+            "unread": count,
+            "label": label,
+            "latest": latest_text,
+            "last_check": now.isoformat(),
+        }
+    except Exception as e:
+        return {"unread": -1, "error": str(e), "label": "discord: err"}
+
+
+def main():
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    secrets = load_secrets()
+    result = {
+        "telegram": get_telegram_counts(secrets),
+        "discord": get_discord_counts(secrets),
+    }
+    CACHE_FILE.write_text(json.dumps(result, indent=2))
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()

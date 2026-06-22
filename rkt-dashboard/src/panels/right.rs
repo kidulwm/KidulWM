@@ -65,9 +65,16 @@ pub fn build_right(
 
     bx.append(&top_box);
 
-    // ── Email line centred in gap between clock and backup ──
+    // ── Email/Telegram/Discord cluster centred in gap between clock and backup ──
     bx.append(&v_spacer());
     let email_state = Rc::new(RefCell::new(EmailState::default()));
+    let comms_box = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(2)
+        .halign(gtk4::Align::Center)
+        .valign(gtk4::Align::Center)
+        .build();
+
     let email_click = || {
         let _ = std::process::Command::new("alacritty")
             .args([
@@ -80,8 +87,31 @@ pub fn build_right(
     };
     let email_widget = make_clickable_label("email: …", "rkt-right-widget", Box::new(email_click));
     email_widget.set_halign(gtk4::Align::Center);
-    email_widget.set_valign(gtk4::Align::Center);
-    bx.append(&email_widget);
+    comms_box.append(&email_widget);
+
+    let telegram_widget = make_clickable_label(
+        "telegram: …",
+        "rkt-right-widget",
+        Box::new(|| {
+            let _ = std::process::Command::new("telegram").spawn();
+        }),
+    );
+    telegram_widget.set_halign(gtk4::Align::Center);
+    comms_box.append(&telegram_widget);
+
+    let discord_widget = make_clickable_label(
+        "discord: …",
+        "rkt-right-widget",
+        Box::new(|| {
+            let _ = std::process::Command::new("xdg-open")
+                .arg("https://discord.com/channels/@me")
+                .spawn();
+        }),
+    );
+    discord_widget.set_halign(gtk4::Align::Center);
+    comms_box.append(&discord_widget);
+
+    bx.append(&comms_box);
 
     // ── Backup dial (screen centre) ──
     bx.append(&v_spacer());
@@ -188,6 +218,8 @@ pub fn build_right(
         let email_state = email_state.clone();
         let rss_state = rss_state.clone();
         let email_widget = email_widget.clone();
+        let telegram_widget = telegram_widget.clone();
+        let discord_widget = discord_widget.clone();
         let rss_widget = rss_widget.clone();
 
         let refresh = move || -> Option<()> {
@@ -221,6 +253,25 @@ pub fn build_right(
                 };
                 if let Some(lbl) = email_widget.first_child().and_downcast::<Label>() {
                     lbl.set_label(&text);
+                }
+            }
+
+            if let Some(e) = out.get("social") {
+                let tg = e
+                    .get("telegram")?
+                    .get("label")?
+                    .as_str()
+                    .unwrap_or("telegram: -");
+                if let Some(lbl) = telegram_widget.first_child().and_downcast::<Label>() {
+                    lbl.set_label(tg);
+                }
+                let dc = e
+                    .get("discord")?
+                    .get("label")?
+                    .as_str()
+                    .unwrap_or("discord: -");
+                if let Some(lbl) = discord_widget.first_child().and_downcast::<Label>() {
+                    lbl.set_label(dc);
                 }
             }
 
