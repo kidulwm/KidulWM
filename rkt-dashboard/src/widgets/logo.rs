@@ -44,8 +44,12 @@ pub fn build(
     let hovered = Rc::new(RefCell::new(false));
     let hovered_draw = hovered.clone();
 
-    let hover_line1 = hover_lines.map(|h| h.0.to_string()).unwrap_or_else(|| "CONTROL".to_string());
-    let hover_line2 = hover_lines.map(|h| h.1.to_string()).unwrap_or_else(|| "CENTER".to_string());
+    let hover_line1 = hover_lines
+        .map(|h| h.0.to_string())
+        .unwrap_or_else(|| "CONTROL".to_string());
+    let hover_line2 = hover_lines
+        .map(|h| h.1.to_string())
+        .unwrap_or_else(|| "CENTER".to_string());
 
     let phase2 = phase.clone();
     let image_draw = image.clone();

@@ -124,27 +124,26 @@ fn build_internal(
         let ball_y = cy + r * theta.sin();
         let ball_r = (lw * 2.2).max(r * 0.10);
 
-        // Glow when hovered (behind the ball)
+        // Permanent soft glow at the ball position
+        let glow_r = ball_r * 1.75;
+        let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+        grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
+        grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
+        grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
+        cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+        cr.set_source(&grad_glow).unwrap();
+        let _ = cr.fill();
+
         if hover {
-            cr.arc(
-                ball_x,
-                ball_y,
-                ball_r * 1.6,
-                0.0,
-                2.0 * std::f64::consts::PI,
-            );
-            cr.set_source_rgba(colour.0, colour.1, colour.2, 0.22);
+            // The solid ball appears on hover
+            let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
+            grad.add_color_stop_rgb(0.0, lighten(colour.0), lighten(colour.1), lighten(colour.2));
+            grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
+            grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
+            cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+            cr.set_source(&grad).unwrap();
             let _ = cr.fill();
         }
-
-        // Coloured ball at the current value
-        let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
-        grad.add_color_stop_rgb(0.0, lighten(colour.0), lighten(colour.1), lighten(colour.2));
-        grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
-        grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
-        cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-        cr.set_source(&grad).unwrap();
-        let _ = cr.fill();
 
         // Center value (white, slightly smaller)
         let value_text = if suffix == "%" {
@@ -168,7 +167,7 @@ fn build_internal(
             cy - r * 0.02,
             value_size.max(10.0),
             cairo::FontWeight::Bold,
-            (1.0, 1.0, 1.0, 0.95),
+            (0.94, 0.94, 0.94, 0.65),
         );
 
         // Label text inline in the bottom gap, scaled by dial size
@@ -191,7 +190,7 @@ fn build_internal(
             label_y,
             label_size,
             cairo::FontWeight::Bold,
-            (1.0, 1.0, 1.0, 0.85),
+            (0.94, 0.94, 0.94, 0.55),
         );
     });
 
@@ -354,7 +353,7 @@ fn build_internal(
     bx
 }
 
-fn draw_centered_text(
+pub fn draw_centered_text(
     cr: &cairo::Context,
     text: &str,
     cx: f64,
@@ -374,7 +373,7 @@ fn draw_centered_text(
     cr.show_text(text).expect("show_text");
 }
 
-fn colour_for_pct(pct: f64, reversed: bool) -> (f64, f64, f64) {
+pub fn colour_for_pct(pct: f64, reversed: bool) -> (f64, f64, f64) {
     let p = if reversed { 1.0 - pct } else { pct };
     // Stops: 0% teal, 9% blue, 45% purple, 90% burnt orange, 95% bright red
     let stops = [

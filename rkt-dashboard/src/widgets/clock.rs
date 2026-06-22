@@ -33,14 +33,14 @@ pub fn build(width: i32, height: i32) -> Box {
     date_label.set_halign(gtk4::Align::Center);
     date_label.set_valign(gtk4::Align::Center);
 
-    bx.append(&da);
     bx.append(&date_label);
+    bx.append(&da);
 
     // Update date text now and every minute.
     fn update_date(label: &Label) {
         let now = glib::DateTime::now_local()
             .unwrap_or_else(|_| glib::DateTime::now_utc().expect("time"));
-        label.set_label(&now.format("%a %d %b").unwrap_or_default());
+        label.set_label(&now.format("%a %d %b").unwrap_or_default().to_lowercase());
     }
     update_date(&date_label);
     let date_label_ref = date_label.clone();
@@ -49,14 +49,14 @@ pub fn build(width: i32, height: i32) -> Box {
         glib::ControlFlow::Continue
     });
 
-    let hovered = Rc::new(RefCell::new(false));
-    let hovered_draw = hovered.clone();
+    let clock_hovered = Rc::new(RefCell::new(false));
+    let clock_hovered_draw = clock_hovered.clone();
 
     da.set_draw_func(move |_, cr, w, h| {
         let cx = w as f64 / 2.0;
         let cy = h as f64 / 2.0;
         let r = cx.min(cy) * 0.78;
-        let hover = *hovered_draw.borrow();
+        let hover = *clock_hovered_draw.borrow();
 
         // Outer ring
         cr.arc(cx, cy, r, 0.0, 2.0 * std::f64::consts::PI);
@@ -111,47 +111,80 @@ pub fn build(width: i32, height: i32) -> Box {
         }
     });
 
-    // Hover / click calendar behaviour for the whole clock+date block.
     let trigger = Rc::new(RefCell::new(0i64));
-    let bx_ref = bx.clone();
 
-    let calendar_toggle = move || {
-        let now = glib::monotonic_time();
-        let mut t = trigger.borrow_mut();
-        if now - *t > 1_200_000 {
-            *t = now;
-            let _ = std::process::Command::new("qs")
-                .args(["-c", "noctalia-shell", "ipc", "call", "calendar", "toggle"])
-                .spawn();
+    let calendar_toggle = {
+        let trigger = trigger.clone();
+        move || {
+            let now = glib::monotonic_time();
+            let mut t = trigger.borrow_mut();
+            if now - *t > 1_200_000 {
+                *t = now;
+                let _ = std::process::Command::new("qs")
+                    .args(["-c", "noctalia-shell", "ipc", "call", "calendar", "toggle"])
+                    .spawn();
+            }
         }
     };
 
-    let motion = EventControllerMotion::new();
-    let enter_hovered = hovered.clone();
-    let enter_da = da.clone();
-    let enter_bx = bx.clone();
-    let on_enter = calendar_toggle.clone();
-    motion.connect_enter(move |_, _, _| {
-        *enter_hovered.borrow_mut() = true;
-        enter_bx.add_css_class("active");
-        enter_da.queue_draw();
-        on_enter();
-    });
-    let leave_hovered = hovered.clone();
-    let leave_da = da.clone();
-    let leave_bx = bx.clone();
-    motion.connect_leave(move |_| {
-        *leave_hovered.borrow_mut() = false;
-        leave_bx.remove_css_class("active");
-        leave_da.queue_draw();
-    });
-    bx_ref.add_controller(motion);
+    let launcher_toggle = move || {
+        let _ = std::process::Command::new("qs")
+            .args(["-c", "noctalia-shell", "ipc", "call", "launcher", "toggle"])
+            .spawn();
+    };
 
-    let click = GestureClick::new();
-    click.connect_pressed(move |_: &GestureClick, _: i32, _: f64, _: f64| {
+    // Hover over the date opens the calendar and highlights the date.
+    let date_hovered = Rc::new(RefCell::new(false));
+    let date_motion = EventControllerMotion::new();
+    let date_hovered_enter = date_hovered.clone();
+    let date_da_enter = da.clone();
+    let date_bx_enter = bx.clone();
+    let on_date_enter = calendar_toggle.clone();
+    date_motion.connect_enter(move |_, _, _| {
+        *date_hovered_enter.borrow_mut() = true;
+        date_bx_enter.add_css_class("active");
+        date_da_enter.queue_draw();
+        on_date_enter();
+    });
+    let date_hovered_leave = date_hovered.clone();
+    let date_da_leave = da.clone();
+    let date_bx_leave = bx.clone();
+    date_motion.connect_leave(move |_| {
+        *date_hovered_leave.borrow_mut() = false;
+        date_bx_leave.remove_css_class("active");
+        date_da_leave.queue_draw();
+    });
+    date_label.add_controller(date_motion);
+
+    // Hover over the clock only affects the clock glow.
+    let clock_motion = EventControllerMotion::new();
+    let clock_hovered_enter = clock_hovered.clone();
+    let clock_da_enter = da.clone();
+    clock_motion.connect_enter(move |_, _, _| {
+        *clock_hovered_enter.borrow_mut() = true;
+        clock_da_enter.queue_draw();
+    });
+    let clock_hovered_leave = clock_hovered.clone();
+    let clock_da_leave = da.clone();
+    clock_motion.connect_leave(move |_| {
+        *clock_hovered_leave.borrow_mut() = false;
+        clock_da_leave.queue_draw();
+    });
+    da.add_controller(clock_motion);
+
+    // Click the clock face to open the launcher.
+    let click_clock = GestureClick::new();
+    click_clock.connect_pressed(move |_: &GestureClick, _: i32, _: f64, _: f64| {
+        launcher_toggle();
+    });
+    da.add_controller(click_clock);
+
+    // Click the date to open the calendar.
+    let click_date = GestureClick::new();
+    click_date.connect_pressed(move |_: &GestureClick, _: i32, _: f64, _: f64| {
         calendar_toggle();
     });
-    bx_ref.add_controller(click);
+    date_label.add_controller(click_date);
 
     let da_ref = da.clone();
     glib::source::timeout_add_local(Duration::from_millis(1000), move || {

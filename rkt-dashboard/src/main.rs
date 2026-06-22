@@ -27,27 +27,33 @@ fn build_ui(app: &gtk4::Application) {
     for i in 0..monitors.n_items() {
         if let Some(mon) = monitors.item(i).and_downcast::<Monitor>() {
             let h = mon.geometry().height();
+            let mw = mon.geometry().width() as f64;
+            let side_w = (mw * 0.12).round() as i32;
+
+            let mut mon_cfg = cfg.clone();
+            mon_cfg.left.width = side_w;
+            mon_cfg.right.width = side_w;
 
             let left_win = gtk4::ApplicationWindow::builder()
                 .application(app)
                 .title("RKT Mission Control — Left")
-                .default_width(cfg.left.width)
+                .default_width(side_w)
                 .default_height(h)
                 .decorated(false)
                 .build();
             init_layer_shell(&left_win, true, Some(&mon));
-            let left_panel = panels::build_left(&cfg, &values, h);
+            let left_panel = panels::build_left(&mon_cfg, &values, h);
             left_win.set_child(Some(&left_panel));
 
             let right_win = gtk4::ApplicationWindow::builder()
                 .application(app)
                 .title("RKT Mission Control — Right")
-                .default_width(cfg.right.width)
+                .default_width(side_w)
                 .default_height(h)
                 .decorated(false)
                 .build();
             init_layer_shell(&right_win, false, Some(&mon));
-            let right_panel = panels::build_right(&cfg, &values);
+            let right_panel = panels::build_right(&mon_cfg, h, &values);
             right_win.set_child(Some(&right_panel));
 
             left_win.present();
@@ -66,8 +72,12 @@ fn init_layer_shell(window: &gtk4::ApplicationWindow, left: bool, mon: Option<&M
     window.set_keyboard_mode(KeyboardMode::OnDemand);
     if left {
         window.set_anchor(Edge::Left, true);
+        // Panel width is set to 12% of the monitor, so it fills the side gap flush
+        // against the 76% focused window column.
+        window.set_margin(Edge::Left, 0);
     } else {
         window.set_anchor(Edge::Right, true);
+        window.set_margin(Edge::Right, 0);
     }
 }
 

@@ -19,7 +19,7 @@ window.background {
 }
 
 .rkt-dial-label {
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(255, 255, 255, 0.55);
     font-family: "Adwaita Sans", sans-serif;
     font-size: 16px;
     font-weight: 700;
@@ -41,8 +41,8 @@ window.background {
 .rkt-clock-date {
     color: rgba(255, 255, 255, 0.60);
     font-family: "Adwaita Sans", sans-serif;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 700;
     letter-spacing: 0.04em;
 }
 
@@ -61,6 +61,31 @@ window.background {
 .rkt-panel-separator {
     background: rgba(0, 240, 255, 0.22);
     min-height: 1px;
+}
+
+.rkt-right-widget {
+    color: rgba(255, 255, 255, 0.65);
+    font-family: "Adwaita Sans", sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 12px 8px;
+    border-radius: 12px;
+    transition-property: color, background-color, text-shadow;
+    transition-duration: 180ms;
+}
+
+.rkt-right-widget.active {
+    color: rgba(0, 240, 255, 0.95);
+    background: rgba(0, 240, 255, 0.08);
+    text-shadow: 0 0 6px rgba(0, 240, 255, 0.35);
+}
+
+.rkt-right-label {
+    color: inherit;
+    font-family: "Adwaita Sans", sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
 }
 
 .rkt-dial-fade-top {

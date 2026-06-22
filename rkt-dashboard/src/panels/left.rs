@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 
 use crate::config::{Config, WidgetCfg};
+use crate::panels::right::right_dial_size;
 use crate::widgets;
 use crate::Values;
 
@@ -152,7 +153,6 @@ fn save_order(order: &[String]) {
     );
 }
 
-
 pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Highlight {
@@ -165,7 +165,7 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
 
     let drag_snapshot: Rc<RefCell<Option<Vec<String>>>> = Rc::new(RefCell::new(None));
 
-    let (base_large, base_small, base_catchy, spacing, small_spacing) = if monitor_height < 1300 {
+    let (_base_large, base_small, base_catchy, spacing, small_spacing) = if monitor_height < 1300 {
         (120, 55, 55, 6, 6)
     } else if monitor_height < 1800 {
         (140, 65, 65, 8, 6)
@@ -179,20 +179,16 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
     let small_size = ((base_small as f64 * 1.5) as i32)
         .min(max_small_by_width)
         .max(base_small);
-    let catchy_h = small_size.min(base_catchy + 15);
+    let catchy_h = (small_size.min(base_catchy + 15) as f64 * 1.7) as i32;
 
-    let large_widget_h = |s: i32| s + 16;
     let small_widget_h = |s: i32| s + 16;
 
     // CachyOS logo lives at the top; small dials live at the bottom.
     let top_logo_h = catchy_h;
 
-    let non_logo_no_large =
-        48 + 4 * spacing + top_logo_h + (small_widget_h(small_size) + small_spacing) + 1;
-    let max_large_total =
-        (monitor_height - non_logo_no_large).max(3 * large_widget_h(base_large));
-    let max_large = (max_large_total / 3).max(base_large + 16) - 16;
-    let large_size = (base_large * 2).min(max_large).max(base_large);
+    let large_size = right_dial_size(cfg.left.width)
+        .min((monitor_height / 4) - 20)
+        .max(120);
 
     let rkt_width = avail_width;
 
@@ -403,8 +399,15 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
                     dial_drag_source.add_css_class("dragging");
                     dial_drag_source.set_cursor_from_name(Some("grabbing"));
                     // Invisible drag surface: same size as the dial to cover GTK's default green icon.
-                    let icon = create_transparent_icon(dial_drag_source.width(), dial_drag_source.height());
-                    source.set_icon(Some(&icon), (large_size / 2) as i32, (large_size / 2) as i32);
+                    let icon = create_transparent_icon(
+                        dial_drag_source.width(),
+                        dial_drag_source.height(),
+                    );
+                    source.set_icon(
+                        Some(&icon),
+                        (large_size / 2) as i32,
+                        (large_size / 2) as i32,
+                    );
                 });
                 drag_source.connect_prepare(move |_, _, _| {
                     let value = gtk4::glib::Value::from(drag_idx as i32);
@@ -535,8 +538,8 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
                                         std::time::Duration::from_millis(16),
                                         move || {
                                             let adj = &vadj_auto;
-                                            let max = (adj.upper() - adj.page_size())
-                                                .max(adj.lower());
+                                            let max =
+                                                (adj.upper() - adj.page_size()).max(adj.lower());
                                             if top {
                                                 adj.set_value(
                                                     (adj.value() - step).max(adj.lower()),
@@ -569,7 +572,6 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
 
                 dial_box_ref.append(&overlay);
             }
-
         });
     }
     (*rebuild.borrow())();
