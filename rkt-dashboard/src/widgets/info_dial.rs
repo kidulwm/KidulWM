@@ -139,15 +139,12 @@ pub fn build(
             let _ = cr.fill();
         }
 
-        // Center text
-        let large_dial = w > 180.0 || h > 180.0;
+        // Center text: scale proportionally with the dial. The previous
+        // logical-pixel "large dial" threshold made physically smaller laptop
+        // dials use *bigger* proportional fonts than the 4K screen.
         let center_text = center_draw.borrow().clone();
         if !center_text.is_empty() {
-            let value_size = if large_dial {
-                (r * 0.44) * 0.6
-            } else {
-                r * 0.44
-            };
+            let value_size = (r * 0.44) * 0.6;
             draw_centered_text(
                 cr,
                 &center_text,
@@ -162,11 +159,7 @@ pub fn build(
         // Sub-label
         let sub_text = sub_draw.borrow().clone();
         if !sub_text.is_empty() {
-            let label_size = if large_dial {
-                (r * 0.22).max(12.0)
-            } else {
-                (r * 0.52).max(20.0)
-            };
+            let label_size = (r * 0.22).max(12.0);
             draw_centered_text(
                 cr,
                 &sub_text.to_lowercase(),
