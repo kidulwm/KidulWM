@@ -144,6 +144,24 @@ pub fn build_right(
     );
     bx.append(&backup_dial);
 
+    // ── Security scan feed (between backup and news) ──
+    let security_widget = make_clickable_label(
+        "security: …",
+        "rkt-right-widget",
+        Box::new(|| {
+            let _ = std::process::Command::new("alacritty")
+                .args([
+                    "-e",
+                    "fish",
+                    "-c",
+                    "hermes -p security-bob chat -q 'Run a fresh security scan now and print a one-line summary.'; read -P 'Press Enter to close'",
+                ])
+                .spawn();
+        }),
+    );
+    security_widget.set_halign(gtk4::Align::Center);
+    bx.append(&security_widget);
+
     // ── News line centred in gap between backup and weather ──
     bx.append(&v_spacer());
     let rss_state = Rc::new(RefCell::new(RssState::default()));
@@ -221,6 +239,7 @@ pub fn build_right(
         let telegram_widget = telegram_widget.clone();
         let discord_widget = discord_widget.clone();
         let rss_widget = rss_widget.clone();
+        let security_widget = security_widget.clone();
 
         let refresh = move || -> Option<()> {
             let out = std::process::Command::new("rkt-panel-data")
@@ -318,6 +337,13 @@ pub fn build_right(
                             lbl.set_label(&text);
                         }
                     }
+                }
+            }
+
+            if let Some(s) = out.get("security") {
+                let text = s.get("text")?.as_str().unwrap_or("security: …");
+                if let Some(lbl) = security_widget.first_child().and_downcast::<Label>() {
+                    lbl.set_label(text);
                 }
             }
 

@@ -33,6 +33,8 @@ FEEDS_FILE = CONFIG_DIR / "feeds.json"
 WEATHER_FILE = CONFIG_DIR / "weather.json"
 BOBMAIL_CONFIG = Path.home() / ".config" / "bobmail" / "config.json"
 BACKUP_ROOT = Path("/mnt/sda_backup/hermes-backups")
+SECURITY_STATE = Path.home() / ".hermes" / "brain" / "state" / "security-state.json"
+SECURITY_REPORTS = Path.home() / ".local" / "share" / "bob-farm" / "handoff" / "out"
 
 
 def now_ts() -> str:
@@ -234,6 +236,42 @@ def get_backup() -> dict:
         return {"days_since": -1, "status": "error", "error": str(e), "last_check": now_ts()}
 
 
+def get_security_feed() -> dict:
+    """Return latest security-mesh summary for the right panel."""
+    try:
+        state = load_json(SECURITY_STATE, {})
+        failed = state.get("failed_ssh_15m")
+        blocked = state.get("blocked_ips", 0)
+        high_risk = state.get("high_risk_downloads", 0)
+        listeners = len(state.get("listeners", []))
+        ts = state.get("timestamp", "")
+
+        parts = []
+        if blocked and blocked > 0:
+            parts.append(f"{blocked} blocked")
+        if failed and failed > 0:
+            parts.append(f"{failed} ssh fail")
+        if high_risk and high_risk > 0:
+            parts.append(f"{high_risk} bad dl")
+
+        if parts:
+            line = "security: " + ", ".join(parts)
+        else:
+            line = f"security: ok ({listeners} listeners)"
+
+        return {
+            "text": line,
+            "failed_ssh_15m": failed if failed is not None else -1,
+            "blocked_ips": blocked,
+            "high_risk_downloads": high_risk,
+            "listeners": listeners,
+            "timestamp": ts,
+            "last_check": now_ts(),
+        }
+    except Exception as e:
+        return {"text": "security: error", "error": str(e), "last_check": now_ts()}
+
+
 def main():
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -246,6 +284,7 @@ def main():
         "rss": 1800,      # 30 min
         "email": 120,     # 2 min
         "backup": 3600,   # 1 hour
+        "security": 60,   # 1 min
     }
 
     result = {}
@@ -270,6 +309,8 @@ def main():
             result[section] = get_email_unseen()
         elif section == "backup":
             result[section] = get_backup()
+        elif section == "security":
+            result[section] = get_security_feed()
 
     cache.update(result)
     CACHE_FILE.write_text(json.dumps(cache, indent=2))
