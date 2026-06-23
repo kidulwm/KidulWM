@@ -228,7 +228,7 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
         rkt_width,
         top_logo_h,
         control_trigger,
-        Some("/usr/share/icons/cachyos.svg"),
+        Some("/home/dad/Pictures/Trident-Logo-rgba.png"),
         Some(("CONTROL", "CENTER")),
     );
     catchy_logo.set_halign(gtk4::Align::Center);

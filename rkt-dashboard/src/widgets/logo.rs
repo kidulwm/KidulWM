@@ -1,8 +1,7 @@
-use gtk4::gdk::prelude::GdkCairoContextExt;
-use gtk4::gdk_pixbuf::Pixbuf;
 use gtk4::prelude::*;
 use gtk4::{DrawingArea, EventControllerMotion, GestureClick};
 use std::cell::RefCell;
+use std::io::BufReader;
 use std::rc::Rc;
 
 fn hex_path(cr: &cairo::Context, cx: f64, cy: f64, r: f64) {
@@ -29,8 +28,14 @@ pub fn build(
         .build();
     da.add_css_class("rkt-logo");
 
-    let image: Rc<RefCell<Option<Pixbuf>>> = Rc::new(RefCell::new(
-        image_path.and_then(|p| Pixbuf::from_file(p).ok()),
+    // Load the PNG directly into a Cairo ARGB32 ImageSurface so premultiplied
+    // alpha is preserved and no Pixbuf white-background compositing occurs.
+    let image: Rc<RefCell<Option<cairo::ImageSurface>>> = Rc::new(RefCell::new(
+        image_path.and_then(|p| {
+            std::fs::File::open(p).ok().and_then(|f| {
+                cairo::ImageSurface::create_from_png(&mut BufReader::new(f)).ok()
+            })
+        }),
     ));
 
     let phase = Rc::new(RefCell::new(0.0f64));
@@ -59,14 +64,14 @@ pub fn build(
         let r = cx.min(cy) * 0.72;
         let hover = *hovered_draw.borrow();
 
-        if let Some(ref pb) = *image_draw.borrow() {
+        if let Some(ref surf) = *image_draw.borrow() {
             // Clip drawing to the widget area so the logo never spills outside the panel.
             cr.rectangle(0.0, 0.0, w as f64, h as f64);
             cr.clip();
 
             // Draw the PNG fitted to the widget area so nothing is cropped.
-            let img_w = pb.width() as f64;
-            let img_h = pb.height() as f64;
+            let img_w = surf.width() as f64;
+            let img_h = surf.height() as f64;
             let scale = (w as f64 / img_w).min(h as f64 / img_h);
             let draw_w = img_w * scale;
             let draw_h = img_h * scale;
@@ -76,7 +81,7 @@ pub fn build(
             cr.save().unwrap();
             cr.translate(x, y);
             cr.scale(scale, scale);
-            cr.set_source_pixbuf(pb, 0.0, 0.0);
+            cr.set_source_surface(surf, 0.0, 0.0).unwrap();
             cr.paint().unwrap();
             cr.restore().unwrap();
 
