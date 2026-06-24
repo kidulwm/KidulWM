@@ -64,7 +64,7 @@ window.background {
 }
 
 .rkt-right-widget {
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(255, 255, 255, 0.92);
     font-family: "Adwaita Sans", sans-serif;
     font-size: 18px;
     font-weight: 700;
@@ -72,6 +72,11 @@ window.background {
     border-radius: 12px;
     transition-property: color, background-color, text-shadow;
     transition-duration: 180ms;
+}
+
+.rkt-right-widget.hidden {
+    color: transparent;
+    text-shadow: none;
 }
 
 .rkt-right-widget.active {
@@ -85,7 +90,27 @@ window.background {
     font-family: "Adwaita Sans", sans-serif;
     font-size: 18px;
     font-weight: 700;
-    text-align: center;
+}
+
+.rkt-usb-pin {
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(0, 0, 0, 0.55);
+    font-family: "Adwaita Mono", "Source Code Pro", monospace;
+    font-size: 17px;
+    font-weight: 700;
+    border: 1px solid rgba(0, 240, 255, 0.45);
+    border-radius: 4px;
+    padding: 4px 8px;
+    min-width: 170px;
+}
+
+.rkt-usb-pin:focus {
+    color: rgba(255, 255, 255, 0.92);
+    border-color: rgba(0, 240, 255, 0.95);
+}
+
+.rkt-usb-pin label.placeholder {
+    color: rgba(255, 255, 255, 0.75);
 }
 
 .rkt-dial-fade-top {
@@ -105,4 +130,3 @@ window.background {
         transparent 100%
     );
 }
-

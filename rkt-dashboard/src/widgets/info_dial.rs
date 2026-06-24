@@ -11,6 +11,7 @@ pub struct InfoDialState {
     pub value: Rc<RefCell<f64>>, // 0.0 .. 1.0
     pub center: Rc<RefCell<String>>,
     pub sub: Rc<RefCell<String>>,
+    pub date: Rc<RefCell<String>>,
     pub colour_override: Rc<RefCell<Option<(f64, f64, f64)>>>,
 }
 
@@ -20,6 +21,7 @@ impl InfoDialState {
             value: Rc::new(RefCell::new(0.0)),
             center: Rc::new(RefCell::new(String::new())),
             sub: Rc::new(RefCell::new(String::new())),
+            date: Rc::new(RefCell::new(String::new())),
             colour_override: Rc::new(RefCell::new(None)),
         }
     }
@@ -79,6 +81,7 @@ pub fn build(
     let value_draw = state.value.clone();
     let center_draw = state.center.clone();
     let sub_draw = state.sub.clone();
+    let date_draw = state.date.clone();
     let colour_override_draw = state.colour_override.clone();
     let hovered_draw = hovered.clone();
 
@@ -168,6 +171,21 @@ pub fn build(
                 label_size,
                 cairo::FontWeight::Bold,
                 (0.94, 0.94, 0.94, 0.55),
+            );
+        }
+
+        // Date label under the day
+        let date_text = date_draw.borrow().clone();
+        if !date_text.is_empty() {
+            let label_size = (r * 0.17).max(10.0);
+            draw_centered_text(
+                cr,
+                &date_text.to_lowercase(),
+                cx,
+                cy + r * 0.96,
+                label_size,
+                cairo::FontWeight::Bold,
+                (0.94, 0.94, 0.94, 0.45),
             );
         }
     });

@@ -30,13 +30,12 @@ pub fn build(
 
     // Load the PNG directly into a Cairo ARGB32 ImageSurface so premultiplied
     // alpha is preserved and no Pixbuf white-background compositing occurs.
-    let image: Rc<RefCell<Option<cairo::ImageSurface>>> = Rc::new(RefCell::new(
-        image_path.and_then(|p| {
-            std::fs::File::open(p).ok().and_then(|f| {
-                cairo::ImageSurface::create_from_png(&mut BufReader::new(f)).ok()
-            })
-        }),
-    ));
+    let image: Rc<RefCell<Option<cairo::ImageSurface>>> =
+        Rc::new(RefCell::new(image_path.and_then(|p| {
+            std::fs::File::open(p)
+                .ok()
+                .and_then(|f| cairo::ImageSurface::create_from_png(&mut BufReader::new(f)).ok())
+        })));
 
     let phase = Rc::new(RefCell::new(0.0f64));
     let phase_clone = phase.clone();

@@ -18,6 +18,7 @@ import imaplib
 import json
 import os
 import ssl
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -35,6 +36,7 @@ BOBMAIL_CONFIG = Path.home() / ".config" / "bobmail" / "config.json"
 BACKUP_ROOT = Path("/mnt/sda_backup/hermes-backups")
 SECURITY_STATE = Path.home() / ".hermes" / "brain" / "state" / "security-state.json"
 SECURITY_REPORTS = Path.home() / ".local" / "share" / "bob-farm" / "handoff" / "out"
+USB_PENDING = Path.home() / ".hermes" / "brain" / "state" / "usb-guard-pending.jsonl"
 
 
 def now_ts() -> str:
@@ -283,8 +285,10 @@ def main():
         "weather": 900,   # 15 min
         "rss": 1800,      # 30 min
         "email": 120,     # 2 min
+        "social": 60,     # 1 min
         "backup": 3600,   # 1 hour
         "security": 60,   # 1 min
+        "usb": 1,         # always fresh
     }
 
     result = {}
@@ -307,14 +311,64 @@ def main():
             result[section] = get_rss()
         elif section == "email":
             result[section] = get_email_unseen()
+        elif section == "social":
+            result[section] = get_social()
         elif section == "backup":
             result[section] = get_backup()
         elif section == "security":
             result[section] = get_security_feed()
+        elif section == "usb":
+            result[section] = get_usb_pending()
 
     cache.update(result)
     CACHE_FILE.write_text(json.dumps(cache, indent=2))
     print(json.dumps(result))
+
+
+def get_social() -> dict:
+    """Pull Telegram/Discord counts from rkt-social-data cache or runner."""
+    cache = load_json(CACHE_DIR / "social.json", {})
+    fetched_at = cache.get("telegram", {}).get("last_check") or cache.get("discord", {}).get("last_check")
+    now = time.time()
+    try:
+        age = now - datetime.datetime.fromisoformat(fetched_at).timestamp() if fetched_at else 999999
+    except Exception:
+        age = 999999
+
+    if age < 60 and cache:
+        return cache
+
+    try:
+        out = subprocess.run(
+            ["rkt-social-data"],
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+        if out.returncode == 0:
+            return json.loads(out.stdout)
+    except Exception as e:
+        cache["error"] = str(e)
+    return cache
+
+
+def get_usb_pending() -> dict:
+    count = 0
+    sysname = ""
+    if USB_PENDING.exists():
+        for line in USB_PENDING.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if not sysname:
+                    sysname = obj.get("sysname", "")
+                count += 1
+            except Exception:
+                continue
+    text = f"usb: {count} pending" if count else "usb: clear"
+    return {"count": count, "sysname": sysname, "text": text, "last_check": now_ts()}
 
 
 if __name__ == "__main__":
