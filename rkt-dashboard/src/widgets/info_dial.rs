@@ -8,7 +8,11 @@ use crate::widgets::dial::{colour_for_pct, draw_centered_text};
 
 #[derive(Clone)]
 pub struct InfoDialState {
-    pub value: Rc<RefCell<f64>>, // 0.0 .. 1.0
+    pub value: Rc<RefCell<f64>>, // outer hand / single value, 0.0 .. 1.0
+    pub middle_value: Rc<RefCell<f64>>, // middle hand, 0.0 .. 1.0
+    pub inner_value: Rc<RefCell<f64>>, // inner hand, 0.0 .. 1.0
+    pub middle_ball_alpha: Rc<RefCell<f64>>, // 0.0 = transparent middle glowball
+    pub multi_arc: Rc<RefCell<bool>>, // true for clock/weather 3-arc mode
     pub center: Rc<RefCell<String>>,
     pub sub: Rc<RefCell<String>>,
     pub date: Rc<RefCell<String>>,
@@ -19,6 +23,10 @@ impl InfoDialState {
     pub fn new() -> Self {
         Self {
             value: Rc::new(RefCell::new(0.0)),
+            middle_value: Rc::new(RefCell::new(0.0)),
+            inner_value: Rc::new(RefCell::new(0.0)),
+            middle_ball_alpha: Rc::new(RefCell::new(1.0)),
+            multi_arc: Rc::new(RefCell::new(false)),
             center: Rc::new(RefCell::new(String::new())),
             sub: Rc::new(RefCell::new(String::new())),
             date: Rc::new(RefCell::new(String::new())),
@@ -79,6 +87,10 @@ pub fn build(
     da.add_controller(motion);
 
     let value_draw = state.value.clone();
+    let middle_value_draw = state.middle_value.clone();
+    let inner_value_draw = state.inner_value.clone();
+    let middle_alpha_draw = state.middle_ball_alpha.clone();
+    let multi_arc_draw = state.multi_arc.clone();
     let center_draw = state.center.clone();
     let sub_draw = state.sub.clone();
     let date_draw = state.date.clone();
@@ -93,6 +105,8 @@ pub fn build(
         let r = cx.min(cy) * 0.82;
         let lw = (r * 0.05).max(2.0).min(4.0);
 
+        let hover = *hovered_draw.borrow();
+
         let pct = (*value_draw.borrow()).clamp(0.0, 1.0);
         let sweep = pct * 270.0 * std::f64::consts::PI / 180.0;
         let start = 135.0 * std::f64::consts::PI / 180.0;
@@ -100,93 +114,253 @@ pub fn build(
         let colour = *colour_override_draw.borrow();
         let colour = colour.unwrap_or_else(|| colour_for_pct(pct, false));
 
-        // Track arc (thin ring)
-        cr.arc(
-            cx,
-            cy,
-            r,
-            start,
-            start + 270.0 * std::f64::consts::PI / 180.0,
-        );
-        cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
-        cr.set_line_width(lw);
-        cr.set_line_cap(cairo::LineCap::Round);
-        let _ = cr.stroke();
+        if *multi_arc_draw.borrow() {
+            // Three-arc mode (clock / weather). Each hand travels the full 360° like a
+            // normal analog dial, but the grey arcs are still only 270° as a backdrop.
+            let full = 270.0_f64.to_radians();
+            let twelve = -std::f64::consts::PI / 2.0; // 12 o'clock in Cairo coords
 
-        // Position of the coloured ball on the ring
-        let theta = start + sweep;
-        let ball_x = cx + r * theta.cos();
-        let ball_y = cy + r * theta.sin();
-        let ball_r = (lw * 2.2).max(r * 0.10);
+            let hands = [
+                (pct, colour, 1.0, true),
+                (
+                    (*middle_value_draw.borrow()).clamp(0.0, 1.0),
+                    colour,
+                    *middle_alpha_draw.borrow(),
+                    false,
+                ),
+                (
+                    (*inner_value_draw.borrow()).clamp(0.0, 1.0),
+                    colour_for_pct((*inner_value_draw.borrow()).clamp(0.0, 1.0), false),
+                    1.0,
+                    true,
+                ),
+            ];
 
-        let hover = *hovered_draw.borrow();
+            let mut text_push: f64 = 0.0;
 
-        // Permanent soft glow at the ball position
-        let glow_r = ball_r * 1.75;
-        let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
-        grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
-        grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
-        grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
-        cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
-        cr.set_source(&grad_glow).unwrap();
-        let _ = cr.fill();
+            for (i, (hand_pct, hand_colour, ball_alpha, strong_ball)) in hands.iter().enumerate() {
+                let ir = r * (1.0 - i as f64 * 0.14).max(0.60);
+                let arc_lw = if i == 0 {
+                    (lw * 1.2).max(1.5)
+                } else if i == 1 {
+                    lw
+                } else {
+                    (lw * 0.55).max(1.0)
+                };
+                let ball_r = if i == 0 {
+                    (lw * 1.4).max(r * 0.06)
+                } else if i == 1 {
+                    (lw * 0.9).max(r * 0.04) * *ball_alpha as f64
+                } else {
+                    (lw * 2.0).max(r * 0.09)
+                };
 
-        if hover {
-            // The solid ball appears on hover
-            let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
-            grad.add_color_stop_rgb(0.0, lighten(colour.0), lighten(colour.1), lighten(colour.2));
-            grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
-            grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
-            cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-            cr.set_source(&grad).unwrap();
+                let track_alpha = if i == 0 { 0.14 } else { 0.08 };
+
+                // Grey reference arc.
+                cr.arc(cx, cy, ir, start, start + full);
+                cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
+                cr.set_line_width(arc_lw);
+                cr.set_line_cap(cairo::LineCap::Round);
+                let _ = cr.stroke();
+
+                // Full-circle hand position.
+                let theta = twelve + hand_pct * 2.0 * std::f64::consts::PI;
+                let ball_x = cx + ir * theta.cos();
+                let ball_y = cy + ir * theta.sin();
+
+                // Push the day/date text away from any glowing ball in the lower half.
+                if *ball_alpha > 0.05 {
+                    let dx = ball_x - cx;
+                    let dy = ball_y - cy;
+                    if dy > r * 0.10 && dx > r * -0.10 {
+                        text_push = text_push.max((dy - r * 0.10).min(r * 0.18));
+                    }
+                }
+
+                if *ball_alpha > 0.05 {
+                    let glow_r = ball_r * 1.75;
+                    let grad_glow =
+                        cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+                    grad_glow.add_color_stop_rgba(
+                        0.0,
+                        hand_colour.0,
+                        hand_colour.1,
+                        hand_colour.2,
+                        0.90 * ball_alpha,
+                    );
+                    grad_glow.add_color_stop_rgba(
+                        0.35,
+                        hand_colour.0,
+                        hand_colour.1,
+                        hand_colour.2,
+                        0.40 * ball_alpha,
+                    );
+                    grad_glow.add_color_stop_rgba(
+                        1.0,
+                        hand_colour.0,
+                        hand_colour.1,
+                        hand_colour.2,
+                        0.0,
+                    );
+                    cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+                    cr.set_source(&grad_glow).unwrap();
+                    let _ = cr.fill();
+                }
+
+                if hover || *strong_ball {
+                    let alpha = if hover { 1.0 } else { *ball_alpha };
+                    if alpha > 0.05 {
+                        let grad =
+                            cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
+                        grad.add_color_stop_rgb(
+                            0.0,
+                            lighten(hand_colour.0),
+                            lighten(hand_colour.1),
+                            lighten(hand_colour.2),
+                        );
+                        grad.add_color_stop_rgb(0.6, hand_colour.0, hand_colour.1, hand_colour.2);
+                        grad.add_color_stop_rgb(
+                            1.0,
+                            darken(hand_colour.0),
+                            darken(hand_colour.1),
+                            darken(hand_colour.2),
+                        );
+                        cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+                        cr.set_source(&grad).unwrap();
+                        cr.paint_with_alpha(alpha).unwrap_or_default();
+                    }
+                }
+            }
+
+            // Center text.
+            let center_text = center_draw.borrow().clone();
+            if !center_text.is_empty() {
+                let value_size = (r * 0.44) * 0.6;
+                draw_centered_text(
+                    cr,
+                    &center_text,
+                    cx,
+                    cy - r * 0.02,
+                    value_size.max(10.0),
+                    cairo::FontWeight::Bold,
+                    (0.94, 0.94, 0.94, 0.65),
+                );
+            }
+
+            // Sub-label (day) pushed down if a hand passes the text area.
+            let sub_text = sub_draw.borrow().clone();
+            if !sub_text.is_empty() {
+                let label_size = (r * 0.22).max(12.0);
+                draw_centered_text(
+                    cr,
+                    &sub_text.to_lowercase(),
+                    cx,
+                    cy + r * 0.72 + text_push,
+                    label_size,
+                    cairo::FontWeight::Bold,
+                    (0.94, 0.94, 0.94, 0.55),
+                );
+            }
+
+            // Date label under the day.
+            let date_text = date_draw.borrow().clone();
+            if !date_text.is_empty() {
+                let label_size = (r * 0.17).max(10.0);
+                draw_centered_text(
+                    cr,
+                    &date_text.to_lowercase(),
+                    cx,
+                    cy + r * 0.96 + text_push,
+                    label_size,
+                    cairo::FontWeight::Bold,
+                    (0.94, 0.94, 0.94, 0.45),
+                );
+            }
+        } else {
+            // Single-arc fallback.
+            cr.arc(
+                cx,
+                cy,
+                r,
+                start,
+                start + 270.0 * std::f64::consts::PI / 180.0,
+            );
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
+            cr.set_line_width(lw);
+            cr.set_line_cap(cairo::LineCap::Round);
+            let _ = cr.stroke();
+
+            let theta = start + sweep;
+            let ball_x = cx + r * theta.cos();
+            let ball_y = cy + r * theta.sin();
+            let ball_r = (lw * 2.2).max(r * 0.10);
+
+            let glow_r = ball_r * 1.75;
+            let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+            grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
+            grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
+            grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
+            cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+            cr.set_source(&grad_glow).unwrap();
             let _ = cr.fill();
-        }
 
-        // Center text: scale proportionally with the dial. The previous
-        // logical-pixel "large dial" threshold made physically smaller laptop
-        // dials use *bigger* proportional fonts than the 4K screen.
-        let center_text = center_draw.borrow().clone();
-        if !center_text.is_empty() {
-            let value_size = (r * 0.44) * 0.6;
-            draw_centered_text(
-                cr,
-                &center_text,
-                cx,
-                cy - r * 0.02,
-                value_size.max(10.0),
-                cairo::FontWeight::Bold,
-                (0.94, 0.94, 0.94, 0.65),
-            );
-        }
+            if hover {
+                let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
+                grad.add_color_stop_rgb(
+                    0.0,
+                    lighten(colour.0),
+                    lighten(colour.1),
+                    lighten(colour.2),
+                );
+                grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
+                grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
+                cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+                cr.set_source(&grad).unwrap();
+                let _ = cr.fill();
+            }
 
-        // Sub-label
-        let sub_text = sub_draw.borrow().clone();
-        if !sub_text.is_empty() {
-            let label_size = (r * 0.22).max(12.0);
-            draw_centered_text(
-                cr,
-                &sub_text.to_lowercase(),
-                cx,
-                cy + r * 0.72,
-                label_size,
-                cairo::FontWeight::Bold,
-                (0.94, 0.94, 0.94, 0.55),
-            );
-        }
+            let center_text = center_draw.borrow().clone();
+            if !center_text.is_empty() {
+                let value_size = (r * 0.44) * 0.6;
+                draw_centered_text(
+                    cr,
+                    &center_text,
+                    cx,
+                    cy - r * 0.02,
+                    value_size.max(10.0),
+                    cairo::FontWeight::Bold,
+                    (0.94, 0.94, 0.94, 0.65),
+                );
+            }
 
-        // Date label under the day
-        let date_text = date_draw.borrow().clone();
-        if !date_text.is_empty() {
-            let label_size = (r * 0.17).max(10.0);
-            draw_centered_text(
-                cr,
-                &date_text.to_lowercase(),
-                cx,
-                cy + r * 0.96,
-                label_size,
-                cairo::FontWeight::Bold,
-                (0.94, 0.94, 0.94, 0.45),
-            );
+            let sub_text = sub_draw.borrow().clone();
+            if !sub_text.is_empty() {
+                let label_size = (r * 0.22).max(12.0);
+                draw_centered_text(
+                    cr,
+                    &sub_text.to_lowercase(),
+                    cx,
+                    cy + r * 0.72,
+                    label_size,
+                    cairo::FontWeight::Bold,
+                    (0.94, 0.94, 0.94, 0.55),
+                );
+            }
+
+            let date_text = date_draw.borrow().clone();
+            if !date_text.is_empty() {
+                let label_size = (r * 0.17).max(10.0);
+                draw_centered_text(
+                    cr,
+                    &date_text.to_lowercase(),
+                    cx,
+                    cy + r * 0.96,
+                    label_size,
+                    cairo::FontWeight::Bold,
+                    (0.94, 0.94, 0.94, 0.45),
+                );
+            }
         }
     });
 
@@ -200,7 +374,7 @@ pub fn build(
     }
 
     let da_ref = da.clone();
-    gtk4::glib::source::timeout_add_local(Duration::from_millis(500), move || {
+    gtk4::glib::source::timeout_add_local(Duration::from_millis(250), move || {
         da_ref.queue_draw();
         gtk4::glib::ControlFlow::Continue
     });

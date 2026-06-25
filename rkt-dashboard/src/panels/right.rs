@@ -122,6 +122,8 @@ pub fn build_right(
         .build();
 
     let clock_state = InfoDialState::new();
+    *clock_state.multi_arc.borrow_mut() = true;
+    *clock_state.middle_ball_alpha.borrow_mut() = 0.12;
     let clock_click = || {
         let _ = std::process::Command::new("qs")
             .args(["-c", "noctalia-shell", "ipc", "call", "launcher", "toggle"])
@@ -333,6 +335,7 @@ pub fn build_right(
 
     // ── Weather dial (bottom) ──
     let weather_state = InfoDialState::new();
+    *weather_state.multi_arc.borrow_mut() = true;
     let weather_click = || {
         let _ = std::process::Command::new("xdg-open")
             .arg("https://wttr.in/Brisbane")
@@ -353,14 +356,22 @@ pub fn build_right(
         gtk4::glib::source::timeout_add_local(Duration::from_secs(1), move || {
             let now = gtk4::glib::DateTime::now_local()
                 .unwrap_or_else(|_| gtk4::glib::DateTime::now_utc().expect("time"));
-            let _hr = now.hour();
+            let hr = now.hour();
             let min = now.minute();
+            let sec = now.second();
             *clock_state.center.borrow_mut() = now
                 .format("%I%P")
                 .unwrap_or_default()
                 .trim_start_matches('0')
                 .to_string();
-            *clock_state.value.borrow_mut() = (min as f64 / 60.0).clamp(0.0, 1.0);
+            // Outer = seconds, middle = minutes (transparent), inner = hours.
+            // Each hand moves through the full 360° like a normal analog clock.
+            *clock_state.value.borrow_mut() = (sec as f64 / 60.0).clamp(0.0, 1.0);
+            *clock_state.middle_value.borrow_mut() =
+                ((min as f64 + sec as f64 / 60.0) / 60.0).clamp(0.0, 1.0);
+            *clock_state.inner_value.borrow_mut() =
+                (((hr % 12) as f64 + min as f64 / 60.0 + sec as f64 / 3600.0) / 12.0)
+                    .clamp(0.0, 1.0);
             *clock_state.sub.borrow_mut() = now.format("%A").unwrap_or_default().to_lowercase();
             *clock_state.date.borrow_mut() = now.format("%d %B").unwrap_or_default().to_lowercase();
             gtk4::glib::ControlFlow::Continue
@@ -492,6 +503,16 @@ pub fn build_right(
                 *weather_state.sub.borrow_mut() =
                     w.get("condition")?.as_str().unwrap_or("").to_string();
                 *weather_state.colour_override.borrow_mut() = None;
+
+                // Inner arc = expected low, middle arc = expected high.
+                if let Some(forecast) = w.get("forecast")?.as_array() {
+                    if let Some(today) = forecast.first() {
+                        let high = today.get("max_c")?.as_f64().unwrap_or(temp);
+                        let low = today.get("min_c")?.as_f64().unwrap_or(temp);
+                        *weather_state.middle_value.borrow_mut() = (high / max).clamp(0.0, 1.0);
+                        *weather_state.inner_value.borrow_mut() = (low / max).clamp(0.0, 1.0);
+                    }
+                }
             }
 
             // Build three comms lines sorted by highest unchecked count first, using
