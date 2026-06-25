@@ -228,7 +228,7 @@ pub fn build(
                         );
                         cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
                         cr.set_source(&grad).unwrap();
-                        cr.paint_with_alpha(alpha).unwrap_or_default();
+                        let _ = cr.fill();
                     }
                 }
             }
