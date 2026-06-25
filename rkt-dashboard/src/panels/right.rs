@@ -10,13 +10,6 @@ use crate::widgets::info_dial::{make_clickable_label, InfoDialState};
 
 const COMMS_SCALE: f64 = 17.0;
 
-fn security_markup(text: &str) -> String {
-    format!(
-        "<span color='rgba(240,240,240,0.40)' font_weight='bold'>{}</span>",
-        gtk4::glib::markup_escape_text(text)
-    )
-}
-
 #[derive(Default, serde::Serialize, serde::Deserialize, Clone)]
 struct CommsSeen {
     #[serde(default)]
@@ -341,14 +334,15 @@ pub fn build_right(
     security_widget.set_halign(gtk4::Align::Center);
     bx.append(&security_widget);
 
-    {
+    let sec_label = {
         let sec_label = security_widget
             .first_child()
             .and_downcast::<Label>()
             .expect("security line label");
-        sec_label.set_use_markup(true);
-        sec_label.set_markup(&security_markup("security: …"));
-    }
+        sec_label.add_css_class("rkt-security-label");
+        sec_label.set_text("security: …");
+        sec_label.clone()
+    };
 
     // ── Weather dial (bottom) ──
     let weather_state = InfoDialState::new();
@@ -507,7 +501,8 @@ pub fn build_right(
     {
         let weather_state = weather_state.clone();
         let comms_state = comms_state.clone();
-        let security_widget = security_widget.clone();
+        let _security_widget = security_widget.clone();
+        let sec_label = sec_label.clone();
 
         let refresh = move || -> Option<()> {
             let out = fetch_panel_data()?;
@@ -651,10 +646,21 @@ pub fn build_right(
             *comms_state.value.borrow_mut() = value;
 
             if let Some(s) = out.get("security") {
-                let text = s.get("text")?.as_str().unwrap_or("security: …");
-                if let Some(lbl) = security_widget.first_child().and_downcast::<Label>() {
-                    lbl.set_markup(&security_markup(text));
-                }
+                let blocked = s.get("blocked_ips").and_then(|v| v.as_i64()).unwrap_or(0);
+                let failed = s
+                    .get("failed_ssh_15m")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let bad = s
+                    .get("high_risk_downloads")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let text = if blocked > 0 || failed > 0 || bad > 0 {
+                    "security:warning"
+                } else {
+                    "security:ok"
+                };
+                sec_label.set_text(text);
             }
 
             Some(())
