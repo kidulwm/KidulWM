@@ -10,6 +10,13 @@ use crate::widgets::info_dial::{make_clickable_label, InfoDialState};
 
 const COMMS_SCALE: f64 = 17.0;
 
+fn security_markup(text: &str) -> String {
+    format!(
+        "<span color='rgba(240,240,240,0.40)' font_weight='bold'>{}</span>",
+        gtk4::glib::markup_escape_text(text)
+    )
+}
+
 #[derive(Default, serde::Serialize, serde::Deserialize, Clone)]
 struct CommsSeen {
     #[serde(default)]
@@ -334,86 +341,13 @@ pub fn build_right(
     security_widget.set_halign(gtk4::Align::Center);
     bx.append(&security_widget);
 
-    let security_listeners: Rc<RefCell<i64>> = Rc::new(RefCell::new(0));
     {
         let sec_label = security_widget
             .first_child()
             .and_downcast::<Label>()
             .expect("security line label");
         sec_label.set_use_markup(true);
-        sec_label.set_width_chars(18);
-        sec_label.set_size_request(170, -1);
-        let base_alpha: f64 = 0.55;
-        let set_alpha = move |label: &Label, alpha: f64, text: &str| {
-            let a = alpha.clamp(0.0, 1.0);
-            label.set_markup(&format!(
-                "<span color=\"rgba(240,240,240,{})\" font_weight=\"bold\">{}</span>",
-                a, text
-            ));
-        };
-        set_alpha(&sec_label, base_alpha, "security:ok");
-
-        let listeners = security_listeners.clone();
-        let show_ok = Rc::new(RefCell::new(true));
-        let phase = Rc::new(RefCell::new(0u8)); // 0 idle, 1 fade out, 2 fade in
-        let wait_ms = Rc::new(RefCell::new(0u64));
-        let wait_target = Rc::new(RefCell::new(4000u64));
-        let alpha = Rc::new(RefCell::new(base_alpha));
-
-        let next_wait = || {
-            let secs = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            3000u64 + ((secs % 3) * 1000)
-        };
-
-        gtk4::glib::source::timeout_add_local(Duration::from_millis(50), move || {
-            match *phase.borrow() {
-                0 => {
-                    *wait_ms.borrow_mut() += 50;
-                    if *wait_ms.borrow() >= *wait_target.borrow() {
-                        *phase.borrow_mut() = 1;
-                    }
-                }
-                1 => {
-                    let mut a = alpha.borrow_mut();
-                    *a = (*a - 0.10).max(0.0);
-                    if *a <= 0.0 {
-                        *a = 0.0;
-                        let now_ok = !*show_ok.borrow();
-                        *show_ok.borrow_mut() = now_ok;
-                        *a = 0.0;
-                    }
-                    let text = if *show_ok.borrow() {
-                        "security:ok"
-                    } else {
-                        &format!("{} listeners", listeners.borrow())
-                    };
-                    set_alpha(&sec_label, *a, text);
-                    if *a <= 0.0 {
-                        *phase.borrow_mut() = 2;
-                    }
-                }
-                2 => {
-                    let mut a = alpha.borrow_mut();
-                    *a = (*a + 0.10).min(base_alpha);
-                    let text = if *show_ok.borrow() {
-                        "security:ok"
-                    } else {
-                        &format!("{} listeners", listeners.borrow())
-                    };
-                    set_alpha(&sec_label, *a, text);
-                    if *a >= base_alpha {
-                        *phase.borrow_mut() = 0;
-                        *wait_ms.borrow_mut() = 0;
-                        *wait_target.borrow_mut() = next_wait();
-                    }
-                }
-                _ => {}
-            }
-            gtk4::glib::ControlFlow::Continue
-        });
+        sec_label.set_markup(&security_markup("security: …"));
     }
 
     // ── Weather dial (bottom) ──
@@ -573,8 +507,7 @@ pub fn build_right(
     {
         let weather_state = weather_state.clone();
         let comms_state = comms_state.clone();
-        let _security_widget = security_widget.clone();
-        let security_listeners = security_listeners.clone();
+        let security_widget = security_widget.clone();
 
         let refresh = move || -> Option<()> {
             let out = fetch_panel_data()?;
@@ -718,8 +651,10 @@ pub fn build_right(
             *comms_state.value.borrow_mut() = value;
 
             if let Some(s) = out.get("security") {
-                let listeners = s.get("listeners")?.as_i64()?;
-                *security_listeners.borrow_mut() = listeners;
+                let text = s.get("text")?.as_str().unwrap_or("security: …");
+                if let Some(lbl) = security_widget.first_child().and_downcast::<Label>() {
+                    lbl.set_markup(&security_markup(text));
+                }
             }
 
             Some(())
