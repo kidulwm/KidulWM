@@ -181,7 +181,7 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
         .max(base_small);
     let catchy_h = (small_size.min(base_catchy + 15) as f64 * 1.7) as i32;
 
-    let small_widget_h = |s: i32| s + 16;
+    let small_widget_h = |s: i32| s + 28;
 
     // CachyOS logo lives at the top; small dials live at the bottom.
     let top_logo_h = catchy_h;

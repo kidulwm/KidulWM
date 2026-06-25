@@ -65,6 +65,30 @@ pub fn build(
 
     bx.append(&da);
 
+    // Bottom label sits outside the dial arcs so long text is not crowded inside them.
+    let r_for_text = (width.min(height) as f64 / 2.0) * 0.76;
+    let label_font_px = (r_for_text * 0.22).max(12.0).round() as i32;
+    let info_css = format!(
+        ".rkt-info-label-below {{ color: rgba(240, 240, 240, 0.55); font-size: {}px; font-weight: 700; }}",
+        label_font_px
+    );
+    let info_provider = gtk4::CssProvider::new();
+    info_provider.load_from_data(&info_css);
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &info_provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_USER,
+        );
+    }
+
+    let bottom_label = Label::new(None);
+    bottom_label.add_css_class("rkt-info-label-below");
+    bottom_label.set_halign(gtk4::Align::Center);
+    bottom_label.set_justify(gtk4::Justification::Center);
+    bottom_label.set_visible(false);
+    bx.append(&bottom_label);
+
     let hovered = Rc::new(RefCell::new(false));
 
     let motion = EventControllerMotion::new();
@@ -98,8 +122,6 @@ pub fn build(
     let hands_full_circle_draw = state.hands_full_circle.clone();
     let weather_layout_draw = state.weather_layout.clone();
     let center_draw = state.center.clone();
-    let sub_draw = state.sub.clone();
-    let date_draw = state.date.clone();
     let colour_override_draw = state.colour_override.clone();
     let hovered_draw = hovered.clone();
 
@@ -130,21 +152,35 @@ pub fn build(
             let full_circle = *hands_full_circle_draw.borrow();
             let weather_layout = *weather_layout_draw.borrow();
 
-            let hands = [
-                (pct, colour, 1.0, true),
-                (
-                    *middle_value_draw.borrow(),
-                    colour,
-                    *middle_alpha_draw.borrow(),
-                    false,
-                ),
-                (
-                    *inner_value_draw.borrow(),
-                    colour_for_pct((*inner_value_draw.borrow()).clamp(0.0, 1.0), false),
-                    1.0,
-                    true,
-                ),
-            ];
+            let hands = if full_circle {
+                // Clock hands use company colours: purple (hour), blue (minute), turquoise (seconds).
+                [
+                    (pct, (0.42, 0.58, 0.88), 1.0, true), // outer = minutes = blue
+                    (
+                        *middle_value_draw.borrow(),
+                        (0.38, 0.78, 0.76),
+                        *middle_alpha_draw.borrow(),
+                        false,
+                    ), // middle = seconds = turquoise, mostly transparent
+                    (*inner_value_draw.borrow(), (0.55, 0.38, 0.75), 1.0, true), // inner = hours = purple
+                ]
+            } else {
+                [
+                    (pct, colour, 1.0, true),
+                    (
+                        *middle_value_draw.borrow(),
+                        colour,
+                        *middle_alpha_draw.borrow(),
+                        false,
+                    ),
+                    (
+                        *inner_value_draw.borrow(),
+                        colour_for_pct((*inner_value_draw.borrow()).clamp(0.0, 1.0), false),
+                        1.0,
+                        true,
+                    ),
+                ]
+            };
 
             let mut text_push: f64 = 0.0;
 
@@ -268,36 +304,6 @@ pub fn build(
                     (0.94, 0.94, 0.94, 0.65),
                 );
             }
-
-            // Sub-label (day) pushed down if a hand passes the text area.
-            let sub_text = sub_draw.borrow().clone();
-            if !sub_text.is_empty() {
-                let label_size = (r * 0.22).max(12.0);
-                draw_centered_text(
-                    cr,
-                    &sub_text.to_lowercase(),
-                    cx,
-                    cy + r * 0.76 + text_push,
-                    label_size,
-                    cairo::FontWeight::Bold,
-                    (0.94, 0.94, 0.94, 0.55),
-                );
-            }
-
-            // Date label under the day, same size and pushed down half a line.
-            let date_text = date_draw.borrow().clone();
-            if !date_text.is_empty() {
-                let label_size = (r * 0.22).max(12.0);
-                draw_centered_text(
-                    cr,
-                    &date_text.to_lowercase(),
-                    cx,
-                    cy + r * 0.99 + text_push,
-                    label_size,
-                    cairo::FontWeight::Bold,
-                    (0.94, 0.94, 0.94, 0.45),
-                );
-            }
         } else {
             // Single-arc fallback.
             cr.arc(
@@ -354,34 +360,6 @@ pub fn build(
                     (0.94, 0.94, 0.94, 0.65),
                 );
             }
-
-            let sub_text = sub_draw.borrow().clone();
-            if !sub_text.is_empty() {
-                let label_size = (r * 0.22).max(12.0);
-                draw_centered_text(
-                    cr,
-                    &sub_text.to_lowercase(),
-                    cx,
-                    cy + r * 0.72,
-                    label_size,
-                    cairo::FontWeight::Bold,
-                    (0.94, 0.94, 0.94, 0.55),
-                );
-            }
-
-            let date_text = date_draw.borrow().clone();
-            if !date_text.is_empty() {
-                let label_size = (r * 0.17).max(10.0);
-                draw_centered_text(
-                    cr,
-                    &date_text.to_lowercase(),
-                    cx,
-                    cy + r * 0.96,
-                    label_size,
-                    cairo::FontWeight::Bold,
-                    (0.94, 0.94, 0.94, 0.45),
-                );
-            }
         }
     });
 
@@ -397,6 +375,26 @@ pub fn build(
     let da_ref = da.clone();
     gtk4::glib::source::timeout_add_local(Duration::from_millis(250), move || {
         da_ref.queue_draw();
+        gtk4::glib::ControlFlow::Continue
+    });
+
+    // Remove inline sub/date drawing; sync them to the external label instead.
+    let sub_label = state.sub.clone();
+    let date_label = state.date.clone();
+    gtk4::glib::source::timeout_add_local(Duration::from_millis(250), move || {
+        let sub = sub_label.borrow().clone();
+        let date = date_label.borrow().clone();
+        let text = if sub.is_empty() && date.is_empty() {
+            String::new()
+        } else {
+            format!("{} {}", sub, date).trim().to_string()
+        };
+        if text.is_empty() {
+            bottom_label.set_visible(false);
+        } else {
+            bottom_label.set_text(&text);
+            bottom_label.set_visible(true);
+        }
         gtk4::glib::ControlFlow::Continue
     });
 

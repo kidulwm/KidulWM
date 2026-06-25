@@ -103,6 +103,25 @@ pub fn build_right(
     let dial_size = right_dial_size(panel_w);
     let dial_height = dial_size.min((monitor_height / 4) - 20).max(120);
 
+    // Compute the security line font size to match the dial sub-label text.
+    let sec_font_px = (((dial_size.min(dial_height) as f64 / 2.0) * 0.76) * 0.22)
+        .max(12.0)
+        .round() as i32;
+    let sec_css = format!(
+        ".rkt-security-label {{ color: rgba(240,240,240,0.55); font-size: {}px; }} \
+         .rkt-security-label.warning {{ color: rgba(255,95,70,0.95); }}",
+        sec_font_px
+    );
+    let sec_provider = gtk4::CssProvider::new();
+    sec_provider.load_from_data(&sec_css);
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &sec_provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_USER,
+        );
+    }
+
     let bx = GtkBox::builder()
         .orientation(Orientation::Vertical)
         .spacing(0)
@@ -371,11 +390,7 @@ pub fn build_right(
             let hr = now.hour();
             let min = now.minute();
             let sec = now.second();
-            *clock_state.center.borrow_mut() = now
-                .format("%I%P")
-                .unwrap_or_default()
-                .trim_start_matches('0')
-                .to_string();
+            *clock_state.center.borrow_mut() = now.format("%P").unwrap_or_default().to_lowercase();
             // Outer = minutes, middle = seconds (transparent), inner = hours.
             // The clock hands sweep the full 360° like a normal analog clock.
             *clock_state.value.borrow_mut() =
@@ -384,8 +399,10 @@ pub fn build_right(
             *clock_state.inner_value.borrow_mut() =
                 (((hr % 12) as f64 + min as f64 / 60.0 + sec as f64 / 3600.0) / 12.0)
                     .clamp(0.0, 1.0);
-            *clock_state.sub.borrow_mut() = now.format("%A").unwrap_or_default().to_lowercase();
-            *clock_state.date.borrow_mut() = now.format("%d %B").unwrap_or_default().to_lowercase();
+            let day = now.format("%A").unwrap_or_default().to_lowercase();
+            let date = now.format("%d %B").unwrap_or_default().to_lowercase();
+            *clock_state.sub.borrow_mut() = String::new();
+            *clock_state.date.borrow_mut() = format!("{} {}", day, date);
             gtk4::glib::ControlFlow::Continue
         });
     }
@@ -655,12 +672,17 @@ pub fn build_right(
                     .get("high_risk_downloads")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
-                let text = if blocked > 0 || failed > 0 || bad > 0 {
+                let warning = blocked > 0 || failed > 0 || bad > 0;
+                sec_label.set_text(if warning {
                     "security:warning"
                 } else {
                     "security:ok"
-                };
-                sec_label.set_text(text);
+                });
+                if warning {
+                    sec_label.add_css_class("warning");
+                } else {
+                    sec_label.remove_css_class("warning");
+                }
             }
 
             Some(())

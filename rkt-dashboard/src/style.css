@@ -93,7 +93,19 @@ window.background {
 }
 
 .rkt-security-label {
-    color: rgba(240, 240, 240, 0.40);
+    color: rgba(240, 240, 240, 0.55);
+}
+
+.rkt-security-label.warning {
+    color: rgba(255, 95, 70, 0.95);
+}
+
+.rkt-dial-label-below {
+    color: rgba(240, 240, 240, 0.55);
+    font-family: "Adwaita Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 2px;
 }
 
 .rkt-usb-pin {

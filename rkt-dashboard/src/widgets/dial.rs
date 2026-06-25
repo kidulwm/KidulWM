@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use gtk4::{Box, DrawingArea, EventControllerMotion, EventControllerScroll, Orientation};
+use gtk4::{Box, DrawingArea, EventControllerMotion, EventControllerScroll, Label, Orientation};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -75,6 +75,17 @@ fn build_internal(
 
     bx.append(&da);
 
+    let _label_below_widget = if label_below {
+        let lbl = Label::new(Some(&label_text.to_lowercase()));
+        lbl.add_css_class("rkt-dial-label-below");
+        lbl.set_halign(gtk4::Align::Center);
+        lbl.set_justify(gtk4::Justification::Center);
+        bx.append(&lbl);
+        Some(lbl)
+    } else {
+        None
+    };
+
     if scroll_target.is_some() {
         bx.set_tooltip_text(Some("Scroll up/down to adjust"));
         da.set_tooltip_text(Some("Scroll up/down to adjust"));
@@ -92,7 +103,7 @@ fn build_internal(
         let h = height as f64;
         let cx = w / 2.0;
         let cy = h / 2.0;
-        let r = cx.min(cy) * if label_below_draw { 0.90 } else { 0.82 };
+        let r = cx.min(cy) * if label_below_draw { 0.86 } else { 0.82 };
         let lw = (r * 0.05).max(2.0).min(4.0); // very thin ring
         let large_dial = r > 40.0;
 
@@ -169,45 +180,65 @@ fn build_internal(
                 }
             }
         } else {
-            cr.arc(
-                cx,
-                cy,
-                r,
-                start,
-                start + 270.0 * std::f64::consts::PI / 180.0,
-            );
-            cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
-            cr.set_line_width(lw);
-            cr.set_line_cap(cairo::LineCap::Round);
-            let _ = cr.stroke();
+            // Small dial: two concentric arcs. Outer is thicker, inner is the old size.
+            let radii = [r, r * 0.78];
+            let lws = [(lw * 1.4).max(2.0), lw];
+            for i in 0..2 {
+                let ir = radii[i];
+                let arc_lw = lws[i];
+                let track_alpha = if i == 0 { 0.14 } else { 0.08 };
 
-            let theta = start + sweep;
-            let ball_x = cx + r * theta.cos();
-            let ball_y = cy + r * theta.sin();
-            let ball_r = (lw * 2.2).max(r * 0.10);
-
-            let glow_r = ball_r * 1.75;
-            let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
-            grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
-            grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
-            grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
-            cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
-            cr.set_source(&grad_glow).unwrap();
-            let _ = cr.fill();
-
-            if hover {
-                let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
-                grad.add_color_stop_rgb(
-                    0.0,
-                    lighten(colour.0),
-                    lighten(colour.1),
-                    lighten(colour.2),
+                cr.arc(
+                    cx,
+                    cy,
+                    ir,
+                    start,
+                    start + 270.0 * std::f64::consts::PI / 180.0,
                 );
-                grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
-                grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
-                cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-                cr.set_source(&grad).unwrap();
+                cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
+                cr.set_line_width(arc_lw);
+                cr.set_line_cap(cairo::LineCap::Round);
+                let _ = cr.stroke();
+
+                let theta = start + sweep;
+                let ball_x = cx + ir * theta.cos();
+                let ball_y = cy + ir * theta.sin();
+                let ball_r = if i == 0 {
+                    (lw * 2.5).max(r * 0.11)
+                } else {
+                    (lw * 1.5).max(r * 0.07)
+                };
+
+                let glow_r = ball_r * 1.75;
+                let grad_glow =
+                    cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+                grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
+                grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
+                grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
+                cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+                cr.set_source(&grad_glow).unwrap();
                 let _ = cr.fill();
+
+                if hover {
+                    let grad =
+                        cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
+                    grad.add_color_stop_rgb(
+                        0.0,
+                        lighten(colour.0),
+                        lighten(colour.1),
+                        lighten(colour.2),
+                    );
+                    grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
+                    grad.add_color_stop_rgb(
+                        1.0,
+                        darken(colour.0),
+                        darken(colour.1),
+                        darken(colour.2),
+                    );
+                    cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+                    cr.set_source(&grad).unwrap();
+                    let _ = cr.fill();
+                }
             }
         }
 
@@ -236,28 +267,24 @@ fn build_internal(
             (0.94, 0.94, 0.94, 0.65),
         );
 
-        // Label text inline in the bottom gap, scaled by dial size
-        let label_size = if label_below_draw {
-            (r * 0.62).max(14.0).min(18.0)
-        } else if large_dial {
-            (r * 0.22).max(12.0)
-        } else {
-            (r * 0.52).max(20.0)
-        };
-        let label_y = if label_below_draw {
-            h - label_size / 2.0 - 2.0
-        } else {
-            cy + r * 0.72
-        };
-        draw_centered_text(
-            cr,
-            &label_text.to_lowercase(),
-            cx,
-            label_y,
-            label_size,
-            cairo::FontWeight::Bold,
-            (0.94, 0.94, 0.94, 0.55),
-        );
+        // Label text. When label_below is enabled, it is drawn in a real Label widget
+        // beneath the dial, not inside the arc square.
+        if !label_below_draw {
+            let label_size = if large_dial {
+                (r * 0.22).max(12.0)
+            } else {
+                (r * 0.52).max(20.0)
+            };
+            draw_centered_text(
+                cr,
+                &label_text.to_lowercase(),
+                cx,
+                cy + r * 0.72,
+                label_size,
+                cairo::FontWeight::Bold,
+                (0.94, 0.94, 0.94, 0.55),
+            );
+        }
     });
 
     // Hover handling
