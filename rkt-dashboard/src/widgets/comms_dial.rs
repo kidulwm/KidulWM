@@ -156,11 +156,11 @@ pub fn build(
             let src_colour = colour_for_pct(spct, false);
             let ir = r * (1.0 - i as f64 * 0.14).max(0.60);
             let arc_lw = if i == 0 {
-                lw
+                (lw * 1.2).max(1.5)
             } else if i == 1 {
-                (lw * 0.55).max(1.2)
+                lw
             } else {
-                (lw * 0.30).max(1.0)
+                (lw * 0.55).max(1.0)
             };
             let ball_r = if i == 0 {
                 (lw * 2.2).max(r * 0.11)
