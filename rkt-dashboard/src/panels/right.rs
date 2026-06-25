@@ -341,18 +341,22 @@ pub fn build_right(
             .and_downcast::<Label>()
             .expect("security line label");
         sec_label.set_use_markup(true);
-        let colour = "rgba(240,240,240,0.55)";
-        sec_label.set_markup(&format!(
-            "<span color=\"{}\" font_weight=\"bold\">security:ok</span>",
-            colour
-        ));
+        let base_alpha: f64 = 0.55;
+        let set_alpha = move |label: &Label, alpha: f64, text: &str| {
+            let a = alpha.clamp(0.0, 1.0);
+            label.set_markup(&format!(
+                "<span color=\"rgba(240,240,240,{})\" font_weight=\"bold\">{}</span>",
+                a, text
+            ));
+        };
+        set_alpha(&sec_label, base_alpha, "security:ok");
 
         let listeners = security_listeners.clone();
         let show_ok = Rc::new(RefCell::new(true));
         let phase = Rc::new(RefCell::new(0u8)); // 0 idle, 1 fade out, 2 fade in
         let wait_ms = Rc::new(RefCell::new(0u64));
         let wait_target = Rc::new(RefCell::new(4000u64));
-        let opacity = Rc::new(RefCell::new(1.0f64));
+        let alpha = Rc::new(RefCell::new(base_alpha));
 
         let next_wait = || {
             let secs = SystemTime::now()
@@ -371,29 +375,34 @@ pub fn build_right(
                     }
                 }
                 1 => {
-                    let mut op = opacity.borrow_mut();
-                    *op = (*op - 0.10).max(0.0);
-                    sec_label.set_opacity(*op);
-                    if *op <= 0.0 {
+                    let mut a = alpha.borrow_mut();
+                    *a = (*a - 0.10).max(0.0);
+                    if *a <= 0.0 {
+                        *a = 0.0;
                         let now_ok = !*show_ok.borrow();
                         *show_ok.borrow_mut() = now_ok;
-                        let text = if now_ok {
-                            "security:ok".to_string()
-                        } else {
-                            format!("{} listeners", listeners.borrow())
-                        };
-                        sec_label.set_markup(&format!(
-                            "<span color=\"{}\" font_weight=\"bold\">{}</span>",
-                            colour, text
-                        ));
+                        *a = 0.0;
+                    }
+                    let text = if *show_ok.borrow() {
+                        "security:ok"
+                    } else {
+                        &format!("{} listeners", listeners.borrow())
+                    };
+                    set_alpha(&sec_label, *a, text);
+                    if *a <= 0.0 {
                         *phase.borrow_mut() = 2;
                     }
                 }
                 2 => {
-                    let mut op = opacity.borrow_mut();
-                    *op = (*op + 0.10).min(1.0);
-                    sec_label.set_opacity(*op);
-                    if *op >= 1.0 {
+                    let mut a = alpha.borrow_mut();
+                    *a = (*a + 0.10).min(base_alpha);
+                    let text = if *show_ok.borrow() {
+                        "security:ok"
+                    } else {
+                        &format!("{} listeners", listeners.borrow())
+                    };
+                    set_alpha(&sec_label, *a, text);
+                    if *a >= base_alpha {
                         *phase.borrow_mut() = 0;
                         *wait_ms.borrow_mut() = 0;
                         *wait_target.borrow_mut() = next_wait();
