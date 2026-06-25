@@ -341,6 +341,8 @@ pub fn build_right(
             .and_downcast::<Label>()
             .expect("security line label");
         sec_label.set_use_markup(true);
+        sec_label.set_width_chars(18);
+        sec_label.set_size_request(170, -1);
         let base_alpha: f64 = 0.55;
         let set_alpha = move |label: &Label, alpha: f64, text: &str| {
             let a = alpha.clamp(0.0, 1.0);
