@@ -13,6 +13,7 @@ pub struct InfoDialState {
     pub inner_value: Rc<RefCell<f64>>, // inner hand, 0.0 .. 1.0
     pub middle_ball_alpha: Rc<RefCell<f64>>, // 0.0 = transparent middle glowball
     pub multi_arc: Rc<RefCell<bool>>, // true for clock/weather 3-arc mode
+    pub hands_full_circle: Rc<RefCell<bool>>, // true for analog 360° clock hands
     pub center: Rc<RefCell<String>>,
     pub sub: Rc<RefCell<String>>,
     pub date: Rc<RefCell<String>>,
@@ -27,6 +28,7 @@ impl InfoDialState {
             inner_value: Rc::new(RefCell::new(0.0)),
             middle_ball_alpha: Rc::new(RefCell::new(1.0)),
             multi_arc: Rc::new(RefCell::new(false)),
+            hands_full_circle: Rc::new(RefCell::new(false)),
             center: Rc::new(RefCell::new(String::new())),
             sub: Rc::new(RefCell::new(String::new())),
             date: Rc::new(RefCell::new(String::new())),
@@ -91,6 +93,7 @@ pub fn build(
     let inner_value_draw = state.inner_value.clone();
     let middle_alpha_draw = state.middle_ball_alpha.clone();
     let multi_arc_draw = state.multi_arc.clone();
+    let hands_full_circle_draw = state.hands_full_circle.clone();
     let center_draw = state.center.clone();
     let sub_draw = state.sub.clone();
     let date_draw = state.date.clone();
@@ -115,21 +118,23 @@ pub fn build(
         let colour = colour.unwrap_or_else(|| colour_for_pct(pct, false));
 
         if *multi_arc_draw.borrow() {
-            // Three-arc mode (clock / weather). Each hand travels the full 360° like a
-            // normal analog dial, but the grey arcs are still only 270° as a backdrop.
+            // Three-arc mode (clock / weather). Arcs stay as a 270° grey backdrop.
+            // The clock uses full 360° hands; weather/others stay clamped to the
+            // arc unless a value is negative or extreme.
             let full = 270.0_f64.to_radians();
             let twelve = -std::f64::consts::PI / 2.0; // 12 o'clock in Cairo coords
+            let full_circle = *hands_full_circle_draw.borrow();
 
             let hands = [
                 (pct, colour, 1.0, true),
                 (
-                    (*middle_value_draw.borrow()).clamp(0.0, 1.0),
+                    *middle_value_draw.borrow(),
                     colour,
                     *middle_alpha_draw.borrow(),
                     false,
                 ),
                 (
-                    (*inner_value_draw.borrow()).clamp(0.0, 1.0),
+                    *inner_value_draw.borrow(),
                     colour_for_pct((*inner_value_draw.borrow()).clamp(0.0, 1.0), false),
                     1.0,
                     true,
@@ -147,12 +152,13 @@ pub fn build(
                 } else {
                     (lw * 0.55).max(1.0)
                 };
+                // Large ball on the outer arc, medium on the middle, small on the inner.
                 let ball_r = if i == 0 {
-                    (lw * 1.4).max(r * 0.06)
+                    (lw * 2.5).max(r * 0.11)
                 } else if i == 1 {
-                    (lw * 0.9).max(r * 0.04) * *ball_alpha as f64
+                    (lw * 1.5).max(r * 0.07)
                 } else {
-                    (lw * 2.0).max(r * 0.09)
+                    (lw * 0.9).max(r * 0.045)
                 };
 
                 let track_alpha = if i == 0 { 0.14 } else { 0.08 };
@@ -164,13 +170,18 @@ pub fn build(
                 cr.set_line_cap(cairo::LineCap::Round);
                 let _ = cr.stroke();
 
-                // Full-circle hand position.
-                let theta = twelve + hand_pct * 2.0 * std::f64::consts::PI;
+                // Hand position. Clock hands sweep the full dial; temperature hands
+                // stick to the 270° arc unless they go negative or above the max.
+                let theta = if full_circle {
+                    twelve + hand_pct * 2.0 * std::f64::consts::PI
+                } else {
+                    start + hand_pct * full
+                };
                 let ball_x = cx + ir * theta.cos();
                 let ball_y = cy + ir * theta.sin();
 
                 // Push the day/date text away from any glowing ball in the lower half.
-                if *ball_alpha > 0.05 {
+                if *ball_alpha > 0.05 && full_circle {
                     let dx = ball_x - cx;
                     let dy = ball_y - cy;
                     if dy > r * 0.10 && dx > r * -0.10 {

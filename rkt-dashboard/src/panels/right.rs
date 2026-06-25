@@ -123,6 +123,7 @@ pub fn build_right(
 
     let clock_state = InfoDialState::new();
     *clock_state.multi_arc.borrow_mut() = true;
+    *clock_state.hands_full_circle.borrow_mut() = true;
     *clock_state.middle_ball_alpha.borrow_mut() = 0.12;
     let clock_click = || {
         let _ = std::process::Command::new("qs")
@@ -364,11 +365,11 @@ pub fn build_right(
                 .unwrap_or_default()
                 .trim_start_matches('0')
                 .to_string();
-            // Outer = seconds, middle = minutes (transparent), inner = hours.
-            // Each hand moves through the full 360° like a normal analog clock.
-            *clock_state.value.borrow_mut() = (sec as f64 / 60.0).clamp(0.0, 1.0);
-            *clock_state.middle_value.borrow_mut() =
+            // Outer = minutes, middle = seconds (transparent), inner = hours.
+            // The clock hands sweep the full 360° like a normal analog clock.
+            *clock_state.value.borrow_mut() =
                 ((min as f64 + sec as f64 / 60.0) / 60.0).clamp(0.0, 1.0);
+            *clock_state.middle_value.borrow_mut() = (sec as f64 / 60.0).clamp(0.0, 1.0);
             *clock_state.inner_value.borrow_mut() =
                 (((hr % 12) as f64 + min as f64 / 60.0 + sec as f64 / 3600.0) / 12.0)
                     .clamp(0.0, 1.0);
@@ -496,8 +497,8 @@ pub fn build_right(
 
             if let Some(w) = out.get("weather") {
                 let temp = w.get("current_temp_c")?.as_f64()?;
-                let max = 45.0;
-                let pct = (temp / max).clamp(0.0, 1.0);
+                let max = 50.0;
+                let pct = temp / max;
                 *weather_state.value.borrow_mut() = pct;
                 *weather_state.center.borrow_mut() = format!("{:.0}°", temp);
                 *weather_state.sub.borrow_mut() =
@@ -509,8 +510,8 @@ pub fn build_right(
                     if let Some(today) = forecast.first() {
                         let high = today.get("max_c")?.as_f64().unwrap_or(temp);
                         let low = today.get("min_c")?.as_f64().unwrap_or(temp);
-                        *weather_state.middle_value.borrow_mut() = (high / max).clamp(0.0, 1.0);
-                        *weather_state.inner_value.borrow_mut() = (low / max).clamp(0.0, 1.0);
+                        *weather_state.middle_value.borrow_mut() = high / 50.0;
+                        *weather_state.inner_value.borrow_mut() = low / 50.0;
                     }
                 }
             }

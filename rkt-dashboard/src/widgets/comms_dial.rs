@@ -163,9 +163,11 @@ pub fn build(
                 (lw * 0.55).max(1.0)
             };
             let ball_r = if i == 0 {
-                (lw * 2.2).max(r * 0.11)
+                (lw * 2.5).max(r * 0.11)
+            } else if i == 1 {
+                (lw * 1.5).max(r * 0.07)
             } else {
-                (lw * (1.3 - i as f64 * 0.18)).max(r * (0.07 - i as f64 * 0.005))
+                (lw * 0.9).max(r * 0.045)
             };
             let theta = start + spct * sweep;
             let ball_x = cx + ir * theta.cos();
