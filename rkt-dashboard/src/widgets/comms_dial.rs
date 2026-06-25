@@ -165,11 +165,6 @@ pub fn build(
             let ball_x = cx + ir * theta.cos();
             let ball_y = cy + ir * theta.sin();
             let track_alpha = if i == 0 { 0.14 } else { 0.08 };
-            let arc_alpha = if i == 0 {
-                0.70
-            } else {
-                (0.50 - i as f64 * 0.06).max(0.25)
-            };
 
             // Track arc for this source.
             cr.arc(cx, cy, ir, start, start + sweep);
@@ -177,15 +172,6 @@ pub fn build(
             cr.set_line_width(arc_lw);
             cr.set_line_cap(cairo::LineCap::Round);
             let _ = cr.stroke();
-
-            // Coloured value arc.
-            if spct > 0.0 {
-                cr.arc(cx, cy, ir, start, theta);
-                cr.set_source_rgba(src_colour.0, src_colour.1, src_colour.2, arc_alpha);
-                cr.set_line_width(arc_lw);
-                cr.set_line_cap(cairo::LineCap::Round);
-                let _ = cr.stroke();
-            }
 
             // Soft glow around the ball.
             let glow_r = ball_r * 1.75;

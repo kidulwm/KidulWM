@@ -122,25 +122,12 @@ fn build_internal(
                 let ball_x = cx + ir * theta.cos();
                 let ball_y = cy + ir * theta.sin();
                 let track_alpha = if i == 0 { 0.14 } else { 0.08 };
-                let arc_alpha = if i == 0 {
-                    0.70
-                } else {
-                    (0.50 - i as f64 * 0.06).max(0.25)
-                };
 
                 cr.arc(cx, cy, ir, start, start + full_arc);
                 cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
                 cr.set_line_width(arc_lw);
                 cr.set_line_cap(cairo::LineCap::Round);
                 let _ = cr.stroke();
-
-                if pct > 0.0 {
-                    cr.arc(cx, cy, ir, start, theta);
-                    cr.set_source_rgba(colour.0, colour.1, colour.2, arc_alpha);
-                    cr.set_line_width(arc_lw);
-                    cr.set_line_cap(cairo::LineCap::Round);
-                    let _ = cr.stroke();
-                }
 
                 let glow_r = ball_r * 1.75;
                 let grad_glow =
