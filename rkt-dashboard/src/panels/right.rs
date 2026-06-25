@@ -337,6 +337,7 @@ pub fn build_right(
     // ── Weather dial (bottom) ──
     let weather_state = InfoDialState::new();
     *weather_state.multi_arc.borrow_mut() = true;
+    *weather_state.weather_layout.borrow_mut() = true;
     let weather_click = || {
         let _ = std::process::Command::new("xdg-open")
             .arg("https://wttr.in/Brisbane")
@@ -499,19 +500,24 @@ pub fn build_right(
                 let temp = w.get("current_temp_c")?.as_f64()?;
                 let max = 50.0;
                 let pct = temp / max;
-                *weather_state.value.borrow_mut() = pct;
+                *weather_state.middle_value.borrow_mut() = pct;
                 *weather_state.center.borrow_mut() = format!("{:.0}°", temp);
                 *weather_state.sub.borrow_mut() =
                     w.get("condition")?.as_str().unwrap_or("").to_string();
                 *weather_state.colour_override.borrow_mut() = None;
 
-                // Inner arc = expected low, middle arc = expected high.
+                // Defaults until forecast data arrives; outer/inner then become low/high.
+                *weather_state.value.borrow_mut() = pct;
+                *weather_state.inner_value.borrow_mut() = pct;
+
+                // Outer arc = daily low, middle arc = current temp, inner arc = daily high.
+                // Middle/current gets the largest glowball; low/high are medium.
                 if let Some(forecast) = w.get("forecast")?.as_array() {
                     if let Some(today) = forecast.first() {
                         let high = today.get("max_c")?.as_f64().unwrap_or(temp);
                         let low = today.get("min_c")?.as_f64().unwrap_or(temp);
-                        *weather_state.middle_value.borrow_mut() = high / 50.0;
-                        *weather_state.inner_value.borrow_mut() = low / 50.0;
+                        *weather_state.value.borrow_mut() = low / 50.0;
+                        *weather_state.inner_value.borrow_mut() = high / 50.0;
                     }
                 }
             }

@@ -14,6 +14,7 @@ pub struct InfoDialState {
     pub middle_ball_alpha: Rc<RefCell<f64>>, // 0.0 = transparent middle glowball
     pub multi_arc: Rc<RefCell<bool>>, // true for clock/weather 3-arc mode
     pub hands_full_circle: Rc<RefCell<bool>>, // true for analog 360° clock hands
+    pub weather_layout: Rc<RefCell<bool>>, // weather-specific arc sizing
     pub center: Rc<RefCell<String>>,
     pub sub: Rc<RefCell<String>>,
     pub date: Rc<RefCell<String>>,
@@ -29,6 +30,7 @@ impl InfoDialState {
             middle_ball_alpha: Rc::new(RefCell::new(1.0)),
             multi_arc: Rc::new(RefCell::new(false)),
             hands_full_circle: Rc::new(RefCell::new(false)),
+            weather_layout: Rc::new(RefCell::new(false)),
             center: Rc::new(RefCell::new(String::new())),
             sub: Rc::new(RefCell::new(String::new())),
             date: Rc::new(RefCell::new(String::new())),
@@ -94,6 +96,7 @@ pub fn build(
     let middle_alpha_draw = state.middle_ball_alpha.clone();
     let multi_arc_draw = state.multi_arc.clone();
     let hands_full_circle_draw = state.hands_full_circle.clone();
+    let weather_layout_draw = state.weather_layout.clone();
     let center_draw = state.center.clone();
     let sub_draw = state.sub.clone();
     let date_draw = state.date.clone();
@@ -124,6 +127,7 @@ pub fn build(
             let full = 270.0_f64.to_radians();
             let twelve = -std::f64::consts::PI / 2.0; // 12 o'clock in Cairo coords
             let full_circle = *hands_full_circle_draw.borrow();
+            let weather_layout = *weather_layout_draw.borrow();
 
             let hands = [
                 (pct, colour, 1.0, true),
@@ -153,7 +157,14 @@ pub fn build(
                     (lw * 0.55).max(1.0)
                 };
                 // Large ball on the outer arc, medium on the middle, small on the inner.
-                let ball_r = if i == 0 {
+                // Weather dial flips this: middle/current is largest, low/high are medium.
+                let ball_r = if weather_layout {
+                    if i == 1 {
+                        (lw * 2.5).max(r * 0.11)
+                    } else {
+                        (lw * 1.5).max(r * 0.07)
+                    }
+                } else if i == 0 {
                     (lw * 2.5).max(r * 0.11)
                 } else if i == 1 {
                     (lw * 1.5).max(r * 0.07)
@@ -267,22 +278,22 @@ pub fn build(
                     cr,
                     &sub_text.to_lowercase(),
                     cx,
-                    cy + r * 0.72 + text_push,
+                    cy + r * 0.78 + text_push,
                     label_size,
                     cairo::FontWeight::Bold,
                     (0.94, 0.94, 0.94, 0.55),
                 );
             }
 
-            // Date label under the day.
+            // Date label under the day, same size and pushed down half a line.
             let date_text = date_draw.borrow().clone();
             if !date_text.is_empty() {
-                let label_size = (r * 0.17).max(10.0);
+                let label_size = (r * 0.22).max(12.0);
                 draw_centered_text(
                     cr,
                     &date_text.to_lowercase(),
                     cx,
-                    cy + r * 0.96 + text_push,
+                    cy + r * 1.02 + text_push,
                     label_size,
                     cairo::FontWeight::Bold,
                     (0.94, 0.94, 0.94, 0.45),
