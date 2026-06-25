@@ -108,7 +108,8 @@ pub fn build(
         let h = h as f64;
         let cx = w / 2.0;
         let cy = h / 2.0;
-        let r = cx.min(cy) * 0.82;
+        let multi_arc = *multi_arc_draw.borrow();
+        let r = cx.min(cy) * if multi_arc { 0.76 } else { 0.82 };
         let lw = (r * 0.05).max(2.0).min(4.0);
 
         let hover = *hovered_draw.borrow();
@@ -278,7 +279,7 @@ pub fn build(
                     cr,
                     &sub_text.to_lowercase(),
                     cx,
-                    cy + r * 0.78 + text_push,
+                    cy + r * 0.76 + text_push,
                     label_size,
                     cairo::FontWeight::Bold,
                     (0.94, 0.94, 0.94, 0.55),
@@ -293,7 +294,7 @@ pub fn build(
                     cr,
                     &date_text.to_lowercase(),
                     cx,
-                    cy + r * 1.02 + text_push,
+                    cy + r * 0.99 + text_push,
                     label_size,
                     cairo::FontWeight::Bold,
                     (0.94, 0.94, 0.94, 0.45),
