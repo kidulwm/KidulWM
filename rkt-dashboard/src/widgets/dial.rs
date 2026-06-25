@@ -112,7 +112,13 @@ fn build_internal(
             let full_arc = 270.0_f64.to_radians();
             for i in 0..arc_count {
                 let ir = r * (1.0 - i as f64 * 0.11).max(0.60);
-                let arc_lw = (lw * (0.90 - i as f64 * 0.18)).max(1.3);
+                let arc_lw = if i == 0 {
+                    lw
+                } else if i == 1 {
+                    (lw * 0.55).max(1.2)
+                } else {
+                    (lw * 0.30).max(1.0)
+                };
                 let ball_r = if i == 0 {
                     (lw * 2.2).max(r * 0.10)
                 } else {
