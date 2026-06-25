@@ -158,12 +158,20 @@ pub fn build(
                     (lw * 0.55).max(1.0)
                 };
                 // Large ball on the outer arc, medium on the middle, small on the inner.
-                // Weather dial flips this: middle/current is largest, low/high are medium.
+                // Clock dial makes the minute (outer) and hour (inner) hands the same
+                // large size; weather dial makes the middle/current temp largest.
                 let ball_r = if weather_layout {
                     if i == 1 {
                         (lw * 2.5).max(r * 0.11)
                     } else {
                         (lw * 1.5).max(r * 0.07)
+                    }
+                } else if full_circle {
+                    // Outer = minutes, inner = hours: both large. Middle seconds = medium.
+                    if i == 1 {
+                        (lw * 1.5).max(r * 0.07)
+                    } else {
+                        (lw * 2.5).max(r * 0.11)
                     }
                 } else if i == 0 {
                     (lw * 2.5).max(r * 0.11)
@@ -231,7 +239,8 @@ pub fn build(
                     let _ = cr.fill();
                 }
 
-                if hover || *strong_ball {
+                // Clock hands are glow-only; don't draw a solid coloured body on top.
+                if !full_circle && (hover || *strong_ball) {
                     let alpha = if hover { 1.0 } else { *ball_alpha };
                     if alpha > 0.05 {
                         let grad =
