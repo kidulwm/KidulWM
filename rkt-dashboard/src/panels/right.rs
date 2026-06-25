@@ -334,6 +334,77 @@ pub fn build_right(
     security_widget.set_halign(gtk4::Align::Center);
     bx.append(&security_widget);
 
+    let security_listeners: Rc<RefCell<i64>> = Rc::new(RefCell::new(0));
+    {
+        let sec_label = security_widget
+            .first_child()
+            .and_downcast::<Label>()
+            .expect("security line label");
+        sec_label.set_use_markup(true);
+        let colour = "rgba(240,240,240,0.55)";
+        sec_label.set_markup(&format!(
+            "<span color=\"{}\" font_weight=\"bold\">security:ok</span>",
+            colour
+        ));
+
+        let listeners = security_listeners.clone();
+        let show_ok = Rc::new(RefCell::new(true));
+        let phase = Rc::new(RefCell::new(0u8)); // 0 idle, 1 fade out, 2 fade in
+        let wait_ms = Rc::new(RefCell::new(0u64));
+        let wait_target = Rc::new(RefCell::new(4000u64));
+        let opacity = Rc::new(RefCell::new(1.0f64));
+
+        let next_wait = || {
+            let secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            3000u64 + ((secs % 3) * 1000)
+        };
+
+        gtk4::glib::source::timeout_add_local(Duration::from_millis(50), move || {
+            match *phase.borrow() {
+                0 => {
+                    *wait_ms.borrow_mut() += 50;
+                    if *wait_ms.borrow() >= *wait_target.borrow() {
+                        *phase.borrow_mut() = 1;
+                    }
+                }
+                1 => {
+                    let mut op = opacity.borrow_mut();
+                    *op = (*op - 0.10).max(0.0);
+                    sec_label.set_opacity(*op);
+                    if *op <= 0.0 {
+                        let now_ok = !*show_ok.borrow();
+                        *show_ok.borrow_mut() = now_ok;
+                        let text = if now_ok {
+                            "security:ok".to_string()
+                        } else {
+                            format!("{} listeners", listeners.borrow())
+                        };
+                        sec_label.set_markup(&format!(
+                            "<span color=\"{}\" font_weight=\"bold\">{}</span>",
+                            colour, text
+                        ));
+                        *phase.borrow_mut() = 2;
+                    }
+                }
+                2 => {
+                    let mut op = opacity.borrow_mut();
+                    *op = (*op + 0.10).min(1.0);
+                    sec_label.set_opacity(*op);
+                    if *op >= 1.0 {
+                        *phase.borrow_mut() = 0;
+                        *wait_ms.borrow_mut() = 0;
+                        *wait_target.borrow_mut() = next_wait();
+                    }
+                }
+                _ => {}
+            }
+            gtk4::glib::ControlFlow::Continue
+        });
+    }
+
     // ── Weather dial (bottom) ──
     let weather_state = InfoDialState::new();
     *weather_state.multi_arc.borrow_mut() = true;
@@ -491,7 +562,8 @@ pub fn build_right(
     {
         let weather_state = weather_state.clone();
         let comms_state = comms_state.clone();
-        let security_widget = security_widget.clone();
+        let _security_widget = security_widget.clone();
+        let security_listeners = security_listeners.clone();
 
         let refresh = move || -> Option<()> {
             let out = fetch_panel_data()?;
@@ -635,10 +707,8 @@ pub fn build_right(
             *comms_state.value.borrow_mut() = value;
 
             if let Some(s) = out.get("security") {
-                let text = s.get("text")?.as_str().unwrap_or("security: …");
-                if let Some(lbl) = security_widget.first_child().and_downcast::<Label>() {
-                    lbl.set_label(text);
-                }
+                let listeners = s.get("listeners")?.as_i64()?;
+                *security_listeners.borrow_mut() = listeners;
             }
 
             Some(())
