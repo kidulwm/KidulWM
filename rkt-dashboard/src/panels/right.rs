@@ -1,10 +1,87 @@
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, Entry, Label, Orientation};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::widgets::info_dial::{make_clickable_label, InfoDialState};
+
+const COMMS_SCALE: f64 = 17.0;
+
+#[derive(Default, serde::Serialize, serde::Deserialize, Clone)]
+struct CommsSeen {
+    #[serde(default)]
+    counts: HashMap<String, i64>,
+    #[serde(default)]
+    news: HashMap<String, bool>,
+}
+
+fn comms_seen_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+        .join(".cache")
+        .join("rkt-dashboard")
+        .join("comms-seen.json")
+}
+
+fn load_comms_seen() -> CommsSeen {
+    let path = comms_seen_path();
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        if let Ok(state) = serde_json::from_str::<CommsSeen>(&text) {
+            return state;
+        }
+    }
+    CommsSeen::default()
+}
+
+fn save_comms_seen(state: &CommsSeen) {
+    let path = comms_seen_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(
+        &path,
+        serde_json::to_string_pretty(state).unwrap_or_default(),
+    );
+}
+
+// Shared across all monitors so a click on one screen resets counts on the other.
+static COMMS_SEEN: OnceLock<Arc<Mutex<CommsSeen>>> = OnceLock::new();
+
+fn comms_seen() -> Arc<Mutex<CommsSeen>> {
+    COMMS_SEEN
+        .get_or_init(|| Arc::new(Mutex::new(load_comms_seen())))
+        .clone()
+}
+
+// Shared cache for rkt-panel-data so all monitors show identical data and we do
+// not hammer the data script on every window.
+static PANEL_DATA_CACHE: OnceLock<Mutex<Option<(Instant, serde_json::Value)>>> = OnceLock::new();
+
+fn fetch_panel_data() -> Option<serde_json::Value> {
+    const AGE: Duration = Duration::from_secs(4);
+    let cache = PANEL_DATA_CACHE.get_or_init(|| Mutex::new(None));
+    {
+        if let Ok(guard) = cache.lock() {
+            if let Some((when, data)) = guard.as_ref() {
+                if when.elapsed() < AGE {
+                    return Some(data.clone());
+                }
+            }
+        }
+    }
+
+    let out = std::process::Command::new("rkt-panel-data")
+        .output()
+        .ok()
+        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())?;
+
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((Instant::now(), out.clone()));
+    }
+    Some(out)
+}
 
 pub fn right_dial_size(panel_width: i32) -> i32 {
     (panel_width - 60).max(96).min(220)
@@ -60,19 +137,35 @@ pub fn build_right(
 
     bx.append(&top_box);
 
-    // ── Email/Telegram/Discord/News cluster centred in gap between clock and backup ──
+    // ── Comms dial (screen centre): email/telegram/discord/news in one ring ──
     bx.append(&v_spacer());
-    let email_state = Rc::new(RefCell::new(EmailState::default()));
-    let rss_state = Rc::new(RefCell::new(RssState::default()));
-    let comms_box = GtkBox::builder()
-        .orientation(Orientation::Vertical)
-        .spacing(2)
-        .halign(gtk4::Align::Center)
-        .valign(gtk4::Align::Center)
-        .build();
+    let comms_state = crate::widgets::comms_dial::CommsDialState::new();
+    let comms_dial = crate::widgets::comms_dial::build(&comms_state, dial_size, dial_height, {
+        let click_state = comms_state.clone();
+        Box::new(move |source: &str| {
+            // Mark this source as seen before launching the viewer so the
+            // dashboard count resets to zero on every screen.
+            {
+                let seen_arc = comms_seen();
+                let mut seen = seen_arc.lock().unwrap();
+                match source {
+                    "news" => {
+                        let keys = click_state.news_keys.borrow();
+                        for k in keys.iter() {
+                            seen.news.insert(k.clone(), true);
+                        }
+                    }
+                    _ => {
+                        if let Some(raw) = click_state.raw_counts.borrow().get(source) {
+                            if *raw >= 0 {
+                                seen.counts.insert(source.to_string(), *raw);
+                            }
+                        }
+                    }
+                }
+                save_comms_seen(&seen);
+            }
 
-    let media_click = |source: &'static str| {
-        move || {
             let _ = std::process::Command::new("alacritty")
                 .args([
                     "-e",
@@ -81,73 +174,11 @@ pub fn build_right(
                     &format!("rkt-mediabob {}; read -P 'Press Enter to close'", source),
                 ])
                 .spawn();
-        }
-    };
+        })
+    });
+    bx.append(&comms_dial);
 
-    let email_widget = make_clickable_label(
-        "email: …",
-        "rkt-right-widget",
-        Box::new(media_click("email")),
-    );
-    email_widget.set_halign(gtk4::Align::Center);
-    comms_box.append(&email_widget);
-
-    let telegram_widget = make_clickable_label(
-        "telegram: …",
-        "rkt-right-widget",
-        Box::new(media_click("telegram")),
-    );
-    telegram_widget.set_halign(gtk4::Align::Center);
-    comms_box.append(&telegram_widget);
-
-    let discord_widget = make_clickable_label(
-        "discord: …",
-        "rkt-right-widget",
-        Box::new(media_click("discord")),
-    );
-    discord_widget.set_halign(gtk4::Align::Center);
-    comms_box.append(&discord_widget);
-
-    let rss_widget =
-        make_clickable_label("news: …", "rkt-right-widget", Box::new(media_click("news")));
-    rss_widget.set_halign(gtk4::Align::Center);
-    rss_widget.set_valign(gtk4::Align::Center);
-    comms_box.append(&rss_widget);
-
-    bx.append(&comms_box);
-
-    // ── Backup dial (screen centre) ──
-    bx.append(&v_spacer());
-    let backup_state = InfoDialState::new();
-    let backup_click = || {
-        let script = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
-            .join(".hermes")
-            .join("skills")
-            .join("system-administration")
-            .join("workstation-backup-recovery")
-            .join("scripts")
-            .join("hermes-system-backup.sh");
-        let _ = std::process::Command::new("alacritty")
-            .args([
-                "-e",
-                "fish",
-                "-c",
-                &format!(
-                    "echo 'Starting backup…'; {} || read -P 'Press Enter'",
-                    script.display()
-                ),
-            ])
-            .spawn();
-    };
-    let backup_dial = crate::widgets::info_dial::build(
-        &backup_state,
-        dial_size,
-        dial_height,
-        Some(Box::new(backup_click)),
-    );
-    bx.append(&backup_dial);
-
-    // ── USB + security between backup and weather dials ──
+    // ── USB + security between comms and weather dials ──
     bx.append(&v_spacer());
 
     // USB guard line with inline terminal-style PIN entry
@@ -443,23 +474,14 @@ pub fn build_right(
         gtk4::glib::source::timeout_add_local(Duration::from_secs(1), update_usb);
     }
 
-    // ── Panel data updater (every 30s) ──
+    // ── Panel data updater (every 5s) ──
     {
         let weather_state = weather_state.clone();
-        let backup_state = backup_state.clone();
-        let email_state = email_state.clone();
-        let rss_state = rss_state.clone();
-        let email_widget = email_widget.clone();
-        let telegram_widget = telegram_widget.clone();
-        let discord_widget = discord_widget.clone();
-        let rss_widget = rss_widget.clone();
+        let comms_state = comms_state.clone();
         let security_widget = security_widget.clone();
 
         let refresh = move || -> Option<()> {
-            let out = std::process::Command::new("rkt-panel-data")
-                .output()
-                .ok()
-                .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())?;
+            let out = fetch_panel_data()?;
 
             if let Some(w) = out.get("weather") {
                 let temp = w.get("current_temp_c")?.as_f64()?;
@@ -472,84 +494,124 @@ pub fn build_right(
                 *weather_state.colour_override.borrow_mut() = None;
             }
 
-            if let Some(e) = out.get("email") {
-                let unread = e.get("unread")?.as_i64().unwrap_or(-1);
-                email_state.borrow_mut().unread = Some(unread);
-                let text = if unread < 0 {
-                    "email: ?".to_string()
-                } else {
-                    format!("email: {}", unread)
-                };
-                if let Some(lbl) = email_widget.first_child().and_downcast::<Label>() {
-                    lbl.set_label(&text);
+            // Build the four comms lines using a per-source "seen" offset so that
+            // clicking a source resets its displayed count to zero and already-
+            // viewed items are not counted again.
+            let mut items = Vec::new();
+            let mut source_pcts = Vec::new();
+            let mut raw_counts: HashMap<String, i64> = HashMap::new();
+            let mut seen_dirty = false;
+
+            {
+                let seen_arc = comms_seen();
+                let mut seen = seen_arc.lock().unwrap();
+
+                if let Some(e) = out.get("email") {
+                    let raw = e.get("unread")?.as_i64().unwrap_or(-1);
+                    raw_counts.insert("email".to_string(), raw);
+                    let last_seen = seen.counts.get("email").copied().unwrap_or(0);
+                    if raw >= 0 && raw < last_seen {
+                        seen.counts.insert("email".to_string(), raw);
+                        seen_dirty = true;
+                    }
+                    let delta = if raw < 0 { 0 } else { (raw - last_seen).max(0) };
+                    source_pcts.push(("email".to_string(), delta as f64 / COMMS_SCALE));
+                    items.push(crate::widgets::comms_dial::CommsItem {
+                        label: "email".to_string(),
+                        value: String::new(),
+                        source: "email".to_string(),
+                    });
+                }
+
+                if let Some(s) = out.get("social") {
+                    let tg_raw = s.get("telegram")?.get("unread")?.as_i64().unwrap_or(-1);
+                    raw_counts.insert("telegram".to_string(), tg_raw);
+                    let tg_seen = seen.counts.get("telegram").copied().unwrap_or(0);
+                    if tg_raw >= 0 && tg_raw < tg_seen {
+                        seen.counts.insert("telegram".to_string(), tg_raw);
+                        seen_dirty = true;
+                    }
+                    let tg_delta = if tg_raw < 0 {
+                        0
+                    } else {
+                        (tg_raw - tg_seen).max(0)
+                    };
+                    source_pcts.push(("telegram".to_string(), tg_delta as f64 / COMMS_SCALE));
+                    items.push(crate::widgets::comms_dial::CommsItem {
+                        label: "telegram".to_string(),
+                        value: String::new(),
+                        source: "telegram".to_string(),
+                    });
+
+                    let dc_raw = s.get("discord")?.get("unread")?.as_i64().unwrap_or(-1);
+                    raw_counts.insert("discord".to_string(), dc_raw);
+                    let dc_seen = seen.counts.get("discord").copied().unwrap_or(0);
+                    if dc_raw >= 0 && dc_raw < dc_seen {
+                        seen.counts.insert("discord".to_string(), dc_raw);
+                        seen_dirty = true;
+                    }
+                    let dc_delta = if dc_raw < 0 {
+                        0
+                    } else {
+                        (dc_raw - dc_seen).max(0)
+                    };
+                    source_pcts.push(("discord".to_string(), dc_delta as f64 / COMMS_SCALE));
+                    items.push(crate::widgets::comms_dial::CommsItem {
+                        label: "discord".to_string(),
+                        value: String::new(),
+                        source: "discord".to_string(),
+                    });
+                }
+
+                if let Some(r) = out.get("rss") {
+                    let raw_items = r.get("items")?.as_array()?;
+                    let mut keys = Vec::new();
+                    let mut unseen = 0i64;
+                    for it in raw_items.iter().take(30) {
+                        let key = it
+                            .get("link")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| it.get("title").and_then(|v| v.as_str()))
+                            .unwrap_or("")
+                            .to_string();
+                        keys.push(key.clone());
+                        if !seen.news.contains_key(&key) {
+                            unseen += 1;
+                        }
+                    }
+                    *comms_state.news_keys.borrow_mut() = keys;
+                    source_pcts.push(("news".to_string(), unseen as f64 / COMMS_SCALE));
+                    items.push(crate::widgets::comms_dial::CommsItem {
+                        label: "news".to_string(),
+                        value: String::new(),
+                        source: "news".to_string(),
+                    });
+                    // Prune old news keys so the map does not grow forever.
+                    let current_keys: std::collections::HashSet<_> =
+                        comms_state.news_keys.borrow().iter().cloned().collect();
+                    let before = seen.news.len();
+                    seen.news.retain(|k, _| current_keys.contains(k));
+                    if seen.news.len() != before {
+                        seen_dirty = true;
+                    }
+                }
+
+                if seen_dirty {
+                    save_comms_seen(&seen);
                 }
             }
 
-            if let Some(s) = out.get("social") {
-                let tg = s.get("telegram")?.get("unread")?.as_i64().unwrap_or(-1);
-                let tg_text = if tg < 0 {
-                    "telegram: ?".to_string()
-                } else {
-                    format!("telegram: {}", tg)
-                };
-                if let Some(lbl) = telegram_widget.first_child().and_downcast::<Label>() {
-                    lbl.set_label(&tg_text);
-                }
-                let dc = s.get("discord")?.get("unread")?.as_i64().unwrap_or(-1);
-                let dc_text = if dc < 0 {
-                    "discord: ?".to_string()
-                } else {
-                    format!("discord: {}", dc)
-                };
-                if let Some(lbl) = discord_widget.first_child().and_downcast::<Label>() {
-                    lbl.set_label(&dc_text);
-                }
-            }
-
-            if let Some(r) = out.get("rss") {
-                let count = r.get("items")?.as_array()?.len() as i64;
-                if let Some(lbl) = rss_widget.first_child().and_downcast::<Label>() {
-                    lbl.set_label(&format!("news: {}", count));
-                }
-                let items: Vec<(String, String)> = r
-                    .get("items")?
-                    .as_array()?
-                    .iter()
-                    .filter_map(|it| {
-                        let title = it.get("title")?.as_str()?.to_string();
-                        let link = it.get("link")?.as_str()?.to_string();
-                        Some((title, link))
-                    })
-                    .take(30)
-                    .collect();
-                if !items.is_empty() {
-                    rss_state.borrow_mut().items = items;
-                }
-            }
-
-            if let Some(b) = out.get("backup") {
-                let days = b.get("days_since")?.as_i64().unwrap_or(-1);
-                *backup_state.center.borrow_mut() = if days < 0 {
-                    "?".to_string()
-                } else {
-                    days.to_string()
-                };
-                *backup_state.sub.borrow_mut() = if days == 1 {
-                    "day".to_string()
-                } else {
-                    "days".to_string()
-                };
-                if days < 0 {
-                    *backup_state.value.borrow_mut() = 0.0;
-                    *backup_state.colour_override.borrow_mut() = Some((0.4, 0.4, 0.4));
-                } else {
-                    let max_days = 14.0;
-                    *backup_state.value.borrow_mut() = (days as f64 / max_days).clamp(0.0, 1.0);
-                    *backup_state.colour_override.borrow_mut() = None;
-                }
-                let status = b.get("status")?.as_str().unwrap_or("unknown");
-                email_state.borrow_mut().last_backup_status = Some(status.to_string());
-            }
+            *comms_state.raw_counts.borrow_mut() = raw_counts;
+            *comms_state.source_pcts.borrow_mut() = source_pcts;
+            *comms_state.items.borrow_mut() = items;
+            let value = comms_state
+                .source_pcts
+                .borrow()
+                .iter()
+                .map(|(_, p)| *p)
+                .fold(0.0, f64::max)
+                .clamp(0.0, 1.0);
+            *comms_state.value.borrow_mut() = value;
 
             if let Some(s) = out.get("security") {
                 let text = s.get("text")?.as_str().unwrap_or("security: …");
@@ -563,24 +625,13 @@ pub fn build_right(
 
         refresh();
 
-        gtk4::glib::source::timeout_add_local(Duration::from_secs(30), move || {
+        gtk4::glib::source::timeout_add_local(Duration::from_secs(5), move || {
             refresh();
             gtk4::glib::ControlFlow::Continue
         });
     }
 
     bx
-}
-
-#[derive(Default)]
-struct EmailState {
-    unread: Option<i64>,
-    last_backup_status: Option<String>,
-}
-
-#[derive(Default)]
-struct RssState {
-    items: Vec<(String, String)>,
 }
 
 #[derive(Default)]

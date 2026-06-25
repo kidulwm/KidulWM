@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, DrawingArea, EventControllerMotion, GestureClick, Orientation};
 use std::cell::RefCell;
@@ -9,14 +11,18 @@ use crate::widgets::dial::{colour_for_pct, draw_centered_text};
 #[derive(Clone, Default)]
 pub struct CommsItem {
     pub label: String,
+    // Kept for compatibility; the dial now draws only the label.
     pub value: String,
     pub source: String,
 }
 
 #[derive(Clone)]
 pub struct CommsDialState {
-    pub value: Rc<RefCell<f64>>, // 0.0 .. 1.0, drives ring/glowball colour
+    pub value: Rc<RefCell<f64>>, // overall max value (0..1)
     pub items: Rc<RefCell<Vec<CommsItem>>>,
+    pub raw_counts: Rc<RefCell<HashMap<String, i64>>>,
+    pub news_keys: Rc<RefCell<Vec<String>>>,
+    pub source_pcts: Rc<RefCell<Vec<(String, f64)>>>, // per-source 0..1 for colour + inner ball
 }
 
 impl CommsDialState {
@@ -24,6 +30,9 @@ impl CommsDialState {
         Self {
             value: Rc::new(RefCell::new(0.0)),
             items: Rc::new(RefCell::new(Vec::new())),
+            raw_counts: Rc::new(RefCell::new(HashMap::new())),
+            news_keys: Rc::new(RefCell::new(Vec::new())),
+            source_pcts: Rc::new(RefCell::new(Vec::new())),
         }
     }
 }
@@ -55,6 +64,7 @@ pub fn build(
     bx.append(&da);
 
     let hovered = Rc::new(RefCell::new(false));
+    let hovered_line = Rc::new(RefCell::new(None));
 
     let motion = EventControllerMotion::new();
     {
@@ -71,17 +81,49 @@ pub fn build(
         let leave_hovered = hovered.clone();
         let leave_bx = bx.clone();
         let leave_da = da.clone();
+        let leave_hovered_line = hovered_line.clone();
         motion.connect_leave(move |_| {
             *leave_hovered.borrow_mut() = false;
+            *leave_hovered_line.borrow_mut() = None;
             leave_bx.remove_css_class("active");
             leave_da.queue_draw();
         });
     }
+    {
+        let move_hovered_line = hovered_line.clone();
+        let move_da = da.clone();
+        let move_items = state.items.clone();
+        motion.connect_motion(move |_, _x, y| {
+            let alloc = move_da.allocation();
+            let w = alloc.width() as f64;
+            let h = alloc.height() as f64;
+            let cx = w / 2.0;
+            let cy = h / 2.0;
+            let r = cx.min(cy) * 0.82;
+            let line_h = (r * 0.30).max(18.0);
+            let items_len = std::cmp::max(move_items.borrow().len(), 1);
+            let total_h = items_len as f64 * line_h;
+            let start_y = cy - total_h / 2.0;
+            let rel_y = y - start_y;
+            let idx = (rel_y / line_h).floor() as isize;
+            let new_idx = if idx >= 0 && idx < items_len as isize {
+                Some(idx as usize)
+            } else {
+                None
+            };
+            let changed = *move_hovered_line.borrow() != new_idx;
+            if changed {
+                *move_hovered_line.borrow_mut() = new_idx;
+                move_da.queue_draw();
+            }
+        });
+    }
     da.add_controller(motion);
 
-    let value_draw = state.value.clone();
     let items_draw = state.items.clone();
+    let source_pcts_draw = state.source_pcts.clone();
     let hovered_draw = hovered.clone();
+    let hovered_line_draw = hovered_line.clone();
 
     da.set_draw_func(move |_, cr, w, h| {
         let w = w as f64;
@@ -90,57 +132,90 @@ pub fn build(
         let cy = h / 2.0;
         let r = cx.min(cy) * 0.82;
         let lw = (r * 0.05).max(2.0).min(4.0);
+        let pi = std::f64::consts::PI;
+        let sweep = 270.0 * pi / 180.0;
+        let start = 135.0 * pi / 180.0;
 
-        let pct = (*value_draw.borrow()).clamp(0.0, 1.0);
-        let sweep = pct * 270.0 * std::f64::consts::PI / 180.0;
-        let start = 135.0 * std::f64::consts::PI / 180.0;
+        let source_pcts = source_pcts_draw.borrow();
+        let items = items_draw.borrow();
+        let hover = *hovered_draw.borrow();
 
-        let colour = colour_for_pct(pct, false);
+        // Per-source lookup.
+        let src_pct = |src: &str| -> f64 {
+            source_pcts
+                .iter()
+                .find(|(k, _)| k == src)
+                .map(|(_, p)| *p)
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0)
+        };
 
-        // Track arc (thin ring)
-        cr.arc(
-            cx,
-            cy,
-            r,
-            start,
-            start + 270.0 * std::f64::consts::PI / 180.0,
-        );
+        // Outer scale track (thin ring), no single ball.
+        cr.arc(cx, cy, r, start, start + sweep);
         cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
         cr.set_line_width(lw);
         cr.set_line_cap(cairo::LineCap::Round);
         let _ = cr.stroke();
 
-        // Position of the coloured ball on the ring
-        let theta = start + sweep;
-        let ball_x = cx + r * theta.cos();
-        let ball_y = cy + r * theta.sin();
-        let ball_r = (lw * 2.2).max(r * 0.10);
+        // Per-source inner arcs + glowballs inside the dial.
+        for (i, item) in items.iter().enumerate() {
+            let spct = src_pct(&item.source);
+            let src_colour = colour_for_pct(spct, false);
+            let ir = r * (0.88 - i as f64 * 0.14).max(0.35);
+            let ball_r = (lw * 1.5).max(r * 0.055);
+            let theta = start + spct * sweep;
+            let ball_x = cx + ir * theta.cos();
+            let ball_y = cy + ir * theta.sin();
 
-        let hover = *hovered_draw.borrow();
+            // Inner track arc for this source.
+            cr.arc(cx, cy, ir, start, start + sweep);
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.08);
+            cr.set_line_width(lw * 0.65);
+            cr.set_line_cap(cairo::LineCap::Round);
+            let _ = cr.stroke();
 
-        // Permanent soft glow at the ball position
-        let glow_r = ball_r * 1.75;
-        let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
-        grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
-        grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
-        grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
-        cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
-        cr.set_source(&grad_glow).unwrap();
-        let _ = cr.fill();
+            // Coloured value arc.
+            if spct > 0.0 {
+                cr.arc(cx, cy, ir, start, theta);
+                cr.set_source_rgba(src_colour.0, src_colour.1, src_colour.2, 0.55);
+                cr.set_line_width(lw * 0.65);
+                cr.set_line_cap(cairo::LineCap::Round);
+                let _ = cr.stroke();
+            }
 
-        if hover {
-            // The solid ball appears on hover
-            let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
-            grad.add_color_stop_rgb(0.0, lighten(colour.0), lighten(colour.1), lighten(colour.2));
-            grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
-            grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
-            cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-            cr.set_source(&grad).unwrap();
+            // Soft glow around the inner ball.
+            let glow_r = ball_r * 1.75;
+            let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+            grad_glow.add_color_stop_rgba(0.0, src_colour.0, src_colour.1, src_colour.2, 0.90);
+            grad_glow.add_color_stop_rgba(0.35, src_colour.0, src_colour.1, src_colour.2, 0.40);
+            grad_glow.add_color_stop_rgba(1.0, src_colour.0, src_colour.1, src_colour.2, 0.0);
+            cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * pi);
+            cr.set_source(&grad_glow).unwrap();
             let _ = cr.fill();
+
+            if hover {
+                // Solid inner ball on dial hover.
+                let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
+                grad.add_color_stop_rgb(
+                    0.0,
+                    lighten(src_colour.0),
+                    lighten(src_colour.1),
+                    lighten(src_colour.2),
+                );
+                grad.add_color_stop_rgb(0.6, src_colour.0, src_colour.1, src_colour.2);
+                grad.add_color_stop_rgb(
+                    1.0,
+                    darken(src_colour.0),
+                    darken(src_colour.1),
+                    darken(src_colour.2),
+                );
+                cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * pi);
+                cr.set_source(&grad).unwrap();
+                let _ = cr.fill();
+            }
         }
 
-        // Comms lines in the centre, each with a matching glowball
-        let items = items_draw.borrow();
+        // Comms line labels, each with a matching glowball.
         if !items.is_empty() {
             let count = items.len();
             let line_h = (r * 0.30).max(18.0);
@@ -148,33 +223,79 @@ pub fn build(
             let start_y = cy - total_h / 2.0 + line_h / 2.0;
             let text_size = (r * 0.20).max(11.0);
 
-            cr.select_font_face("Adwaita Sans", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+            cr.select_font_face(
+                "Adwaita Sans",
+                cairo::FontSlant::Normal,
+                cairo::FontWeight::Bold,
+            );
             cr.set_font_size(text_size);
 
             for (i, item) in items.iter().enumerate() {
                 let y = start_y + i as f64 * line_h;
-                let full = format!("{}: {}", item.label, item.value);
+                let spct = src_pct(&item.source);
+                let src_colour = colour_for_pct(spct, false);
+                let full = if item.value.is_empty() {
+                    item.label.clone()
+                } else {
+                    format!("{}: {}", item.label, item.value)
+                };
                 let extents = cr.text_extents(&full).expect("text_extents");
                 let text_w = extents.width();
                 let ball_r = (line_h * 0.18).max(3.5);
                 let gap = ball_r * 1.4;
                 let ball_cx = cx - text_w / 2.0 - gap;
+                let line_hovered = hover && *hovered_line_draw.borrow() == Some(i);
 
-                // Small glowball for this line, same colour as the ring ball
-                let g_r = ball_r * 2.2;
-                let grad = cairo::RadialGradient::new(ball_cx, y, 0.0, ball_cx, y, g_r);
-                grad.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.95);
-                grad.add_color_stop_rgba(0.4, colour.0, colour.1, colour.2, 0.45);
-                grad.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
-                cr.arc(ball_cx, y, g_r, 0.0, 2.0 * std::f64::consts::PI);
-                cr.set_source(&grad).unwrap();
-                let _ = cr.fill();
+                if line_hovered {
+                    // Subtle highlight pill behind the active line.
+                    let pad_x = gap * 2.2;
+                    let pad_y = line_h * 0.12;
+                    cr.set_source_rgba(src_colour.0, src_colour.1, src_colour.2, 0.10);
+                    cr.rectangle(
+                        cx - text_w / 2.0 - pad_x,
+                        y - line_h / 2.0 + pad_y,
+                        text_w + pad_x * 2.0,
+                        line_h - pad_y * 2.0,
+                    );
+                    let _ = cr.fill();
+                }
 
-                cr.arc(ball_cx, y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-                cr.set_source_rgb(colour.0, colour.1, colour.2);
-                let _ = cr.fill();
+                // Small glowball for this line, matches its inner-dial colour.
+                if line_hovered {
+                    let grad = cairo::RadialGradient::new(ball_cx, y, 0.0, ball_cx, y, ball_r);
+                    grad.add_color_stop_rgb(
+                        0.0,
+                        lighten(src_colour.0),
+                        lighten(src_colour.1),
+                        lighten(src_colour.2),
+                    );
+                    grad.add_color_stop_rgb(0.6, src_colour.0, src_colour.1, src_colour.2);
+                    grad.add_color_stop_rgb(
+                        1.0,
+                        darken(src_colour.0),
+                        darken(src_colour.1),
+                        darken(src_colour.2),
+                    );
+                    cr.arc(ball_cx, y, ball_r, 0.0, 2.0 * pi);
+                    cr.set_source(&grad).unwrap();
+                    let _ = cr.fill();
+                } else {
+                    let g_r = ball_r * 2.2;
+                    let grad = cairo::RadialGradient::new(ball_cx, y, 0.0, ball_cx, y, g_r);
+                    grad.add_color_stop_rgba(0.0, src_colour.0, src_colour.1, src_colour.2, 0.95);
+                    grad.add_color_stop_rgba(0.4, src_colour.0, src_colour.1, src_colour.2, 0.45);
+                    grad.add_color_stop_rgba(1.0, src_colour.0, src_colour.1, src_colour.2, 0.0);
+                    cr.arc(ball_cx, y, g_r, 0.0, 2.0 * pi);
+                    cr.set_source(&grad).unwrap();
+                    let _ = cr.fill();
 
-                // Label text
+                    cr.arc(ball_cx, y, ball_r, 0.0, 2.0 * pi);
+                    cr.set_source_rgb(src_colour.0, src_colour.1, src_colour.2);
+                    let _ = cr.fill();
+                }
+
+                // Label text.
+                let label_alpha = if line_hovered { 0.95 } else { 0.72 };
                 draw_centered_text(
                     cr,
                     &full.to_lowercase(),
@@ -182,35 +303,22 @@ pub fn build(
                     y,
                     text_size,
                     cairo::FontWeight::Bold,
-                    (0.94, 0.94, 0.94, 0.72),
+                    (0.94, 0.94, 0.94, label_alpha),
                 );
-
-                // Hover highlight bar behind active line
-                if hover {
-                    let my_top = y - line_h / 2.0;
-                    let my_bottom = y + line_h / 2.0;
-                    // Use cursor position if available; otherwise skip.
-                    // We approximate by drawing nothing unless we know the line.
-                    let _ = (my_top, my_bottom);
-                }
             }
         }
     });
 
-    // Click handling: figure out which line was hit
+    // Click handling: figure out which line was hit.
     {
         let click_items = state.items.clone();
-        let click_value = state.value.clone();
         let click_da = da.clone();
         let gesture = GestureClick::new();
-        gesture.connect_pressed(move |_: &GestureClick, _n: i32, x: f64, y: f64| {
+        gesture.connect_pressed(move |_: &GestureClick, _n: i32, _x: f64, y: f64| {
             let items = click_items.borrow();
             if items.is_empty() {
                 return;
             }
-            // We need the same geometry used in the draw function. Approximate
-            // using the current allocation. The drawing area size matches the
-            // requested width/height but query the allocation to be safe.
             let alloc = click_da.allocation();
             let w = alloc.width() as f64;
             let h = alloc.height() as f64;
@@ -230,7 +338,6 @@ pub fn build(
                     on_click(&source);
                 }
             }
-            let _ = click_value.clone(); // keep captured state alive
         });
         da.add_controller(gesture);
         da.set_cursor_from_name(Some("pointer"));
