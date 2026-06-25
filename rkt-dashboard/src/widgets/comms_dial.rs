@@ -11,7 +11,6 @@ use crate::widgets::dial::{colour_for_pct, draw_centered_text};
 #[derive(Clone, Default)]
 pub struct CommsItem {
     pub label: String,
-    // Kept for compatibility; the dial now draws only the label.
     pub value: String,
     pub source: String,
 }
@@ -22,7 +21,7 @@ pub struct CommsDialState {
     pub items: Rc<RefCell<Vec<CommsItem>>>,
     pub raw_counts: Rc<RefCell<HashMap<String, i64>>>,
     pub news_keys: Rc<RefCell<Vec<String>>>,
-    pub source_pcts: Rc<RefCell<Vec<(String, f64)>>>, // per-source 0..1 for colour + inner ball
+    pub source_pcts: Rc<RefCell<Vec<(String, f64)>>>, // per-source 0..1 for colour + arc/ball
 }
 
 impl CommsDialState {
@@ -150,40 +149,45 @@ pub fn build(
                 .clamp(0.0, 1.0)
         };
 
-        // Outer scale track (thin ring), no single ball.
-        cr.arc(cx, cy, r, start, start + sweep);
-        cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
-        cr.set_line_width(lw);
-        cr.set_line_cap(cairo::LineCap::Round);
-        let _ = cr.stroke();
-
-        // Per-source inner arcs + glowballs inside the dial.
-        for (i, item) in items.iter().enumerate() {
+        // Three concentric arcs: the top item sits on the outer ring, the rest inside.
+        // The outer arc uses the full outer radius and gets the biggest glowball.
+        for (i, item) in items.iter().take(3).enumerate() {
             let spct = src_pct(&item.source);
             let src_colour = colour_for_pct(spct, false);
-            let ir = r * (0.88 - i as f64 * 0.14).max(0.35);
-            let ball_r = (lw * 1.5).max(r * 0.055);
+            let ir = r * (1.0 - i as f64 * 0.14).max(0.60);
+            let arc_lw = (lw * (0.88 - i as f64 * 0.18)).max(1.3);
+            let ball_r = if i == 0 {
+                (lw * 2.2).max(r * 0.11)
+            } else {
+                (lw * (1.3 - i as f64 * 0.18)).max(r * (0.07 - i as f64 * 0.005))
+            };
             let theta = start + spct * sweep;
             let ball_x = cx + ir * theta.cos();
             let ball_y = cy + ir * theta.sin();
+            let track_alpha = if i == 0 { 0.14 } else { 0.08 };
+            let arc_alpha = if i == 0 {
+                0.70
+            } else {
+                (0.50 - i as f64 * 0.06).max(0.25)
+            };
 
-            // Inner track arc for this source.
+            // Track arc for this source.
             cr.arc(cx, cy, ir, start, start + sweep);
-            cr.set_source_rgba(1.0, 1.0, 1.0, 0.08);
-            cr.set_line_width(lw * 0.65);
+            cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
+            cr.set_line_width(arc_lw);
             cr.set_line_cap(cairo::LineCap::Round);
             let _ = cr.stroke();
 
             // Coloured value arc.
             if spct > 0.0 {
                 cr.arc(cx, cy, ir, start, theta);
-                cr.set_source_rgba(src_colour.0, src_colour.1, src_colour.2, 0.55);
-                cr.set_line_width(lw * 0.65);
+                cr.set_source_rgba(src_colour.0, src_colour.1, src_colour.2, arc_alpha);
+                cr.set_line_width(arc_lw);
                 cr.set_line_cap(cairo::LineCap::Round);
                 let _ = cr.stroke();
             }
 
-            // Soft glow around the inner ball.
+            // Soft glow around the ball.
             let glow_r = ball_r * 1.75;
             let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
             grad_glow.add_color_stop_rgba(0.0, src_colour.0, src_colour.1, src_colour.2, 0.90);
@@ -194,7 +198,7 @@ pub fn build(
             let _ = cr.fill();
 
             if hover {
-                // Solid inner ball on dial hover.
+                // Solid ball on dial hover.
                 let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
                 grad.add_color_stop_rgb(
                     0.0,
@@ -215,13 +219,13 @@ pub fn build(
             }
         }
 
-        // Comms line labels, each with a matching glowball.
+        // Three media-name labels in the centre; no per-line glowballs.
         if !items.is_empty() {
-            let count = items.len();
-            let line_h = (r * 0.30).max(18.0);
+            let count = items.len().min(3);
+            let line_h = (r * 0.32).max(18.0);
             let total_h = count as f64 * line_h;
             let start_y = cy - total_h / 2.0 + line_h / 2.0;
-            let text_size = (r * 0.20).max(11.0);
+            let text_size = (r * 0.22).max(11.0);
 
             cr.select_font_face(
                 "Adwaita Sans",
@@ -230,7 +234,7 @@ pub fn build(
             );
             cr.set_font_size(text_size);
 
-            for (i, item) in items.iter().enumerate() {
+            for (i, item) in items.iter().take(3).enumerate() {
                 let y = start_y + i as f64 * line_h;
                 let spct = src_pct(&item.source);
                 let src_colour = colour_for_pct(spct, false);
@@ -241,14 +245,11 @@ pub fn build(
                 };
                 let extents = cr.text_extents(&full).expect("text_extents");
                 let text_w = extents.width();
-                let ball_r = (line_h * 0.18).max(3.5);
-                let gap = ball_r * 1.4;
-                let ball_cx = cx - text_w / 2.0 - gap;
                 let line_hovered = hover && *hovered_line_draw.borrow() == Some(i);
 
                 if line_hovered {
                     // Subtle highlight pill behind the active line.
-                    let pad_x = gap * 2.2;
+                    let pad_x = text_size * 1.4;
                     let pad_y = line_h * 0.12;
                     cr.set_source_rgba(src_colour.0, src_colour.1, src_colour.2, 0.10);
                     cr.rectangle(
@@ -260,41 +261,7 @@ pub fn build(
                     let _ = cr.fill();
                 }
 
-                // Small glowball for this line, matches its inner-dial colour.
-                if line_hovered {
-                    let grad = cairo::RadialGradient::new(ball_cx, y, 0.0, ball_cx, y, ball_r);
-                    grad.add_color_stop_rgb(
-                        0.0,
-                        lighten(src_colour.0),
-                        lighten(src_colour.1),
-                        lighten(src_colour.2),
-                    );
-                    grad.add_color_stop_rgb(0.6, src_colour.0, src_colour.1, src_colour.2);
-                    grad.add_color_stop_rgb(
-                        1.0,
-                        darken(src_colour.0),
-                        darken(src_colour.1),
-                        darken(src_colour.2),
-                    );
-                    cr.arc(ball_cx, y, ball_r, 0.0, 2.0 * pi);
-                    cr.set_source(&grad).unwrap();
-                    let _ = cr.fill();
-                } else {
-                    let g_r = ball_r * 2.2;
-                    let grad = cairo::RadialGradient::new(ball_cx, y, 0.0, ball_cx, y, g_r);
-                    grad.add_color_stop_rgba(0.0, src_colour.0, src_colour.1, src_colour.2, 0.95);
-                    grad.add_color_stop_rgba(0.4, src_colour.0, src_colour.1, src_colour.2, 0.45);
-                    grad.add_color_stop_rgba(1.0, src_colour.0, src_colour.1, src_colour.2, 0.0);
-                    cr.arc(ball_cx, y, g_r, 0.0, 2.0 * pi);
-                    cr.set_source(&grad).unwrap();
-                    let _ = cr.fill();
-
-                    cr.arc(ball_cx, y, ball_r, 0.0, 2.0 * pi);
-                    cr.set_source_rgb(src_colour.0, src_colour.1, src_colour.2);
-                    let _ = cr.fill();
-                }
-
-                // Label text.
+                // Label text only.
                 let label_alpha = if line_hovered { 0.95 } else { 0.72 };
                 draw_centered_text(
                     cr,
@@ -326,7 +293,7 @@ pub fn build(
             let cy = h / 2.0;
             let r = cx.min(cy) * 0.82;
             let line_h = (r * 0.30).max(18.0);
-            let count = items.len();
+            let count = items.len().min(3);
             let total_h = count as f64 * line_h;
             let start_y = cy - total_h / 2.0;
 

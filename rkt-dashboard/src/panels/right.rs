@@ -494,11 +494,9 @@ pub fn build_right(
                 *weather_state.colour_override.borrow_mut() = None;
             }
 
-            // Build the four comms lines using a per-source "seen" offset so that
-            // clicking a source resets its displayed count to zero and already-
-            // viewed items are not counted again.
-            let mut items = Vec::new();
-            let mut source_pcts = Vec::new();
+            // Build three comms lines sorted by highest unchecked count first, using
+            // per-source "seen" offsets so clicking a source resets its displayed count.
+            let mut entries: Vec<(String, String, f64)> = Vec::new(); // (source, label, delta)
             let mut raw_counts: HashMap<String, i64> = HashMap::new();
             let mut seen_dirty = false;
 
@@ -515,12 +513,7 @@ pub fn build_right(
                         seen_dirty = true;
                     }
                     let delta = if raw < 0 { 0 } else { (raw - last_seen).max(0) };
-                    source_pcts.push(("email".to_string(), delta as f64 / COMMS_SCALE));
-                    items.push(crate::widgets::comms_dial::CommsItem {
-                        label: "email".to_string(),
-                        value: String::new(),
-                        source: "email".to_string(),
-                    });
+                    entries.push(("email".to_string(), "mail".to_string(), delta as f64));
                 }
 
                 if let Some(s) = out.get("social") {
@@ -536,12 +529,7 @@ pub fn build_right(
                     } else {
                         (tg_raw - tg_seen).max(0)
                     };
-                    source_pcts.push(("telegram".to_string(), tg_delta as f64 / COMMS_SCALE));
-                    items.push(crate::widgets::comms_dial::CommsItem {
-                        label: "telegram".to_string(),
-                        value: String::new(),
-                        source: "telegram".to_string(),
-                    });
+                    entries.push(("telegram".to_string(), "gram".to_string(), tg_delta as f64));
 
                     let dc_raw = s.get("discord")?.get("unread")?.as_i64().unwrap_or(-1);
                     raw_counts.insert("discord".to_string(), dc_raw);
@@ -555,12 +543,7 @@ pub fn build_right(
                     } else {
                         (dc_raw - dc_seen).max(0)
                     };
-                    source_pcts.push(("discord".to_string(), dc_delta as f64 / COMMS_SCALE));
-                    items.push(crate::widgets::comms_dial::CommsItem {
-                        label: "discord".to_string(),
-                        value: String::new(),
-                        source: "discord".to_string(),
-                    });
+                    entries.push(("discord".to_string(), "cord".to_string(), dc_delta as f64));
                 }
 
                 if let Some(r) = out.get("rss") {
@@ -580,12 +563,7 @@ pub fn build_right(
                         }
                     }
                     *comms_state.news_keys.borrow_mut() = keys;
-                    source_pcts.push(("news".to_string(), unseen as f64 / COMMS_SCALE));
-                    items.push(crate::widgets::comms_dial::CommsItem {
-                        label: "news".to_string(),
-                        value: String::new(),
-                        source: "news".to_string(),
-                    });
+                    entries.push(("news".to_string(), "news".to_string(), unseen as f64));
                     // Prune old news keys so the map does not grow forever.
                     let current_keys: std::collections::HashSet<_> =
                         comms_state.news_keys.borrow().iter().cloned().collect();
@@ -599,6 +577,21 @@ pub fn build_right(
                 if seen_dirty {
                     save_comms_seen(&seen);
                 }
+            }
+
+            // Sort highest unchecked count first, keep top three.
+            entries.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+            entries.truncate(3);
+
+            let mut items = Vec::new();
+            let mut source_pcts = Vec::new();
+            for (source, label, delta) in entries {
+                source_pcts.push((source.clone(), delta / COMMS_SCALE));
+                items.push(crate::widgets::comms_dial::CommsItem {
+                    label,
+                    value: String::new(),
+                    source,
+                });
             }
 
             *comms_state.raw_counts.borrow_mut() = raw_counts;

@@ -105,44 +105,115 @@ fn build_internal(
 
         let colour = colour_for_pct(pct, reversed);
 
-        // Track (thin ring)
-        cr.arc(
-            cx,
-            cy,
-            r,
-            start,
-            start + 270.0 * std::f64::consts::PI / 180.0,
-        );
-        cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
-        cr.set_line_width(lw);
-        cr.set_line_cap(cairo::LineCap::Round);
-        let _ = cr.stroke();
+        // Track and value indicator ring. Large dials show three concentric arcs
+        // that all move with the same value; small dials keep a single arc.
+        if large_dial {
+            let arc_count = 3;
+            let full_arc = 270.0_f64.to_radians();
+            for i in 0..arc_count {
+                let ir = r * (1.0 - i as f64 * 0.11).max(0.60);
+                let arc_lw = (lw * (0.90 - i as f64 * 0.18)).max(1.3);
+                let ball_r = if i == 0 {
+                    (lw * 2.2).max(r * 0.10)
+                } else {
+                    (lw * (1.2 - i as f64 * 0.16)).max(r * (0.06 - i as f64 * 0.005))
+                };
+                let theta = start + sweep;
+                let ball_x = cx + ir * theta.cos();
+                let ball_y = cy + ir * theta.sin();
+                let track_alpha = if i == 0 { 0.14 } else { 0.08 };
+                let arc_alpha = if i == 0 {
+                    0.70
+                } else {
+                    (0.50 - i as f64 * 0.06).max(0.25)
+                };
 
-        // Position of the coloured ball on the ring
-        let theta = start + sweep;
-        let ball_x = cx + r * theta.cos();
-        let ball_y = cy + r * theta.sin();
-        let ball_r = (lw * 2.2).max(r * 0.10);
+                cr.arc(cx, cy, ir, start, start + full_arc);
+                cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
+                cr.set_line_width(arc_lw);
+                cr.set_line_cap(cairo::LineCap::Round);
+                let _ = cr.stroke();
 
-        // Permanent soft glow at the ball position
-        let glow_r = ball_r * 1.75;
-        let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
-        grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
-        grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
-        grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
-        cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
-        cr.set_source(&grad_glow).unwrap();
-        let _ = cr.fill();
+                if pct > 0.0 {
+                    cr.arc(cx, cy, ir, start, theta);
+                    cr.set_source_rgba(colour.0, colour.1, colour.2, arc_alpha);
+                    cr.set_line_width(arc_lw);
+                    cr.set_line_cap(cairo::LineCap::Round);
+                    let _ = cr.stroke();
+                }
 
-        if hover {
-            // The solid ball appears on hover
-            let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
-            grad.add_color_stop_rgb(0.0, lighten(colour.0), lighten(colour.1), lighten(colour.2));
-            grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
-            grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
-            cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-            cr.set_source(&grad).unwrap();
+                let glow_r = ball_r * 1.75;
+                let grad_glow =
+                    cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+                grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
+                grad_glow.add_color_stop_rgba(0.35, colour.0, colour.1, colour.2, 0.40);
+                grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
+                cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+                cr.set_source(&grad_glow).unwrap();
+                let _ = cr.fill();
+
+                if hover {
+                    let grad =
+                        cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
+                    grad.add_color_stop_rgb(
+                        0.0,
+                        lighten(colour.0),
+                        lighten(colour.1),
+                        lighten(colour.2),
+                    );
+                    grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
+                    grad.add_color_stop_rgb(
+                        1.0,
+                        darken(colour.0),
+                        darken(colour.1),
+                        darken(colour.2),
+                    );
+                    cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+                    cr.set_source(&grad).unwrap();
+                    let _ = cr.fill();
+                }
+            }
+        } else {
+            cr.arc(
+                cx,
+                cy,
+                r,
+                start,
+                start + 270.0 * std::f64::consts::PI / 180.0,
+            );
+            cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
+            cr.set_line_width(lw);
+            cr.set_line_cap(cairo::LineCap::Round);
+            let _ = cr.stroke();
+
+            let theta = start + sweep;
+            let ball_x = cx + r * theta.cos();
+            let ball_y = cy + r * theta.sin();
+            let ball_r = (lw * 2.2).max(r * 0.10);
+
+            let glow_r = ball_r * 1.75;
+            let grad_glow = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+            grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
+            grad_glow.add_color_stop_rgba(0.30, colour.0, colour.1, colour.2, 0.40);
+            grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
+            cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+            cr.set_source(&grad_glow).unwrap();
             let _ = cr.fill();
+
+            if hover {
+                let grad = cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
+                grad.add_color_stop_rgb(
+                    0.0,
+                    lighten(colour.0),
+                    lighten(colour.1),
+                    lighten(colour.2),
+                );
+                grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
+                grad.add_color_stop_rgb(1.0, darken(colour.0), darken(colour.1), darken(colour.2));
+                cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+                cr.set_source(&grad).unwrap();
+                let _ = cr.fill();
+            }
         }
 
         // Center value (white, slightly smaller)
