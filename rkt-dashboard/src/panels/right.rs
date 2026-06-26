@@ -581,7 +581,7 @@ pub fn build_right(
                         let high = today.get("max_c")?.as_f64().unwrap_or(temp);
                         let low = today.get("min_c")?.as_f64().unwrap_or(temp);
                         *weather_state.detail.borrow_mut() =
-                            format!("{:.0}         {:.0}", low, high);
+                            format!("{:.0}           {:.0}", low, high);
                     }
                 } else {
                     *weather_state.detail.borrow_mut() = String::new();

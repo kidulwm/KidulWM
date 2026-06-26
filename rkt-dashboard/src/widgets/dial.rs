@@ -158,9 +158,8 @@ fn build_internal(
                     let _ = cr.fill();
 
                     if hover {
-                        let grad = cairo::RadialGradient::new(
-                            ball_x, ball_y, 0.0, ball_x, ball_y, ball_r,
-                        );
+                        let grad =
+                            cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
                         grad.add_color_stop_rgb(
                             0.0,
                             lighten(colour.0),
@@ -182,7 +181,11 @@ fn build_internal(
 
                 // Full 360° arcs layered behind the text; glowballs only on outer 3 rings.
                 let gap_trim = 0.0;
-                let track_alpha = if i == 0 { 0.14 } else { 0.08 - i as f64 * 0.005 };
+                let track_alpha = if i == 0 {
+                    0.14
+                } else {
+                    0.08 - i as f64 * 0.005
+                };
                 let max_sweep = 270.0_f64.to_radians();
                 let extra = (full_arc - max_sweep) / 2.0;
                 let arc_start = start - extra + gap_trim;

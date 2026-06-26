@@ -160,219 +160,281 @@ pub fn build(
         let colour = colour.unwrap_or_else(|| colour_for_pct(pct, false));
 
         if *multi_arc_draw.borrow() {
-            // Three-arc mode (clock / weather). Arcs stay as a 270° grey backdrop.
-            // The clock uses full 360° hands; weather/others stay clamped to the
-            // arc unless a value is negative or extreme.
+            // Six-arc mode for clock; otherwise the existing three-arc clock/weather layout.
             let full = 270.0_f64.to_radians();
             let twelve = -std::f64::consts::PI / 2.0; // 12 o'clock in Cairo coords
             let full_circle = *hands_full_circle_draw.borrow();
             let weather_layout = *weather_layout_draw.borrow();
+            let arc_count = if full_circle || weather_layout { 6 } else { 3 };
 
-            let hands = if weather_layout {
-                // Outer = current (largest), middle = low, inner = high.
+            #[derive(Clone, Copy)]
+            struct HandInfo {
+                pct: f64,
+                colour: (f64, f64, f64),
+                alpha: f64,
+                strong: bool,
+            }
+            let hands: [HandInfo; 3] = if weather_layout {
                 [
-                    (
-                        *value_draw.borrow(),
-                        SOFT_TURQUOISE,
-                        *middle_alpha_draw.borrow(),
-                        true,
-                    ),
-                    (*middle_value_draw.borrow(), SOFT_BLUE, 1.0, false),
-                    (*inner_value_draw.borrow(), SOFT_PURPLE, 1.0, false),
+                    HandInfo {
+                        pct: *value_draw.borrow(),
+                        colour: SOFT_TURQUOISE,
+                        alpha: *middle_alpha_draw.borrow(),
+                        strong: true,
+                    },
+                    HandInfo {
+                        pct: *middle_value_draw.borrow(),
+                        colour: SOFT_BLUE,
+                        alpha: 1.0,
+                        strong: false,
+                    },
+                    HandInfo {
+                        pct: *inner_value_draw.borrow(),
+                        colour: SOFT_PURPLE,
+                        alpha: 1.0,
+                        strong: false,
+                    },
                 ]
             } else if full_circle {
-                // Clock hands use company colours: blue (minute), turquoise (seconds), purple (hour).
                 [
-                    (*value_draw.borrow(), SOFT_BLUE, 1.0, true),
-                    (
-                        *middle_value_draw.borrow(),
-                        SOFT_TURQUOISE,
-                        *middle_alpha_draw.borrow(),
-                        false,
-                    ),
-                    (*inner_value_draw.borrow(), SOFT_PURPLE, 1.0, true),
+                    HandInfo {
+                        pct: *value_draw.borrow(),
+                        colour: SOFT_BLUE,
+                        alpha: 1.0,
+                        strong: true,
+                    },
+                    HandInfo {
+                        pct: *middle_value_draw.borrow(),
+                        colour: SOFT_TURQUOISE,
+                        alpha: *middle_alpha_draw.borrow(),
+                        strong: false,
+                    },
+                    HandInfo {
+                        pct: *inner_value_draw.borrow(),
+                        colour: SOFT_PURPLE,
+                        alpha: 1.0,
+                        strong: true,
+                    },
                 ]
             } else {
                 [
-                    (pct, colour, 1.0, true),
-                    (
-                        *middle_value_draw.borrow(),
+                    HandInfo {
+                        pct,
                         colour,
-                        *middle_alpha_draw.borrow(),
-                        false,
-                    ),
-                    (
-                        *inner_value_draw.borrow(),
-                        colour_for_pct((*inner_value_draw.borrow()).clamp(0.0, 1.0), false),
-                        1.0,
-                        true,
-                    ),
+                        alpha: 1.0,
+                        strong: true,
+                    },
+                    HandInfo {
+                        pct: *middle_value_draw.borrow(),
+                        colour,
+                        alpha: *middle_alpha_draw.borrow(),
+                        strong: false,
+                    },
+                    HandInfo {
+                        pct: (*inner_value_draw.borrow()).clamp(0.0, 1.0),
+                        colour: colour_for_pct((*inner_value_draw.borrow()).clamp(0.0, 1.0), false),
+                        alpha: 1.0,
+                        strong: true,
+                    },
                 ]
             };
 
             let mut text_push: f64 = 0.0;
 
-            for (i, (hand_pct, hand_colour, ball_alpha, strong_ball)) in hands.iter().enumerate() {
-                let ir = r * (1.0 - i as f64 * 0.14).max(0.60);
+            for i in 0..arc_count {
+                let hand: Option<HandInfo> = if full_circle {
+                    match i {
+                        1 => Some(hands[0]),
+                        2 => Some(hands[1]),
+                        5 => Some(hands[2]),
+                        _ => None,
+                    }
+                } else if i < 3 {
+                    Some(hands[i])
+                } else {
+                    None
+                };
+
+                let ir = r * (1.0 - i as f64 * 0.08).max(0.55);
                 let arc_lw = if i == 0 {
-                    (lw * 1.2).max(1.5)
-                } else if i == 1 {
-                    lw
+                    (lw * 1.6).max(2.0)
                 } else {
-                    (lw * 0.55).max(1.0)
+                    (lw * (1.3 - i as f64 * 0.18)).max(1.0)
                 };
-                // Large ball on the outer arc, medium on the middle, small on the inner.
-                // Clock dial makes the minute (outer) and hour (inner) hands the same
-                // large size; weather dial makes the middle/current temp largest.
-                let ball_r = if weather_layout {
-                    (lw * 2.5).max(r * 0.11)
-                } else if full_circle {
-                    (lw * 2.5).max(r * 0.11)
-                } else if i == 0 {
-                    (lw * 2.5).max(r * 0.11)
-                } else if i == 1 {
-                    (lw * 1.5).max(r * 0.07)
+                let track_alpha = if i == 0 {
+                    0.14
                 } else {
-                    (lw * 0.9).max(r * 0.045)
+                    (0.08 - i as f64 * 0.005).max(0.02)
                 };
 
-                let track_alpha = if i == 0 { 0.14 } else { 0.08 };
-
-                // Grey reference arc.
-                cr.arc(cx, cy, ir, start, start + full);
+                // Reference arc: full 360° for clock/weather, 270° for default.
+                if full_circle || weather_layout {
+                    cr.arc(cx, cy, ir, 0.0, 2.0 * std::f64::consts::PI);
+                } else {
+                    cr.arc(cx, cy, ir, start, start + full);
+                }
                 cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
                 cr.set_line_width(arc_lw);
                 cr.set_line_cap(cairo::LineCap::Round);
                 let _ = cr.stroke();
 
-                // Hand position. Clock hands sweep the full dial; temperature hands
-                // stick to the 270° arc unless they go negative or above the max.
-                let theta = if full_circle {
-                    twelve + hand_pct * 2.0 * std::f64::consts::PI
-                } else {
-                    start + hand_pct * full
-                };
-                let ball_x = cx + ir * theta.cos();
-                let ball_y = cy + ir * theta.sin();
-
-                // Push the day/date text away from any glowing ball in the lower half.
-                if *ball_alpha > 0.05 && full_circle {
-                    let dx = ball_x - cx;
-                    let dy = ball_y - cy;
-                    if dy > r * 0.10 && dx > r * -0.10 {
-                        text_push = text_push.max((dy - r * 0.10).min(r * 0.18));
-                    }
-                }
-
-                if *ball_alpha > 0.05 && !(weather_layout && i == 2) {
-                    let glow_r = ball_r * 1.75;
-                    let grad_glow =
-                        cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
-                    grad_glow.add_color_stop_rgba(
-                        0.0,
-                        hand_colour.0,
-                        hand_colour.1,
-                        hand_colour.2,
-                        0.90 * ball_alpha,
-                    );
-                    grad_glow.add_color_stop_rgba(
-                        0.35,
-                        hand_colour.0,
-                        hand_colour.1,
-                        hand_colour.2,
-                        0.40 * ball_alpha,
-                    );
-                    grad_glow.add_color_stop_rgba(
-                        1.0,
-                        hand_colour.0,
-                        hand_colour.1,
-                        hand_colour.2,
-                        0.0,
-                    );
-                    cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
-                    cr.set_source(&grad_glow).unwrap();
-                    let _ = cr.fill();
-                }
-
-                // Draw the daily high marker on the same middle arc as the low marker.
-                if weather_layout && i == 1 {
-                    let high_pct = (*inner_value_draw.borrow()).clamp(0.0, 1.0);
-                    let high_theta = if full_circle {
-                        twelve + high_pct * 2.0 * std::f64::consts::PI
+                if let Some(hi) = hand {
+                    let theta = if full_circle {
+                        twelve + hi.pct * 2.0 * std::f64::consts::PI
                     } else {
-                        start + high_pct * full
+                        start + hi.pct * full
                     };
-                    let hx = cx + ir * high_theta.cos();
-                    let hy = cy + ir * high_theta.sin();
-                    let glow_r = ball_r * 1.75;
-                    let grad_glow = cairo::RadialGradient::new(hx, hy, 0.0, hx, hy, glow_r);
-                    grad_glow.add_color_stop_rgba(
-                        0.0,
-                        SOFT_PURPLE.0,
-                        SOFT_PURPLE.1,
-                        SOFT_PURPLE.2,
-                        0.90,
-                    );
-                    grad_glow.add_color_stop_rgba(
-                        0.35,
-                        SOFT_PURPLE.0,
-                        SOFT_PURPLE.1,
-                        SOFT_PURPLE.2,
-                        0.40,
-                    );
-                    grad_glow.add_color_stop_rgba(
-                        1.0,
-                        SOFT_PURPLE.0,
-                        SOFT_PURPLE.1,
-                        SOFT_PURPLE.2,
-                        0.0,
-                    );
-                    cr.arc(hx, hy, glow_r, 0.0, 2.0 * std::f64::consts::PI);
-                    cr.set_source(&grad_glow).unwrap();
-                    let _ = cr.fill();
-                }
+                    let ball_x = cx + ir * theta.cos();
+                    let ball_y = cy + ir * theta.sin();
 
-                // Clock/weather hands are glow-only; don't draw solid coloured bodies.
-                if !full_circle && !weather_layout && (hover || *strong_ball) {
-                    let alpha = if hover { 1.0 } else { *ball_alpha };
-                    if alpha > 0.05 {
-                        let grad =
-                            cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
-                        grad.add_color_stop_rgb(
+                    if hi.alpha > 0.05 && full_circle {
+                        let dx = ball_x - cx;
+                        let dy = ball_y - cy;
+                        if dy > r * 0.10 && dx > r * -0.10 {
+                            text_push = text_push.max((dy - r * 0.10).min(r * 0.18));
+                        }
+                    }
+
+                    if hi.alpha > 0.05 && !(weather_layout && i == 2) {
+                        let ball_r = if full_circle {
+                            (lw * 2.5).max(r * 0.11)
+                        } else if weather_layout {
+                            (lw * 2.5).max(r * 0.11)
+                        } else if i == 0 {
+                            (lw * 2.5).max(r * 0.11)
+                        } else if i == 1 {
+                            (lw * 1.5).max(r * 0.07)
+                        } else {
+                            (lw * 0.9).max(r * 0.045)
+                        };
+                        let glow_r = ball_r * 1.75;
+                        let grad_glow =
+                            cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+                        grad_glow.add_color_stop_rgba(
                             0.0,
-                            lighten(hand_colour.0),
-                            lighten(hand_colour.1),
-                            lighten(hand_colour.2),
+                            hi.colour.0,
+                            hi.colour.1,
+                            hi.colour.2,
+                            0.90 * hi.alpha,
                         );
-                        grad.add_color_stop_rgb(0.6, hand_colour.0, hand_colour.1, hand_colour.2);
-                        grad.add_color_stop_rgb(
+                        grad_glow.add_color_stop_rgba(
+                            0.35,
+                            hi.colour.0,
+                            hi.colour.1,
+                            hi.colour.2,
+                            0.40 * hi.alpha,
+                        );
+                        grad_glow.add_color_stop_rgba(
                             1.0,
-                            darken(hand_colour.0),
-                            darken(hand_colour.1),
-                            darken(hand_colour.2),
+                            hi.colour.0,
+                            hi.colour.1,
+                            hi.colour.2,
+                            0.0,
                         );
-                        cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-                        cr.set_source(&grad).unwrap();
+                        cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+                        cr.set_source(&grad_glow).unwrap();
                         let _ = cr.fill();
+                    }
+
+                    // Draw the daily high marker on the same middle arc as the low marker.
+                    if weather_layout && i == 1 {
+                        let high_pct = (*inner_value_draw.borrow()).clamp(0.0, 1.0);
+                        let high_theta = if full_circle {
+                            twelve + high_pct * 2.0 * std::f64::consts::PI
+                        } else {
+                            start + high_pct * full
+                        };
+                        let hx = cx + ir * high_theta.cos();
+                        let hy = cy + ir * high_theta.sin();
+                        let ball_r = (lw * 2.5).max(r * 0.11);
+                        let glow_r = ball_r * 1.75;
+                        let grad_glow = cairo::RadialGradient::new(hx, hy, 0.0, hx, hy, glow_r);
+                        grad_glow.add_color_stop_rgba(
+                            0.0,
+                            SOFT_PURPLE.0,
+                            SOFT_PURPLE.1,
+                            SOFT_PURPLE.2,
+                            0.90,
+                        );
+                        grad_glow.add_color_stop_rgba(
+                            0.35,
+                            SOFT_PURPLE.0,
+                            SOFT_PURPLE.1,
+                            SOFT_PURPLE.2,
+                            0.40,
+                        );
+                        grad_glow.add_color_stop_rgba(
+                            1.0,
+                            SOFT_PURPLE.0,
+                            SOFT_PURPLE.1,
+                            SOFT_PURPLE.2,
+                            0.0,
+                        );
+                        cr.arc(hx, hy, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+                        cr.set_source(&grad_glow).unwrap();
+                        let _ = cr.fill();
+                    }
+
+                    // Solid hover cores only for the default multi-arc layout.
+                    if !full_circle && !weather_layout && (hover || hi.strong) {
+                        let alpha = if hover { 1.0 } else { hi.alpha };
+                        if alpha > 0.05 {
+                            let ball_r = if i == 0 {
+                                (lw * 2.5).max(r * 0.11)
+                            } else if i == 1 {
+                                (lw * 1.5).max(r * 0.07)
+                            } else {
+                                (lw * 0.9).max(r * 0.045)
+                            };
+                            let grad = cairo::RadialGradient::new(
+                                ball_x, ball_y, 0.0, ball_x, ball_y, ball_r,
+                            );
+                            grad.add_color_stop_rgb(
+                                0.0,
+                                lighten(hi.colour.0),
+                                lighten(hi.colour.1),
+                                lighten(hi.colour.2),
+                            );
+                            grad.add_color_stop_rgb(0.6, hi.colour.0, hi.colour.1, hi.colour.2);
+                            grad.add_color_stop_rgb(
+                                1.0,
+                                darken(hi.colour.0),
+                                darken(hi.colour.1),
+                                darken(hi.colour.2),
+                            );
+                            cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+                            cr.set_source(&grad).unwrap();
+                            let _ = cr.fill();
+                        }
                     }
                 }
             }
-
-            // Center text.
+            // Centre text. For the weather dial, the icon sits in the centre and the
+            // temperature text takes the bottom gap.
             let center_text = center_draw.borrow().clone();
             let detail_text = detail_draw.borrow().clone();
+            let (text_cy, detail_cy, icon_cy, icon_size) = if weather_layout {
+                (cy - r * 0.38, cy + r * 0.35, cy, (r * 1.16).max(72.0))
+            } else {
+                (
+                    cy + if detail_text.is_empty() {
+                        -r * 0.02
+                    } else {
+                        -r * 0.12
+                    },
+                    cy + r * 0.16,
+                    cy + r * 0.84,
+                    (r * 1.16).max(72.0),
+                )
+            };
+
             if !center_text.is_empty() {
                 let value_size = (r * 0.44) * 0.6;
-                let cy_offset = if detail_text.is_empty() {
-                    -r * 0.02
-                } else {
-                    -r * 0.12
-                };
                 draw_centered_text(
                     cr,
                     &center_text,
                     cx,
-                    cy + cy_offset,
+                    text_cy,
                     value_size.max(10.0),
                     cairo::FontWeight::Bold,
                     (0.94, 0.94, 0.94, 0.65),
@@ -386,19 +448,18 @@ pub fn build(
                     cr,
                     &detail_text,
                     cx,
-                    cy + r * 0.16,
+                    detail_cy,
                     detail_size.max(10.0),
                     cairo::FontWeight::Normal,
                     (0.88, 0.88, 0.88, 0.48),
                 );
             }
 
-            // Weather icon sits in the bottom arc gap; allowed to slightly overlap arcs.
+            // Weather icon sits in the bottom arc gap or in the centre after the swap.
             let icon_key = icon_draw.borrow().clone();
             if !icon_key.is_empty() {
                 let (ir, ig, ib) = *icon_colour_draw.borrow();
-                let icon_size = (r * 1.16).max(72.0);
-                draw_svg_icon(cr, &icon_key, icon_size, (ir, ig, ib), cx, cy + r * 0.84);
+                draw_svg_icon(cr, &icon_key, icon_size, (ir, ig, ib), cx, icon_cy);
             }
         } else {
             // Single-arc fallback.
