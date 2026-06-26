@@ -116,68 +116,83 @@ fn build_internal(
 
         let colour = colour_for_pct(pct, reversed);
 
-        // Track and value indicator ring. Large dials show three concentric arcs
-        // that all move with the same value; small dials keep a single arc.
+        // Track and value indicator ring. Large dials show six concentric arcs
+        // that all move with the same value; small dials keep a single/two arcs.
         if large_dial {
-            let arc_count = 3;
-            let full_arc = 270.0_f64.to_radians();
+            let arc_count = 6;
+            let full_arc = 360.0_f64.to_radians();
             for i in 0..arc_count {
-                let ir = r * (1.0 - i as f64 * 0.11).max(0.60);
+                let ir = r * (1.0 - i as f64 * 0.08).max(0.55);
                 let arc_lw = if i == 0 {
-                    (lw * 1.2).max(1.5)
-                } else if i == 1 {
-                    lw
+                    (lw * 1.6).max(2.0)
                 } else {
-                    (lw * 0.55).max(1.0)
+                    (lw * (1.3 - i as f64 * 0.18)).max(1.0)
                 };
-                let ball_r = if i == 0 {
+                let _ball_r = if i == 0 {
                     (lw * 2.5).max(r * 0.11)
-                } else if i == 1 {
+                } else if i <= 2 {
                     (lw * 1.5).max(r * 0.07)
                 } else {
                     (lw * 0.9).max(r * 0.045)
                 };
-                let theta = start + sweep;
-                let ball_x = cx + ir * theta.cos();
-                let ball_y = cy + ir * theta.sin();
-                let track_alpha = if i == 0 { 0.14 } else { 0.08 };
+                // Glowballs on the three arcs just inside the outer ring, with the
+                // inner-most of the three using a medium ball.
+                if i >= 1 && i <= 3 {
+                    let theta = start + sweep;
+                    let ball_x = cx + ir * theta.cos();
+                    let ball_y = cy + ir * theta.sin();
+                    let ball_r = if i == 3 {
+                        (lw * 1.4).max(r * 0.07)
+                    } else {
+                        (lw * 2.5).max(r * 0.11)
+                    };
 
-                cr.arc(cx, cy, ir, start, start + full_arc);
+                    let glow_r = ball_r * 1.75;
+                    let grad_glow =
+                        cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
+                    grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
+                    grad_glow.add_color_stop_rgba(0.35, colour.0, colour.1, colour.2, 0.40);
+                    grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
+                    cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+                    cr.set_source(&grad_glow).unwrap();
+                    let _ = cr.fill();
+
+                    if hover {
+                        let grad = cairo::RadialGradient::new(
+                            ball_x, ball_y, 0.0, ball_x, ball_y, ball_r,
+                        );
+                        grad.add_color_stop_rgb(
+                            0.0,
+                            lighten(colour.0),
+                            lighten(colour.1),
+                            lighten(colour.2),
+                        );
+                        grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
+                        grad.add_color_stop_rgb(
+                            1.0,
+                            darken(colour.0),
+                            darken(colour.1),
+                            darken(colour.2),
+                        );
+                        cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
+                        cr.set_source(&grad).unwrap();
+                        let _ = cr.fill();
+                    }
+                }
+
+                // Full 360° arcs layered behind the text; glowballs only on outer 3 rings.
+                let gap_trim = 0.0;
+                let track_alpha = if i == 0 { 0.14 } else { 0.08 - i as f64 * 0.005 };
+                let max_sweep = 270.0_f64.to_radians();
+                let extra = (full_arc - max_sweep) / 2.0;
+                let arc_start = start - extra + gap_trim;
+                let arc_end = start + max_sweep + extra - gap_trim;
+
+                cr.arc(cx, cy, ir, arc_start, arc_end);
                 cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
                 cr.set_line_width(arc_lw);
                 cr.set_line_cap(cairo::LineCap::Round);
                 let _ = cr.stroke();
-
-                let glow_r = ball_r * 1.75;
-                let grad_glow =
-                    cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
-                grad_glow.add_color_stop_rgba(0.0, colour.0, colour.1, colour.2, 0.90);
-                grad_glow.add_color_stop_rgba(0.35, colour.0, colour.1, colour.2, 0.40);
-                grad_glow.add_color_stop_rgba(1.0, colour.0, colour.1, colour.2, 0.0);
-                cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
-                cr.set_source(&grad_glow).unwrap();
-                let _ = cr.fill();
-
-                if hover {
-                    let grad =
-                        cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, ball_r);
-                    grad.add_color_stop_rgb(
-                        0.0,
-                        lighten(colour.0),
-                        lighten(colour.1),
-                        lighten(colour.2),
-                    );
-                    grad.add_color_stop_rgb(0.6, colour.0, colour.1, colour.2);
-                    grad.add_color_stop_rgb(
-                        1.0,
-                        darken(colour.0),
-                        darken(colour.1),
-                        darken(colour.2),
-                    );
-                    cr.arc(ball_x, ball_y, ball_r, 0.0, 2.0 * std::f64::consts::PI);
-                    cr.set_source(&grad).unwrap();
-                    let _ = cr.fill();
-                }
             }
         } else {
             // Small dial: two concentric arcs. Outer is thicker, inner is the old size.
@@ -268,18 +283,24 @@ fn build_internal(
         );
 
         // Label text. When label_below is enabled, it is drawn in a real Label widget
-        // beneath the dial, not inside the arc square.
+        // beneath the dial, not inside the arc square. For large dials place the label
+        // just under the value in the centre of the dial.
         if !label_below_draw {
             let label_size = if large_dial {
-                (r * 0.22).max(12.0)
+                (r * 0.24).max(12.0)
             } else {
                 (r * 0.52).max(20.0)
+            };
+            let label_y = if large_dial {
+                cy + r * 0.24
+            } else {
+                cy + r * 0.72
             };
             draw_centered_text(
                 cr,
                 &label_text.to_lowercase(),
                 cx,
-                cy + r * 0.72,
+                label_y,
                 label_size,
                 cairo::FontWeight::Bold,
                 (0.94, 0.94, 0.94, 0.55),
