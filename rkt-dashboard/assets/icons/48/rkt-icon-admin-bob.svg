@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" aria-labelledby="admin-bobTitle" role="img">
+  <title id="admin-bobTitle">admin-bob</title>
+  <path d="M 3.54,11.16 A 5.46,1.72 0 0 1 14.46,11.16 V 11.94 A 5.46,1.72 0 0 1 3.54,11.94 Z" fill="#F8FAFC"/>
+  <path d="M 5.49,11.16 L 6.66,8.04 H 11.34 L 12.51,11.16 Z" fill="#F8FAFC"/>
+  <rect x="5.65" y="10.77" width="6.71" height="0.86" rx="0.16" fill="#7C3AED"/>
+  <circle cx="9.00" cy="14.28" r="3.28" fill="#F1F5F9"/>
+  <circle cx="7.67" cy="14.51" r="0.98" fill="#0F172A"/>
+  <circle cx="10.33" cy="14.51" r="0.98" fill="#0F172A"/>
+  <line x1="8.65" y1="14.51" x2="9.35" y2="14.51" stroke="#0F172A" stroke-width="0.39" stroke-linecap="round"/>
+  <path d="M 7.83,15.68 Q 9.00,16.46 10.17,15.68" fill="none" stroke="#0F172A" stroke-width="0.43" stroke-linecap="round"/>
+  <path d="M17.5,8 C15.5,8 15.5,11 17.5,11 V20 H19.5 V11 C21.5,11 21.5,8 19.5,8 Z" fill="#F97316"/>
+</svg>

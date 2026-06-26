@@ -462,6 +462,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "librsvg-rebind"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e29b54b27b49901092b20ef1177d42a068beec0ce5f3344a664118d586d2443"
+dependencies = [
+ "bitflags",
+ "cairo-rs",
+ "gio",
+ "glib",
+ "libc",
+ "librsvg-rebind-sys",
+]
+
+[[package]]
+name = "librsvg-rebind-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ab4a782ee37dfa57e9f03a169cc7ea652d20164e9e023f3df355d5d8b4e6c34"
+dependencies = [
+ "cairo-sys-rs",
+ "gdk-pixbuf-sys",
+ "gio-sys",
+ "glib-sys",
+ "gobject-sys",
+ "libc",
+ "system-deps",
+]
+
+[[package]]
 name = "log"
 version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -553,6 +582,7 @@ dependencies = [
  "gio",
  "gtk4",
  "gtk4-layer-shell",
+ "librsvg-rebind",
  "serde",
  "serde_json",
 ]

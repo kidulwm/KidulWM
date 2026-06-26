@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-labelledby="weather-sunnyTitle" role="img">
+  <title id="weather-sunnyTitle">weather-sunny</title>
+  <circle cx="12" cy="12" r="4" fill="#F97316" fill-opacity="0.3" stroke="white" stroke-width="0.8"/>
+  <line x1="17.00" y1="12.00" x2="18.20" y2="12.00" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="15.54" y1="15.54" x2="16.38" y2="16.38" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="12.00" y1="17.00" x2="12.00" y2="18.20" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="8.46" y1="15.54" x2="7.62" y2="16.38" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="7.00" y1="12.00" x2="5.80" y2="12.00" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="8.46" y1="8.46" x2="7.62" y2="7.62" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="12.00" y1="7.00" x2="12.00" y2="5.80" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+  <line x1="15.54" y1="8.46" x2="16.38" y2="7.62" stroke="white" stroke-width="0.9" stroke-linecap="round"/>
+</svg>

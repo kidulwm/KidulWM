@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-labelledby="weather-rainTitle" role="img">
+  <title id="weather-rainTitle">weather-rain</title>
+  <path d="M 8.975,12 A 3.0250000000000004,3.0 0 0 1 12,9.0 h 4.40 A 3.575,3.0 0 0 1 15.575,12 A 1.6500000000000001,1.6500000000000001 0 0 1 13.924999999999999,13.65 h -8.00 A 1.6500000000000001,1.6500000000000001 0 0 1 8.975,12 z" fill="#2563EB" fill-opacity="0.3"/>
+  <line x1="9" y1="16.5" x2="7.5" y2="20.5"/>
+  <line x1="12" y1="16.5" x2="10.5" y2="20.5"/>
+  <line x1="15" y1="16.5" x2="13.5" y2="20.5"/>
+<style>path,circle,line,polyline,rect{stroke:none}</style></svg>

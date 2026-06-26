@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" aria-labelledby="bobTitle" role="img">
+  <title id="bobTitle">bob</title>
+  <path d="M 5.00,10.50 A 7.00,2.20 0 0 1 19.00,10.50 V 11.50 A 7.00,2.20 0 0 1 5.00,11.50 Z" fill="#F8FAFC"/>
+  <path d="M 7.50,10.50 L 9.00,6.50 H 15.00 L 16.50,10.50 Z" fill="#F8FAFC"/>
+  <rect x="7.70" y="10.00" width="8.60" height="1.10" rx="0.20" fill="#7C3AED"/>
+  <circle cx="12.00" cy="14.50" r="4.20" fill="#F1F5F9"/>
+  <circle cx="10.30" cy="14.80" r="1.25" fill="#0F172A"/>
+  <circle cx="13.70" cy="14.80" r="1.25" fill="#0F172A"/>
+  <line x1="11.55" y1="14.80" x2="12.45" y2="14.80" stroke="#0F172A" stroke-width="0.50" stroke-linecap="round"/>
+  <path d="M 10.50,16.30 Q 12.00,17.30 13.50,16.30" fill="none" stroke="#0F172A" stroke-width="0.55" stroke-linecap="round"/>
+</svg>

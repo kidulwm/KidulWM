@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" aria-labelledby="menuTitle" role="img">
+  <title id="menuTitle">menu</title>
+  <line x1="4" y1="7" x2="20" y2="7" stroke="#F1F5F9" stroke-width="2" stroke-linecap="round"/>
+  <line x1="4" y1="12" x2="20" y2="12" stroke="#F1F5F9" stroke-width="2" stroke-linecap="round"/>
+  <line x1="4" y1="17" x2="20" y2="17" stroke="#F1F5F9" stroke-width="2" stroke-linecap="round"/>
+</svg>

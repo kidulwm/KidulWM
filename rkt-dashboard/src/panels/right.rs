@@ -87,6 +87,31 @@ pub fn right_dial_size(panel_width: i32) -> i32 {
     (panel_width - 60).max(96).min(220)
 }
 
+fn weather_icon_and_colour(condition: &str) -> (String, (f64, f64, f64)) {
+    let c = condition.to_lowercase();
+    // Soft company palette.
+    let blue = (0.42, 0.58, 0.88);
+    let turquoise = (0.38, 0.78, 0.76);
+    let purple = (0.55, 0.38, 0.75);
+
+    if c.contains("thunder") || c.contains("storm") {
+        ("rkt-icon-weather-thunderstorm".to_string(), purple)
+    } else if c.contains("snow") || c.contains("sleet") || c.contains("hail") {
+        ("rkt-icon-weather-snow".to_string(), turquoise)
+    } else if c.contains("rain") || c.contains("drizzle") || c.contains("shower") {
+        ("rkt-icon-weather-rain".to_string(), blue)
+    } else if c.contains("cloud") || c.contains("overcast") {
+        ("rkt-icon-weather-cloudy".to_string(), blue)
+    } else if c.contains("partly") || c.contains("mostly") {
+        ("rkt-icon-weather-partly-cloudy".to_string(), turquoise)
+    } else if c.contains("fog") || c.contains("mist") || c.contains("haze") {
+        ("rkt-icon-weather-fog".to_string(), purple)
+    } else {
+        // Clear/sunny/default.
+        ("rkt-icon-weather-sunny".to_string(), turquoise)
+    }
+}
+
 fn v_spacer() -> Label {
     let s = Label::new(None);
     s.set_vexpand(true);
@@ -526,27 +551,40 @@ pub fn build_right(
 
             if let Some(w) = out.get("weather") {
                 let temp = w.get("current_temp_c")?.as_f64()?;
-                let max = 50.0;
+                let max = 36.0;
                 let pct = temp / max;
                 *weather_state.middle_value.borrow_mut() = pct;
                 *weather_state.center.borrow_mut() = format!("{:.0}°", temp);
-                *weather_state.sub.borrow_mut() =
-                    w.get("condition")?.as_str().unwrap_or("").to_string();
+                *weather_state.sub.borrow_mut() = String::new();
+
+                let (icon, icon_colour) =
+                    weather_icon_and_colour(w.get("condition")?.as_str().unwrap_or(""));
+                *weather_state.icon.borrow_mut() = icon;
+                *weather_state.icon_colour.borrow_mut() = icon_colour;
                 *weather_state.colour_override.borrow_mut() = None;
+                // Fixed calibrated positions for low/high arc markers so the dial stays
+                // readable even on days with almost no temperature range.
+                // Low sits between the left horizontal and the arc's left end; high sits
+                // between the right horizontal and the arc's right end.
+                // start = 135°, full = 270°. Left target = 168.75°, right target = 371.25°.
+                let low_pct =
+                    (168.75_f64.to_radians() - 135.0_f64.to_radians()) / (270.0_f64.to_radians());
+                let high_pct =
+                    (371.25_f64.to_radians() - 135.0_f64.to_radians()) / (270.0_f64.to_radians());
 
-                // Defaults until forecast data arrives; outer/inner then become low/high.
                 *weather_state.value.borrow_mut() = pct;
-                *weather_state.inner_value.borrow_mut() = pct;
+                *weather_state.middle_value.borrow_mut() = low_pct.clamp(0.0, 1.0);
+                *weather_state.inner_value.borrow_mut() = high_pct.clamp(0.0, 1.0);
 
-                // Outer arc = daily low, middle arc = current temp, inner arc = daily high.
-                // Middle/current gets the largest glowball; low/high are medium.
                 if let Some(forecast) = w.get("forecast")?.as_array() {
                     if let Some(today) = forecast.first() {
                         let high = today.get("max_c")?.as_f64().unwrap_or(temp);
                         let low = today.get("min_c")?.as_f64().unwrap_or(temp);
-                        *weather_state.value.borrow_mut() = low / 50.0;
-                        *weather_state.inner_value.borrow_mut() = high / 50.0;
+                        *weather_state.detail.borrow_mut() =
+                            format!("{:.0}         {:.0}", low, high);
                     }
+                } else {
+                    *weather_state.detail.borrow_mut() = String::new();
                 }
             }
 

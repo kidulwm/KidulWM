@@ -1,10 +1,17 @@
 use gtk4::prelude::*;
 use gtk4::{Box as GtkBox, DrawingArea, EventControllerMotion, GestureClick, Label, Orientation};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
 use crate::widgets::dial::{colour_for_pct, draw_centered_text};
+use librsvg_rebind::prelude::*;
+
+// Soft company-colour palette for clock/weather glowballs and icons.
+const SOFT_BLUE: (f64, f64, f64) = (0.42, 0.58, 0.88);
+const SOFT_TURQUOISE: (f64, f64, f64) = (0.38, 0.78, 0.76);
+const SOFT_PURPLE: (f64, f64, f64) = (0.55, 0.38, 0.75);
 
 #[derive(Clone)]
 pub struct InfoDialState {
@@ -18,6 +25,9 @@ pub struct InfoDialState {
     pub center: Rc<RefCell<String>>,
     pub sub: Rc<RefCell<String>>,
     pub date: Rc<RefCell<String>>,
+    pub icon: Rc<RefCell<String>>,
+    pub detail: Rc<RefCell<String>>, // extra small line under center (e.g. weather low/high)
+    pub icon_colour: Rc<RefCell<(f64, f64, f64)>>,
     pub colour_override: Rc<RefCell<Option<(f64, f64, f64)>>>,
 }
 
@@ -34,6 +44,9 @@ impl InfoDialState {
             center: Rc::new(RefCell::new(String::new())),
             sub: Rc::new(RefCell::new(String::new())),
             date: Rc::new(RefCell::new(String::new())),
+            icon: Rc::new(RefCell::new(String::new())),
+            detail: Rc::new(RefCell::new(String::new())),
+            icon_colour: Rc::new(RefCell::new((0.94, 0.94, 0.94))),
             colour_override: Rc::new(RefCell::new(None)),
         }
     }
@@ -122,6 +135,9 @@ pub fn build(
     let hands_full_circle_draw = state.hands_full_circle.clone();
     let weather_layout_draw = state.weather_layout.clone();
     let center_draw = state.center.clone();
+    let icon_draw = state.icon.clone();
+    let detail_draw = state.detail.clone();
+    let icon_colour_draw = state.icon_colour.clone();
     let colour_override_draw = state.colour_override.clone();
     let hovered_draw = hovered.clone();
 
@@ -152,17 +168,29 @@ pub fn build(
             let full_circle = *hands_full_circle_draw.borrow();
             let weather_layout = *weather_layout_draw.borrow();
 
-            let hands = if full_circle {
-                // Clock hands use company colours: purple (hour), blue (minute), turquoise (seconds).
+            let hands = if weather_layout {
+                // Outer = current (largest), middle = low, inner = high.
                 [
-                    (pct, (0.42, 0.58, 0.88), 1.0, true), // outer = minutes = blue
+                    (
+                        *value_draw.borrow(),
+                        SOFT_TURQUOISE,
+                        *middle_alpha_draw.borrow(),
+                        true,
+                    ),
+                    (*middle_value_draw.borrow(), SOFT_BLUE, 1.0, false),
+                    (*inner_value_draw.borrow(), SOFT_PURPLE, 1.0, false),
+                ]
+            } else if full_circle {
+                // Clock hands use company colours: blue (minute), turquoise (seconds), purple (hour).
+                [
+                    (*value_draw.borrow(), SOFT_BLUE, 1.0, true),
                     (
                         *middle_value_draw.borrow(),
-                        (0.38, 0.78, 0.76),
+                        SOFT_TURQUOISE,
                         *middle_alpha_draw.borrow(),
                         false,
-                    ), // middle = seconds = turquoise, mostly transparent
-                    (*inner_value_draw.borrow(), (0.55, 0.38, 0.75), 1.0, true), // inner = hours = purple
+                    ),
+                    (*inner_value_draw.borrow(), SOFT_PURPLE, 1.0, true),
                 ]
             } else {
                 [
@@ -196,7 +224,9 @@ pub fn build(
                 // Large ball on the outer arc, medium on the middle, small on the inner.
                 // Clock dial makes the minute (outer) and hour (inner) hands the same
                 // large size; weather dial makes the middle/current temp largest.
-                let ball_r = if weather_layout || full_circle {
+                let ball_r = if weather_layout {
+                    (lw * 2.5).max(r * 0.11)
+                } else if full_circle {
                     (lw * 2.5).max(r * 0.11)
                 } else if i == 0 {
                     (lw * 2.5).max(r * 0.11)
@@ -234,7 +264,7 @@ pub fn build(
                     }
                 }
 
-                if *ball_alpha > 0.05 {
+                if *ball_alpha > 0.05 && !(weather_layout && i == 2) {
                     let glow_r = ball_r * 1.75;
                     let grad_glow =
                         cairo::RadialGradient::new(ball_x, ball_y, 0.0, ball_x, ball_y, glow_r);
@@ -260,6 +290,44 @@ pub fn build(
                         0.0,
                     );
                     cr.arc(ball_x, ball_y, glow_r, 0.0, 2.0 * std::f64::consts::PI);
+                    cr.set_source(&grad_glow).unwrap();
+                    let _ = cr.fill();
+                }
+
+                // Draw the daily high marker on the same middle arc as the low marker.
+                if weather_layout && i == 1 {
+                    let high_pct = (*inner_value_draw.borrow()).clamp(0.0, 1.0);
+                    let high_theta = if full_circle {
+                        twelve + high_pct * 2.0 * std::f64::consts::PI
+                    } else {
+                        start + high_pct * full
+                    };
+                    let hx = cx + ir * high_theta.cos();
+                    let hy = cy + ir * high_theta.sin();
+                    let glow_r = ball_r * 1.75;
+                    let grad_glow = cairo::RadialGradient::new(hx, hy, 0.0, hx, hy, glow_r);
+                    grad_glow.add_color_stop_rgba(
+                        0.0,
+                        SOFT_PURPLE.0,
+                        SOFT_PURPLE.1,
+                        SOFT_PURPLE.2,
+                        0.90,
+                    );
+                    grad_glow.add_color_stop_rgba(
+                        0.35,
+                        SOFT_PURPLE.0,
+                        SOFT_PURPLE.1,
+                        SOFT_PURPLE.2,
+                        0.40,
+                    );
+                    grad_glow.add_color_stop_rgba(
+                        1.0,
+                        SOFT_PURPLE.0,
+                        SOFT_PURPLE.1,
+                        SOFT_PURPLE.2,
+                        0.0,
+                    );
+                    cr.arc(hx, hy, glow_r, 0.0, 2.0 * std::f64::consts::PI);
                     cr.set_source(&grad_glow).unwrap();
                     let _ = cr.fill();
                 }
@@ -292,17 +360,45 @@ pub fn build(
 
             // Center text.
             let center_text = center_draw.borrow().clone();
+            let detail_text = detail_draw.borrow().clone();
             if !center_text.is_empty() {
                 let value_size = (r * 0.44) * 0.6;
+                let cy_offset = if detail_text.is_empty() {
+                    -r * 0.02
+                } else {
+                    -r * 0.12
+                };
                 draw_centered_text(
                     cr,
                     &center_text,
                     cx,
-                    cy - r * 0.02,
+                    cy + cy_offset,
                     value_size.max(10.0),
                     cairo::FontWeight::Bold,
                     (0.94, 0.94, 0.94, 0.65),
                 );
+            }
+
+            if !detail_text.is_empty() {
+                let value_size = (r * 0.44) * 0.6;
+                let detail_size = value_size * 0.68;
+                draw_centered_text(
+                    cr,
+                    &detail_text,
+                    cx,
+                    cy + r * 0.16,
+                    detail_size.max(10.0),
+                    cairo::FontWeight::Normal,
+                    (0.88, 0.88, 0.88, 0.48),
+                );
+            }
+
+            // Weather icon sits in the bottom arc gap; allowed to slightly overlap arcs.
+            let icon_key = icon_draw.borrow().clone();
+            if !icon_key.is_empty() {
+                let (ir, ig, ib) = *icon_colour_draw.borrow();
+                let icon_size = (r * 1.16).max(72.0);
+                draw_svg_icon(cr, &icon_key, icon_size, (ir, ig, ib), cx, cy + r * 0.84);
             }
         } else {
             // Single-arc fallback.
@@ -407,6 +503,116 @@ fn lighten(c: f64) -> f64 {
 
 fn darken(c: f64) -> f64 {
     (c - 0.25).max(0.0)
+}
+
+thread_local! {
+    static SVG_CACHE: RefCell<HashMap<String, Rc<cairo::ImageSurface>>> =
+        RefCell::new(HashMap::new());
+}
+
+fn icon_path_for(key: &str) -> Option<std::path::PathBuf> {
+    let file = format!("{}.svg", key);
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    // 1) cwd/assets/icons (useful when running from the project root).
+    candidates.push(std::path::PathBuf::from("assets/icons").join(&file));
+
+    // 2) Walk up from the binary location.
+    if let Ok(exe) = std::env::current_exe() {
+        for dir in exe.ancestors() {
+            candidates.push(dir.join("assets/icons").join(&file));
+        }
+    }
+
+    // 3) System install location.
+    candidates.push(std::path::PathBuf::from("/usr/share/rkt-dashboard/assets/icons").join(&file));
+
+    candidates.into_iter().find(|p| p.exists())
+}
+
+fn render_svg_to_surface(path: &str, size: i32) -> Option<Rc<cairo::ImageSurface>> {
+    let handle = librsvg_rebind::Handle::from_file(path).ok()?;
+    let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, size, size).ok()?;
+    let ctx = cairo::Context::new(&surface).ok()?;
+    ctx.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+    ctx.set_operator(cairo::Operator::Source);
+    let _ = ctx.paint();
+    ctx.set_operator(cairo::Operator::Over);
+    let viewport = librsvg_rebind::Rectangle::new(0.0, 0.0, size as f64, size as f64);
+    handle.render_document(&ctx, &viewport).ok()?;
+    Some(Rc::new(surface))
+}
+
+fn get_or_render_surface(path: &str, size: i32) -> Option<Rc<cairo::ImageSurface>> {
+    let cache_key = format!("{}@{}", path, size);
+    SVG_CACHE.with(|cache| {
+        let cache_ref = cache.borrow();
+        if let Some(surface) = cache_ref.get(&cache_key) {
+            return Some(surface.clone());
+        }
+        drop(cache_ref);
+        let surface = render_svg_to_surface(path, size)?;
+        cache.borrow_mut().insert(cache_key, surface.clone());
+        Some(surface)
+    })
+}
+
+fn draw_svg_icon(
+    cr: &cairo::Context,
+    key: &str,
+    size: f64,
+    colour: (f64, f64, f64),
+    cx: f64,
+    cy: f64,
+) {
+    let size = size.round() as i32;
+    if size <= 0 {
+        return;
+    }
+    let Some(path) = icon_path_for(key) else {
+        return;
+    };
+    let path_str = path.to_string_lossy().to_string();
+
+    let (_w, _h, x, y) = if let Some(surface) = get_or_render_surface(&path_str, size) {
+        let w = surface.width() as f64;
+        let h = surface.height() as f64;
+        (w, h, cx - w / 2.0, cy - h / 2.0)
+    } else {
+        return;
+    };
+
+    // Weather icons are split: translucent company-colour fill, grey outline.
+    if key.starts_with("rkt-icon-weather-")
+        && !key.ends_with("-fill.svg")
+        && !key.ends_with("-stroke.svg")
+    {
+        let fill_key = format!("{}-fill", key);
+        let stroke_key = format!("{}-stroke", key);
+        if let Some(fill_path) = icon_path_for(&fill_key) {
+            if let Some(fill_surface) = get_or_render_surface(&fill_path.to_string_lossy(), size) {
+                cr.set_source_rgb(colour.0, colour.1, colour.2);
+                let _ = cr.mask_surface(&*fill_surface, x, y);
+            }
+        }
+        if let Some(stroke_path) = icon_path_for(&stroke_key) {
+            if let Some(stroke_surface) =
+                get_or_render_surface(&stroke_path.to_string_lossy(), size)
+            {
+                // Arc-track grey: white at ~18% alpha.
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.18);
+                let _ = cr.mask_surface(&*stroke_surface, x, y);
+            }
+        }
+        return;
+    }
+
+    // Fallback / non-weather: draw the whole icon in one colour.
+    let Some(surface) = get_or_render_surface(&path_str, size) else {
+        return;
+    };
+    cr.set_source_rgb(colour.0, colour.1, colour.2);
+    let _ = cr.mask_surface(&*surface, x, y);
 }
 
 pub fn make_clickable_label(
