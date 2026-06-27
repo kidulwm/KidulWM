@@ -189,36 +189,43 @@ pub fn build_right(
     let comms_state = crate::widgets::comms_dial::CommsDialState::new();
     let comms_dial = crate::widgets::comms_dial::build(&comms_state, dial_size, dial_height, {
         let click_state = comms_state.clone();
-        Box::new(move |source: &str| {
-            // Mark this source as seen before launching the viewer so the
-            // dashboard count resets to zero on every screen.
+        Box::new(move || {
+            // Mark every source as seen before opening the full report.
             {
                 let seen_arc = comms_seen();
                 let mut seen = seen_arc.lock().unwrap();
-                match source {
-                    "news" => {
-                        let keys = click_state.news_keys.borrow();
-                        for k in keys.iter() {
-                            seen.news.insert(k.clone(), true);
-                        }
+                let raw = click_state.raw_counts.borrow();
+                for (source, count) in raw.iter() {
+                    if *count >= 0 {
+                        seen.counts.insert(source.clone(), *count);
                     }
-                    _ => {
-                        if let Some(raw) = click_state.raw_counts.borrow().get(source) {
-                            if *raw >= 0 {
-                                seen.counts.insert(source.to_string(), *raw);
-                            }
-                        }
-                    }
+                }
+                for k in click_state.news_keys.borrow().iter() {
+                    seen.news.insert(k.clone(), true);
                 }
                 save_comms_seen(&seen);
             }
 
+            // Dump the current panel snapshot to a temp file for the report script.
+            let snapshot = click_state.snapshot.borrow();
+            let snapshot_path = std::env::temp_dir()
+                .join(format!("rkt-mediabob-snapshot-{}.json", std::process::id()));
+            let _ = std::fs::write(
+                &snapshot_path,
+                serde_json::to_string(&*snapshot).unwrap_or_default(),
+            );
+
             let _ = std::process::Command::new("alacritty")
                 .args([
+                    "-o",
+                    "scrolling.history=100000",
                     "-e",
                     "fish",
                     "-c",
-                    &format!("rkt-mediabob {}; read -P 'Press Enter to close'", source),
+                    &format!(
+                        "rkt-mediabob --snapshot {}; read -P 'Press Enter to close'",
+                        snapshot_path.display()
+                    ),
                 ])
                 .spawn();
         })
@@ -688,9 +695,23 @@ pub fn build_right(
                 });
             }
 
+            // Keep a full snapshot so the report can show real messages, not just counts.
+            let snapshot = if let Some(obj) = out.as_object() {
+                let mut snap = HashMap::new();
+                for key in ["email", "social", "rss"] {
+                    if let Some(v) = obj.get(key) {
+                        snap.insert(key.to_string(), v.clone());
+                    }
+                }
+                snap
+            } else {
+                HashMap::new()
+            };
+
             *comms_state.raw_counts.borrow_mut() = raw_counts;
             *comms_state.source_pcts.borrow_mut() = source_pcts;
             *comms_state.items.borrow_mut() = items;
+            *comms_state.snapshot.borrow_mut() = snapshot;
             let value = comms_state
                 .source_pcts
                 .borrow()

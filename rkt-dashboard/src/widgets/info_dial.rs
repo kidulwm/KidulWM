@@ -618,7 +618,7 @@ fn get_or_render_surface(path: &str, size: i32) -> Option<Rc<cairo::ImageSurface
     })
 }
 
-fn draw_svg_icon(
+pub fn draw_svg_icon(
     cr: &cairo::Context,
     key: &str,
     size: f64,
@@ -660,7 +660,6 @@ fn draw_svg_icon(
             if let Some(stroke_surface) =
                 get_or_render_surface(&stroke_path.to_string_lossy(), size)
             {
-                // Arc-track grey: white at ~18% alpha.
                 cr.set_source_rgba(1.0, 1.0, 1.0, 0.18);
                 let _ = cr.mask_surface(&*stroke_surface, x, y);
             }
