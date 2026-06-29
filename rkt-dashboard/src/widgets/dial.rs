@@ -128,24 +128,12 @@ fn build_internal(
                 } else {
                     (lw * (1.3 - i as f64 * 0.18)).max(1.0)
                 };
-                let _ball_r = if i == 0 {
-                    (lw * 2.5).max(r * 0.11)
-                } else if i <= 2 {
-                    (lw * 1.5).max(r * 0.07)
-                } else {
-                    (lw * 0.9).max(r * 0.045)
-                };
-                // Glowballs on the three arcs just inside the outer ring, with the
-                // inner-most of the three using a medium ball.
-                if i >= 1 && i <= 3 {
+                // Single glowball on the arc just inside the outer ring (i == 1).
+                if i == 1 {
                     let theta = start + sweep;
                     let ball_x = cx + ir * theta.cos();
                     let ball_y = cy + ir * theta.sin();
-                    let ball_r = if i == 3 {
-                        (lw * 1.4).max(r * 0.07)
-                    } else {
-                        (lw * 2.5).max(r * 0.11)
-                    };
+                    let ball_r = (lw * 2.5).max(r * 0.11);
 
                     let glow_r = ball_r * 1.75;
                     let grad_glow =
@@ -179,10 +167,11 @@ fn build_internal(
                     }
                 }
 
-                // Full 360° arcs layered behind the text; glowballs only on outer 3 rings.
+                // Full 360° arcs layered behind the text.
                 let gap_trim = 0.0;
                 let track_alpha = if i == 0 {
-                    0.14
+                    // Outer arc: mostly opaque (17% transparency).
+                    0.83
                 } else {
                     0.08 - i as f64 * 0.005
                 };
