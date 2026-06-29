@@ -144,7 +144,7 @@ fn build_internal(
                     let ball_x = cx + ir * theta.cos();
                     let ball_y = cy + ir * theta.sin();
                     let ball_r = if mini {
-                        (lw * 1.5).max(r * 0.08)
+                        (lw * 2.0).max(r * 0.11)
                     } else {
                         (lw * 2.5).max(r * 0.11)
                     };
@@ -302,7 +302,7 @@ fn build_internal(
         if !label_below_draw {
             let label_size = if large_dial || mini {
                 if hide_value {
-                    (r * 0.35).max(12.0)
+                    (r * 0.45).max(14.0)
                 } else {
                     (r * 0.24).max(12.0)
                 }
