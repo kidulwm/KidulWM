@@ -167,11 +167,12 @@ fn build_internal(
                     }
                 }
 
-                // Full 360° arcs layered behind the text.
+                // Sandy-grey track colour for all arcs.
+                let track_colour = (0.72, 0.62, 0.48);
                 let gap_trim = 0.0;
                 let track_alpha = if i == 0 {
-                    // Outer arc: mostly opaque (17% transparency).
-                    0.83
+                    // Outer arc: 17% opacity (83% transparent).
+                    0.17
                 } else {
                     0.08 - i as f64 * 0.005
                 };
@@ -181,7 +182,7 @@ fn build_internal(
                 let arc_end = start + max_sweep + extra - gap_trim;
 
                 cr.arc(cx, cy, ir, arc_start, arc_end);
-                cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
+                cr.set_source_rgba(track_colour.0, track_colour.1, track_colour.2, track_alpha);
                 cr.set_line_width(arc_lw);
                 cr.set_line_cap(cairo::LineCap::Round);
                 let _ = cr.stroke();
