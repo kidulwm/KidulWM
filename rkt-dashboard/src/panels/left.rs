@@ -340,6 +340,8 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
                     source: Some(def.id.to_string()),
                     max: Some(def.max),
                     suffix: Some(def.suffix.to_string()),
+                    hide_value: false,
+                    dial_style: None,
                     extra: Default::default(),
                 };
                 let dial = widgets::dial::build(&cfg, val, large_size, large_size, false);
@@ -614,11 +616,35 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
     small_bx.add_css_class("rkt-dial-stack");
 
     let sys = [
-        ("BAT", "battery", 100.0, "", false, None::<&str>),
-        ("BRT", "brightness", 100.0, "", false, Some("brightness")),
-        ("VOL", "volume", 100.0, "", false, Some("volume")),
+        (
+            "BAT",
+            "battery",
+            100.0,
+            "",
+            None::<&str>,
+            true,
+            Some("mini"),
+        ),
+        (
+            "BRI",
+            "brightness",
+            100.0,
+            "",
+            Some("brightness"),
+            true,
+            Some("mini"),
+        ),
+        (
+            "VOL",
+            "volume",
+            100.0,
+            "",
+            Some("volume"),
+            true,
+            Some("mini"),
+        ),
     ];
-    for (label, source, max, suffix, label_inside, target) in sys.iter() {
+    for (label, source, max, suffix, target, hide_value, dial_style) in sys.iter() {
         if let Some(val) = value_for(source, values) {
             let cfg = WidgetCfg {
                 id: format!("{}-dial", source),
@@ -627,22 +653,17 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
                 source: Some(source.to_string()),
                 max: Some(*max),
                 suffix: Some(suffix.to_string()),
+                hide_value: *hide_value,
+                dial_style: dial_style.map(|s| s.to_string()),
                 extra: Default::default(),
             };
-            let label_below = !label_inside;
             if let Some(t) = target {
-                let (dial, _v, _m, _t) = widgets::dial::build_interactive(
-                    &cfg,
-                    val,
-                    small_size,
-                    small_size,
-                    t,
-                    label_below,
-                );
+                let (dial, _v, _m, _t) =
+                    widgets::dial::build_interactive(&cfg, val, small_size, small_size, t, false);
                 dial.set_halign(gtk4::Align::Center);
                 small_bx.append(&dial);
             } else {
-                let dial = widgets::dial::build(&cfg, val, small_size, small_size, label_below);
+                let dial = widgets::dial::build(&cfg, val, small_size, small_size, false);
                 dial.set_halign(gtk4::Align::Center);
                 small_bx.append(&dial);
             }

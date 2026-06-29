@@ -64,6 +64,8 @@ fn build_internal(
 
     let max = widget.max.unwrap_or(100.0).max(1.0);
     let label_text = widget.label.clone().unwrap_or_default();
+    let is_mini = widget.dial_style.as_deref() == Some("mini");
+    let hide_value_draw = widget.hide_value;
     let reversed = label_text.eq_ignore_ascii_case("BAT");
     let suffix = widget.suffix.clone().unwrap_or_else(|| {
         if max == 100.0 {
@@ -115,10 +117,13 @@ fn build_internal(
         let hover = *hovered_draw.borrow();
 
         let colour = colour_for_pct(pct, reversed);
+        let mini = is_mini;
+        let hide_value = hide_value_draw;
 
-        // Track and value indicator ring. Large dials show six concentric arcs
-        // that all move with the same value; small dials keep a single/two arcs.
-        if large_dial {
+        let track_colour = (0.95, 0.78, 0.42);
+
+        // Track and value indicator ring. Large dials and mini dials show six concentric arcs.
+        if large_dial || mini {
             let arc_count = 6;
             let full_arc = 360.0_f64.to_radians();
             for i in 0..arc_count {
@@ -128,12 +133,21 @@ fn build_internal(
                 } else {
                     (lw * (1.3 - i as f64 * 0.18)).max(1.0)
                 };
+
                 // Single glowball on the arc just inside the outer ring (i == 1).
                 if i == 1 {
-                    let theta = start + sweep;
+                    let theta = if mini {
+                        start + pct * full_arc
+                    } else {
+                        start + sweep
+                    };
                     let ball_x = cx + ir * theta.cos();
                     let ball_y = cy + ir * theta.sin();
-                    let ball_r = (lw * 2.5).max(r * 0.11);
+                    let ball_r = if mini {
+                        (lw * 1.5).max(r * 0.08)
+                    } else {
+                        (lw * 2.5).max(r * 0.11)
+                    };
 
                     let glow_r = ball_r * 1.75;
                     let grad_glow =
@@ -167,8 +181,6 @@ fn build_internal(
                     }
                 }
 
-                // Soft gold track colour for all arcs.
-                let track_colour = (0.95, 0.78, 0.42);
                 let gap_trim = 0.0;
                 let track_alpha = if i == 0 {
                     // Outer arc: much more transparent.
@@ -176,10 +188,17 @@ fn build_internal(
                 } else {
                     0.10 - i as f64 * 0.005
                 };
-                let max_sweep = 270.0_f64.to_radians();
-                let extra = (full_arc - max_sweep) / 2.0;
-                let arc_start = start - extra + gap_trim;
-                let arc_end = start + max_sweep + extra - gap_trim;
+
+                let (arc_start, arc_end) = if mini {
+                    (0.0, full_arc)
+                } else {
+                    let max_sweep = 270.0_f64.to_radians();
+                    let extra = (full_arc - max_sweep) / 2.0;
+                    (
+                        start - extra + gap_trim,
+                        start + max_sweep + extra - gap_trim,
+                    )
+                };
 
                 cr.arc(cx, cy, ir, arc_start, arc_end);
                 cr.set_source_rgba(track_colour.0, track_colour.1, track_colour.2, track_alpha);
@@ -250,7 +269,7 @@ fn build_internal(
             }
         }
 
-        // Center value (white, slightly smaller)
+        // Center value text, unless the dial is configured to hide it.
         let value_text = if suffix == "%" {
             format!("{:.0}%", pct * 100.0)
         } else if suffix.is_empty() {
@@ -258,34 +277,44 @@ fn build_internal(
         } else {
             format!("{:.0}{}", val, suffix)
         };
-        let value_size = if label_below_draw {
-            (r * 0.58).max(14.0).min(17.0)
-        } else if large_dial {
-            (r * 0.44) * 0.6
-        } else {
-            r * 0.44
-        };
-        draw_centered_text(
-            cr,
-            &value_text,
-            cx,
-            cy - r * 0.02,
-            value_size.max(10.0),
-            cairo::FontWeight::Bold,
-            (0.94, 0.94, 0.94, 0.65),
-        );
+        if !hide_value {
+            let value_size = if label_below_draw {
+                (r * 0.58).max(14.0).min(17.0)
+            } else if large_dial || mini {
+                (r * 0.44) * 0.6
+            } else {
+                r * 0.44
+            };
+            draw_centered_text(
+                cr,
+                &value_text,
+                cx,
+                cy - r * 0.02,
+                value_size.max(10.0),
+                cairo::FontWeight::Bold,
+                (0.94, 0.94, 0.94, 0.65),
+            );
+        }
 
         // Label text. When label_below is enabled, it is drawn in a real Label widget
-        // beneath the dial, not inside the arc square. For large dials place the label
-        // just under the value in the centre of the dial.
+        // beneath the dial, not inside the arc square. For large/mini dials place the
+        // label in the centre; for other small dials keep it low inside the dial.
         if !label_below_draw {
-            let label_size = if large_dial {
-                (r * 0.24).max(12.0)
+            let label_size = if large_dial || mini {
+                if hide_value {
+                    (r * 0.35).max(12.0)
+                } else {
+                    (r * 0.24).max(12.0)
+                }
             } else {
                 (r * 0.52).max(20.0)
             };
-            let label_y = if large_dial {
-                cy + r * 0.24
+            let label_y = if large_dial || mini {
+                if hide_value {
+                    cy + r * 0.02
+                } else {
+                    cy + r * 0.24
+                }
             } else {
                 cy + r * 0.72
             };
@@ -296,7 +325,7 @@ fn build_internal(
                 label_y,
                 label_size,
                 cairo::FontWeight::Bold,
-                (0.94, 0.94, 0.94, 0.55),
+                (0.94, 0.94, 0.94, 0.70),
             );
         }
     });

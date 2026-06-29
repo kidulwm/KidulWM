@@ -30,6 +30,10 @@ pub struct WidgetCfg {
     pub max: Option<f64>,
     #[serde(default)]
     pub suffix: Option<String>,
+    #[serde(default)]
+    pub hide_value: bool,
+    #[serde(default)]
+    pub dial_style: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
