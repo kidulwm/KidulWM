@@ -168,7 +168,7 @@ fn build_internal(
                 }
 
                 // Copper track colour for all arcs.
-                let track_colour = (0.78, 0.44, 0.24);
+                let track_colour = (0.92, 0.56, 0.30);
                 let gap_trim = 0.0;
                 let track_alpha = if i == 0 {
                     // Outer arc: much more transparent.
