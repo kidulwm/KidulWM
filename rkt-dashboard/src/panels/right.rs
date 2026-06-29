@@ -1,5 +1,6 @@
+use gtk4::gdk_pixbuf::Pixbuf;
 use gtk4::prelude::*;
-use gtk4::{Box as GtkBox, Entry, Label, Orientation};
+use gtk4::{Box as GtkBox, DrawingArea, Entry, GestureClick, Label, Orientation};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -182,55 +183,15 @@ pub fn build_right(
     );
     top_box.append(&clock_dial);
 
+    // ── Bob logo under the clock/date ──
+    let comms_state = crate::widgets::comms_dial::CommsDialState::new();
+    let logo_widget = build_bob_logo_widget(dial_size, &comms_state);
+    top_box.append(&logo_widget);
+
     bx.append(&top_box);
 
-    // ── Comms dial (screen centre): email/telegram/discord/news in one ring ──
-    bx.append(&v_spacer());
-    let comms_state = crate::widgets::comms_dial::CommsDialState::new();
-    let comms_dial = crate::widgets::comms_dial::build(&comms_state, dial_size, dial_height, {
-        let click_state = comms_state.clone();
-        Box::new(move || {
-            // Mark every source as seen before opening the full report.
-            {
-                let seen_arc = comms_seen();
-                let mut seen = seen_arc.lock().unwrap();
-                let raw = click_state.raw_counts.borrow();
-                for (source, count) in raw.iter() {
-                    if *count >= 0 {
-                        seen.counts.insert(source.clone(), *count);
-                    }
-                }
-                for k in click_state.news_keys.borrow().iter() {
-                    seen.news.insert(k.clone(), true);
-                }
-                save_comms_seen(&seen);
-            }
-
-            // Dump the current panel snapshot to a temp file for the report script.
-            let snapshot = click_state.snapshot.borrow();
-            let snapshot_path = std::env::temp_dir()
-                .join(format!("rkt-mediabob-snapshot-{}.json", std::process::id()));
-            let _ = std::fs::write(
-                &snapshot_path,
-                serde_json::to_string(&*snapshot).unwrap_or_default(),
-            );
-
-            let _ = std::process::Command::new("alacritty")
-                .args([
-                    "-o",
-                    "scrolling.history=100000",
-                    "-e",
-                    "fish",
-                    "-c",
-                    &format!(
-                        "rkt-mediabob --snapshot {}; read -P 'Press Enter to close'",
-                        snapshot_path.display()
-                    ),
-                ])
-                .spawn();
-        })
-    });
-    bx.append(&comms_dial);
+    // ── Comms dial replaced by Bob logo above; module kept for easy revert ──
+    // bx.append(&v_spacer());
 
     // ── USB + security between comms and weather dials ──
     bx.append(&v_spacer());
@@ -791,4 +752,123 @@ fn write_usb_state(status: &str, sysname: Option<&str>) {
         "at": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64(),
     });
     let _ = std::fs::write(&path, payload.to_string());
+}
+
+/// Render the Bob PNG logo to a Cairo ARGB32 surface so transparency is respected.
+fn load_png_to_surface(path: std::path::PathBuf, size: i32) -> Option<cairo::ImageSurface> {
+    let pixbuf = Pixbuf::from_file_at_scale(&path, size, size, true).ok()?;
+    let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, size, size).ok()?;
+    let cr = cairo::Context::new(&surface).ok()?;
+    cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+    cr.set_operator(cairo::Operator::Source);
+    let _ = cr.paint();
+    cr.set_operator(cairo::Operator::Over);
+    cr.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+    let _ = cr.paint();
+    Some(surface)
+}
+
+/// A clickable logo widget. Clicking opens the mediabob report.
+fn build_bob_logo_widget(
+    dial_size: i32,
+    state: &crate::widgets::comms_dial::CommsDialState,
+) -> DrawingArea {
+    let da = DrawingArea::builder()
+        .width_request(dial_size)
+        .height_request(dial_size)
+        .halign(gtk4::Align::Center)
+        .valign(gtk4::Align::Center)
+        .can_focus(false)
+        .can_target(true)
+        .build();
+
+    let logo_path = {
+        let file = std::path::PathBuf::from("assets/bob-logo.png");
+        if file.exists() {
+            file
+        } else if let Ok(exe) = std::env::current_exe() {
+            exe.ancestors()
+                .find_map(|d| {
+                    let p = d.join("assets/bob-logo.png");
+                    p.exists().then_some(p)
+                })
+                .unwrap_or(file)
+        } else {
+            file
+        }
+    };
+
+    let surface: Rc<RefCell<Option<cairo::ImageSurface>>> = Rc::new(RefCell::new(None));
+    {
+        let s = surface.clone();
+        let p = logo_path.clone();
+        da.set_draw_func(move |_, cr, w, h| {
+            let avail = w.min(h) as i32;
+            if avail <= 0 {
+                return;
+            }
+            // Render the logo at 60% of the dial slot and keep it centered.
+            let size = (avail as f64 * 0.60).round() as i32;
+            let mut inner = s.borrow_mut();
+            if inner.as_ref().map(|x| x.width() != size).unwrap_or(true) {
+                *inner = load_png_to_surface(p.clone(), size);
+            }
+            if let Some(ref img) = *inner {
+                let iw = img.width() as f64;
+                let ih = img.height() as f64;
+                let x = (w as f64 - iw) / 2.0;
+                let y = (h as f64 - ih) / 2.0;
+                cr.set_source_surface(img, x, y).unwrap();
+                cr.set_operator(cairo::Operator::Over);
+                let _ = cr.paint();
+            }
+        });
+    }
+
+    let gesture = GestureClick::new();
+    let click_state = state.clone();
+    gesture.connect_pressed(move |_g, _n, _x, _y| {
+        // Mark every source as seen before opening the full report.
+        {
+            let seen_arc = comms_seen();
+            let mut seen = seen_arc.lock().unwrap();
+            let raw = click_state.raw_counts.borrow();
+            for (source, count) in raw.iter() {
+                if *count >= 0 {
+                    seen.counts.insert(source.clone(), *count);
+                }
+            }
+            for k in click_state.news_keys.borrow().iter() {
+                seen.news.insert(k.clone(), true);
+            }
+            save_comms_seen(&seen);
+        }
+
+        // Dump the current panel snapshot to a temp file for the report script.
+        let snapshot = click_state.snapshot.borrow();
+        let snapshot_path =
+            std::env::temp_dir().join(format!("rkt-mediabob-snapshot-{}.json", std::process::id()));
+        let _ = std::fs::write(
+            &snapshot_path,
+            serde_json::to_string(&*snapshot).unwrap_or_default(),
+        );
+
+        let _ = std::process::Command::new("alacritty")
+            .args([
+                "-o",
+                "scrolling.history=100000",
+                "-e",
+                "fish",
+                "-c",
+                &format!(
+                    "rkt-mediabob --snapshot {}; read -P 'Press Enter to close'",
+                    snapshot_path.display()
+                ),
+            ])
+            .spawn();
+    });
+    da.add_controller(gesture);
+    da.set_cursor_from_name(Some("pointer"));
+
+    da
 }
