@@ -614,11 +614,11 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
     small_bx.add_css_class("rkt-dial-stack");
 
     let sys = [
-        ("BAT", "battery", 100.0, "%", None::<&str>),
-        ("BRT", "brightness", 100.0, "%", Some("brightness")),
-        ("VOL", "volume", 100.0, "%", Some("volume")),
+        ("BAT", "battery", 100.0, "", false, None::<&str>),
+        ("BRT", "brightness", 100.0, "", false, Some("brightness")),
+        ("VOL", "volume", 100.0, "", false, Some("volume")),
     ];
-    for (label, source, max, suffix, target) in sys.iter() {
+    for (label, source, max, suffix, label_inside, target) in sys.iter() {
         if let Some(val) = value_for(source, values) {
             let cfg = WidgetCfg {
                 id: format!("{}-dial", source),
@@ -629,13 +629,20 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
                 suffix: Some(suffix.to_string()),
                 extra: Default::default(),
             };
+            let label_below = !label_inside;
             if let Some(t) = target {
-                let (dial, _v, _m, _t) =
-                    widgets::dial::build_interactive(&cfg, val, small_size, small_size, t, true);
+                let (dial, _v, _m, _t) = widgets::dial::build_interactive(
+                    &cfg,
+                    val,
+                    small_size,
+                    small_size,
+                    t,
+                    label_below,
+                );
                 dial.set_halign(gtk4::Align::Center);
                 small_bx.append(&dial);
             } else {
-                let dial = widgets::dial::build(&cfg, val, small_size, small_size, true);
+                let dial = widgets::dial::build(&cfg, val, small_size, small_size, label_below);
                 dial.set_halign(gtk4::Align::Center);
                 small_bx.append(&dial);
             }
