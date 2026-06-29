@@ -228,7 +228,7 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
         rkt_width,
         top_logo_h,
         control_trigger,
-        Some("/home/dad/Pictures/Trident-Logo-rgba.png"),
+        Some("/home/dad/dev/KidulWM/rkt-dashboard/assets/control-center-logo.png"),
         Some(("CONTROL", "CENTER")),
     );
     catchy_logo.set_halign(gtk4::Align::Center);
