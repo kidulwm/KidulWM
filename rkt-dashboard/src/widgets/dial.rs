@@ -167,14 +167,14 @@ fn build_internal(
                     }
                 }
 
-                // Sandy-grey track colour for all arcs.
-                let track_colour = (0.72, 0.62, 0.48);
+                // Copper track colour for all arcs.
+                let track_colour = (0.78, 0.44, 0.24);
                 let gap_trim = 0.0;
                 let track_alpha = if i == 0 {
-                    // Outer arc: 17% opacity (83% transparent).
-                    0.17
+                    // Outer arc: much more transparent.
+                    0.08
                 } else {
-                    0.08 - i as f64 * 0.005
+                    0.10 - i as f64 * 0.005
                 };
                 let max_sweep = 270.0_f64.to_radians();
                 let extra = (full_arc - max_sweep) / 2.0;
