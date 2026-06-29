@@ -12,6 +12,7 @@ use librsvg_rebind::prelude::*;
 const SOFT_BLUE: (f64, f64, f64) = (0.42, 0.58, 0.88);
 const SOFT_TURQUOISE: (f64, f64, f64) = (0.38, 0.78, 0.76);
 const SOFT_PURPLE: (f64, f64, f64) = (0.55, 0.38, 0.75);
+const TRACK_GOLD: (f64, f64, f64) = (0.95, 0.78, 0.42);
 
 #[derive(Clone)]
 pub struct InfoDialState {
@@ -262,9 +263,10 @@ pub fn build(
                     (lw * (1.3 - i as f64 * 0.18)).max(1.0)
                 };
                 let track_alpha = if i == 0 {
-                    0.14
+                    // Outer arc: much more transparent.
+                    0.08
                 } else {
-                    (0.08 - i as f64 * 0.005).max(0.02)
+                    (0.10 - i as f64 * 0.005).max(0.02)
                 };
 
                 // Reference arc: full 360° for clock/weather, 270° for default.
@@ -273,7 +275,7 @@ pub fn build(
                 } else {
                     cr.arc(cx, cy, ir, start, start + full);
                 }
-                cr.set_source_rgba(1.0, 1.0, 1.0, track_alpha);
+                cr.set_source_rgba(TRACK_GOLD.0, TRACK_GOLD.1, TRACK_GOLD.2, track_alpha);
                 cr.set_line_width(arc_lw);
                 cr.set_line_cap(cairo::LineCap::Round);
                 let _ = cr.stroke();
@@ -470,7 +472,7 @@ pub fn build(
                 start,
                 start + 270.0 * std::f64::consts::PI / 180.0,
             );
-            cr.set_source_rgba(1.0, 1.0, 1.0, 0.14);
+            cr.set_source_rgba(TRACK_GOLD.0, TRACK_GOLD.1, TRACK_GOLD.2, 0.14);
             cr.set_line_width(lw);
             cr.set_line_cap(cairo::LineCap::Round);
             let _ = cr.stroke();
