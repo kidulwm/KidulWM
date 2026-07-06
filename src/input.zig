@@ -15,6 +15,7 @@ pub const InputManager = struct {
             .new_input = undefined,
         };
         manager.new_input = wl.Listener(*wlr.InputDevice).init(handleNewInput);
+        manager.new_input.link.init();
         server.backend.events.new_input.add(&manager.new_input);
         return manager;
     }

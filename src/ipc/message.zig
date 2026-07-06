@@ -44,10 +44,21 @@ pub const Request = union(RequestTag) {
     quit: void,
 };
 
+pub const LayoutResponse = struct {
+    orientation: []const u8,
+    gap: u32,
+    left_peek: f32,
+    focus: f32,
+    right_peek: f32,
+    focused_window: u32,
+    window_count: usize,
+};
+
 pub const Response = struct {
     ok: bool,
     message: ?[]const u8 = null,
     data: ?[]const u8 = null,
+    layout: ?LayoutResponse = null,
 
     pub fn toJson(self: Response, allocator: std.mem.Allocator) ![]const u8 {
         return std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(self, .{})});

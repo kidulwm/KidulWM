@@ -32,6 +32,11 @@ pub const Window = struct {
             .commit = wl.Listener(*wlr.Surface).init(handleCommit),
         };
 
+        window.map.link.init();
+        window.unmap.link.init();
+        window.destroy.link.init();
+        window.commit.link.init();
+
         toplevel.base.surface.events.map.add(&window.map);
         toplevel.base.surface.events.unmap.add(&window.unmap);
         toplevel.base.events.destroy.add(&window.destroy);

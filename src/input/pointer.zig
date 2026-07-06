@@ -14,7 +14,7 @@ pub const PointerManager = struct {
     frame: wl.Listener(*wlr.Pointer),
 
     pub fn init(server: *Server) PointerManager {
-        return .{
+        var self = PointerManager{
             .server = server,
             .motion = wl.Listener(*wlr.Pointer.event.Motion).init(handleMotion),
             .motion_absolute = wl.Listener(*wlr.Pointer.event.MotionAbsolute).init(handleMotionAbsolute),
@@ -22,6 +22,12 @@ pub const PointerManager = struct {
             .axis = wl.Listener(*wlr.Pointer.event.Axis).init(handleAxis),
             .frame = wl.Listener(*wlr.Pointer).init(handleFrame),
         };
+        self.motion.link.init();
+        self.motion_absolute.link.init();
+        self.button.link.init();
+        self.axis.link.init();
+        self.frame.link.init();
+        return self;
     }
 
     pub fn listen(self: *PointerManager, pointer: *wlr.Pointer) void {

@@ -25,10 +25,11 @@ pkill -f '^./zig-out/bin/kidulwm' 2>/dev/null || true
 pkill -f "^$BIN" 2>/dev/null || true
 sleep 0.2
 
-# 3. Launch KidulWM nested
+# 3. Launch KidulWM nested (headless by default so it runs inside an existing session;
+#    set WLR_BACKENDS=wayland to test the real Wayland backend path later).
 say "Launching KidulWM nested (socket=$WAYLAND_SOCKET, log=$LOGFILE)"
-rm -f "$IPC_SOCK"
-WLR_BACKENDS=wayland KIDULWM_WAYLAND_DISPLAY="$WAYLAND_SOCKET" \
+rm -f "$IPC_SOCK" "${RUNTIME:?}/$WAYLAND_SOCKET"
+WLR_BACKENDS="${WLR_BACKENDS:-headless}" KIDULWM_WAYLAND_DISPLAY="$WAYLAND_SOCKET" \
     "$BIN" >"$LOGFILE" 2>&1 &
 PID=$!
 

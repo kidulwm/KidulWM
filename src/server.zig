@@ -51,7 +51,8 @@ pub const Server = struct {
     fn handleRequest(self: *Server, req: ipc.message.Request) ipc.message.Response {
         switch (req) {
             .quit => self.requestQuit(),
-            else => {},
+            .get_layout => return self.getLayoutResponse(),
+            else => return self.state.handleRequest(req),
         }
         return self.state.handleRequest(req);
     }
@@ -118,7 +119,10 @@ pub const Server = struct {
         }
     };
 
-    pub fn init(allocator: std.mem.Allocator) !Server {
+    pub fn init(allocator: std.mem.Allocator) !*Server {
+        const server = try allocator.create(Server);
+        errdefer allocator.destroy(server);
+
         const wl_server = try wl.Server.create();
         errdefer wl_server.destroy();
 
@@ -147,7 +151,7 @@ pub const Server = struct {
         const seat = try wlr.Seat.create(wl_server, "seat0");
         seat.setCapabilities(.{ .pointer = true, .keyboard = true });
 
-        var self = Server{
+        server.* = Server{
             .allocator = allocator,
             .socket_path = &.{},
             .wl_server = wl_server,
@@ -162,8 +166,8 @@ pub const Server = struct {
             .output_manager = output_manager,
             .seat = seat,
             .input_manager = undefined,
-            .pointer = PointerManager.init(@constCast(&@as(Server, undefined))),
-            .keyboard = KeyboardManager.init(@constCast(&@as(Server, undefined))),
+            .pointer = undefined,
+            .keyboard = undefined,
             .cursor_x = 0,
             .cursor_y = 0,
             .input_device_counts = .{},
@@ -179,24 +183,29 @@ pub const Server = struct {
             .new_xdg_toplevel = undefined,
             .output_layout_change = undefined,
         };
-        self.pointer = PointerManager.init(&self);
-        self.keyboard = KeyboardManager.init(&self);
-        self.windows.init();
-        self.input_manager = InputManager.init(&self);
 
-        self.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
-        backend.events.new_output.add(&self.new_output);
+        server.pointer = PointerManager.init(server);
+        server.keyboard = KeyboardManager.init(server);
+        server.windows.init();
+        server.input_manager = InputManager.init(server);
 
-        self.backend_destroy = wl.Listener(*wlr.Backend).init(handleBackendDestroy);
-        backend.events.destroy.add(&self.backend_destroy);
+        server.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
+        server.new_output.link.init();
+        backend.events.new_output.add(&server.new_output);
 
-        self.new_xdg_toplevel = wl.Listener(*wlr.XdgToplevel).init(handleNewXdgToplevel);
-        xdg_shell.events.new_toplevel.add(&self.new_xdg_toplevel);
+        server.backend_destroy = wl.Listener(*wlr.Backend).init(handleBackendDestroy);
+        server.backend_destroy.link.init();
+        backend.events.destroy.add(&server.backend_destroy);
 
-        self.output_layout_change = wl.Listener(*wlr.OutputLayout).init(handleOutputLayoutChange);
-        output_layout.events.change.add(&self.output_layout_change);
+        server.new_xdg_toplevel = wl.Listener(*wlr.XdgToplevel).init(handleNewXdgToplevel);
+        server.new_xdg_toplevel.link.init();
+        xdg_shell.events.new_toplevel.add(&server.new_xdg_toplevel);
 
-        return self;
+        server.output_layout_change = wl.Listener(*wlr.OutputLayout).init(handleOutputLayoutChange);
+        server.output_layout_change.link.init();
+        output_layout.events.change.add(&server.output_layout_change);
+
+        return server;
     }
 
     pub fn createIpcSocket(self: *Server, path: []const u8) !void {
@@ -227,14 +236,16 @@ pub const Server = struct {
         std.log.info("KidulWM: Wayland socket {s}", .{name});
 
         const event_loop = self.wl_server.getEventLoop();
-        _ = try event_loop.addTimer(*@This(), handleLayoutTimer, self);
+        const layout_source = try event_loop.addTimer(*@This(), handleLayoutTimer, self);
+        try layout_source.timerUpdate(8);
 
         if (!no_backend) {
             try self.backend.start();
             std.log.info("KidulWM: backend started", .{});
         } else {
             std.log.info("KidulWM: skipping backend start", .{});
-            _ = try event_loop.addTimer(*@This(), handleShutdownTimer, self);
+            const shutdown_source = try event_loop.addTimer(*@This(), handleShutdownTimer, self);
+            try shutdown_source.timerUpdate(8000);
         }
 
         self.wl_server.run();
@@ -251,6 +262,8 @@ pub const Server = struct {
         self.output_layout.destroy();
         self.backend.destroy();
         self.wl_server.destroy();
+        const allocator = self.allocator;
+        allocator.destroy(self);
     }
 
     pub fn requestLayout(self: *Server) void {
@@ -262,6 +275,22 @@ pub const Server = struct {
             .pointer = self.input_device_counts.pointer > 0,
             .keyboard = self.input_device_counts.keyboard > 0,
         });
+    }
+
+    fn getLayoutResponse(self: *Server) ipc.message.Response {
+        const window_count = self.windows.length();
+        return .{
+            .ok = true,
+            .layout = ipc.message.LayoutResponse{
+                .orientation = if (self.state.orientation == .horizontal) "horizontal" else "vertical",
+                .gap = self.state.gap,
+                .left_peek = self.state.left_peek,
+                .focus = self.state.focus,
+                .right_peek = self.state.right_peek,
+                .focused_window = self.state.focused_window,
+                .window_count = window_count,
+            },
+        };
     }
 
     pub fn focusWindow(self: *Server, window: *Window) void {
@@ -396,8 +425,12 @@ pub const Server = struct {
 
     fn requestQuit(self: *Server) void {
         const event_loop = self.wl_server.getEventLoop();
-        _ = event_loop.addTimer(*@This(), handleShutdownTimer, self) catch |err| {
+        const source = event_loop.addTimer(*@This(), handleShutdownTimer, self) catch |err| {
             std.log.err("failed to schedule quit timer: {}", .{err});
+            return;
+        };
+        source.timerUpdate(1) catch |err| {
+            std.log.err("failed to arm quit timer: {}", .{err});
         };
     }
 };

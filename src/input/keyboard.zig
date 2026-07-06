@@ -10,11 +10,14 @@ pub const KeyboardManager = struct {
     modifiers: wl.Listener(*wlr.Keyboard),
 
     pub fn init(server: *Server) KeyboardManager {
-        return .{
+        var self = KeyboardManager{
             .server = server,
             .key = wl.Listener(*wlr.Keyboard.event.Key).init(handleKey),
             .modifiers = wl.Listener(*wlr.Keyboard).init(handleModifiers),
         };
+        self.key.link.init();
+        self.modifiers.link.init();
+        return self;
     }
 
     pub fn listen(self: *KeyboardManager, keyboard: *wlr.Keyboard) void {
