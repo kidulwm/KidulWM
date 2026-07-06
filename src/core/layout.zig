@@ -156,6 +156,26 @@ pub const LayoutModel = struct {
         return base_target.inset(output.gap);
     }
 
+    pub const SplitKind = enum { peek_left, focus, peek_right };
+
+    pub fn setHorizontalSplit(output: *Output, focus_col: SplitKind) void {
+        output.split = .{ .left_peek = 0.08, .focus = 0.84, .right_peek = 0.08 };
+        output.focused_column = switch (focus_col) {
+            .peek_left => 0,
+            .focus => 1,
+            .peek_right => 2,
+        };
+        recalcOutput(output);
+    }
+
+    pub fn setVerticalSplit(output: *Output, rows: usize) void {
+        // Placeholder: stacks columns top-to-bottom as equal-height bands.
+        _ = rows;
+        output.split = .{ .left_peek = 0.0, .focus = 1.0, .right_peek = 0.0 };
+        output.focused_column = 1;
+        recalcOutput(output);
+    }
+
     pub fn recalcOutput(output: *Output) void {
         const w = @as(f32, @floatFromInt(output.width));
         const num_cols = output.columns.items.len;

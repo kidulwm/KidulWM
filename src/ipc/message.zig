@@ -7,6 +7,10 @@ pub const RequestTag = enum {
     set_focus,
     set_gap,
     set_split,
+    split_left,
+    split_right,
+    split_top,
+    split_bottom,
     set_theme,
     subscribe,
 };
@@ -25,6 +29,10 @@ pub const Request = union(RequestTag) {
         focus: f32,
         right_peek: f32,
     },
+    split_left: void,
+    split_right: void,
+    split_top: void,
+    split_bottom: void,
     set_theme: struct {
         key: []const u8,
         value: []const u8,

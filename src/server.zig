@@ -10,6 +10,8 @@ pub const Server = struct {
     socket_path: []const u8,
     wl_server: *wl.Server,
     backend: *wlr.Backend,
+    renderer: *wlr.Renderer,
+    renderer_allocator: *wlr.Allocator,
     compositor: *wlr.Compositor,
     scene: *wlr.Scene,
     output_layout: *wlr.OutputLayout,
@@ -48,6 +50,28 @@ pub const Server = struct {
                     state.focus = p.focus;
                     state.right_peek = p.right_peek;
                 },
+                .split_left => {
+                    state.left_peek = 0.08;
+                    state.focus = 0.84;
+                    state.right_peek = 0.08;
+                    state.focused_window = 0;
+                },
+                .split_right => {
+                    state.left_peek = 0.08;
+                    state.focus = 0.84;
+                    state.right_peek = 0.08;
+                    state.focused_window = 2;
+                },
+                .split_top => {
+                    state.left_peek = 0.0;
+                    state.focus = 1.0;
+                    state.right_peek = 0.0;
+                },
+                .split_bottom => {
+                    state.left_peek = 0.0;
+                    state.focus = 1.0;
+                    state.right_peek = 0.0;
+                },
                 .set_focus => |p| state.focused_window = p.window_id,
                 .set_theme => |p| {
                     std.log.info("theme update: {s} = {s}", .{ p.key, p.value });
@@ -74,8 +98,13 @@ pub const Server = struct {
         const output_layout = try wlr.OutputLayout.create(wl_server);
         errdefer output_layout.destroy();
 
+        const renderer = try wlr.Renderer.autocreate(backend);
+        try renderer.initServer(wl_server);
+
+        const renderer_allocator = try wlr.Allocator.autocreate(backend, renderer);
+
         const output_manager = try wlr.OutputManagerV1.create(wl_server);
-        const compositor = try wlr.Compositor.create(wl_server, 6, null);
+        const compositor = try wlr.Compositor.create(wl_server, 6, renderer);
         const scene = try wlr.Scene.create();
         const scene_output_layout = try scene.attachOutputLayout(output_layout);
         const xdg_shell = try wlr.XdgShell.create(wl_server, 6);
@@ -85,6 +114,8 @@ pub const Server = struct {
             .socket_path = &.{},
             .wl_server = wl_server,
             .backend = backend,
+            .renderer = renderer,
+            .renderer_allocator = renderer_allocator,
             .compositor = compositor,
             .scene = scene,
             .output_layout = output_layout,
@@ -136,6 +167,10 @@ pub const Server = struct {
     }
 
     pub fn start(self: *Server, no_backend: bool) !void {
+        var socket_name: [11]u8 = undefined;
+        const name = try self.wl_server.addSocketAuto(&socket_name);
+        std.log.info("KidulWM: Wayland socket {s}", .{name});
+
         if (!no_backend) {
             try self.backend.start();
             std.log.info("KidulWM: backend started", .{});
@@ -147,10 +182,6 @@ pub const Server = struct {
                 self,
             );
         }
-
-        var socket_name: [11]u8 = undefined;
-        const name = try self.wl_server.addSocketAuto(&socket_name);
-        std.log.info("KidulWM: Wayland socket {s}", .{name});
 
         self.wl_server.run();
     }
