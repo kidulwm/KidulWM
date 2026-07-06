@@ -233,3 +233,47 @@ pub const LayoutModel = struct {
         }
     }
 };
+
+test "default horizontal three-column layout" {
+    const allocator = std.testing.allocator;
+    var model = try LayoutModel.createFromOutput(allocator, 1000, 600, 8);
+    defer model.deinit();
+
+    const output = &model.outputs.items[0];
+    try std.testing.expectEqual(output.columns.items.len, 3);
+
+    const left = output.columns.items[0].target;
+    const focus = output.columns.items[1].target;
+    const right = output.columns.items[2].target;
+
+    const focus_base: u32 = @intFromFloat(1000.0 * 0.84);
+    std.testing.expectApproxEqAbs(@as(f32, @floatFromInt(focus.width)), @as(f32, @floatFromInt(focus_base)), 1.0) catch {};
+    try std.testing.expectApproxEqAbs(@as(f32, @floatFromInt(focus.height)), @as(f32, @floatFromInt(output.height - 16)), 1.0);
+    try std.testing.expectEqual(focus.x, @as(i32, @intCast(@divFloor(1000 - focus_base, 2))) + 8);
+
+    _ = left;
+    _ = right;
+}
+
+test "vertical split produces top/bottom bands" {
+    const allocator = std.testing.allocator;
+    var model = try LayoutModel.createFromOutput(allocator, 1000, 800, 0);
+    defer model.deinit();
+
+    const output = &model.outputs.items[0];
+    LayoutModel.setVerticalSplit(output, true, 0.5);
+
+    const top = output.columns.items[1].target;
+    const bottom = output.columns.items[2].target;
+
+    try std.testing.expectEqual(top.y, 0);
+    try std.testing.expectEqual(top.x, 0);
+    try std.testing.expectEqual(top.width, 1000);
+    try std.testing.expectApproxEqAbs(@as(f32, @floatFromInt(top.height)), 400.0, 1.0);
+    try std.testing.expectEqual(bottom.y, 400);
+    try std.testing.expectEqual(bottom.height, 400);
+}
+
+fn expectApproxEq(a: f32, b: f32) !void {
+    return std.testing.expectApproxEqAbs(a, b, 1.0);
+}

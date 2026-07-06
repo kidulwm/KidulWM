@@ -70,4 +70,15 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_cmd.addArgs(args);
     const run_step = b.step("run", "Run KidulWM");
     run_step.dependOn(&run_cmd.step);
+
+    const layout_tests = b.addTest(.{
+        .name = "layout-test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/core/layout.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const test_step = b.step("test", "Run layout tests");
+    test_step.dependOn(&layout_tests.step);
 }
