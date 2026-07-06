@@ -173,7 +173,34 @@ pub const Server = struct {
 
     fn applyLayout(self: *Server) void {
         self.layout_requested.store(false, .monotonic);
-        std.log.info("KidulWM: applying layout to {d} window(s)", .{self.windows.length()});
+        if (self.output_layout.outputs.length() == 0) return;
+
+        const layout_output = self.output_layout.outputs.first() orelse return;
+        const wlr_output = layout_output.output;
+        const width = wlr_output.width;
+        const height = wlr_output.height;
+
+        const allocator = self.allocator;
+        var model = @import("core/layout.zig").LayoutModel.createFromOutput(allocator, @intCast(width), @intCast(height), self.state.gap) catch |err| {
+            std.log.err("layout model failed: {}", .{err});
+            return;
+        };
+        defer model.deinit();
+
+        const split = @import("core/layout.zig").Split{
+            .left_peek = self.state.left_peek,
+            .focus = self.state.focus,
+            .right_peek = self.state.right_peek,
+        };
+
+        var it = self.windows.iterator(.forward);
+        var col_idx: usize = 0;
+        while (it.next()) |window| : (col_idx += 1) {
+            if (col_idx >= 3) break;
+            const target = @import("core/layout.zig").LayoutModel.columnTarget(&model.outputs.items[0], @intCast(col_idx), split.left_peek, split.focus, split.right_peek);
+            window.scene_tree.node.setPosition(@intCast(target.x), @intCast(target.y));
+            _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+        }
     }
 
     fn ipcThreadLoop(self: *Server) void {

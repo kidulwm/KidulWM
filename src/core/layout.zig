@@ -140,13 +140,13 @@ pub const LayoutModel = struct {
                 .height = output.height,
             },
             1 => .{
-                .x = if (focused == 0) 0 else left_w,
+                .x = if (focused == 0) 0 else @as(i32, @intCast(left_w)),
                 .y = 0,
                 .width = focus_w,
                 .height = output.height,
             },
             2 => .{
-                .x = left_w + focus_w,
+                .x = @as(i32, @intCast(left_w + focus_w)),
                 .y = 0,
                 .width = output.width - left_w - focus_w,
                 .height = output.height,
