@@ -90,15 +90,15 @@ Rationale:
   - Pub/sub to compositor topics.
   - Event emission (e.g. `VolumeUp`, `WorkspaceSwitch`) routed through the compositor action system.
 
-### 4.7 Remote Desktop (Zig core + PipeWire + custom streamer)
-A dedicated subsystem, not a plugin:
+### 4.7 Remote Desktop (KidulWM-aware QUIC streamer)
+Exploit the fact that both endpoints run KidulWM. See `docs/REMOTE-DESKTOP.md` for full details; summary below.
 
-- **Capture:** `xdg-desktop-portal-wlr` DMA-BUF frames, or direct `wlr-screencopy`.
-- **Encode:** hardware-accelerated h264/AV1 via VA-API; software fallback.
-- **Stream:** UDP+DTLS or QUIC-based protocol with delta/damage updates and forward-error correction.
-- **Control:** commands sent back over the encrypted control channel.
-- **Auth:** keypair enrollment, TOTP/FIDO2, per-session capability grants.
-- **Containment:** remote session gets its own `wl_seat` and clipboard gates; can be denied file access entirely.
+- **Client-side chrome.** The client renders window geometry, Z-order, gaps, chamfered corners, borders, focus state, side-column fade, and widget chrome locally using shared layout/theme state.
+- **Host streams only window surfaces.** Actual application pixels, video/GPU frames, and fullscreen surfaces travel over the wire. Static/slow UI uses per-window damage + compressed tiles; high-motion surfaces fall back to H.264/AV1.
+- **Damage tracking per surface.** Re-use existing `wl_surface` damage/commit signals. Send `Damage` rectangles per window; maintain host-side last-ack framebuffers for each client.
+- **Transport.** QUIC with a reliable control stream for layout, auth, and input events; unordered datagrams for surface tiles. mDNS LAN discovery; WireGuard for internet.
+- **Security.** Ed25519 device key enrollment, FIDO2/TOTP session auth, capability grants (`view-only`, `interactive`, `file-clip`), dedicated `wl_seat` containment, audit logging, idle/lock disconnect.
+- **Implementation order.** Protocol/schema → chrome-only sync with empty tiles → single-window diff → multi-window + input → security hardening → daily-driver polish.
 
 ## 5. Key Wargame Scenarios
 
@@ -164,5 +164,6 @@ A dedicated subsystem, not a plugin:
 
 - `docs/DESIGN-INPUTS.md` — requirements.
 - `docs/WARGAME-ARCH.md` — this architecture/wargame document.
-- `docs/WIDGET-PROTOCOL.md` — to be drafted.
-- `docs/REMOTE-DESKTOP.md` — to be drafted.
+- `docs/WIDGET-PROTOCOL.md` — dev widget IPC spec.
+- `docs/REMOTE-DESKTOP.md` — KidulWM-aware remote desktop strategy.
+- `docs/RECAP.md` — standing session recap for restoration.
