@@ -38,7 +38,7 @@ Maintained by the orchestrator. Check this file after restoring a session.
 1. Implement `get_layout` IPC response that publishes live state so GTK4 tray can render.
 2. Add keyboard shortcut / edge-zone commands for `FocusNext`/`FocusPrev`.
 3. Smoke-test a real GTK4 settings tray / layer-shell panel.
-4. Chamfered-corner SDF shader prototype.
+4. Chamfered-corner SDF shader prototype. Border thickness/colours must ultimately consume `src/core/style.zig` as the single source of truth.
 5. Widget protocol document + SDK example.
 6. Remote-desktop protocol/schema phase.
 
