@@ -48,6 +48,14 @@ pub const Server = struct {
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel),
     output_layout_change: wl.Listener(*wlr.OutputLayout),
 
+    fn handleRequest(self: *Server, req: ipc.message.Request) ipc.message.Response {
+        switch (req) {
+            .quit => self.requestQuit(),
+            else => {},
+        }
+        return self.state.handleRequest(req);
+    }
+
     pub const State = struct {
         gap: u32 = 8,
         left_peek: f32 = 0.08,
@@ -104,6 +112,7 @@ pub const Server = struct {
                     return .{ .ok = true, .message = "theme updated" };
                 },
                 .subscribe => return .{ .ok = true, .message = "subscription registered" },
+                .quit => {},
             }
             return .{ .ok = true };
         }
@@ -194,10 +203,10 @@ pub const Server = struct {
         self.socket_path = path;
         self.ipc_server = try ipc.control.Server.create(self.allocator, .{
             .socket_path = path,
-            .state = &self.state,
+            .state = self,
             .handler = struct {
                 fn handle(s: *anyopaque, req: ipc.message.Request) ipc.message.Response {
-                    return @as(*Server, @ptrCast(@alignCast(s))).state.handleRequest(req);
+                    return @as(*Server, @ptrCast(@alignCast(s))).handleRequest(req);
                 }
             }.handle,
         });
@@ -206,21 +215,26 @@ pub const Server = struct {
         self.ipc_thread = try std.Thread.spawn(.{}, ipcThreadLoop, .{self});
     }
 
-    pub fn start(self: *Server, no_backend: bool) !void {
-        var socket_name: [11]u8 = undefined;
-        const name = try self.wl_server.addSocketAuto(&socket_name);
+    pub fn start(self: *Server, no_backend: bool, maybe_socket_name: ?[:0]const u8) !void {
+        const name = if (maybe_socket_name) |socket_name| blk: {
+            try self.wl_server.addSocket(socket_name);
+            break :blk socket_name;
+        } else blk: {
+            var socket_name: [11]u8 = undefined;
+            const n = try self.wl_server.addSocketAuto(&socket_name);
+            break :blk n;
+        };
         std.log.info("KidulWM: Wayland socket {s}", .{name});
+
+        const event_loop = self.wl_server.getEventLoop();
+        _ = try event_loop.addTimer(*@This(), handleLayoutTimer, self);
 
         if (!no_backend) {
             try self.backend.start();
             std.log.info("KidulWM: backend started", .{});
         } else {
             std.log.info("KidulWM: skipping backend start", .{});
-            _ = try self.wl_server.getEventLoop().addTimer(
-                *@This(),
-                handleShutdownTimer,
-                self,
-            );
+            _ = try event_loop.addTimer(*@This(), handleShutdownTimer, self);
         }
 
         self.wl_server.run();
@@ -324,13 +338,17 @@ pub const Server = struct {
             self.ipc_server.tick() catch |err| {
                 std.log.err("ipc tick error: {}", .{err});
             };
-            if (self.layout_requested.load(.monotonic)) {
-                self.applyLayout();
-            }
             var ts = std.posix.timespec{ .sec = 0, .nsec = 10 * std.time.ns_per_ms };
             _ = linux.nanosleep(&ts, null);
         }
         std.log.info("KidulWM: IPC thread stopping", .{});
+    }
+
+    fn handleLayoutTimer(server: *@This()) c_int {
+        if (server.layout_requested.load(.monotonic)) {
+            server.applyLayout();
+        }
+        return 1;
     }
 
     fn handleNewOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -374,5 +392,12 @@ pub const Server = struct {
     fn handleShutdownTimer(server: *@This()) c_int {
         server.wl_server.terminate();
         return 0;
+    }
+
+    fn requestQuit(self: *Server) void {
+        const event_loop = self.wl_server.getEventLoop();
+        _ = event_loop.addTimer(*@This(), handleShutdownTimer, self) catch |err| {
+            std.log.err("failed to schedule quit timer: {}", .{err});
+        };
     }
 };

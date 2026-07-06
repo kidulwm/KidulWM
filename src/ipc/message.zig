@@ -13,6 +13,7 @@ pub const RequestTag = enum {
     split_bottom,
     set_theme,
     subscribe,
+    quit,
 };
 
 pub const Request = union(RequestTag) {
@@ -40,6 +41,7 @@ pub const Request = union(RequestTag) {
     subscribe: struct {
         events: []const u8,
     },
+    quit: void,
 };
 
 pub const Response = struct {
