@@ -3,23 +3,33 @@ const linux = std.os.linux;
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const ipc = @import("ipc.zig");
+const Window = @import("window.zig").Window;
 
 pub const Server = struct {
     allocator: std.mem.Allocator,
     socket_path: []const u8,
     wl_server: *wl.Server,
     backend: *wlr.Backend,
+    compositor: *wlr.Compositor,
+    scene: *wlr.Scene,
     output_layout: *wlr.OutputLayout,
+    scene_output_layout: *wlr.SceneOutputLayout,
+    xdg_shell: *wlr.XdgShell,
+    output_manager: *wlr.OutputManagerV1,
+
     ipc_server: ipc.control.Server,
     ipc_thread: ?std.Thread,
     ipc_running: std.atomic.Value(bool),
-    output_manager: *wlr.OutputManagerV1,
+
     state: State,
+    windows: wl.list.Head(Window, .link),
 
     layout_requested: std.atomic.Value(bool),
 
     new_output: wl.Listener(*wlr.Output),
     backend_destroy: wl.Listener(*wlr.Backend),
+    new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel),
+    output_layout_change: wl.Listener(*wlr.OutputLayout),
 
     pub const State = struct {
         gap: u32 = 8,
@@ -65,28 +75,46 @@ pub const Server = struct {
         errdefer output_layout.destroy();
 
         const output_manager = try wlr.OutputManagerV1.create(wl_server);
+        const compositor = try wlr.Compositor.create(wl_server, 6, null);
+        const scene = try wlr.Scene.create();
+        const scene_output_layout = try scene.attachOutputLayout(output_layout);
+        const xdg_shell = try wlr.XdgShell.create(wl_server, 6);
 
         var self = Server{
             .allocator = allocator,
             .socket_path = &.{},
             .wl_server = wl_server,
             .backend = backend,
+            .compositor = compositor,
+            .scene = scene,
             .output_layout = output_layout,
+            .scene_output_layout = scene_output_layout,
+            .xdg_shell = xdg_shell,
+            .output_manager = output_manager,
             .ipc_server = undefined,
             .ipc_thread = null,
             .ipc_running = std.atomic.Value(bool).init(false),
-            .output_manager = output_manager,
             .state = .{},
+            .windows = undefined,
             .layout_requested = std.atomic.Value(bool).init(false),
             .new_output = undefined,
             .backend_destroy = undefined,
+            .new_xdg_toplevel = undefined,
+            .output_layout_change = undefined,
         };
+        self.windows.init();
 
         self.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
         backend.events.new_output.add(&self.new_output);
 
         self.backend_destroy = wl.Listener(*wlr.Backend).init(handleBackendDestroy);
         backend.events.destroy.add(&self.backend_destroy);
+
+        self.new_xdg_toplevel = wl.Listener(*wlr.XdgToplevel).init(handleNewXdgToplevel);
+        xdg_shell.events.new_toplevel.add(&self.new_xdg_toplevel);
+
+        self.output_layout_change = wl.Listener(*wlr.OutputLayout).init(handleOutputLayoutChange);
+        output_layout.events.change.add(&self.output_layout_change);
 
         return self;
     }
@@ -139,12 +167,24 @@ pub const Server = struct {
         self.wl_server.destroy();
     }
 
+    pub fn requestLayout(self: *Server) void {
+        self.layout_requested.store(true, .monotonic);
+    }
+
+    fn applyLayout(self: *Server) void {
+        self.layout_requested.store(false, .monotonic);
+        std.log.info("KidulWM: applying layout to {d} window(s)", .{self.windows.length()});
+    }
+
     fn ipcThreadLoop(self: *Server) void {
         std.log.info("KidulWM: IPC thread started", .{});
         while (self.ipc_running.load(.monotonic)) {
             self.ipc_server.tick() catch |err| {
                 std.log.err("ipc tick error: {}", .{err});
             };
+            if (self.layout_requested.load(.monotonic)) {
+                self.applyLayout();
+            }
             var ts = std.posix.timespec{ .sec = 0, .nsec = 10 * std.time.ns_per_ms };
             _ = linux.nanosleep(&ts, null);
         }
@@ -158,7 +198,12 @@ pub const Server = struct {
             std.log.err("failed to add output to layout: {}", .{err});
             return;
         };
+        _ = self.scene.createSceneOutput(wlr_output) catch |err| {
+            std.log.err("scene output create failed: {}", .{err});
+            return;
+        };
         std.log.info("KidulWM: output added to layout", .{});
+        self.requestLayout();
     }
 
     fn handleBackendDestroy(listener: *wl.Listener(*wlr.Backend), backend: *wlr.Backend) void {
@@ -166,6 +211,22 @@ pub const Server = struct {
         _ = self;
         _ = backend;
         std.log.info("KidulWM: backend destroyed", .{});
+    }
+
+    fn handleNewXdgToplevel(listener: *wl.Listener(*wlr.XdgToplevel), toplevel: *wlr.XdgToplevel) void {
+        const self: *Server = @fieldParentPtr("new_xdg_toplevel", listener);
+        std.log.info("KidulWM: new toplevel", .{});
+        const window = Window.create(self, toplevel) catch |err| {
+            std.log.err("failed to create window for toplevel: {}", .{err});
+            return;
+        };
+        self.windows.append(window);
+    }
+
+    fn handleOutputLayoutChange(listener: *wl.Listener(*wlr.OutputLayout), output_layout: *wlr.OutputLayout) void {
+        const self: *Server = @fieldParentPtr("output_layout_change", listener);
+        _ = output_layout;
+        self.requestLayout();
     }
 
     fn handleShutdownTimer(server: *@This()) c_int {
