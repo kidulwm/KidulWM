@@ -1,0 +1,35 @@
+.{
+    .name = .kidulwm,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .wayland = .{
+            .url = "https://codeberg.org/ifreund/zig-wayland/archive/refs/heads/main.tar.gz",
+            .hash = "wayland-0.7.0-dev-lQa1kjT8AQDBstL61Gy3WCMtGwVaMN1p6w5wGfdDvP15",
+        },
+        .wlroots = .{
+            .url = "https://codeberg.org/ifreund/zig-wlroots/archive/refs/heads/master.tar.gz",
+            .hash = "wlroots-0.20.2-dev-jmOlcoJuBABsz-VoUFPIM72ObGfrY0tE7HlaMAYeU2Ea",
+        },
+        .pixman = .{
+            .url = "https://codeberg.org/ifreund/zig-pixman/archive/v0.3.0.tar.gz",
+            .hash = "pixman-0.3.0-LClMnz2VAAAs7QSCGwLimV5VUYx0JFnX5xWU6HwtMuDX",
+        },
+        .xkbcommon = .{
+            .url = "https://codeberg.org/ifreund/zig-xkbcommon/archive/v0.4.0.tar.gz",
+            .hash = "xkbcommon-0.4.0-VDqIe0i2AgDRsok2GpMFYJ8SVhQS10_PI2M_CnHXsJJZ",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "protocol",
+        "docs",
+        "examples",
+        "scripts",
+        "README.md",
+        "PLAN.md",
+    },
+    .fingerprint = 0x19c5d8409afa95a5,
+}
