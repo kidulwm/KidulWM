@@ -40,6 +40,17 @@ pub const Window = struct {
         return window;
     }
 
+    pub fn focus(self: *Window, seat: *wlr.Seat) void {
+        const surface = self.toplevel.base.surface;
+        if (seat.getKeyboard()) |keyboard| {
+            const keycodes: []const u32 = keyboard.keycodes[0..keyboard.num_keycodes];
+            seat.keyboardNotifyEnter(surface, keycodes, &keyboard.modifiers);
+        } else {
+            seat.keyboardNotifyEnter(surface, &.{}, null);
+        }
+        std.log.info("KidulWM: focused window", .{});
+    }
+
     fn handleMap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("map", listener);
         std.log.info("KidulWM: window mapped", .{});

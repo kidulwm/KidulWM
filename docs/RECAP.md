@@ -11,36 +11,48 @@ Last updated: 2026-07-06
 
 ## Latest Changes (this session)
 
-- Installed Zig 0.16.0, wlroots0.20, wayland-protocols, system deps.
-- Created buildable skeleton; committed as `e324e95`.
-- Added docs:
-  - `DESIGN-INPUTS.md` — requirements incl. 8%-94%-8% layout, gaps, chamfers, GTK4 tray, dev widgets.
-  - `WARGAME-ARCH.md` — architecture decisions and wargaming.
-  - `WIDGET-PROTOCOL.md` — widget IPC spec.
-  - `REMOTE-DESKTOP.md` — KidulWM-aware remote desktop strategy.
-  - `AGENTS.md` — two-model agent strategy (kimi-k2.7-code + coderBob-Fable 5).
-  - `RECAP.md` — this file.
-- Started IPC module under `src/ipc/`; delegated Zig 0.16 API fixes to coderBob-Fable 5.
+- Branch `pre-comms-dial`, last commit `ee0048a` — split left/right/top/bottom IPC commands verified over Unix socket.
+- coderBob-Fable 5 delivered real vertical split geometry and a `wlr.Seat` + pointer/keyboard skeleton.
+- Fixed Zig 0.16 timestamp mismatch (`std.time.milliTimestamp` → `clock_gettime`) in `src/input/pointer.zig`.
+- `zig build` passes and the no-backend dev binary responds to `ping`/`split_*` IPC tests.
+
+## Files of Note
+
+- `src/core/layout.zig` — `Orientation`, three-column horizontal + top/bottom vertical bands.
+- `src/server.zig` — `wlr.Seat`, input managers, `applyLayout` with focus.
+- `src/window.zig` — `Window.focus(seat)` helper.
+- `src/input.zig` — `InputManager` attaches keyboards/pointers to seat.
+- `src/input/pointer.zig` — pointer event forwarding skeleton.
+- `src/input/keyboard.zig` — keyboard event forwarding skeleton.
+- `scripts/test-splits.py` — smoke-tests the IPC split commands.
+
+## Running the Dev Binary
+
+```bash
+cd /home/dad/dev/KidulWM
+zig build
+KIDULWM_NO_BACKEND=1 timeout 10 ./zig-out/bin/kidulwm
+# In another terminal:
+python3 scripts/test-splits.py
+```
+
+The `KIDULWM_NO_BACKEND` flag is required while another Wayland compositor is running; it starts the IPC/display loop without calling `wlr_backend_start()`.
 
 ## Key Decisions
 
 - wlroots backend; replace subsystems later if needed.
 - Two-model workflow: orchestrator stays small, Fable 5 handles deep tasks, ≤4000-char output, file-on-disk deliverables.
+- IPC control plane: Unix socket at `$XDG_RUNTIME_DIR/kidulwm-control.sock`.
+- No-backend dev mode for safe IPC/layout iteration.
 
-## Active Work
+## Open Work
 
-- [in progress] `src/ipc/control.zig` — local control socket for widgets and settings tray.
-- [pending] `src/core/layout.zig` — output/column/window model and 8%-94%-8% split.
-
-## Useful Commands
-
-```bash
-cd /home/dad/dev/KidulWM
-zig build
-zig build run
-git diff HEAD --stat
-```
+1. Wire pointer motion to actual cursor focus / window hit-testing.
+2. Add seat capability updates when devices are added/removed.
+3. Implement real `get_layout` IPC response so GTK4 tray can render live state.
+4. Run a real-client smoke test (TTY or `WLR_BACKENDS=wayland`).
+5. Continue chamfered-corner renderer and settings-tray integration.
 
 ## Recovery Notes
 
-If session is restored, read this file, `docs/AGENTS.md`, and do `git log --oneline -5`. Then run `zig build` before editing.
+If session is restored, read this file, `docs/AGENTS.md`, and run `git log --oneline -5`. Then run `zig build` before editing.

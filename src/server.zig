@@ -4,6 +4,9 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const ipc = @import("ipc.zig");
 const Window = @import("window.zig").Window;
+const InputManager = @import("input.zig").InputManager;
+const PointerManager = @import("input/pointer.zig").PointerManager;
+const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
 
 pub const Server = struct {
     allocator: std.mem.Allocator,
@@ -18,6 +21,13 @@ pub const Server = struct {
     scene_output_layout: *wlr.SceneOutputLayout,
     xdg_shell: *wlr.XdgShell,
     output_manager: *wlr.OutputManagerV1,
+
+    seat: *wlr.Seat,
+    input_manager: InputManager,
+    pointer: PointerManager,
+    keyboard: KeyboardManager,
+    cursor_x: f64,
+    cursor_y: f64,
 
     ipc_server: ipc.control.Server,
     ipc_thread: ?std.Thread,
@@ -39,6 +49,7 @@ pub const Server = struct {
         focus: f32 = 0.94,
         right_peek: f32 = 0.08,
         focused_window: u32 = 0,
+        orientation: @import("core/layout.zig").Orientation = .horizontal,
 
         pub fn handleRequest(state: *State, req: ipc.message.Request) ipc.message.Response {
             switch (req) {
@@ -49,28 +60,38 @@ pub const Server = struct {
                     state.left_peek = p.left_peek;
                     state.focus = p.focus;
                     state.right_peek = p.right_peek;
+                    state.orientation = @import("core/layout.zig").LayoutModel.orientationFromSplit(
+                        state.left_peek,
+                        state.right_peek,
+                    );
                 },
                 .split_left => {
+                    state.orientation = .horizontal;
                     state.left_peek = 0.08;
                     state.focus = 0.84;
                     state.right_peek = 0.08;
-                    state.focused_window = 0;
+                    state.focused_window = 1;
                 },
                 .split_right => {
+                    state.orientation = .horizontal;
                     state.left_peek = 0.08;
                     state.focus = 0.84;
                     state.right_peek = 0.08;
                     state.focused_window = 2;
                 },
                 .split_top => {
+                    state.orientation = .vertical;
                     state.left_peek = 0.0;
-                    state.focus = 1.0;
-                    state.right_peek = 0.0;
+                    state.focus = 0.5;
+                    state.right_peek = 0.5;
+                    state.focused_window = 1;
                 },
                 .split_bottom => {
-                    state.left_peek = 0.0;
-                    state.focus = 1.0;
+                    state.orientation = .vertical;
+                    state.left_peek = 0.5;
+                    state.focus = 0.5;
                     state.right_peek = 0.0;
+                    state.focused_window = 1;
                 },
                 .set_focus => |p| state.focused_window = p.window_id,
                 .set_theme => |p| {
@@ -109,6 +130,9 @@ pub const Server = struct {
         const scene_output_layout = try scene.attachOutputLayout(output_layout);
         const xdg_shell = try wlr.XdgShell.create(wl_server, 6);
 
+        const seat = try wlr.Seat.create(wl_server, "seat0");
+        seat.setCapabilities(.{ .pointer = true, .keyboard = true });
+
         var self = Server{
             .allocator = allocator,
             .socket_path = &.{},
@@ -122,6 +146,12 @@ pub const Server = struct {
             .scene_output_layout = scene_output_layout,
             .xdg_shell = xdg_shell,
             .output_manager = output_manager,
+            .seat = seat,
+            .input_manager = undefined,
+            .pointer = PointerManager.init(@constCast(&@as(Server, undefined))),
+            .keyboard = KeyboardManager.init(@constCast(&@as(Server, undefined))),
+            .cursor_x = 0,
+            .cursor_y = 0,
             .ipc_server = undefined,
             .ipc_thread = null,
             .ipc_running = std.atomic.Value(bool).init(false),
@@ -133,7 +163,10 @@ pub const Server = struct {
             .new_xdg_toplevel = undefined,
             .output_layout_change = undefined,
         };
+        self.pointer = PointerManager.init(&self);
+        self.keyboard = KeyboardManager.init(&self);
         self.windows.init();
+        self.input_manager = InputManager.init(&self);
 
         self.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
         backend.events.new_output.add(&self.new_output);
@@ -193,6 +226,7 @@ pub const Server = struct {
             self.ipc_thread = null;
         }
         self.ipc_server.destroy();
+        self.input_manager.deinit();
         self.output_layout.destroy();
         self.backend.destroy();
         self.wl_server.destroy();
@@ -200,6 +234,16 @@ pub const Server = struct {
 
     pub fn requestLayout(self: *Server) void {
         self.layout_requested.store(true, .monotonic);
+    }
+
+    pub fn requestUpdateCapabilities(self: *Server) void {
+        _ = self;
+        // Reserved hook: recompute seat capabilities when devices are added/removed.
+    }
+
+    pub fn focusAtCursor(self: *Server) void {
+        _ = self;
+        // Reserved for clickable-focus policy.
     }
 
     fn applyLayout(self: *Server) void {
@@ -212,25 +256,35 @@ pub const Server = struct {
         const height = wlr_output.height;
 
         const allocator = self.allocator;
-        var model = @import("core/layout.zig").LayoutModel.createFromOutput(allocator, @intCast(width), @intCast(height), self.state.gap) catch |err| {
+        const layout = @import("core/layout.zig");
+        var model = layout.LayoutModel.createFromOutput(allocator, @intCast(width), @intCast(height), self.state.gap) catch |err| {
             std.log.err("layout model failed: {}", .{err});
             return;
         };
         defer model.deinit();
 
-        const split = @import("core/layout.zig").Split{
-            .left_peek = self.state.left_peek,
-            .focus = self.state.focus,
-            .right_peek = self.state.right_peek,
-        };
-
         var it = self.windows.iterator(.forward);
         var col_idx: usize = 0;
+        var focused_window: ?*Window = null;
         while (it.next()) |window| : (col_idx += 1) {
             if (col_idx >= 3) break;
-            const target = @import("core/layout.zig").LayoutModel.columnTarget(&model.outputs.items[0], @intCast(col_idx), split.left_peek, split.focus, split.right_peek);
+            const target = layout.LayoutModel.columnTarget(
+                &model.outputs.items[0],
+                col_idx,
+                self.state.left_peek,
+                self.state.focus,
+                self.state.right_peek,
+                self.state.orientation,
+            );
             window.scene_tree.node.setPosition(@intCast(target.x), @intCast(target.y));
             _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+            if (col_idx == self.state.focused_window) {
+                focused_window = window;
+            }
+        }
+
+        if (focused_window) |window| {
+            window.focus(self.seat);
         }
     }
 

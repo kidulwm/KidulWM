@@ -75,6 +75,8 @@ pub const Output = struct {
     }
 };
 
+pub const Orientation = enum { horizontal, vertical };
+
 pub const LayoutModel = struct {
     allocator: std.mem.Allocator,
     outputs: std.ArrayList(Output),
@@ -119,28 +121,31 @@ pub const LayoutModel = struct {
         self.outputs.deinit(self.allocator);
     }
 
-    pub fn columnTarget(output: *Output, col_idx: usize, left_peek: f32, focus: f32, right_peek: f32) Rect {
+    pub fn columnTarget(output: *Output, col_idx: usize, left_peek: f32, focus: f32, right_peek: f32, orientation: Orientation) Rect {
         var split = Split{ .left_peek = left_peek, .focus = focus, .right_peek = right_peek };
         split.verify();
         output.split = split;
 
-        // adjust / rebuild column targets on demand
+        return switch (orientation) {
+            .horizontal => horizontalColumnTarget(output, col_idx),
+            .vertical => verticalColumnTarget(output, col_idx),
+        };
+    }
+
+    fn horizontalColumnTarget(output: *Output, col_idx: usize) Rect {
         const w = @as(f32, @floatFromInt(output.width));
-        const working_area = Rect{ .x = 0, .y = 0, .width = output.width, .height = output.height };
-        const focused = output.focused_column;
+        const left_w: u32 = @intFromFloat(w * output.split.left_peek);
+        const focus_w: u32 = @intFromFloat(w * output.split.focus);
 
-        const left_w: u32 = @intFromFloat(w * split.left_peek);
-        const focus_w: u32 = @intFromFloat(w * split.focus);
-
-        const base_target: Rect = switch (col_idx) {
+        const target: Rect = switch (col_idx) {
             0 => .{
                 .x = 0,
                 .y = 0,
-                .width = if (focused == 0) output.width - left_w else left_w,
+                .width = if (output.focused_column == 0) output.width - left_w else left_w,
                 .height = output.height,
             },
             1 => .{
-                .x = if (focused == 0) 0 else @as(i32, @intCast(left_w)),
+                .x = if (output.focused_column == 0) 0 else @as(i32, @intCast(left_w)),
                 .y = 0,
                 .width = focus_w,
                 .height = output.height,
@@ -151,9 +156,40 @@ pub const LayoutModel = struct {
                 .width = output.width - left_w - focus_w,
                 .height = output.height,
             },
-            else => working_area,
+            else => .{ .x = 0, .y = 0, .width = output.width, .height = output.height },
         };
-        return base_target.inset(output.gap);
+        return target.inset(output.gap);
+    }
+
+    fn verticalColumnTarget(output: *Output, col_idx: usize) Rect {
+        const h = @as(f32, @floatFromInt(output.height));
+        // For vertical splits the "left_peek" becomes top band, "focus" becomes
+        // bottom band, and "right_peek" is unused.
+        const top_h: u32 = @intFromFloat(h * output.split.left_peek);
+        const focus_h: u32 = @intFromFloat(h * output.split.focus);
+
+        const target: Rect = switch (col_idx) {
+            0 => .{
+                .x = 0,
+                .y = 0,
+                .width = output.width,
+                .height = if (output.focused_column == 0) output.height - top_h else top_h,
+            },
+            1 => .{
+                .x = 0,
+                .y = if (output.focused_column == 0) 0 else @as(i32, @intCast(top_h)),
+                .width = output.width,
+                .height = focus_h,
+            },
+            2 => .{
+                .x = 0,
+                .y = @as(i32, @intCast(top_h + focus_h)),
+                .width = output.width,
+                .height = output.height - top_h - focus_h,
+            },
+            else => .{ .x = 0, .y = 0, .width = output.width, .height = output.height },
+        };
+        return target.inset(output.gap);
     }
 
     pub const SplitKind = enum { peek_left, focus, peek_right };
@@ -168,51 +204,31 @@ pub const LayoutModel = struct {
         recalcOutput(output);
     }
 
-    pub fn setVerticalSplit(output: *Output, rows: usize) void {
-        // Placeholder: stacks columns top-to-bottom as equal-height bands.
-        _ = rows;
-        output.split = .{ .left_peek = 0.0, .focus = 1.0, .right_peek = 0.0 };
-        output.focused_column = 1;
+    pub fn setVerticalSplit(output: *Output, top: bool, ratio: f32) void {
+        const primary = @max(0.2, @min(0.8, ratio));
+        const secondary = 1.0 - primary;
+        if (top) {
+            output.split = .{ .left_peek = 0.0, .focus = primary, .right_peek = secondary };
+            output.focused_column = 1;
+        } else {
+            output.split = .{ .left_peek = secondary, .focus = primary, .right_peek = 0.0 };
+            output.focused_column = 1;
+        }
         recalcOutput(output);
     }
 
+    pub fn orientationFromSplit(left_peek: f32, right_peek: f32) Orientation {
+        if (left_peek == 0.0 and right_peek == 0.0) return .vertical;
+        return .horizontal;
+    }
+
     pub fn recalcOutput(output: *Output) void {
-        const w = @as(f32, @floatFromInt(output.width));
         const num_cols = output.columns.items.len;
         if (num_cols == 0) return;
         output.split.verify();
 
-        const left_w: u32 = @intFromFloat(w * output.split.left_peek);
-        const focus_w: u32 = @intFromFloat(w * output.split.focus);
-
         for (output.columns.items, 0..) |*col, idx| {
-            const target: Rect = switch (idx) {
-                0 => .{
-                    .x = 0,
-                    .y = 0,
-                    .width = left_w,
-                    .height = output.height,
-                },
-                1 => .{
-                    .x = @as(i32, @intCast(left_w)),
-                    .y = 0,
-                    .width = focus_w,
-                    .height = output.height,
-                },
-                2 => .{
-                    .x = @as(i32, @intCast(left_w + focus_w)),
-                    .y = 0,
-                    .width = output.width - left_w - focus_w,
-                    .height = output.height,
-                },
-                else => .{
-                    .x = 0,
-                    .y = 0,
-                    .width = output.width,
-                    .height = output.height,
-                },
-            };
-            col.target = target.inset(output.gap);
+            col.target = horizontalColumnTarget(output, idx);
             col.is_focused = (output.focused_column < 0 and idx == 1) or (output.focused_column == @as(i32, @intCast(idx)));
         }
     }
