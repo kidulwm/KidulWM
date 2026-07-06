@@ -66,6 +66,9 @@ pub const Window = struct {
     fn handleDestroy(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("destroy", listener);
         std.log.info("KidulWM: window destroyed", .{});
+        if (window.server.focused_window == window) {
+            window.server.focused_window = null;
+        }
 
         window.map.link.remove();
         window.unmap.link.remove();

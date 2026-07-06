@@ -8,6 +8,8 @@ const InputManager = @import("input.zig").InputManager;
 const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
 
+const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
+
 pub const Server = struct {
     allocator: std.mem.Allocator,
     socket_path: []const u8,
@@ -37,6 +39,9 @@ pub const Server = struct {
     windows: wl.list.Head(Window, .link),
 
     layout_requested: std.atomic.Value(bool),
+
+    focused_window: ?*Window,
+    input_device_counts: InputDeviceCounts,
 
     new_output: wl.Listener(*wlr.Output),
     backend_destroy: wl.Listener(*wlr.Backend),
@@ -152,6 +157,8 @@ pub const Server = struct {
             .keyboard = KeyboardManager.init(@constCast(&@as(Server, undefined))),
             .cursor_x = 0,
             .cursor_y = 0,
+            .input_device_counts = .{},
+            .focused_window = null,
             .ipc_server = undefined,
             .ipc_thread = null,
             .ipc_running = std.atomic.Value(bool).init(false),
@@ -237,13 +244,30 @@ pub const Server = struct {
     }
 
     pub fn requestUpdateCapabilities(self: *Server) void {
-        _ = self;
-        // Reserved hook: recompute seat capabilities when devices are added/removed.
+        self.seat.setCapabilities(.{
+            .pointer = self.input_device_counts.pointer > 0,
+            .keyboard = self.input_device_counts.keyboard > 0,
+        });
+    }
+
+    pub fn focusWindow(self: *Server, window: *Window) void {
+        if (self.focused_window == window) return;
+        self.focused_window = window;
+        window.focus(self.seat);
     }
 
     pub fn focusAtCursor(self: *Server) void {
-        _ = self;
-        // Reserved for clickable-focus policy.
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            const node = &window.scene_tree.node;
+            if (!node.enabled) continue;
+            var nx: f64 = undefined;
+            var ny: f64 = undefined;
+            if (node.at(self.cursor_x, self.cursor_y, &nx, &ny)) |_| {
+                self.focusWindow(window);
+                return;
+            }
+        }
     }
 
     fn applyLayout(self: *Server) void {
@@ -263,9 +287,15 @@ pub const Server = struct {
         };
         defer model.deinit();
 
+        const window_count = self.windows.length();
+        if (window_count == 0 or self.state.focused_window >= window_count) {
+            self.focused_window = null;
+            return;
+        }
+
         var it = self.windows.iterator(.forward);
         var col_idx: usize = 0;
-        var focused_window: ?*Window = null;
+        var window_to_focus: ?*Window = null;
         while (it.next()) |window| : (col_idx += 1) {
             if (col_idx >= 3) break;
             const target = layout.LayoutModel.columnTarget(
@@ -279,12 +309,12 @@ pub const Server = struct {
             window.scene_tree.node.setPosition(@intCast(target.x), @intCast(target.y));
             _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
             if (col_idx == self.state.focused_window) {
-                focused_window = window;
+                window_to_focus = window;
             }
         }
 
-        if (focused_window) |window| {
-            window.focus(self.seat);
+        if (window_to_focus) |window| {
+            self.focusWindow(window);
         }
     }
 

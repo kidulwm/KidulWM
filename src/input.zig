@@ -33,11 +33,13 @@ pub const InputManager = struct {
                 self.configureKeyboard(keyboard);
                 self.server.keyboard.listen(keyboard);
                 seat.setKeyboard(keyboard);
+                self.server.input_device_counts.keyboard += 1;
                 std.log.info("KidulWM: keyboard attached to seat", .{});
             },
             .pointer => {
                 const pointer = device.toPointer();
                 self.server.pointer.listen(pointer);
+                self.server.input_device_counts.pointer += 1;
                 std.log.info("KidulWM: pointer device discovered", .{});
             },
             else => {},
