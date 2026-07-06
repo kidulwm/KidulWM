@@ -18,5 +18,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
     try server.createIpcSocket(socket_path);
     std.log.info("KidulWM: IPC control socket at {s}", .{socket_path});
 
-    try server.start(true);
+    const no_backend = std.process.Environ.getPosix(init.environ, "KIDULWM_NO_BACKEND") != null;
+    try server.start(no_backend);
 }
