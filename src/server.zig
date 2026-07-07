@@ -55,7 +55,7 @@ pub const Server = struct {
     focused_window: ?*Window,
     input_device_counts: InputDeviceCounts,
 
-    tray: TrayManager,
+    tray: *TrayManager,
 
     new_output: wl.Listener(*wlr.Output),
     backend_destroy: wl.Listener(*wlr.Backend),
@@ -249,7 +249,8 @@ pub const Server = struct {
         };
         server.layout_source = try event_loop.addFd(*Server, server.layout_pipe[0], .{ .readable = true }, handleLayoutEventFd, server);
 
-        server.tray = try TrayManager.init(server);
+        server.tray = try server.allocator.create(TrayManager);
+        try TrayManager.init(server, server.tray);
 
         return server;
     }
@@ -315,6 +316,7 @@ pub const Server = struct {
         self.backend.destroy();
 
         self.tray.deinit();
+        self.allocator.destroy(self.tray);
         self.wl_server.destroy();
         const allocator = self.allocator;
         allocator.destroy(self);
