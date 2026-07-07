@@ -8,8 +8,8 @@
             .hash = "wayland-0.7.0-dev-lQa1kjT8AQDBstL61Gy3WCMtGwVaMN1p6w5wGfdDvP15",
         },
         .wlroots = .{
-            .url = "https://codeberg.org/ifreund/zig-wlroots/archive/refs/heads/master.tar.gz",
-            .hash = "wlroots-0.20.2-dev-jmOlcoJuBABsz-VoUFPIM72ObGfrY0tE7HlaMAYeU2Ea",
+            .url = "https://codeberg.org/ifreund/zig-wlroots/archive/v0.20.1.tar.gz",
+            .hash = "wlroots-0.20.1-jmOlcqNVBAB3uB5oqBTzpRlwu-FmMyyZMVAWCe5kmcSt",
         },
         .pixman = .{
             .url = "https://codeberg.org/ifreund/zig-pixman/archive/v0.3.0.tar.gz",

@@ -7,6 +7,9 @@ const Window = @import("window.zig").Window;
 const InputManager = @import("input.zig").InputManager;
 const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
+const TrayManager = @import("tray.zig").TrayManager;
+const style = @import("core/style.zig");
+const layout = @import("core/layout.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
@@ -24,6 +27,12 @@ pub const Server = struct {
     xdg_shell: *wlr.XdgShell,
     output_manager: *wlr.OutputManagerV1,
 
+    shm: *wlr.Shm,
+    subcompositor: *wlr.Subcompositor,
+    data_device_manager: *wlr.DataDeviceManager,
+    viewporter: *wlr.Viewporter,
+    fractional_scale_manager: *wlr.FractionalScaleManagerV1,
+
     seat: *wlr.Seat,
     input_manager: InputManager,
     pointer: PointerManager,
@@ -38,15 +47,25 @@ pub const Server = struct {
     state: State,
     windows: wl.list.Head(Window, .link),
 
+    layout: layout.LayoutModel,
+    layout_pipe: [2]c_int,
+    layout_source: *wl.EventSource,
     layout_requested: std.atomic.Value(bool),
 
     focused_window: ?*Window,
     input_device_counts: InputDeviceCounts,
 
+    tray: TrayManager,
+
     new_output: wl.Listener(*wlr.Output),
     backend_destroy: wl.Listener(*wlr.Backend),
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel),
     output_layout_change: wl.Listener(*wlr.OutputLayout),
+
+    background: struct {
+        rect: ?*wlr.SceneRect,
+        color: [4]f32,
+    },
 
     fn handleRequest(self: *Server, req: ipc.message.Request) ipc.message.Response {
         switch (req) {
@@ -58,12 +77,25 @@ pub const Server = struct {
     }
 
     pub const State = struct {
-        gap: u32 = 8,
-        left_peek: f32 = 0.08,
-        focus: f32 = 0.94,
-        right_peek: f32 = 0.08,
+        gap: u32 = style.layout.gap,
+        left_peek: f32 = style.layout.default_split.left_peek,
+        focus: f32 = style.layout.default_split.focus,
+        right_peek: f32 = style.layout.default_split.right_peek,
         focused_window: u32 = 0,
-        orientation: @import("core/layout.zig").Orientation = .horizontal,
+        orientation: layout.Orientation = .horizontal,
+
+        pub fn applyPreset(
+            state: *State,
+            preset: style.layout.SplitPreset,
+            orientation: layout.Orientation,
+            focused_window: u32,
+        ) void {
+            state.orientation = orientation;
+            state.left_peek = preset.left_peek;
+            state.focus = preset.focus;
+            state.right_peek = preset.right_peek;
+            state.focused_window = focused_window;
+        }
 
         pub fn handleRequest(state: *State, req: ipc.message.Request) ipc.message.Response {
             switch (req) {
@@ -74,38 +106,22 @@ pub const Server = struct {
                     state.left_peek = p.left_peek;
                     state.focus = p.focus;
                     state.right_peek = p.right_peek;
-                    state.orientation = @import("core/layout.zig").LayoutModel.orientationFromSplit(
+                    state.orientation = layout.LayoutModel.orientationFromSplit(
                         state.left_peek,
                         state.right_peek,
                     );
                 },
                 .split_left => {
-                    state.orientation = .horizontal;
-                    state.left_peek = 0.08;
-                    state.focus = 0.84;
-                    state.right_peek = 0.08;
-                    state.focused_window = 1;
+                    state.applyPreset(style.layout.horizontal_split, .horizontal, 1);
                 },
                 .split_right => {
-                    state.orientation = .horizontal;
-                    state.left_peek = 0.08;
-                    state.focus = 0.84;
-                    state.right_peek = 0.08;
-                    state.focused_window = 2;
+                    state.applyPreset(style.layout.horizontal_split, .horizontal, 2);
                 },
                 .split_top => {
-                    state.orientation = .vertical;
-                    state.left_peek = 0.0;
-                    state.focus = 0.5;
-                    state.right_peek = 0.5;
-                    state.focused_window = 1;
+                    state.applyPreset(style.layout.vertical_top_split, .vertical, 1);
                 },
                 .split_bottom => {
-                    state.orientation = .vertical;
-                    state.left_peek = 0.5;
-                    state.focus = 0.5;
-                    state.right_peek = 0.0;
-                    state.focused_window = 1;
+                    state.applyPreset(style.layout.vertical_bottom_split, .vertical, 1);
                 },
                 .set_focus => |p| state.focused_window = p.window_id,
                 .set_theme => |p| {
@@ -147,6 +163,11 @@ pub const Server = struct {
         const scene = try wlr.Scene.create();
         const scene_output_layout = try scene.attachOutputLayout(output_layout);
         const xdg_shell = try wlr.XdgShell.create(wl_server, 6);
+        const shm = try wlr.Shm.createWithRenderer(wl_server, 1, renderer);
+        const subcompositor = try wlr.Subcompositor.create(wl_server);
+        const data_device_manager = try wlr.DataDeviceManager.create(wl_server);
+        const viewporter = try wlr.Viewporter.create(wl_server);
+        const fractional_scale_manager = try wlr.FractionalScaleManagerV1.create(wl_server, 1);
 
         const seat = try wlr.Seat.create(wl_server, "seat0");
         seat.setCapabilities(.{ .pointer = true, .keyboard = true });
@@ -164,6 +185,11 @@ pub const Server = struct {
             .scene_output_layout = scene_output_layout,
             .xdg_shell = xdg_shell,
             .output_manager = output_manager,
+            .shm = shm,
+            .subcompositor = subcompositor,
+            .data_device_manager = data_device_manager,
+            .viewporter = viewporter,
+            .fractional_scale_manager = fractional_scale_manager,
             .seat = seat,
             .input_manager = undefined,
             .pointer = undefined,
@@ -172,17 +198,27 @@ pub const Server = struct {
             .cursor_y = 0,
             .input_device_counts = .{},
             .focused_window = null,
+            .tray = undefined,
             .ipc_server = undefined,
             .ipc_thread = null,
             .ipc_running = std.atomic.Value(bool).init(false),
             .state = .{},
             .windows = undefined,
             .layout_requested = std.atomic.Value(bool).init(false),
+            .layout = layout.LayoutModel.create(allocator),
+            .layout_pipe = undefined,
+            .layout_source = undefined,
             .new_output = undefined,
             .backend_destroy = undefined,
             .new_xdg_toplevel = undefined,
             .output_layout_change = undefined,
+            .background = .{
+                .rect = null,
+                .color = style.default_style.color_background.toF32(),
+            },
         };
+
+        server.background.rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
 
         server.pointer = PointerManager.init(server);
         server.keyboard = KeyboardManager.init(server);
@@ -204,6 +240,16 @@ pub const Server = struct {
         server.output_layout_change = wl.Listener(*wlr.OutputLayout).init(handleOutputLayoutChange);
         server.output_layout_change.link.init();
         output_layout.events.change.add(&server.output_layout_change);
+
+        server.layout_pipe = blk: {
+            var fds: [2]c_int = undefined;
+            const rc = linux.pipe(&fds);
+            if (rc != 0) return error.PipeCreateFailed;
+            break :blk fds;
+        };
+        server.layout_source = try event_loop.addFd(*Server, server.layout_pipe[0], .{ .readable = true }, handleLayoutEventFd, server);
+
+        server.tray = try TrayManager.init(server);
 
         return server;
     }
@@ -235,15 +281,12 @@ pub const Server = struct {
         };
         std.log.info("KidulWM: Wayland socket {s}", .{name});
 
-        const event_loop = self.wl_server.getEventLoop();
-        const layout_source = try event_loop.addTimer(*@This(), handleLayoutTimer, self);
-        try layout_source.timerUpdate(8);
-
         if (!no_backend) {
             try self.backend.start();
             std.log.info("KidulWM: backend started", .{});
         } else {
             std.log.info("KidulWM: skipping backend start", .{});
+            const event_loop = self.wl_server.getEventLoop();
             const shutdown_source = try event_loop.addTimer(*@This(), handleShutdownTimer, self);
             try shutdown_source.timerUpdate(8000);
         }
@@ -258,16 +301,29 @@ pub const Server = struct {
             self.ipc_thread = null;
         }
         self.ipc_server.destroy();
+
         self.input_manager.deinit();
+        self.layout.deinit();
+
+        _ = linux.close(self.layout_pipe[0]);
+        _ = linux.close(self.layout_pipe[1]);
+
+        self.output_layout_change.link.remove();
         self.output_layout.destroy();
+
+        self.new_output.link.remove();
         self.backend.destroy();
+
+        self.tray.deinit();
         self.wl_server.destroy();
         const allocator = self.allocator;
         allocator.destroy(self);
     }
 
     pub fn requestLayout(self: *Server) void {
-        self.layout_requested.store(true, .monotonic);
+        const was_requested = self.layout_requested.swap(true, .acquire);
+        if (was_requested) return;
+        _ = linux.write(self.layout_pipe[1], &[_]u8{1}, 1);
     }
 
     pub fn requestUpdateCapabilities(self: *Server) void {
@@ -319,16 +375,16 @@ pub const Server = struct {
 
         const layout_output = self.output_layout.outputs.first() orelse return;
         const wlr_output = layout_output.output;
-        const width = wlr_output.width;
-        const height = wlr_output.height;
+        const width = @as(u32, @intCast(wlr_output.width));
+        const height = @as(u32, @intCast(wlr_output.height));
 
-        const allocator = self.allocator;
-        const layout = @import("core/layout.zig");
-        var model = layout.LayoutModel.createFromOutput(allocator, @intCast(width), @intCast(height), self.state.gap) catch |err| {
-            std.log.err("layout model failed: {}", .{err});
-            return;
-        };
-        defer model.deinit();
+        if (self.layout.outputs.items.len == 0) {
+            self.layout = layout.LayoutModel.init(self.allocator, width, height, self.state.gap) catch |err| {
+                std.log.err("layout model init failed: {}", .{err});
+                return;
+            };
+        }
+        const output = &self.layout.outputs.items[0];
 
         const window_count = self.windows.length();
         if (window_count == 0 or self.state.focused_window >= window_count) {
@@ -336,19 +392,24 @@ pub const Server = struct {
             return;
         }
 
+        _ = layout.LayoutModel.sync(
+            output,
+            width,
+            height,
+            self.state.gap,
+            self.state.left_peek,
+            self.state.focus,
+            self.state.right_peek,
+            @as(i32, @intCast(self.state.focused_window)),
+            self.state.orientation,
+        );
+
         var it = self.windows.iterator(.forward);
         var col_idx: usize = 0;
         var window_to_focus: ?*Window = null;
         while (it.next()) |window| : (col_idx += 1) {
-            if (col_idx >= 3) break;
-            const target = layout.LayoutModel.columnTarget(
-                &model.outputs.items[0],
-                col_idx,
-                self.state.left_peek,
-                self.state.focus,
-                self.state.right_peek,
-                self.state.orientation,
-            );
+            if (col_idx >= output.columns.items.len) break;
+            const target = layout.LayoutModel.columnTarget(output, col_idx);
             window.scene_tree.node.setPosition(@intCast(target.x), @intCast(target.y));
             _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
             if (col_idx == self.state.focused_window) {
@@ -373,11 +434,13 @@ pub const Server = struct {
         std.log.info("KidulWM: IPC thread stopping", .{});
     }
 
-    fn handleLayoutTimer(server: *@This()) c_int {
-        if (server.layout_requested.load(.monotonic)) {
-            server.applyLayout();
-        }
-        return 1;
+    fn handleLayoutEventFd(_fd: c_int, _mask: wl.EventMask, server: *Server) c_int {
+        _ = _fd;
+        _ = _mask;
+        var buf: [16]u8 = undefined;
+        _ = linux.read(server.layout_pipe[0], &buf, buf.len);
+        server.applyLayout();
+        return 0;
     }
 
     fn handleNewOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -393,6 +456,7 @@ pub const Server = struct {
         };
         std.log.info("KidulWM: output added to layout", .{});
         self.requestLayout();
+        self.tray.arrange();
     }
 
     fn handleBackendDestroy(listener: *wl.Listener(*wlr.Backend), backend: *wlr.Backend) void {
@@ -412,10 +476,19 @@ pub const Server = struct {
         self.windows.append(window);
     }
 
-    fn handleOutputLayoutChange(listener: *wl.Listener(*wlr.OutputLayout), output_layout: *wlr.OutputLayout) void {
+    fn handleOutputLayoutChange(listener: *wl.Listener(*wlr.OutputLayout), output_layout_arg: *wlr.OutputLayout) void {
         const self: *Server = @fieldParentPtr("output_layout_change", listener);
-        _ = output_layout;
+        _ = output_layout_arg;
+
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(null, &box);
+        if (self.background.rect) |rect| {
+            rect.node.setPosition(box.x, box.y);
+            rect.setSize(box.width, box.height);
+        }
+
         self.requestLayout();
+        self.tray.arrange();
     }
 
     fn handleShutdownTimer(server: *@This()) c_int {

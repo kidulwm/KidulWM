@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
     scanner.generate("wp_cursor_shape_manager_v1", 1);
     scanner.generate("wp_tearing_control_manager_v1", 1);
 
-    scanner.generate("zwlr_layer_shell_v1", 4);
+    scanner.generate("zwlr_layer_shell_v1", 5);
     scanner.generate("zwlr_output_power_manager_v1", 1);
 
     const wayland = b.createModule(.{ .root_source_file = scanner.result });
@@ -79,6 +79,15 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    const test_step = b.step("test", "Run layout tests");
+    const render_tests = b.addTest(.{
+        .name = "render-test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/core/chamfer.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const test_step = b.step("test", "Run layout and render tests");
     test_step.dependOn(&layout_tests.step);
+    test_step.dependOn(&render_tests.step);
 }

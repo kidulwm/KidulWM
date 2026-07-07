@@ -1,4 +1,5 @@
 const std = @import("std");
+const style = @import("style.zig");
 
 pub const Rect = struct {
     x: i32,
@@ -37,9 +38,9 @@ pub const Split = struct {
 
     pub fn default() Split {
         return .{
-            .left_peek = 0.08,
-            .focus = 0.94,
-            .right_peek = 0.08,
+            .left_peek = style.layout.default_split.left_peek,
+            .focus = style.layout.default_split.focus,
+            .right_peek = style.layout.default_split.right_peek,
         };
     }
 
@@ -57,6 +58,8 @@ pub const Split = struct {
     }
 };
 
+pub const Orientation = enum { horizontal, vertical };
+
 pub const Output = struct {
     id: u32,
     name: []const u8,
@@ -66,6 +69,7 @@ pub const Output = struct {
     focused_column: i32 = 1,
     gap: u32,
     split: Split,
+    orientation: Orientation = .horizontal,
 
     pub fn deinit(self: *Output, allocator: std.mem.Allocator) void {
         for (self.columns.items) |*col| {
@@ -74,8 +78,6 @@ pub const Output = struct {
         self.columns.deinit(allocator);
     }
 };
-
-pub const Orientation = enum { horizontal, vertical };
 
 pub const LayoutModel = struct {
     allocator: std.mem.Allocator,
@@ -88,8 +90,14 @@ pub const LayoutModel = struct {
         };
     }
 
-    pub fn createFromOutput(allocator: std.mem.Allocator, width: u32, height: u32, gap: u32) !LayoutModel {
+    /// Create a reusable, single-output layout model with the three canonical
+    /// columns pre-allocated.  All geometry updates after this are in-place.
+    pub fn init(allocator: std.mem.Allocator, width: u32, height: u32, gap: u32) !LayoutModel {
         var self = create(allocator);
+        errdefer self.deinit();
+
+        try self.outputs.ensureTotalCapacity(allocator, 1);
+
         var output = Output{
             .id = 1,
             .name = "primary",
@@ -98,20 +106,29 @@ pub const LayoutModel = struct {
             .columns = std.ArrayList(Column).empty,
             .gap = gap,
             .split = Split.default(),
+            .orientation = .horizontal,
         };
         output.split.verify();
-        // Populate 3 columns so layout mimics 8%-94%-8% peek/focus/peek arrangement.
+
+        // Pre-size the three columns so layout ticks never hit the allocator.
+        try output.columns.ensureTotalCapacity(allocator, 3);
         for (0..3) |i| {
-            try output.columns.append(allocator, .{
+            output.columns.appendAssumeCapacity(.{
                 .id = @intCast(i),
                 .windows = std.ArrayList(Window).empty,
                 .target = undefined,
                 .is_focused = (i == 1),
             });
         }
-        try self.outputs.append(allocator, output);
-        recalcOutput(&self.outputs.items[0]);
+
+        recalcOutput(&output);
+        self.outputs.appendAssumeCapacity(output);
         return self;
+    }
+
+    /// Legacy convenience kept for tests and one-shot consumers.
+    pub fn createFromOutput(allocator: std.mem.Allocator, width: u32, height: u32, gap: u32) !LayoutModel {
+        return init(allocator, width, height, gap);
     }
 
     pub fn deinit(self: *LayoutModel) void {
@@ -121,15 +138,58 @@ pub const LayoutModel = struct {
         self.outputs.deinit(self.allocator);
     }
 
-    pub fn columnTarget(output: *Output, col_idx: usize, left_peek: f32, focus: f32, right_peek: f32, orientation: Orientation) Rect {
+    pub fn getOutput(self: *LayoutModel) ?*Output {
+        if (self.outputs.items.len == 0) return null;
+        return &self.outputs.items[0];
+    }
+
+    /// Fast, allocation-free state synchronisation.  Returns true when targets
+    /// were recomputed (i.e. something changed).
+    pub fn sync(
+        output: *Output,
+        width: u32,
+        height: u32,
+        gap: u32,
+        left_peek: f32,
+        focus: f32,
+        right_peek: f32,
+        focused_column: i32,
+        orientation: Orientation,
+    ) bool {
+        const fc: i32 = if (focused_column < 0) 0 else if (focused_column > 2) 2 else focused_column;
+
         var split = Split{ .left_peek = left_peek, .focus = focus, .right_peek = right_peek };
         split.verify();
-        output.split = split;
 
-        return switch (orientation) {
-            .horizontal => horizontalColumnTarget(output, col_idx),
-            .vertical => verticalColumnTarget(output, col_idx),
-        };
+        const unchanged =
+            output.width == width and
+            output.height == height and
+            output.gap == gap and
+            output.focused_column == fc and
+            output.orientation == orientation and
+            std.math.approxEqAbs(f32, output.split.left_peek, split.left_peek, 1e-5) and
+            std.math.approxEqAbs(f32, output.split.focus, split.focus, 1e-5) and
+            std.math.approxEqAbs(f32, output.split.right_peek, split.right_peek, 1e-5);
+
+        if (unchanged) return false;
+
+        output.width = width;
+        output.height = height;
+        output.gap = gap;
+        output.focused_column = fc;
+        output.orientation = orientation;
+        output.split = split;
+        recalcOutput(output);
+        return true;
+    }
+
+    /// Return the cached target rectangle for a column.  All computation was
+    /// done once in recalcOutput / sync.
+    pub fn columnTarget(output: *Output, col_idx: usize) Rect {
+        if (col_idx >= output.columns.items.len) {
+            return .{ .x = 0, .y = 0, .width = output.width, .height = output.height };
+        }
+        return output.columns.items[col_idx].target;
     }
 
     fn horizontalColumnTarget(output: *Output, col_idx: usize) Rect {
@@ -195,12 +255,17 @@ pub const LayoutModel = struct {
     pub const SplitKind = enum { peek_left, focus, peek_right };
 
     pub fn setHorizontalSplit(output: *Output, focus_col: SplitKind) void {
-        output.split = .{ .left_peek = 0.08, .focus = 0.84, .right_peek = 0.08 };
+        output.split = .{
+            .left_peek = style.layout.horizontal_split.left_peek,
+            .focus = style.layout.horizontal_split.focus,
+            .right_peek = style.layout.horizontal_split.right_peek,
+        };
         output.focused_column = switch (focus_col) {
             .peek_left => 0,
             .focus => 1,
             .peek_right => 2,
         };
+        output.orientation = .horizontal;
         recalcOutput(output);
     }
 
@@ -214,6 +279,7 @@ pub const LayoutModel = struct {
             output.split = .{ .left_peek = secondary, .focus = primary, .right_peek = 0.0 };
             output.focused_column = 1;
         }
+        output.orientation = .vertical;
         recalcOutput(output);
     }
 
@@ -228,7 +294,10 @@ pub const LayoutModel = struct {
         output.split.verify();
 
         for (output.columns.items, 0..) |*col, idx| {
-            col.target = horizontalColumnTarget(output, idx);
+            col.target = switch (output.orientation) {
+                .horizontal => horizontalColumnTarget(output, idx),
+                .vertical => verticalColumnTarget(output, idx),
+            };
             col.is_focused = (output.focused_column < 0 and idx == 1) or (output.focused_column == @as(i32, @intCast(idx)));
         }
     }
@@ -246,10 +315,13 @@ test "default horizontal three-column layout" {
     const focus = output.columns.items[1].target;
     const right = output.columns.items[2].target;
 
-    const focus_base: u32 = @intFromFloat(1000.0 * 0.84);
-    std.testing.expectApproxEqAbs(@as(f32, @floatFromInt(focus.width)), @as(f32, @floatFromInt(focus_base)), 1.0) catch {};
+    const total = style.layout.default_split.left_peek + style.layout.default_split.focus + style.layout.default_split.right_peek;
+    const focus_base: u32 = @intFromFloat(1000.0 * style.layout.default_split.focus / total);
+    const left_base: u32 = @intFromFloat(1000.0 * style.layout.default_split.left_peek / total);
+    const expected_focus_width = if (focus_base > 2 * 8) focus_base - 2 * 8 else 0;
+    try std.testing.expectApproxEqAbs(@as(f32, @floatFromInt(focus.width)), @as(f32, @floatFromInt(expected_focus_width)), 1.0);
     try std.testing.expectApproxEqAbs(@as(f32, @floatFromInt(focus.height)), @as(f32, @floatFromInt(output.height - 16)), 1.0);
-    try std.testing.expectEqual(focus.x, @as(i32, @intCast(@divFloor(1000 - focus_base, 2))) + 8);
+    try std.testing.expectEqual(focus.x, @as(i32, @intCast(left_base + 8)));
 
     _ = left;
     _ = right;
