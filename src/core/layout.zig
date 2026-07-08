@@ -70,6 +70,7 @@ pub const Output = struct {
     gap: u32,
     split: Split,
     orientation: Orientation = .horizontal,
+    style: style.Style,
 
     pub fn deinit(self: *Output, allocator: std.mem.Allocator) void {
         for (self.columns.items) |*col| {
@@ -77,16 +78,29 @@ pub const Output = struct {
         }
         self.columns.deinit(allocator);
     }
+
+    pub fn borderWidth(self: *const Output) f32 {
+        return self.style.border_width;
+    }
+
+    pub fn borderColor(self: *const Output) [4]f32 {
+        const focused = (self.focused_column >= 0 and self.focused_column < self.columns.items.len and
+            self.columns.items[@intCast(self.focused_column)].is_focused);
+        const c = if (focused) self.style.color_border_focused else self.style.color_border;
+        return c.toF32();
+    }
 };
 
 pub const LayoutModel = struct {
     allocator: std.mem.Allocator,
     outputs: std.ArrayList(Output),
+    style: style.Style,
 
     pub fn create(allocator: std.mem.Allocator) LayoutModel {
         return .{
             .allocator = allocator,
             .outputs = std.ArrayList(Output).empty,
+            .style = style.default(),
         };
     }
 
@@ -107,6 +121,7 @@ pub const LayoutModel = struct {
             .gap = gap,
             .split = Split.default(),
             .orientation = .horizontal,
+            .style = style.default(),
         };
         output.split.verify();
 
@@ -121,6 +136,8 @@ pub const LayoutModel = struct {
             });
         }
 
+        self.style = style.default();
+        output.style = self.style;
         recalcOutput(&output);
         self.outputs.appendAssumeCapacity(output);
         return self;

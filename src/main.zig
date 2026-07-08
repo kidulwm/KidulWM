@@ -8,7 +8,12 @@ pub fn main(init: std.process.Init.Minimal) !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var server = try Server.init(allocator);
+    const force_pixman = blk: {
+        const val = std.process.Environ.getPosix(init.environ, "WLR_RENDERER") orelse break :blk false;
+        break :blk std.mem.eql(u8, val, "pixman");
+    };
+
+    var server = try Server.init(allocator, force_pixman);
     errdefer server.deinit();
 
     const runtime_dir = std.process.Environ.getPosix(init.environ, "XDG_RUNTIME_DIR") orelse "/tmp";

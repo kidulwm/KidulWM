@@ -9,10 +9,20 @@
   },
   "left_panel": {
     "width": 360,
-    "widgets": []
+    "widgets": [],
+    "logo_path": "assets/control-center-logo.png",
+    "control_center_command": null,
+    "launcher_command": null,
+    "terminal_command": null,
+    "shell_command": null,
+    "security_profile": null
   },
   "right_panel": {
     "width": 320,
-    "widgets": []
+    "widgets": [],
+    "weather_location": null,
+    "terminal_command": null,
+    "shell_command": null,
+    "media_command": null
   }
 }

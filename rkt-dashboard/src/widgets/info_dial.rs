@@ -5,14 +5,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::widgets::dial::{colour_for_pct, draw_centered_text};
+use crate::widgets::dial::{colour_for_pct, draw_centered_text, DIAL_TEXT};
 use librsvg_rebind::prelude::*;
 
 // Soft company-colour palette for clock/weather glowballs and icons.
 const SOFT_BLUE: (f64, f64, f64) = (0.42, 0.58, 0.88);
 const SOFT_TURQUOISE: (f64, f64, f64) = (0.38, 0.78, 0.76);
 const SOFT_PURPLE: (f64, f64, f64) = (0.55, 0.38, 0.75);
-const TRACK_GOLD: (f64, f64, f64) = (0.95, 0.78, 0.42);
+const TRACK_GOLD: (f64, f64, f64) = (0.92, 0.86, 0.72);
 
 #[derive(Clone)]
 pub struct InfoDialState {
@@ -83,7 +83,7 @@ pub fn build(
     let r_for_text = (width.min(height) as f64 / 2.0) * 0.76;
     let label_font_px = (r_for_text * 0.22).max(12.0).round() as i32;
     let info_css = format!(
-        ".rkt-info-label-below {{ color: rgba(240, 240, 240, 0.55); font-size: {}px; font-weight: 700; }}",
+        ".rkt-info-label-below {{ color: #948e7b; font-family: \"FantasqueSansM Nerd Font\"; font-size: {}px; font-weight: 700; }}",
         label_font_px
     );
     let info_provider = gtk4::CssProvider::new();
@@ -439,7 +439,7 @@ pub fn build(
                     text_cy,
                     value_size.max(10.0),
                     cairo::FontWeight::Bold,
-                    (0.94, 0.94, 0.94, 0.65),
+                    (DIAL_TEXT.0, DIAL_TEXT.1, DIAL_TEXT.2, 0.65),
                 );
             }
 
@@ -453,7 +453,7 @@ pub fn build(
                     detail_cy,
                     detail_size.max(10.0),
                     cairo::FontWeight::Normal,
-                    (0.88, 0.88, 0.88, 0.48),
+                    (DIAL_TEXT.0, DIAL_TEXT.1, DIAL_TEXT.2, 0.48),
                 );
             }
 
@@ -516,7 +516,7 @@ pub fn build(
                     cy - r * 0.02,
                     value_size.max(10.0),
                     cairo::FontWeight::Bold,
-                    (0.94, 0.94, 0.94, 0.65),
+                    (DIAL_TEXT.0, DIAL_TEXT.1, DIAL_TEXT.2, 0.65),
                 );
             }
         }

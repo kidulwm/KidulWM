@@ -120,17 +120,15 @@ pub fn build(width: i32, height: i32) -> Box {
             let mut t = trigger.borrow_mut();
             if now - *t > 1_200_000 {
                 *t = now;
-                let _ = std::process::Command::new("qs")
-                    .args(["-c", "noctalia-shell", "ipc", "call", "calendar", "toggle"])
-                    .spawn();
+                // Calendar toggle command is intentionally not hard-coded.
+                // Configure it via the panel config (e.g. launcher_command).
             }
         }
     };
 
     let launcher_toggle = move || {
-        let _ = std::process::Command::new("qs")
-            .args(["-c", "noctalia-shell", "ipc", "call", "launcher", "toggle"])
-            .spawn();
+        // Launcher toggle command is intentionally not hard-coded.
+        // Configure it via the panel config (e.g. launcher_command).
     };
 
     // Hover over the date opens the calendar and highlights the date.

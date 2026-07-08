@@ -90,7 +90,7 @@ pub fn build(
                 cr.paint().unwrap();
 
                 cr.select_font_face(
-                    "Adwaita Sans",
+                    "FantasqueSansM Nerd Font",
                     cairo::FontSlant::Normal,
                     cairo::FontWeight::Bold,
                 );
@@ -125,7 +125,7 @@ pub fn build(
 
             if hover {
                 cr.select_font_face(
-                    "Adwaita Sans",
+                    "FantasqueSansM Nerd Font",
                     cairo::FontSlant::Normal,
                     cairo::FontWeight::Bold,
                 );
@@ -156,7 +156,7 @@ pub fn build(
 
                 let text = "RKT";
                 cr.select_font_face(
-                    "Adwaita Sans",
+                    "FantasqueSansM Nerd Font",
                     cairo::FontSlant::Normal,
                     cairo::FontWeight::Bold,
                 );
@@ -227,7 +227,7 @@ pub fn build_catchy(width: i32, height: i32) -> DrawingArea {
         cr.stroke().unwrap();
 
         cr.select_font_face(
-            "Adwaita Sans",
+            "FantasqueSansM Nerd Font",
             cairo::FontSlant::Normal,
             cairo::FontWeight::Bold,
         );

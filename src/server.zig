@@ -8,6 +8,7 @@ const InputManager = @import("input.zig").InputManager;
 const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
 const TrayManager = @import("tray.zig").TrayManager;
+const SettingsTray = @import("tray.zig").SettingsTray;
 const style = @import("core/style.zig");
 const layout = @import("core/layout.zig");
 
@@ -34,7 +35,8 @@ pub const Server = struct {
     fractional_scale_manager: *wlr.FractionalScaleManagerV1,
 
     seat: *wlr.Seat,
-    input_manager: InputManager,
+    cursor: *wlr.Cursor,
+    input_manager: *InputManager,
     pointer: PointerManager,
     keyboard: KeyboardManager,
     cursor_x: f64,
@@ -54,8 +56,10 @@ pub const Server = struct {
 
     focused_window: ?*Window,
     input_device_counts: InputDeviceCounts,
+    backend_started: bool = false,
 
     tray: *TrayManager,
+    settings_tray: *SettingsTray,
 
     new_output: wl.Listener(*wlr.Output),
     backend_destroy: wl.Listener(*wlr.Backend),
@@ -71,6 +75,11 @@ pub const Server = struct {
         switch (req) {
             .quit => self.requestQuit(),
             .get_layout => return self.getLayoutResponse(),
+            .set_theme => |p| {
+                std.log.info("theme update: {s} = {s}", .{ p.key, p.value });
+                self.applyTheme(p.key, p.value);
+                return .{ .ok = true, .message = "theme updated" };
+            },
             else => return self.state.handleRequest(req),
         }
         return self.state.handleRequest(req);
@@ -124,18 +133,14 @@ pub const Server = struct {
                     state.applyPreset(style.layout.vertical_bottom_split, .vertical, 1);
                 },
                 .set_focus => |p| state.focused_window = p.window_id,
-                .set_theme => |p| {
-                    std.log.info("theme update: {s} = {s}", .{ p.key, p.value });
-                    return .{ .ok = true, .message = "theme updated" };
-                },
                 .subscribe => return .{ .ok = true, .message = "subscription registered" },
-                .quit => {},
+                .set_theme, .quit => {},
             }
             return .{ .ok = true };
         }
     };
 
-    pub fn init(allocator: std.mem.Allocator) !*Server {
+    pub fn init(allocator: std.mem.Allocator, force_pixman: bool) !*Server {
         const server = try allocator.create(Server);
         errdefer allocator.destroy(server);
 
@@ -153,8 +158,12 @@ pub const Server = struct {
         const output_layout = try wlr.OutputLayout.create(wl_server);
         errdefer output_layout.destroy();
 
-        const renderer = try wlr.Renderer.autocreate(backend);
+        const renderer = if (force_pixman)
+            try wlr.Renderer.createPixman()
+        else
+            try wlr.Renderer.autocreate(backend);
         try renderer.initServer(wl_server);
+        std.log.info("KidulWM: renderer pixman={} gles2={}", .{ renderer.isPixman(), renderer.isGles2() });
 
         const renderer_allocator = try wlr.Allocator.autocreate(backend, renderer);
 
@@ -171,6 +180,9 @@ pub const Server = struct {
 
         const seat = try wlr.Seat.create(wl_server, "seat0");
         seat.setCapabilities(.{ .pointer = true, .keyboard = true });
+
+        const cursor = try wlr.Cursor.create();
+        cursor.attachOutputLayout(output_layout);
 
         server.* = Server{
             .allocator = allocator,
@@ -191,6 +203,7 @@ pub const Server = struct {
             .viewporter = viewporter,
             .fractional_scale_manager = fractional_scale_manager,
             .seat = seat,
+            .cursor = cursor,
             .input_manager = undefined,
             .pointer = undefined,
             .keyboard = undefined,
@@ -199,6 +212,7 @@ pub const Server = struct {
             .input_device_counts = .{},
             .focused_window = null,
             .tray = undefined,
+            .settings_tray = undefined,
             .ipc_server = undefined,
             .ipc_thread = null,
             .ipc_running = std.atomic.Value(bool).init(false),
@@ -223,7 +237,8 @@ pub const Server = struct {
         server.pointer = PointerManager.init(server);
         server.keyboard = KeyboardManager.init(server);
         server.windows.init();
-        server.input_manager = InputManager.init(server);
+        server.input_manager = try server.allocator.create(InputManager);
+        InputManager.init(server.input_manager, server);
 
         server.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
         server.new_output.link.init();
@@ -251,6 +266,9 @@ pub const Server = struct {
 
         server.tray = try server.allocator.create(TrayManager);
         try TrayManager.init(server, server.tray);
+
+        server.settings_tray = try server.allocator.create(SettingsTray);
+        try SettingsTray.init(server, server.settings_tray);
 
         return server;
     }
@@ -284,6 +302,7 @@ pub const Server = struct {
 
         if (!no_backend) {
             try self.backend.start();
+            self.backend_started = true;
             std.log.info("KidulWM: backend started", .{});
         } else {
             std.log.info("KidulWM: skipping backend start", .{});
@@ -313,10 +332,19 @@ pub const Server = struct {
         self.output_layout.destroy();
 
         self.new_output.link.remove();
-        self.backend.destroy();
+        self.backend_destroy.link.remove();
+        if (self.backend_started) {
+            self.backend.destroy();
+        } else {
+            std.log.info("KidulWM: backend was not started, skipping destroy", .{});
+        }
 
         self.tray.deinit();
         self.allocator.destroy(self.tray);
+
+        self.cursor.destroy();
+        self.settings_tray.deinit();
+        self.allocator.destroy(self.settings_tray);
         self.wl_server.destroy();
         const allocator = self.allocator;
         allocator.destroy(self);
@@ -447,7 +475,27 @@ pub const Server = struct {
 
     fn handleNewOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Server = @fieldParentPtr("new_output", listener);
+
+        if (!wlr_output.initRender(self.renderer_allocator, self.renderer)) {
+            std.log.err("KidulWM: failed to initialize output render, dropping output", .{});
+            return;
+        }
+
+        var state = wlr.Output.State.init();
+        defer state.finish();
+        state.setEnabled(true);
+        if (wlr_output.preferredMode()) |mode| {
+            state.setMode(mode);
+        } else {
+            state.setCustomMode(1024, 768, 60_000);
+        }
+        if (!wlr_output.commitState(&state)) {
+            std.log.err("KidulWM: failed to commit output state, dropping output", .{});
+            return;
+        }
+
         std.log.info("KidulWM: new output {s} {d}x{d}", .{ wlr_output.name, wlr_output.width, wlr_output.height });
+
         _ = self.output_layout.addAuto(wlr_output) catch |err| {
             std.log.err("failed to add output to layout: {}", .{err});
             return;
@@ -507,5 +555,40 @@ pub const Server = struct {
         source.timerUpdate(1) catch |err| {
             std.log.err("failed to arm quit timer: {}", .{err});
         };
+    }
+
+    fn applyTheme(self: *Server, key: []const u8, value: []const u8) void {
+        if (std.mem.eql(u8, key, "border_focused")) {
+            self.layout.style.color_border_focused = style.Style.Color.fromString(value) catch |err| {
+                std.log.warn("invalid border_focused color '{s}': {}", .{ value, err });
+                return;
+            };
+        } else if (std.mem.eql(u8, key, "border")) {
+            self.layout.style.color_border = style.Style.Color.fromString(value) catch |err| {
+                std.log.warn("invalid border color '{s}': {}", .{ value, err });
+                return;
+            };
+        } else if (std.mem.eql(u8, key, "background")) {
+            self.layout.style.color_background = style.Style.Color.fromString(value) catch |err| {
+                std.log.warn("invalid background color '{s}': {}", .{ value, err });
+                return;
+            };
+        } else if (std.mem.eql(u8, key, "gap")) {
+            const gap = std.fmt.parseInt(u32, value, 10) catch |err| {
+                std.log.warn("invalid gap '{s}': {}", .{ value, err });
+                return;
+            };
+            self.layout.style.gap = gap;
+            self.state.gap = gap;
+        } else {
+            std.log.info("unknown theme key '{s}', ignoring", .{key});
+            return;
+        }
+
+        for (self.layout.outputs.items) |*output| {
+            output.style = self.layout.style;
+        }
+        self.background.color = self.layout.style.color_background.toF32();
+        self.requestLayout();
     }
 };

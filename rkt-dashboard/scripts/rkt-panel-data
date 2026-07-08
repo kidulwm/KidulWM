@@ -19,6 +19,7 @@ import json
 import os
 import ssl
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -27,17 +28,30 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-CONFIG_DIR = Path.home() / ".config" / "rkt-dashboard"
-CACHE_DIR = Path.home() / ".cache" / "rkt-dashboard"
+def config_dir() -> Path:
+    return Path(os.environ.get("RKT_DASHBOARD_CONFIG_DIR", Path.home() / ".config" / "rkt-dashboard"))
+
+
+def cache_dir() -> Path:
+    return Path(os.environ.get("RKT_DASHBOARD_CACHE_DIR", Path.home() / ".cache" / "rkt-dashboard"))
+
+
+def state_root() -> Path:
+    return Path(
+        os.environ.get("RKT_DASHBOARD_STATE_DIR", Path.home() / ".local" / "share" / "rkt-dashboard")
+    )
+
+
+CONFIG_DIR = config_dir()
+CACHE_DIR = cache_dir()
 CACHE_FILE = CACHE_DIR / "panel-data.json"
 FEEDS_FILE = CONFIG_DIR / "feeds.json"
 WEATHER_FILE = CONFIG_DIR / "weather.json"
-BOBMAIL_CONFIG = Path.home() / ".config" / "bobmail" / "config.json"
-BACKUP_ROOT = Path("/mnt/sda_backup/hermes-backups")
-SECURITY_STATE = Path.home() / ".hermes" / "brain" / "state" / "security-state.json"
-SECURITY_REPORTS = Path.home() / ".local" / "share" / "bob-farm" / "handoff" / "out"
-USB_PENDING = Path.home() / ".hermes" / "brain" / "state" / "usb-guard-pending.jsonl"
-
+EMAIL_CONFIG = CONFIG_DIR / "email.json"
+BACKUP_ROOT = Path(os.environ.get("RKT_BACKUP_ROOT", ""))
+SECURITY_STATE_DIR = state_root() / "security"
+SECURITY_REPORTS = state_root() / "reports"
+USB_PENDING = state_root() / "usb-pending.jsonl"
 
 def now_ts() -> str:
     return datetime.datetime.now().isoformat()
@@ -120,7 +134,6 @@ def get_rss() -> dict:
         {"name": "Arch Linux", "url": "https://archlinux.org/feeds/news/"},
         {"name": "CachyOS", "url": "https://cachyos.org/rss.xml"},
         {"name": "Niri", "url": "https://github.com/niri-wm/niri/releases.atom"},
-        {"name": "Noctalia", "url": "https://github.com/noctalia-dev/noctalia-shell/releases.atom"},
         {"name": "Linux Kernel", "url": "https://www.kernel.org/feeds/kdist.xml"},
         {"name": "Zig", "url": "https://ziglang.org/news/index.xml"},
         {"name": "Ghostty", "url": "https://github.com/ghostty-org/ghostty/releases.atom"},
@@ -140,7 +153,18 @@ def get_rss() -> dict:
 
 
 def get_weather(cfg: dict) -> dict:
-    location = cfg.get("location", "Brisbane")
+    location = cfg.get("location")
+    if not location:
+        return {
+            "location": "",
+            "current_temp_c": 0,
+            "condition": "unconfigured",
+            "humidity": 0,
+            "wind_kph": 0,
+            "forecast": [],
+            "alerts": [],
+            "last_fetch": now_ts(),
+        }
     severe_keywords = ["storm", "flood", "cyclone", "tornado", "hail", "severe", "extreme", "thunder", "bushfire", "fire warning"]
     try:
         url = f"https://wttr.in/{urllib.parse.quote(location)}?format=j1"
@@ -192,11 +216,11 @@ def get_weather(cfg: dict) -> dict:
         }
 
 
-def get_email_unseen() -> dict:
-    cfg = load_json(BOBMAIL_CONFIG, {})
+def get_email_unseen(config_path: Path = EMAIL_CONFIG) -> dict:
+    cfg = load_json(config_path, {})
     imap = cfg.get("imap")
     if not imap:
-        return {"unread": -1, "error": "no bobmail imap config", "last_sync": now_ts()}
+        return {"unread": -1, "error": "no email config", "last_sync": now_ts()}
     try:
         ctx = ssl._create_unverified_context()
         c = imaplib.IMAP4(imap["host"], imap["port"])
@@ -212,7 +236,7 @@ def get_email_unseen() -> dict:
 
 
 def get_backup() -> dict:
-    if not BACKUP_ROOT.exists():
+    if not BACKUP_ROOT or not BACKUP_ROOT.exists():
         return {"days_since": -1, "status": "unknown", "last_backup": "", "last_check": now_ts()}
     try:
         dirs = sorted(
@@ -241,7 +265,8 @@ def get_backup() -> dict:
 def get_security_feed() -> dict:
     """Return latest security-mesh summary for the right panel."""
     try:
-        state = load_json(SECURITY_STATE, {})
+        state_file = SECURITY_STATE_DIR / "security-state.json"
+        state = load_json(state_file, {})
         failed = state.get("failed_ssh_15m")
         blocked = state.get("blocked_ips", 0)
         high_risk = state.get("high_risk_downloads", 0)
@@ -310,7 +335,7 @@ def main():
         elif section == "rss":
             result[section] = get_rss()
         elif section == "email":
-            result[section] = get_email_unseen()
+            result[section] = get_email_unseen(EMAIL_CONFIG)
         elif section == "social":
             result[section] = get_social()
         elif section == "backup":

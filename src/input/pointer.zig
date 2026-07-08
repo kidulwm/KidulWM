@@ -48,6 +48,7 @@ pub const PointerManager = struct {
         const self: *PointerManager = @fieldParentPtr("motion", listener);
         self.server.cursor_x += event.delta_x;
         self.server.cursor_y += event.delta_y;
+        self.server.cursor.move(event.delta_x, event.delta_y);
         self.server.seat.pointerNotifyMotion(timeMsec(), self.server.cursor_x, self.server.cursor_y);
     }
 
@@ -55,6 +56,7 @@ pub const PointerManager = struct {
         const self: *PointerManager = @fieldParentPtr("motion_absolute", listener);
         self.server.cursor_x = event.x;
         self.server.cursor_y = event.y;
+        self.server.cursor.warpAbsolute(null, event.x, event.y);
         self.server.seat.pointerNotifyMotion(event.time_msec, self.server.cursor_x, self.server.cursor_y);
     }
 

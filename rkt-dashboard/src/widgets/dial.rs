@@ -1,10 +1,28 @@
 use gtk4::prelude::*;
 use gtk4::{Box, DrawingArea, EventControllerMotion, EventControllerScroll, Label, Orientation};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use crate::config::WidgetCfg;
+
+pub const DIAL_TEXT: (f64, f64, f64) = (148.0 / 255.0, 142.0 / 255.0, 123.0 / 255.0);
+
+static IPC_OVERRIDES: OnceLock<Mutex<HashMap<String, Vec<String>>>> = OnceLock::new();
+
+pub fn set_ipc_override(target: &str, cmd: Vec<String>) {
+    let map = IPC_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut m) = map.lock() {
+        m.insert(target.to_string(), cmd);
+    }
+}
+
+fn ipc_command_for(target: &str) -> Option<Vec<String>> {
+    let map = IPC_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
+    map.lock().ok()?.get(target).cloned()
+}
 
 pub fn build(
     widget: &WidgetCfg,
@@ -120,7 +138,7 @@ fn build_internal(
         let mini = is_mini;
         let hide_value = hide_value_draw;
 
-        let track_colour = (0.95, 0.78, 0.42);
+        let track_colour = (0.92, 0.86, 0.72);
 
         // Track and value indicator ring. Large dials and mini dials show six concentric arcs.
         if large_dial || mini {
@@ -292,7 +310,7 @@ fn build_internal(
                 cy - r * 0.02,
                 value_size.max(10.0),
                 cairo::FontWeight::Bold,
-                (0.94, 0.94, 0.94, 0.65),
+                (DIAL_TEXT.0, DIAL_TEXT.1, DIAL_TEXT.2, 0.65),
             );
         }
 
@@ -325,7 +343,7 @@ fn build_internal(
                 label_y,
                 label_size,
                 cairo::FontWeight::Bold,
-                (0.94, 0.94, 0.94, 0.70),
+                (DIAL_TEXT.0, DIAL_TEXT.1, DIAL_TEXT.2, 0.70),
             );
         }
     });
@@ -489,6 +507,8 @@ fn build_internal(
     bx
 }
 
+const FONT_FAMILY: &str = "FantasqueSansM Nerd Font";
+
 pub fn draw_centered_text(
     cr: &cairo::Context,
     text: &str,
@@ -498,7 +518,7 @@ pub fn draw_centered_text(
     weight: cairo::FontWeight,
     rgba: (f64, f64, f64, f64),
 ) {
-    cr.select_font_face("Adwaita Sans", cairo::FontSlant::Normal, weight);
+    cr.select_font_face(FONT_FAMILY, cairo::FontSlant::Normal, weight);
     cr.set_font_size(size);
     let extents = cr.text_extents(text).expect("text_extents");
     cr.set_source_rgba(rgba.0, rgba.1, rgba.2, rgba.3);
@@ -562,10 +582,14 @@ pub fn apply_volume_brightness(target: &str, val: f64) {
                 .spawn();
         }
         _ => {
-            let action = if val >= 50.0 { "increase" } else { "decrease" };
-            let _ = std::process::Command::new("qs")
-                .args(["-c", "noctalia-shell", "ipc", "call", target, action])
-                .spawn();
+            if let Some(cmd) = ipc_command_for(target) {
+                let _ = std::process::Command::new(&cmd[0]).args(&cmd[1..]).spawn();
+            } else {
+                let action = if val >= 50.0 { "increase" } else { "decrease" };
+                let _ = std::process::Command::new("qs")
+                    .args(["-c", "compositor-shell", "ipc", "call", target, action])
+                    .spawn();
+            }
         }
     }
 }

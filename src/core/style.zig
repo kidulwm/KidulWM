@@ -47,6 +47,17 @@ pub const Style = struct {
             };
         }
 
+        pub fn fromString(s: []const u8) !Color {
+            if (s.len == 0) return error.InvalidColor;
+            const hex = if (s[0] == '#') s[1..] else s;
+            if (hex.len != 6 and hex.len != 8) return error.InvalidColor;
+            const r = try std.fmt.parseInt(u8, hex[0..2], 16);
+            const g = try std.fmt.parseInt(u8, hex[2..4], 16);
+            const b = try std.fmt.parseInt(u8, hex[4..6], 16);
+            const a: u8 = if (hex.len == 8) try std.fmt.parseInt(u8, hex[6..8], 16) else 0xFF;
+            return .{ .r = r, .g = g, .b = b, .a = a };
+        }
+
         pub fn toF32(self: Color) [4]f32 {
             return .{
                 @as(f32, self.r) / 255.0,

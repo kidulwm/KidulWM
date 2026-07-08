@@ -1,9 +1,13 @@
 window.background {
-    background: transparent;
+    background: #222425;
 }
 
 .rkt-panel {
-    background: transparent;
+    background: #222425;
+}
+
+.rkt-panel > * {
+    color: #948e7b;
 }
 
 .rkt-dial {
@@ -19,8 +23,8 @@ window.background {
 }
 
 .rkt-dial-label {
-    color: rgba(255, 255, 255, 0.55);
-    font-family: "Adwaita Sans", sans-serif;
+    color: #948e7b;
+    font-family: "FantasqueSansM Nerd Font", sans-serif;
     font-size: 16px;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -38,21 +42,9 @@ window.background {
     padding: 6px;
 }
 
-.rkt-clock-date {
-    color: rgba(255, 255, 255, 0.60);
-    font-family: "Adwaita Sans", sans-serif;
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-}
-
-.rkt-clock-wrap.active .rkt-clock-date {
-    color: rgba(0, 240, 255, 0.95);
-}
-
 .rkt-catchy {
-    color: rgba(255, 255, 255, 0.55);
-    font-family: "Adwaita Sans", sans-serif;
+    color: #948e7b;
+    font-family: "FantasqueSansM Nerd Font", sans-serif;
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.25em;
@@ -64,8 +56,8 @@ window.background {
 }
 
 .rkt-right-widget {
-    color: rgba(255, 255, 255, 0.92);
-    font-family: "Adwaita Sans", sans-serif;
+    color: #948e7b;
+    font-family: "FantasqueSansM Nerd Font", sans-serif;
     font-size: 18px;
     font-weight: 700;
     padding: 12px 8px;
@@ -86,14 +78,14 @@ window.background {
 }
 
 .rkt-right-label {
-    color: inherit;
-    font-family: "Adwaita Sans", sans-serif;
+    color: #948e7b;
+    font-family: "FantasqueSansM Nerd Font", sans-serif;
     font-size: 18px;
     font-weight: 700;
 }
 
 .rkt-security-label {
-    color: rgba(240, 240, 240, 0.55);
+    color: #948e7b;
 }
 
 .rkt-security-label.warning {
@@ -101,21 +93,38 @@ window.background {
 }
 
 .rkt-dial-label-below {
-    color: rgba(240, 240, 240, 0.55);
-    font-family: "Adwaita Sans", sans-serif;
+    color: #948e7b;
+    font-family: "FantasqueSansM Nerd Font", sans-serif;
     font-size: 15px;
     font-weight: 700;
     margin-top: -5px;
 }
 
 .rkt-info-label-below {
+    color: #948e7b;
     margin-top: -8px;
+}
+
+.rkt-right-date {
+    color: #948e7b;
+    font-family: "FantasqueSansM Nerd Font", sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.rkt-right-time {
+    color: #948e7b;
+    font-family: "FantasqueSansM Nerd Font", sans-serif;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
 }
 
 .rkt-usb-pin {
     color: rgba(255, 255, 255, 0.92);
     background: rgba(0, 0, 0, 0.55);
-    font-family: "Adwaita Mono", "Source Code Pro", monospace;
+    font-family: "FantasqueSansM Nerd Font", monospace;
     font-size: 17px;
     font-weight: 700;
     border: 1px solid rgba(0, 240, 255, 0.45);

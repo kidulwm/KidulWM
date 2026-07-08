@@ -6,10 +6,14 @@ use gtk4::{
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 
 use crate::config::{Config, WidgetCfg};
+use crate::panel_data::fetch_panel_data;
 use crate::panels::right::right_dial_size;
+use crate::usb_guard::{build_usb_widget, spawn_usb_updater};
 use crate::widgets;
+use crate::widgets::info_dial::make_clickable_label;
 use crate::Values;
 
 fn create_transparent_icon(width: i32, height: i32) -> gtk4::gdk::Texture {
@@ -34,10 +38,7 @@ fn create_transparent_icon(width: i32, height: i32) -> gtk4::gdk::Texture {
     .upcast::<gtk4::gdk::Texture>()
 }
 
-const DEFAULT_ORDER: &[&str] = &[
-    "cpu", "mem_pct", "load", "cpu_temp", "gpu_temp", "cpu_freq", "disk_pct", "swap_pct",
-    "fan_rpm", "power_w",
-];
+const DEFAULT_ORDER: &[&str] = &["gpu_temp", "cpu_temp", "mem_pct", "disk_pct"];
 
 const ORDER_DIR: &str = ".config/rkt-dashboard";
 const ORDER_FILE: &str = "dial-order.json";
@@ -154,6 +155,7 @@ fn save_order(order: &[String]) {
 }
 
 pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox {
+    let cfg = std::sync::Arc::new(cfg.clone());
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Highlight {
         None,
@@ -175,8 +177,8 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
 
     let avail_width = cfg.left.width - 24;
 
-    let max_small_by_width = (avail_width - 36 - 2 * small_spacing) / 3;
-    let small_size = ((base_small as f64 * 1.5) as i32)
+    let max_small_by_width = (avail_width - small_spacing) / 2;
+    let small_size = ((base_small as f64 * 1.35) as i32)
         .min(max_small_by_width)
         .max(base_small);
     let catchy_h = (small_size.min(base_catchy + 15) as f64 * 1.7) as i32;
@@ -184,22 +186,24 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
     let small_widget_h = |s: i32| s + 28;
 
     // CachyOS logo lives at the top; small dials live at the bottom.
-    let top_logo_h = catchy_h;
+    let top_logo_h = (catchy_h as f64 * 0.81) as i32;
 
-    let large_size = right_dial_size(cfg.left.width)
+    let large_size = ((right_dial_size(cfg.left.width)
         .min((monitor_height / 4) - 20)
-        .max(120);
+        .max(120)) as f64
+        * 0.75) as i32;
 
     let rkt_width = avail_width;
 
     let top_h = top_logo_h + spacing;
-    let bottom_h = small_widget_h(small_size) + small_spacing + spacing;
+    let tight_spacing = 2;
+    let bottom_h = small_widget_h(small_size) + tight_spacing + spacing;
 
     let bx = GtkBox::builder()
         .orientation(Orientation::Vertical)
         .spacing(spacing)
         .margin_top(24)
-        .margin_bottom(24)
+        .margin_bottom(0)
         .margin_start(12)
         .margin_end(12)
         .build();
@@ -212,41 +216,125 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
         .build();
     top_box.set_height_request(top_h);
 
-    let control_trigger: Rc<dyn Fn()> = Rc::new(|| {
-        let _ = std::process::Command::new("qs")
-            .args([
-                "-c",
-                "noctalia-shell",
-                "ipc",
-                "call",
-                "controlCenter",
-                "toggle",
-            ])
-            .spawn();
-    });
+    let control_trigger: Rc<dyn Fn()> = {
+        let cfg = std::sync::Arc::clone(&cfg);
+        Rc::new(move || {
+            if let Some(cmd) = cfg.left.control_center_command.as_deref() {
+                if let Some(prog) = cmd.first() {
+                    let _ = std::process::Command::new(prog).args(&cmd[1..]).spawn();
+                }
+            }
+        })
+    };
+    let logo = cfg
+        .left
+        .logo_path
+        .as_deref()
+        .unwrap_or("assets/control-center-logo.png");
     let catchy_logo = widgets::logo::build(
         rkt_width,
         top_logo_h,
         control_trigger,
-        Some("/home/dad/dev/KidulWM/rkt-dashboard/assets/control-center-logo.png"),
+        Some(logo),
         Some(("CONTROL", "CENTER")),
     );
     catchy_logo.set_halign(gtk4::Align::Center);
     top_box.append(&catchy_logo);
 
+    let left_width = cfg.left.width;
     for w in &cfg.left.widgets {
-        if let Some(child) = build_widget(w, cfg.left.width, values) {
+        if let Some(child) = build_widget(w, left_width, values) {
             top_box.append(&child);
         }
     }
-    bx.append(&top_box);
+    // Spacer positions the logo so its vertical centre matches the right clock.
+    let right_clock_h = (right_dial_size(cfg.left.width)
+        .min((monitor_height / 4) - 20)
+        .max(120) as f64
+        * 0.85) as i32;
+    let right_clock_center_y = 8 + right_clock_h / 2; // right panel margin_top is 8
+    let logo_spacer_h = (right_clock_center_y - 24 - spacing - top_logo_h / 2).max(0);
 
-    // Middle: large-dial pager. Viewport is exactly three slots tall.
+    let logo_spacer = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .height_request(logo_spacer_h)
+        .build();
+    bx.append(&logo_spacer);
+    // Security line sits just under the top logo.
+    let sec_font_px = 17;
+    let sec_css = format!(
+        ".rkt-security-label {{ color: #948e7b; font-size: {}px; }} \
+         .rkt-security-label.warning {{ color: rgba(255,95,70,0.95); }}",
+        sec_font_px
+    );
+    let sec_provider = gtk4::CssProvider::new();
+    sec_provider.load_from_data(&sec_css);
+    if let Some(display) = gtk4::gdk::Display::default() {
+        gtk4::style_context_add_provider_for_display(
+            &display,
+            &sec_provider,
+            gtk4::STYLE_PROVIDER_PRIORITY_USER,
+        );
+    }
+
+    let security_widget = {
+        let cfg = std::sync::Arc::clone(&cfg);
+        make_clickable_label(
+            "security: …",
+            "rkt-right-widget",
+            Box::new(move || {
+                if let Some(cmd) = cfg.left.terminal_command.as_deref() {
+                    if let Some(prog) = cmd.first() {
+                        let profile = cfg.left.security_profile.as_deref().unwrap_or("default");
+                        let mut c = std::process::Command::new(prog);
+                        c.args(&cmd[1..]);
+                        let _shell = cfg.left.shell_command.as_deref().unwrap_or("sh -c");
+                        c.arg(format!(
+                            "hermes -p {} chat -q 'Run a fresh security scan now and print a one-line summary.'; read -P 'Press Enter to close'",
+                            profile
+                        ));
+                        let _ = c.spawn();
+                    }
+                }
+            }),
+        )
+    };
+    security_widget.set_halign(gtk4::Align::Center);
+
+    let sec_label = {
+        let sec_label = security_widget
+            .first_child()
+            .and_downcast::<gtk4::Label>()
+            .expect("security line label");
+        sec_label.add_css_class("rkt-security-label");
+        sec_label.set_text("security: …");
+        sec_label.clone()
+    };
+
+    bx.append(&top_box);
+    bx.append(&security_widget);
+
+    // ── USB guard, just under the security line ──
+    let (usb_box, usb_label, usb_entry, usb_state) = build_usb_widget();
+    bx.append(&usb_box);
+    spawn_usb_updater(usb_label, usb_state, usb_box, usb_entry);
+
+    // Equal expanders above/below the dial block keep it centred between the logo/security-usb block and the bottom dials.
+    let top_spacer = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .vexpand(true)
+        .build();
+    let bottom_spacer = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .vexpand(true)
+        .build();
+
+    // Middle: large-dial pager. Viewport is exactly four slots tall.
     // The .rkt-dial CSS adds 8px top + 8px bottom padding, so each slot is
     // the dial height plus that padding plus the box spacing between dials.
     let dial_padding_v = 16;
     let slot_h = large_size + dial_padding_v + spacing;
-    let visible_h = 3 * (large_size + dial_padding_v) + 2 * spacing;
+    let visible_h = 4 * (large_size + dial_padding_v) + 3 * spacing;
     let scroll = ScrolledWindow::builder()
         .hscrollbar_policy(gtk4::PolicyType::Never)
         .vscrollbar_policy(gtk4::PolicyType::External)
@@ -586,16 +674,6 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
 
     scroll.set_child(Some(&dial_box));
 
-    // Expandable spacers above and below keep the 3-dial viewport centered
-    // between the top logo and the bottom small-dial bar.
-    let top_spacer = GtkBox::builder()
-        .orientation(Orientation::Vertical)
-        .vexpand(true)
-        .build();
-    let bottom_spacer = GtkBox::builder()
-        .orientation(Orientation::Vertical)
-        .vexpand(true)
-        .build();
     bx.append(&top_spacer);
     bx.append(&scroll);
     bx.append(&bottom_spacer);
@@ -607,24 +685,24 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
         .build();
     bottom_box.set_height_request(bottom_h);
 
-    let small_bx = GtkBox::builder()
+    let small_grid = GtkBox::builder()
         .orientation(Orientation::Horizontal)
-        .spacing(small_spacing)
+        .spacing(tight_spacing)
         .halign(gtk4::Align::Center)
         .valign(gtk4::Align::End)
         .build();
-    small_bx.add_css_class("rkt-dial-stack");
+
+    let left_col = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(tight_spacing)
+        .build();
+    let right_col = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(tight_spacing)
+        .valign(gtk4::Align::End)
+        .build();
 
     let sys = [
-        (
-            "BAT",
-            "battery",
-            100.0,
-            "",
-            None::<&str>,
-            true,
-            Some("mini"),
-        ),
         (
             "BRI",
             "brightness",
@@ -634,6 +712,12 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
             true,
             Some("mini"),
         ),
+        // BAT is hidden until the settings tray is built (laptop is currently
+        // always plugged in, so it is not needed in the main panel).
+        // (
+        //     "BAT",
+        //     ...
+        // ),
         (
             "VOL",
             "volume",
@@ -657,21 +741,66 @@ pub fn build_left(cfg: &Config, values: &Values, monitor_height: i32) -> GtkBox 
                 dial_style: dial_style.map(|s| s.to_string()),
                 extra: Default::default(),
             };
-            if let Some(t) = target {
+            let dial = if let Some(t) = target {
                 let (dial, _v, _m, _t) =
                     widgets::dial::build_interactive(&cfg, val, small_size, small_size, t, false);
                 dial.set_halign(gtk4::Align::Center);
-                small_bx.append(&dial);
+                dial
             } else {
                 let dial = widgets::dial::build(&cfg, val, small_size, small_size, false);
                 dial.set_halign(gtk4::Align::Center);
-                small_bx.append(&dial);
+                dial
+            };
+            match *label {
+                "BRI" => left_col.append(&dial),
+                "VOL" => right_col.append(&dial),
+                _ => left_col.append(&dial),
             }
         }
     }
-    bottom_box.append(&small_bx);
+    small_grid.append(&left_col);
+    small_grid.append(&right_col);
+
+    bottom_box.append(&small_grid);
 
     bx.append(&bottom_box);
+
+    // Security status updater (every 5s).
+    {
+        let sec_label = sec_label.clone();
+        let refresh = move || -> Option<()> {
+            let out = fetch_panel_data()?;
+            if let Some(s) = out.get("security") {
+                let blocked = s.get("blocked_ips").and_then(|v| v.as_i64()).unwrap_or(0);
+                let failed = s
+                    .get("failed_ssh_15m")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let bad = s
+                    .get("high_risk_downloads")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let warning = blocked > 0 || failed > 0 || bad > 0;
+                sec_label.set_text(if warning {
+                    "security:warning"
+                } else {
+                    "security:ok"
+                });
+                if warning {
+                    sec_label.add_css_class("warning");
+                } else {
+                    sec_label.remove_css_class("warning");
+                }
+            }
+            Some(())
+        };
+        refresh();
+        gtk4::glib::source::timeout_add_local(Duration::from_secs(5), move || {
+            refresh();
+            gtk4::glib::ControlFlow::Continue
+        });
+    }
+
     bx
 }
 
@@ -679,16 +808,8 @@ fn build_widget(w: &WidgetCfg, _width: i32, values: &Values) -> Option<gtk4::Wid
     match w.ty.as_str() {
         "logo" => {
             let trigger: Rc<dyn Fn()> = Rc::new(|| {
-                let _ = std::process::Command::new("qs")
-                    .args([
-                        "-c",
-                        "noctalia-shell",
-                        "ipc",
-                        "call",
-                        "controlCenter",
-                        "toggle",
-                    ])
-                    .spawn();
+                // Logo click command is intentionally not hard-coded; configure it via
+                // left_panel.control_center_command in rkt-dashboard.json.
             });
             Some(widgets::logo::build(160, 160, trigger, None, None).upcast())
         }

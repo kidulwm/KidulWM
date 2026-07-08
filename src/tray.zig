@@ -173,3 +173,46 @@ const LayerSurfaceEntry = struct {
     destroy: wl.Listener(*wlr.LayerSurfaceV1),
     commit: wl.Listener(*wlr.Surface),
 };
+
+const kidul = @import("wayland").server.kidul;
+
+/// GTK4 settings tray global binder.
+///
+/// Advertises `kidul_settings_tray_v1` so a dedicated GTK4 settings client can
+/// detect the compositor and create a panel surface.  The implementation is
+/// intentionally a stub: it binds and logs, deferring real surface plumbing to
+/// a later pass.
+pub const SettingsTray = struct {
+    server: *Server,
+    global: *wl.Global,
+
+    const Binding = struct {
+        fn bind(client: *wl.Client, data: *SettingsTray, version: u32, id: u32) void {
+            _ = wl.Resource.create(client, kidul.SettingsTrayV1, version, id) catch |err| {
+                std.log.err("failed to create kidul_settings_tray_v1 resource: {}", .{err});
+                client.postNoMemory();
+                return;
+            };
+            std.log.info("KidulWM: kidul_settings_tray_v1 bound by client pid={d}", .{client.getFd()});
+            _ = data;
+        }
+    };
+
+    pub fn init(server: *Server, tray_out: *SettingsTray) !void {
+        tray_out.* = .{
+            .server = server,
+            .global = try wl.Global.create(
+                server.wl_server,
+                kidul.SettingsTrayV1,
+                1,
+                *SettingsTray,
+                tray_out,
+                Binding.bind,
+            ),
+        };
+    }
+
+    pub fn deinit(self: *SettingsTray) void {
+        self.global.destroy();
+    }
+};

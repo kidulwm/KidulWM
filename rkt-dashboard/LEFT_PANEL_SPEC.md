@@ -16,9 +16,8 @@ This document records the current "good" left-panel state so future changes do n
 ## 2. Top logo area (Catchy / CachyOS logo)
 
 - **Widget**: `widgets::logo::build(...)`
-- **Image asset**: `/usr/share/icons/cachyos.svg`
-- **Click action**: toggles Noctalia control centre via  
-  `qs -c noctalia-shell ipc call controlCenter toggle`
+- **Image asset**: `left_panel.logo_path` in `rkt-dashboard.json`; falls back to `assets/control-center-logo.png`
+- **Click action**: toggles control center / launcher via `control_center_command` configured in `rkt-dashboard.json`
 - **Hover**: dims image and shows "CONTROL / CENTER" text.
 - **Sizing**:
   - `avail_width = left_panel.width - 24`

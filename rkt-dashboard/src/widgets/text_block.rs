@@ -23,7 +23,7 @@ pub fn build(widget: &WidgetCfg, value: Rc<RefCell<f64>>, width: i32, height: i3
         let y = 20.0;
 
         cr.select_font_face(
-            "Adwaita Sans",
+            "FantasqueSansM Nerd Font",
             cairo::FontSlant::Normal,
             cairo::FontWeight::Bold,
         );

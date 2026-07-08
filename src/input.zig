@@ -8,19 +8,22 @@ pub const InputManager = struct {
     server: *Server,
 
     new_input: wl.Listener(*wlr.InputDevice),
+    request_set_cursor: wl.Listener(*wlr.Seat.event.RequestSetCursor),
 
-    pub fn init(server: *Server) InputManager {
-        var manager: InputManager = .{
+    pub fn init(self: *InputManager, server: *Server) void {
+        self.* = .{
             .server = server,
-            .new_input = undefined,
+            .new_input = wl.Listener(*wlr.InputDevice).init(handleNewInput),
+            .request_set_cursor = wl.Listener(*wlr.Seat.event.RequestSetCursor).init(handleRequestSetCursor),
         };
-        manager.new_input = wl.Listener(*wlr.InputDevice).init(handleNewInput);
-        manager.new_input.link.init();
-        server.backend.events.new_input.add(&manager.new_input);
-        return manager;
+        self.new_input.link.init();
+        self.request_set_cursor.link.init();
+        server.backend.events.new_input.add(&self.new_input);
+        server.seat.events.request_set_cursor.add(&self.request_set_cursor);
     }
 
     pub fn deinit(self: *InputManager) void {
+        self.request_set_cursor.link.remove();
         self.new_input.link.remove();
     }
 
@@ -40,6 +43,7 @@ pub const InputManager = struct {
             .pointer => {
                 const pointer = device.toPointer();
                 self.server.pointer.listen(pointer);
+                self.server.cursor.attachInputDevice(device);
                 self.server.input_device_counts.pointer += 1;
                 std.log.info("KidulWM: pointer device discovered", .{});
             },
@@ -68,6 +72,20 @@ pub const InputManager = struct {
 
         if (!keyboard.setKeymap(keymap)) {
             std.log.warn("KidulWM: failed to set keymap on keyboard", .{});
+        }
+    }
+}
+
+    fn handleRequestSetCursor(
+        listener: *wl.Listener(*wlr.Seat.event.RequestSetCursor),
+        event: *wlr.Seat.event.RequestSetCursor,
+    ) void {
+        const self: *InputManager = @fieldParentPtr("request_set_cursor", listener);
+        _ = self;
+        if (event.surface) |surface| {
+            self.server.cursor.setSurface(surface, event.hotspot_x, event.hotspot_y);
+        } else {
+            self.server.cursor.unsetImage();
         }
     }
 };

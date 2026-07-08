@@ -15,6 +15,22 @@ pub struct Theme {
 pub struct PanelCfg {
     pub width: i32,
     pub widgets: Vec<WidgetCfg>,
+    #[serde(default)]
+    pub logo_path: Option<String>,
+    #[serde(default)]
+    pub control_center_command: Option<Vec<String>>,
+    #[serde(default)]
+    pub launcher_command: Option<Vec<String>>,
+    #[serde(default)]
+    pub terminal_command: Option<Vec<String>>,
+    #[serde(default)]
+    pub shell_command: Option<String>,
+    #[serde(default)]
+    pub security_profile: Option<String>,
+    #[serde(default)]
+    pub weather_location: Option<String>,
+    #[serde(default)]
+    pub media_command: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -36,6 +52,15 @@ pub struct WidgetCfg {
     pub dial_style: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
+}
+
+impl WidgetCfg {
+    /// Return the configured IPC command for this widget, if any.
+    pub fn ipc_command(&self) -> Option<Vec<String>> {
+        self.extra
+            .get("ipc_command")
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]

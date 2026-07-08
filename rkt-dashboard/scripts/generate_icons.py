@@ -7,7 +7,7 @@ soft company palette.  They are exported at 24, 32, 48 and 64 logical pixels.
 from pathlib import Path
 import re
 
-OUT = Path("/home/dad/dev/KidulWM/rkt-dashboard/assets/icons")
+OUT = Path(__file__).resolve().parent.parent / "assets" / "icons"
 PALETTE = {
     "purple": "#7C3AED",
     "blue": "#2563EB",

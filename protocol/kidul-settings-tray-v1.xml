@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="kidul_settings_tray">
+  <copyright>
+    Copyright © 2026 KidulWM project
+    SPDX-License-Identifier: MIT
+  </copyright>
+
+  <interface name="kidul_settings_tray_v1" version="1">
+    <description summary="settings tray binding">
+      This interface is implemented by the KidulWM compositor and allows
+      a GTK4/any client to bind a settings tray surface that floats above
+      the layout chrome. It is intentionally minimal for now; the client
+      sends the binding request and the compositor allocates a layer-shell
+      surface internally.
+    </description>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy this tray binding"/>
+    </request>
+
+    <request name="get_tray">
+      <description summary="create a settings tray surface">
+        Returns a kidul_settings_tray_surface_v1 object that the client can
+        use to configure the tray window.
+      </description>
+      <arg name="id" type="new_id" interface="kidul_settings_tray_surface_v1"/>
+      <arg name="output" type="object" interface="wl_output" allow-null="true"/>
+    </request>
+  </interface>
+
+  <interface name="kidul_settings_tray_surface_v1" version="1">
+    <description summary="settings tray surface">
+      Single tray surface. Width/height hints are in surface-local logical
+      pixels; the compositor may clamp them to the output size.
+    </description>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy this tray surface"/>
+    </request>
+
+    <request name="set_size">
+      <description summary="set preferred tray size"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </request>
+
+    <request name="set_anchor">
+      <description summary="set tray edge anchor">
+        Edge bitmask: 1=top, 2=bottom, 4=left, 8=right.
+      </description>
+      <arg name="anchor" type="uint"/>
+    </request>
+
+    <event name="configure">
+      <description summary="compositor assigns actual size"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </event>
+  </interface>
+</protocol>
