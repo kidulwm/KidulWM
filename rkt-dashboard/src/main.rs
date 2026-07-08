@@ -18,7 +18,10 @@ fn main() {
     }));
 
     let app = gtk4::Application::builder()
-        .application_id("org.ratukidul.rkt-dashboard")
+        .application_id(&format!(
+            "org.ratukidul.rkt-dashboard-{}",
+            std::env::var("RKT_MONITOR").unwrap_or_else(|_| "all".to_string())
+        ))
         .build();
     app.connect_activate(build_ui);
     app.run();
@@ -124,8 +127,10 @@ fn init_layer_shell(window: &gtk4::ApplicationWindow, left: bool, mon: Option<&M
     }
     // Restore set_monitor — needed for multi-monitor in niri.
     if let Some(m) = mon {
+        // Debug: print the raw wl_output pointer
+        eprintln!("[rkt] init_layer_shell: set_monitor called, monitor geometry={:?}", m.geometry());
         window.set_monitor(Some(m));
-        eprintln!("[rkt] init_layer_shell: set_monitor={:?}", m.geometry());
+        eprintln!("[rkt] init_layer_shell: set_monitor done");
     }
     eprintln!("[rkt] init_layer_shell: done, left={}", left);
 }
