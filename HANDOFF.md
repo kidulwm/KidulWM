@@ -108,6 +108,11 @@ Fix (with VM shut off):
 
 The VM then booted cleanly and the KidulWM service started normally.
 
+### Layout stability across map/unmap
+
+- `Server.applyLayout()` reserves the column slot for unmapped windows so geometry does not shift when a client unmaps/remaps.
+- `focusAtCursor()` and focus selection in `applyLayout()` only consider mapped windows.
+
 ### Window focus lifecycle
 
 - `Window.handleMap()` now calls `Server.focusWindow(window)` so new windows receive keyboard focus.

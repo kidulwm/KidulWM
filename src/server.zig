@@ -124,6 +124,14 @@ pub const Server = struct {
                 self.focusWindowByIndex(p.window_id);
                 return .{ .ok = true };
             },
+            .focus_next => {
+                self.focusNext();
+                return .{ .ok = true };
+            },
+            .focus_prev => {
+                self.focusPrev();
+                return .{ .ok = true };
+            },
             .set_theme => |p| {
                 std.log.info("theme update: {s} = {s}", .{ p.key, p.value });
                 self.applyTheme(p.key, p.value);
@@ -182,6 +190,8 @@ pub const Server = struct {
                     state.applyPreset(style.layout.vertical_bottom_split, .vertical, 1);
                 },
                 .set_focus => {}, // handled at Server.handleRequest level
+                .focus_next => {}, // handled at Server.handleRequest level
+                .focus_prev => {}, // handled at Server.handleRequest level
                 .subscribe => return .{ .ok = true, .message = "subscription registered" },
                 .set_theme, .quit => {},
             }
@@ -461,10 +471,81 @@ pub const Server = struct {
             if (i == idx) {
                 if (window.toplevel.base.surface.mapped) {
                     self.focusWindow(window);
+                    self.requestLayout();
                 }
                 return;
             }
         }
+    }
+
+    /// Focus the next mapped window in the list, wrapping around.
+    pub fn focusNext(self: *Server) void {
+        const current = self.focused_window orelse {
+            self.focusFirstMapped();
+            return;
+        };
+        {
+            var it = self.windows.iterator(.forward);
+            while (it.next()) |window| {
+                if (window == current) break;
+            }
+            while (it.next()) |window| {
+                if (window.toplevel.base.surface.mapped) {
+                    self.focusWindow(window);
+                    self.requestLayout();
+                    return;
+                }
+            }
+        }
+        // wrap around
+        self.focusFirstMapped();
+    }
+
+    /// Focus the previous mapped window in the list, wrapping around.
+    pub fn focusPrev(self: *Server) void {
+        const current = self.focused_window orelse {
+            self.focusFirstMapped();
+            return;
+        };
+        {
+            var it = self.windows.iterator(.reverse);
+            while (it.next()) |window| {
+                if (window == current) break;
+            }
+            while (it.next()) |window| {
+                if (window.toplevel.base.surface.mapped) {
+                    self.focusWindow(window);
+                    self.requestLayout();
+                    return;
+                }
+            }
+        }
+        // wrap around
+        self.focusLastMapped();
+    }
+
+    fn focusFirstMapped(self: *Server) void {
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            if (window.toplevel.base.surface.mapped) {
+                self.focusWindow(window);
+                self.requestLayout();
+                return;
+            }
+        }
+        self.clearFocus();
+    }
+
+    fn focusLastMapped(self: *Server) void {
+        var it = self.windows.iterator(.reverse);
+        while (it.next()) |window| {
+            if (window.toplevel.base.surface.mapped) {
+                self.focusWindow(window);
+                self.requestLayout();
+                return;
+            }
+        }
+        self.clearFocus();
     }
 
     pub fn clearFocus(self: *Server) void {

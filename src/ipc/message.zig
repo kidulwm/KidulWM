@@ -5,6 +5,8 @@ pub const RequestTag = enum {
     ping,
     get_layout,
     set_focus,
+    focus_next,
+    focus_prev,
     set_gap,
     set_split,
     split_left,
@@ -22,6 +24,8 @@ pub const Request = union(RequestTag) {
     set_focus: struct {
         window_id: u32,
     },
+    focus_next,
+    focus_prev,
     set_gap: struct {
         gap: u32,
     },

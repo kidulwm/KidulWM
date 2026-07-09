@@ -83,6 +83,14 @@ const KeyboardDevice = struct {
             spawnTerminal();
             return;
         }
+        if (mod4_active and sym == xkb.Keysym.j) {
+            server.focusNext();
+            return;
+        }
+        if (mod4_active and sym == xkb.Keysym.k) {
+            server.focusPrev();
+            return;
+        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 
