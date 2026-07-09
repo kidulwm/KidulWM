@@ -56,6 +56,7 @@ pub const LayoutResponse = struct {
     right_peek: f32,
     focused_window: u32,
     window_count: usize,
+    slide_count: usize = 0,
 };
 
 pub const Response = struct {

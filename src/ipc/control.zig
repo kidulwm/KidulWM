@@ -157,8 +157,10 @@ fn readClient(self: *Server, fd: i32) !bool {
     };
 
     if (n == 0) return true;
+    // Defensive: never trust the kernel to return fewer bytes than requested.
+    const safe_n = if (n > read_slice.len) read_slice.len else n;
     const base = client.offset;
-    client.offset += @intCast(n);
+    client.offset += safe_n;
     if (client.offset > client.buf.len) {
         std.log.warn("KidulWM: IPC read overflow, closing client", .{});
         return true;

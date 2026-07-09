@@ -2,6 +2,7 @@ const std = @import("std");
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const Server = @import("server.zig").Server;
+const Output = @import("server.zig").Output;
 const animation = @import("core/animation.zig");
 
 pub const Window = struct {
@@ -9,6 +10,7 @@ pub const Window = struct {
     toplevel: *wlr.XdgToplevel,
     scene_tree: *wlr.SceneTree,
 
+    output: ?*Output,
     id: u32,
     link: wl.list.Link,
 
@@ -35,6 +37,7 @@ pub const Window = struct {
             .server = server,
             .toplevel = toplevel,
             .scene_tree = scene_tree,
+            .output = null,
             .id = id,
             .link = undefined,
             .animation = .{},
@@ -132,7 +135,10 @@ pub const Window = struct {
     fn handleMap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("map", listener);
         std.log.info("KidulWM: window mapped", .{});
+        window.server.assignOutput(window);
+        window.server.deckForWindow(window).addWindow(window.id);
         window.server.focusWindow(window);
+        if (window.output) |output| window.server.focused_output = output;
         window.server.requestLayout();
     }
 
@@ -158,6 +164,7 @@ pub const Window = struct {
         window.commit.link.remove();
         // Remove the destroy listener itself from the signal currently emitting us.
         window.destroy.link.remove();
+        window.server.deckForWindow(window).removeWindow(window.id);
         window.link.remove();
         window.server.allocator.destroy(window);
     }

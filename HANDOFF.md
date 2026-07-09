@@ -225,3 +225,9 @@ so future installers match distro expectations.
 - New windows insert near deck centre; focus_next/prev cycle slides with spring motion.
 - Window lifecycle (map/unmap/destroy) inserts/removes slides; deck preserves ordering across unmap.
 - Per-output decks planned: current code has one Deck per Server; move field into Output when multi-output window assignment is wired.
+
+### Window dimming
+
+- Unfocused Slides get a semi-transparent black overlay (18% alpha).
+- Focused window hides the overlay.
+- dim_rect stored on Window; recreated/ resized each layout pass using surface current size.

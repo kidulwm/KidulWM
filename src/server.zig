@@ -13,13 +13,14 @@ const animation = @import("core/animation.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
-const Output = struct {
+pub const Output = struct {
     server: *Server,
     wlr_output: *wlr.Output,
     scene_output: *wlr.SceneOutput,
     link: wl.list.Link,
     frame: wl.Listener(*wlr.Output),
     destroy: wl.Listener(*wlr.Output),
+    deck: slidedeck.SlideDeck,
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -29,6 +30,7 @@ const Output = struct {
             .link = undefined,
             .frame = wl.Listener(*wlr.Output).init(handleFrame),
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
+            .deck = slidedeck.SlideDeck.init(server.allocator),
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -38,6 +40,7 @@ const Output = struct {
     pub fn deinit(self: *Output) void {
         self.frame.link.remove();
         self.destroy.link.remove();
+        self.deck.deinit();
     }
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -101,6 +104,8 @@ pub const Server = struct {
 
     state: State,
     theme: style.Style,
+    deck_split: slidedeck.Split,
+    deck_orientation: slidedeck.Orientation,
     windows: wl.list.Head(Window, .link),
 
     deck: slidedeck.SlideDeck,
@@ -110,6 +115,7 @@ pub const Server = struct {
 
     focused_window: ?*Window,
     focused_window_id: u32 = 0,
+    focused_output: ?*Output = null,
     next_window_id: u32 = 1,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
@@ -168,34 +174,39 @@ pub const Server = struct {
             .get_layout => return self.getLayoutResponse(),
             .set_gap => |p| {
                 self.state.gap = p.gap;
-                self.deck.gap = p.gap;
             },
             .set_split => |p| {
-                self.deck.setSplit(self.splitFromRequest(p.left_peek, p.focus, p.right_peek));
+                self.deck_split = self.splitFromRequest(p.left_peek, p.focus, p.right_peek);
             },
-            .split_left => self.deck.setSplit(self.splitFromRequest(
+            .split_left => self.deck_split = self.splitFromRequest(
                 style.layout.horizontal_split.left_peek,
                 style.layout.horizontal_split.focus,
                 style.layout.horizontal_split.right_peek,
-            )),
-            .split_right => self.deck.setSplit(self.splitFromRequest(
+            ),
+            .split_right => self.deck_split = self.splitFromRequest(
                 style.layout.horizontal_split.right_peek,
                 style.layout.horizontal_split.focus,
                 style.layout.horizontal_split.left_peek,
-            )),
-            .split_top => self.deck.setSplit(self.splitFromRequest(
-                style.layout.vertical_top_split.left_peek,
-                style.layout.vertical_top_split.focus,
-                style.layout.vertical_top_split.right_peek,
-            )),
-            .split_bottom => self.deck.setSplit(self.splitFromRequest(
-                style.layout.vertical_bottom_split.left_peek,
-                style.layout.vertical_bottom_split.focus,
-                style.layout.vertical_bottom_split.right_peek,
-            )),
+            ),
+            .split_top => {
+                self.deck_split = self.splitFromRequest(
+                    style.layout.vertical_top_split.left_peek,
+                    style.layout.vertical_top_split.focus,
+                    style.layout.vertical_top_split.right_peek,
+                );
+                self.deck_orientation = .vertical;
+            },
+            .split_bottom => {
+                self.deck_split = self.splitFromRequest(
+                    style.layout.vertical_bottom_split.left_peek,
+                    style.layout.vertical_bottom_split.focus,
+                    style.layout.vertical_bottom_split.right_peek,
+                );
+                self.deck_orientation = .vertical;
+            },
             .set_focus => {}, // handled at handleRequest level
-            .focus_next => self.deck.focusNext(),
-            .focus_prev => self.deck.focusPrev(),
+            .focus_next => self.currentDeck().focusNext(),
+            .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
             .set_theme, .quit => {},
         }
@@ -279,6 +290,12 @@ pub const Server = struct {
             .ipc_running = std.atomic.Value(bool).init(false),
             .state = .{},
             .theme = style.default(),
+            .deck_split = .{
+                .left_peek = style.layout.horizontal_split.left_peek,
+                .focus = style.layout.horizontal_split.focus,
+                .right_peek = style.layout.horizontal_split.right_peek,
+            },
+            .deck_orientation = .horizontal,
             .windows = undefined,
             .layout_requested = std.atomic.Value(bool).init(false),
             .deck = slidedeck.SlideDeck.init(allocator),
@@ -443,33 +460,37 @@ pub const Server = struct {
 
     fn getLayoutResponse(self: *Server) ipc.message.Response {
         const window_count = self.windows.length();
+        const deck = self.currentDeck();
         return .{
             .ok = true,
             .layout = ipc.message.LayoutResponse{
-                .orientation = if (self.deck.orientation == .horizontal) "horizontal" else "vertical",
-                .gap = self.deck.gap,
-                .left_peek = self.deck.split.left_peek,
-                .focus = self.deck.split.focus,
-                .right_peek = self.deck.split.right_peek,
-                .focused_window = @intCast(self.deck.focused_index),
+                .orientation = if (self.deck_orientation == .horizontal) "horizontal" else "vertical",
+                .gap = self.state.gap,
+                .left_peek = self.deck_split.left_peek,
+                .focus = self.deck_split.focus,
+                .right_peek = self.deck_split.right_peek,
+                .focused_window = @intCast(deck.focused_index),
                 .window_count = window_count,
-            },
+                .slide_count = @intCast(deck.slides.items.len),            },
         };
     }
 
     fn syncDeckFocus(self: *Server) void {
-        for (self.deck.slides.items, 0..) |slide, i| {
+        const focused = self.focused_window orelse return;
+        const deck = self.deckForWindow(focused);
+        for (deck.slides.items, 0..) |slide, i| {
             if (slide.window_id == self.focused_window_id) {
-                self.deck.focused_index = i;
+                deck.focused_index = i;
                 return;
             }
         }
     }
 
     pub fn focusWindowByIndex(self: *Server, idx: usize) void {
-        if (idx >= self.deck.slides.items.len) return;
-        self.deck.focused_index = idx;
-        self.focused_window_id = self.deck.slides.items[idx].window_id;
+        const deck = self.currentDeck();
+        if (idx >= deck.slides.items.len) return;
+        deck.focused_index = idx;
+        self.focused_window_id = deck.slides.items[idx].window_id;
         const window = self.windowById(self.focused_window_id) orelse return;
         if (window.toplevel.base.surface.mapped) {
             self.focusWindow(window);
@@ -478,6 +499,36 @@ pub const Server = struct {
     }
 
 
+
+    /// Return the deck that owns a window.  Windows created before any output
+    /// exist fall back to the server-level deck so headless/smoke tests still run.
+    pub fn deckForWindow(self: *Server, window: *Window) *slidedeck.SlideDeck {
+        if (window.output) |output| return &output.deck;
+        return &self.deck;
+    }
+
+    /// Return the deck currently receiving focus commands.
+    fn currentDeck(self: *Server) *slidedeck.SlideDeck {
+        if (self.focused_window) |window| {
+            if (window.output) |output| return &output.deck;
+        }
+        if (self.focused_output) |output| return &output.deck;
+        if (self.outputs.first()) |output| return &output.deck;
+        return &self.deck;
+    }
+
+    /// Assign a window to the best available output when it maps.
+    pub fn assignOutput(self: *Server, window: *Window) void {
+        if (window.output != null) return;
+        if (self.focused_output) |output| {
+            window.output = output;
+            return;
+        }
+        if (self.outputs.first()) |output| {
+            window.output = output;
+            return;
+        }
+    }
     /// Find a window by its stable deck id.
     pub fn windowById(self: *Server, id: u32) ?*Window {
         var it = self.windows.iterator(.forward);
@@ -489,9 +540,10 @@ pub const Server = struct {
 
     /// Focus the next mapped window in the list, wrapping around.
     pub fn focusNext(self: *Server) void {
-        if (self.deck.slides.items.len == 0) return;
-        self.deck.focusNext();
-        const slide = self.deck.slides.items[self.deck.focused_index];
+        const deck = self.currentDeck();
+        if (deck.slides.items.len == 0) return;
+        deck.focusNext();
+        const slide = deck.slides.items[deck.focused_index];
         self.focused_window_id = slide.window_id;
         const window = self.windowById(slide.window_id) orelse return;
         if (window.toplevel.base.surface.mapped) {
@@ -500,9 +552,10 @@ pub const Server = struct {
         }
     }
     pub fn focusPrev(self: *Server) void {
-        if (self.deck.slides.items.len == 0) return;
-        self.deck.focusPrev();
-        const slide = self.deck.slides.items[self.deck.focused_index];
+        const deck = self.currentDeck();
+        if (deck.slides.items.len == 0) return;
+        deck.focusPrev();
+        const slide = deck.slides.items[deck.focused_index];
         self.focused_window_id = slide.window_id;
         const window = self.windowById(slide.window_id) orelse return;
         if (window.toplevel.base.surface.mapped) {
@@ -545,6 +598,7 @@ pub const Server = struct {
             // Ensure the seat focus is on this surface even if it already appears selected.
             window.focus(self.seat);
             self.focused_window_id = window.id;
+            if (window.output) |output| self.focused_output = output;
             self.syncDeckFocus();
             return;
         }
@@ -554,6 +608,7 @@ pub const Server = struct {
         }
         self.focused_window = window;
         self.focused_window_id = window.id;
+        if (window.output) |output| self.focused_output = output;
         window.focus(self.seat);
         self.syncDeckFocus();
     }
@@ -575,44 +630,76 @@ pub const Server = struct {
 
     fn applyLayout(self: *Server) void {
         self.layout_requested.store(false, .monotonic);
-        if (self.output_layout.outputs.length() == 0) return;
 
-        const layout_output = self.output_layout.outputs.first() orelse return;
-        const wlr_output = layout_output.output;
-        const width = @as(u32, @intCast(wlr_output.width));
-        const height = @as(u32, @intCast(wlr_output.height));
+        const active_deck = self.currentDeck();
+        var any_slides = false;
 
-        // Sync the SlideDeck to the current output geometry.
-        self.deck.sync(width, height, self.state.gap, self.deck.split, self.deck.orientation);
+        var output_it = self.outputs.iterator(.forward);
+        while (output_it.next()) |output| {
+            const wlr_output = output.wlr_output;
+            const width = @as(u32, @intCast(wlr_output.width));
+            const height = @as(u32, @intCast(wlr_output.height));
+            output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
-        if (self.deck.slides.items.len == 0) {
+            if (output.deck.slides.items.len == 0) continue;
+            any_slides = true;
+
+            var focused_slide_window: ?*Window = null;
+            const deck_ptr = &output.deck;
+            for (output.deck.slides.items, 0..) |slide, slide_idx| {
+                const window = self.windowById(slide.window_id) orelse continue;
+                if (!window.toplevel.base.surface.mapped) continue;
+
+                const target = output.deck.targetForSlide(slide_idx);
+                const size_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width)) or
+                    window.animation.target_h != @as(f64, @floatFromInt(target.height));
+                window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                if (size_changed) {
+                    _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+                }
+
+                if (slide_idx == output.deck.focused_index) {
+                    focused_slide_window = window;
+                    window.updateDim(true);
+                } else {
+                    window.updateDim(false);
+                }
+            }
+
+            if (deck_ptr == active_deck) {
+                if (focused_slide_window) |window| {
+                    self.focusWindow(window);
+                }
+            }
+        }
+
+        // Fallback headless mode: no outputs yet.
+        if (self.outputs.length() == 0) {
+            self.deck.sync(1024, 768, self.state.gap, self.deck_split, self.deck_orientation);
+            if (self.deck.slides.items.len > 0) {
+                any_slides = true;
+                for (self.deck.slides.items, 0..) |slide, slide_idx| {
+                    const window = self.windowById(slide.window_id) orelse continue;
+                    if (!window.toplevel.base.surface.mapped) continue;
+                    const target = self.deck.targetForSlide(slide_idx);
+                    const size_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width)) or
+                        window.animation.target_h != @as(f64, @floatFromInt(target.height));
+                    window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                    if (size_changed) {
+                        _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+                    }
+                    if (slide_idx == self.deck.focused_index) {
+                        window.updateDim(true);
+                        self.focusWindow(window);
+                    } else {
+                        window.updateDim(false);
+                    }
+                }
+            }
+        }
+
+        if (!any_slides) {
             self.clearFocus();
-            return;
-        }
-
-        var focused_slide_window: ?*Window = null;
-        for (self.deck.slides.items, 0..) |slide, slide_idx| {
-            const window = self.windowById(slide.window_id) orelse continue;
-            if (!window.toplevel.base.surface.mapped) continue;
-
-            const target = self.deck.targetForSlide(slide_idx);
-            const size_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width)) or
-                window.animation.target_h != @as(f64, @floatFromInt(target.height));
-            window.setLayoutTarget(target.x, target.y, target.width, target.height);
-            if (size_changed) {
-                _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
-            }
-
-            if (slide_idx == self.deck.focused_index) {
-                focused_slide_window = window;
-                window.updateDim(true);
-            } else {
-                window.updateDim(false);
-            }
-        }
-
-        if (focused_slide_window) |window| {
-            self.focusWindow(window);
         }
     }
 
