@@ -116,7 +116,9 @@ pub const Window = struct {
         return false;
     }
 
-    /// Dim or undim the window overlay depending on focus.
+    /// Dim or undim the window overlay depending on focus. The overlay size
+    /// follows the surface buffer so rounded corners and client-side shading
+    /// stay intact; the scene subtree is clipped to the layout target instead.
     pub fn updateDim(self: *Window, focused: bool) void {
         const surface = self.toplevel.base.surface;
         if (!surface.mapped) return;
@@ -137,6 +139,19 @@ pub const Window = struct {
             rect.setSize(w, h);
             rect.setColor(&self.dim_color);
         }
+    }
+
+    /// Clip the surface subtree to the current layout target so a window that
+    /// was previously focused (and therefore larger) does not draw outside its
+    /// new SlideDeck slot.
+    pub fn updateClip(self: *Window) void {
+        const clip = wlr.Box{
+            .x = 0,
+            .y = 0,
+            .width = @intFromFloat(self.animation.target_w),
+            .height = @intFromFloat(self.animation.target_h),
+        };
+        self.scene_tree.node.subsurfaceTreeSetClip(&clip);
     }
 
     fn handleMap(listener: *wl.Listener(void)) void {

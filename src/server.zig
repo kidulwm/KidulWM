@@ -659,6 +659,10 @@ pub const Server = struct {
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
                 window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                // Clip the surface to the target slot; without this an unfocused
+                // slide that still owns a full-size buffer would draw over the
+                // output behind the focused window.
+                window.updateClip();
                 // Only reconfigure the client once the animation has settled; this avoids
                 // forcing terminals to reallocate buffers every frame while sliding.
                 if (size_changed) {
@@ -694,6 +698,7 @@ pub const Server = struct {
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
                     window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                    window.updateClip();
                     if (size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
