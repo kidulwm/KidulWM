@@ -8,7 +8,7 @@ const InputManager = @import("input.zig").InputManager;
 const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
 const style = @import("core/style.zig");
-const layout = @import("core/layout.zig");
+const slidedeck = @import("core/slidedeck.zig");
 const animation = @import("core/animation.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
@@ -100,14 +100,17 @@ pub const Server = struct {
     ipc_running: std.atomic.Value(bool),
 
     state: State,
+    theme: style.Style,
     windows: wl.list.Head(Window, .link),
 
-    layout: layout.LayoutModel,
+    deck: slidedeck.SlideDeck,
     layout_pipe: [2]c_int,
     layout_source: *wl.EventSource,
     layout_requested: std.atomic.Value(bool),
 
     focused_window: ?*Window,
+    focused_window_id: u32 = 0,
+    next_window_id: u32 = 1,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
 
@@ -143,67 +146,62 @@ pub const Server = struct {
                 self.applyTheme(p.key, p.value);
                 return .{ .ok = true, .message = "theme updated" };
             },
-            else => return self.state.handleRequest(req),
+            else => return self.handleStateRequest(req),
         }
-        return self.state.handleRequest(req);
+        return self.handleStateRequest(req);
     }
 
     pub const State = struct {
         gap: u32 = style.layout.gap,
-        left_peek: f32 = style.layout.default_split.left_peek,
-        focus: f32 = style.layout.default_split.focus,
-        right_peek: f32 = style.layout.default_split.right_peek,
-        focused_window: u32 = 0,
-        orientation: layout.Orientation = .horizontal,
-
-        pub fn applyPreset(
-            state: *State,
-            preset: style.layout.SplitPreset,
-            orientation: layout.Orientation,
-            focused_window: u32,
-        ) void {
-            state.orientation = orientation;
-            state.left_peek = preset.left_peek;
-            state.focus = preset.focus;
-            state.right_peek = preset.right_peek;
-            state.focused_window = focused_window;
-        }
-
-        pub fn handleRequest(state: *State, req: ipc.message.Request) ipc.message.Response {
-            switch (req) {
-                .ping => return .{ .ok = true, .message = "pong" },
-                .get_layout => return .{ .ok = true, .message = "layout data pending" },
-                .set_gap => |p| state.gap = p.gap,
-                .set_split => |p| {
-                    state.left_peek = p.left_peek;
-                    state.focus = p.focus;
-                    state.right_peek = p.right_peek;
-                    state.orientation = layout.LayoutModel.orientationFromSplit(
-                        state.left_peek,
-                        state.right_peek,
-                    );
-                },
-                .split_left => {
-                    state.applyPreset(style.layout.horizontal_split, .horizontal, 1);
-                },
-                .split_right => {
-                    state.applyPreset(style.layout.horizontal_split, .horizontal, 2);
-                },
-                .split_top => {
-                    state.applyPreset(style.layout.vertical_top_split, .vertical, 1);
-                },
-                .split_bottom => {
-                    state.applyPreset(style.layout.vertical_bottom_split, .vertical, 1);
-                },
-                .set_focus => {}, // handled at Server.handleRequest level
-                .focus_next => {}, // handled at Server.handleRequest level
-                .focus_prev => {}, // handled at Server.handleRequest level
-                .subscribe => return .{ .ok = true, .message = "subscription registered" },
-                .set_theme, .quit => {},
-            }
-            return .{ .ok = true };
-        }
     };
+
+    /// Convert IPC split ratios + orientation into a Deck Split.  The deck owns
+    /// the authoritative split state so all placement math stays in one place.
+    fn splitFromRequest(self: *const Server, left_peek: f32, focus: f32, right_peek: f32) slidedeck.Split {
+        _ = self;
+        return .{ .left_peek = left_peek, .focus = focus, .right_peek = right_peek };
+    }
+
+    fn handleStateRequest(self: *Server, req: ipc.message.Request) ipc.message.Response {
+        switch (req) {
+            .ping => return .{ .ok = true, .message = "pong" },
+            .get_layout => return self.getLayoutResponse(),
+            .set_gap => |p| {
+                self.state.gap = p.gap;
+                self.deck.gap = p.gap;
+            },
+            .set_split => |p| {
+                self.deck.setSplit(self.splitFromRequest(p.left_peek, p.focus, p.right_peek));
+            },
+            .split_left => self.deck.setSplit(self.splitFromRequest(
+                style.layout.horizontal_split.left_peek,
+                style.layout.horizontal_split.focus,
+                style.layout.horizontal_split.right_peek,
+            )),
+            .split_right => self.deck.setSplit(self.splitFromRequest(
+                style.layout.horizontal_split.right_peek,
+                style.layout.horizontal_split.focus,
+                style.layout.horizontal_split.left_peek,
+            )),
+            .split_top => self.deck.setSplit(self.splitFromRequest(
+                style.layout.vertical_top_split.left_peek,
+                style.layout.vertical_top_split.focus,
+                style.layout.vertical_top_split.right_peek,
+            )),
+            .split_bottom => self.deck.setSplit(self.splitFromRequest(
+                style.layout.vertical_bottom_split.left_peek,
+                style.layout.vertical_bottom_split.focus,
+                style.layout.vertical_bottom_split.right_peek,
+            )),
+            .set_focus => {}, // handled at handleRequest level
+            .focus_next => self.deck.focusNext(),
+            .focus_prev => self.deck.focusPrev(),
+            .subscribe => return .{ .ok = true, .message = "subscription registered" },
+            .set_theme, .quit => {},
+        }
+        self.requestLayout();
+        return .{ .ok = true };
+    }
 
     pub fn init(allocator: std.mem.Allocator, force_pixman: bool) !*Server {
         const server = try allocator.create(Server);
@@ -280,9 +278,10 @@ pub const Server = struct {
             .ipc_thread = null,
             .ipc_running = std.atomic.Value(bool).init(false),
             .state = .{},
+            .theme = style.default(),
             .windows = undefined,
             .layout_requested = std.atomic.Value(bool).init(false),
-            .layout = layout.LayoutModel.create(allocator),
+            .deck = slidedeck.SlideDeck.init(allocator),
             .layout_pipe = undefined,
             .layout_source = undefined,
             .new_output = undefined,
@@ -390,7 +389,7 @@ pub const Server = struct {
         self.allocator.destroy(self.input_manager);
         self.pointer.deinit();
         self.keyboard.deinit();
-        self.layout.deinit();
+        self.deck.deinit();
 
         _ = linux.close(self.layout_pipe[0]);
         _ = linux.close(self.layout_pipe[1]);
@@ -447,89 +446,70 @@ pub const Server = struct {
         return .{
             .ok = true,
             .layout = ipc.message.LayoutResponse{
-                .orientation = if (self.state.orientation == .horizontal) "horizontal" else "vertical",
-                .gap = self.state.gap,
-                .left_peek = self.state.left_peek,
-                .focus = self.state.focus,
-                .right_peek = self.state.right_peek,
-                .focused_window = self.state.focused_window,
+                .orientation = if (self.deck.orientation == .horizontal) "horizontal" else "vertical",
+                .gap = self.deck.gap,
+                .left_peek = self.deck.split.left_peek,
+                .focus = self.deck.split.focus,
+                .right_peek = self.deck.split.right_peek,
+                .focused_window = @intCast(self.deck.focused_index),
                 .window_count = window_count,
             },
         };
     }
 
-    fn syncFocusIndex(self: *Server) void {
-        var it = self.windows.iterator(.forward);
-        var idx: usize = 0;
-        while (it.next()) |window| : (idx += 1) {
-            if (self.focused_window == window) {
-                self.state.focused_window = @intCast(idx);
+    fn syncDeckFocus(self: *Server) void {
+        for (self.deck.slides.items, 0..) |slide, i| {
+            if (slide.window_id == self.focused_window_id) {
+                self.deck.focused_index = i;
                 return;
             }
         }
-        self.state.focused_window = 0;
     }
 
     pub fn focusWindowByIndex(self: *Server, idx: usize) void {
-        var it = self.windows.iterator(.forward);
-        var i: usize = 0;
-        while (it.next()) |window| : (i += 1) {
-            if (i == idx) {
-                if (window.toplevel.base.surface.mapped) {
-                    self.focusWindow(window);
-                    self.requestLayout();
-                }
-                return;
-            }
+        if (idx >= self.deck.slides.items.len) return;
+        self.deck.focused_index = idx;
+        self.focused_window_id = self.deck.slides.items[idx].window_id;
+        const window = self.windowById(self.focused_window_id) orelse return;
+        if (window.toplevel.base.surface.mapped) {
+            self.focusWindow(window);
+            self.requestLayout();
         }
+    }
+
+
+    /// Find a window by its stable deck id.
+    pub fn windowById(self: *Server, id: u32) ?*Window {
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            if (window.id == id) return window;
+        }
+        return null;
     }
 
     /// Focus the next mapped window in the list, wrapping around.
     pub fn focusNext(self: *Server) void {
-        const current = self.focused_window orelse {
-            self.focusFirstMapped();
-            return;
-        };
-        {
-            var it = self.windows.iterator(.forward);
-            while (it.next()) |window| {
-                if (window == current) break;
-            }
-            while (it.next()) |window| {
-                if (window.toplevel.base.surface.mapped) {
-                    self.focusWindow(window);
-                    self.requestLayout();
-                    return;
-                }
-            }
+        if (self.deck.slides.items.len == 0) return;
+        self.deck.focusNext();
+        const slide = self.deck.slides.items[self.deck.focused_index];
+        self.focused_window_id = slide.window_id;
+        const window = self.windowById(slide.window_id) orelse return;
+        if (window.toplevel.base.surface.mapped) {
+            self.focusWindow(window);
+            self.requestLayout();
         }
-        // wrap around
-        self.focusFirstMapped();
     }
-
-    /// Focus the previous mapped window in the list, wrapping around.
     pub fn focusPrev(self: *Server) void {
-        const current = self.focused_window orelse {
-            self.focusFirstMapped();
-            return;
-        };
-        {
-            var it = self.windows.iterator(.reverse);
-            while (it.next()) |window| {
-                if (window == current) break;
-            }
-            while (it.next()) |window| {
-                if (window.toplevel.base.surface.mapped) {
-                    self.focusWindow(window);
-                    self.requestLayout();
-                    return;
-                }
-            }
+        if (self.deck.slides.items.len == 0) return;
+        self.deck.focusPrev();
+        const slide = self.deck.slides.items[self.deck.focused_index];
+        self.focused_window_id = slide.window_id;
+        const window = self.windowById(slide.window_id) orelse return;
+        if (window.toplevel.base.surface.mapped) {
+            self.focusWindow(window);
+            self.requestLayout();
         }
-        // wrap around
-        self.focusLastMapped();
     }
-
     fn focusFirstMapped(self: *Server) void {
         var it = self.windows.iterator(.forward);
         while (it.next()) |window| {
@@ -556,7 +536,7 @@ pub const Server = struct {
 
     pub fn clearFocus(self: *Server) void {
         self.focused_window = null;
-        self.state.focused_window = 0;
+        self.focused_window_id = 0;
         self.seat.keyboardNotifyClearFocus();
     }
 
@@ -564,7 +544,7 @@ pub const Server = struct {
         if (self.focused_window == window) {
             // Ensure the seat focus is on this surface even if it already appears selected.
             window.focus(self.seat);
-            self.syncFocusIndex();
+            self.syncDeckFocus();
             return;
         }
         if (!window.toplevel.base.surface.mapped) {
@@ -573,7 +553,7 @@ pub const Server = struct {
         }
         self.focused_window = window;
         window.focus(self.seat);
-        self.syncFocusIndex();
+        self.syncDeckFocus();
     }
 
     pub fn focusAtCursor(self: *Server) void {
@@ -600,63 +580,39 @@ pub const Server = struct {
         const width = @as(u32, @intCast(wlr_output.width));
         const height = @as(u32, @intCast(wlr_output.height));
 
-        if (self.layout.outputs.items.len == 0) {
-            self.layout.deinit();
-            self.layout = layout.LayoutModel.init(self.allocator, width, height, self.state.gap) catch |err| {
-                std.log.err("layout model init failed: {}", .{err});
-                return;
-            };
-        }
-        const output = &self.layout.outputs.items[0];
+        // Sync the SlideDeck to the current output geometry.
+        self.deck.sync(width, height, self.state.gap, self.deck.split, self.deck.orientation);
 
-        const window_count = self.windows.length();
-        if (window_count == 0 or self.state.focused_window >= window_count) {
+        if (self.deck.slides.items.len == 0) {
             self.clearFocus();
             return;
         }
 
-        _ = layout.LayoutModel.sync(
-            output,
-            width,
-            height,
-            self.state.gap,
-            self.state.left_peek,
-            self.state.focus,
-            self.state.right_peek,
-            @as(i32, @intCast(self.state.focused_window)),
-            self.state.orientation,
-        );
+        var focused_slide_window: ?*Window = null;
+        for (self.deck.slides.items, 0..) |slide, slide_idx| {
+            const window = self.windowById(slide.window_id) orelse continue;
+            if (!window.toplevel.base.surface.mapped) continue;
 
-        var it = self.windows.iterator(.forward);
-        var col_idx: usize = 0;
-        var window_to_focus: ?*Window = null;
-        while (it.next()) |window| : (col_idx += 1) {
-            if (col_idx >= output.columns.items.len) break;
-            if (!window.toplevel.base.surface.mapped) {
-                // Keep the column slot reserved so the matrix geometry is stable
-                // across map/unmap events.
-                continue;
-            }
-            const target = layout.LayoutModel.columnTarget(output, col_idx);
+            const target = self.deck.targetForSlide(slide_idx);
             const size_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width)) or
                 window.animation.target_h != @as(f64, @floatFromInt(target.height));
             window.setLayoutTarget(target.x, target.y, target.width, target.height);
             if (size_changed) {
-                // Resize notifications go to clients only when targets change,
-                // not every animation frame.
                 _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
             }
-            if (col_idx == self.state.focused_window) {
-                window_to_focus = window;
+
+            if (slide_idx == self.deck.focused_index) {
+                focused_slide_window = window;
             }
         }
 
-        if (window_to_focus) |window| {
+        if (focused_slide_window) |window| {
             self.focusWindow(window);
         }
     }
 
     fn ipcThreadLoop(self: *Server) void {
+
         std.log.info("KidulWM: IPC thread started", .{});
         while (self.ipc_running.load(.monotonic)) {
             self.ipc_server.tick() catch |err| {
@@ -767,17 +723,17 @@ pub const Server = struct {
 
     fn applyTheme(self: *Server, key: []const u8, value: []const u8) void {
         if (std.mem.eql(u8, key, "border_focused")) {
-            self.layout.style.color_border_focused = style.Style.Color.fromString(value) catch |err| {
+            self.theme.color_border_focused = style.Style.Color.fromString(value) catch |err| {
                 std.log.warn("invalid border_focused color '{s}': {}", .{ value, err });
                 return;
             };
         } else if (std.mem.eql(u8, key, "border")) {
-            self.layout.style.color_border = style.Style.Color.fromString(value) catch |err| {
+            self.theme.color_border = style.Style.Color.fromString(value) catch |err| {
                 std.log.warn("invalid border color '{s}': {}", .{ value, err });
                 return;
             };
         } else if (std.mem.eql(u8, key, "background")) {
-            self.layout.style.color_background = style.Style.Color.fromString(value) catch |err| {
+            self.theme.color_background = style.Style.Color.fromString(value) catch |err| {
                 std.log.warn("invalid background color '{s}': {}", .{ value, err });
                 return;
             };
@@ -786,17 +742,15 @@ pub const Server = struct {
                 std.log.warn("invalid gap '{s}': {}", .{ value, err });
                 return;
             };
-            self.layout.style.gap = gap;
+            self.theme.gap = gap;
             self.state.gap = gap;
         } else {
             std.log.info("unknown theme key '{s}', ignoring", .{key});
             return;
         }
 
-        for (self.layout.outputs.items) |*output| {
-            output.style = self.layout.style;
-        }
-        self.background.color = self.layout.style.color_background.toF32();
+
+        self.background.color = self.theme.color_background.toF32();
         self.requestLayout();
     }
 };

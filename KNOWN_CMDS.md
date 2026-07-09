@@ -133,3 +133,28 @@ sudo chmod 660 /var/lib/libvirt/qemu/nvram/cachyos-kidulwm_VARS.fd
 | `virsh qemu-agent-command cachyos-kidulwm ...` | Guest agent is not currently responsive; use SSH via hostfwd. |
 | `pkill -9 qemu` | Blocked by Hermes safety guard; use `virsh -c qemu:///system destroy`. |
 | `zig build` inside the VM guest | Toolchain not set up there; build on host and deploy. |
+
+## kidulwm-control CLI
+
+```bash
+# runtime socket path
+export XDG_RUNTIME_DIR=/run/user/1000
+
+kidulwm-control focus_next
+kidulwm-control focus_prev
+kidulwm-control split_left
+kidulwm-control split_right
+kidulwm-control split_top
+kidulwm-control split_bottom
+kidulwm-control quit
+
+# example: rapid focus cycling
+for i in $(seq 1 30); do kidulwm-control focus_next; done
+```
+
+## Focus / split stress test (host)
+
+```bash
+cd /home/dad/dev/KidulWM
+bash scripts/nested-focus-stress.sh
+```

@@ -9,6 +9,7 @@ pub const Window = struct {
     toplevel: *wlr.XdgToplevel,
     scene_tree: *wlr.SceneTree,
 
+    id: u32,
     link: wl.list.Link,
 
     animation: animation.WindowAnimation,
@@ -24,10 +25,14 @@ pub const Window = struct {
 
         const scene_tree = try server.scene.tree.createSceneXdgSurface(toplevel.base);
 
+        const id = server.next_window_id;
+        server.next_window_id += 1;
+
         window.* = .{
             .server = server,
             .toplevel = toplevel,
             .scene_tree = scene_tree,
+            .id = id,
             .link = undefined,
             .animation = .{},
             .map = wl.Listener(void).init(handleMap),

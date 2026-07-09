@@ -204,3 +204,16 @@ so future installers match distro expectations.
 - Host IPv4 loopback TCP is now functional; SPICE viewers can connect to `127.0.0.1:5900`.
 - README.md and PLAN.md in the repo are stale Rust/Niri drafts and should be ignored or rewritten separately.
 - To remove headless fallback later, drop `WLR_RENDERER=pixman` once `wlr_renderer_autocreate()` is proven in the VM.
+
+### Window motion / animation
+
+- Added `src/core/animation.zig`: spring-based interpolation tuned for fast, crisp motion.
+- Each `Window` now carries a `WindowAnimation`; `server.zig` sets layout targets in `applyLayout()` instead of snapping geometry.
+- `Output.handleFrame()` ticks animations before `scene_output.commit()`; configure/resize requests are sent only when targets change, not every frame.
+- New `kidulwm-control` CLI sends IPC commands (focus_next, focus_prev, split_left/right/top/bottom, quit).
+- `scripts/nested-focus-stress.sh` spawns three clients and rapid-fires focus/split commands to exercise the motion layer.
+
+### IPC hardening
+
+- Fixed `src/ipc/control.zig` read path to use `linux.errno(rc)` instead of a broken unsigned `n < 0` check that caused buffer underflow crashes.
+- Added bounds/defensive handling for EAGAIN/EINTR, empty lines, and handleLine errors.
