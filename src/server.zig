@@ -9,6 +9,7 @@ const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
 const style = @import("core/style.zig");
 const layout = @import("core/layout.zig");
+const animation = @import("core/animation.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
@@ -42,6 +43,11 @@ const Output = struct {
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Output = @fieldParentPtr("frame", listener);
         _ = wlr_output;
+        const now_us = animation.nowUs();
+        var it = self.server.windows.iterator(.forward);
+        while (it.next()) |window| {
+            _ = window.tickAnimation(now_us);
+        }
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
         const ok = self.scene_output.commit(null);
@@ -632,8 +638,14 @@ pub const Server = struct {
                 continue;
             }
             const target = layout.LayoutModel.columnTarget(output, col_idx);
-            window.scene_tree.node.setPosition(@intCast(target.x), @intCast(target.y));
-            _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+            const size_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width)) or
+                window.animation.target_h != @as(f64, @floatFromInt(target.height));
+            window.setLayoutTarget(target.x, target.y, target.width, target.height);
+            if (size_changed) {
+                // Resize notifications go to clients only when targets change,
+                // not every animation frame.
+                _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+            }
             if (col_idx == self.state.focused_window) {
                 window_to_focus = window;
             }

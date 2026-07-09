@@ -2,6 +2,7 @@ const std = @import("std");
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const Server = @import("server.zig").Server;
+const animation = @import("core/animation.zig");
 
 pub const Window = struct {
     server: *Server,
@@ -9,6 +10,8 @@ pub const Window = struct {
     scene_tree: *wlr.SceneTree,
 
     link: wl.list.Link,
+
+    animation: animation.WindowAnimation,
 
     map: wl.Listener(void),
     unmap: wl.Listener(void),
@@ -26,6 +29,7 @@ pub const Window = struct {
             .toplevel = toplevel,
             .scene_tree = scene_tree,
             .link = undefined,
+            .animation = .{},
             .map = wl.Listener(void).init(handleMap),
             .unmap = wl.Listener(void).init(handleUnmap),
             .destroy = wl.Listener(void).init(handleDestroy),
@@ -59,6 +63,37 @@ pub const Window = struct {
             seat.keyboardNotifyEnter(surface, &.{}, null);
         }
         std.log.info("KidulWM: focused window", .{});
+    }
+
+    /// Set the animated layout target. On the first assignment, snap current
+    /// geometry to the target so windows do not fly in from arbitrary origins.
+    pub fn setLayoutTarget(self: *Window, x: i32, y: i32, w: u32, h: u32) void {
+        const target = self.animation;
+        const first = (target.target_w == 0 and target.target_h == 0);
+        self.animation.target_x = @floatFromInt(x);
+        self.animation.target_y = @floatFromInt(y);
+        self.animation.target_w = @floatFromInt(w);
+        self.animation.target_h = @floatFromInt(h);
+        if (first) {
+            self.animation.cur_x = self.animation.target_x;
+            self.animation.cur_y = self.animation.target_y;
+            self.animation.cur_w = self.animation.target_w;
+            self.animation.cur_h = self.animation.target_h;
+            self.scene_tree.node.setPosition(x, y);
+        }
+    }
+
+    /// Advance the animation by one frame and apply it to the scene node.
+    pub fn tickAnimation(self: *Window, now_us: animation.TimeUs) bool {
+        if (!self.toplevel.base.surface.mapped) return false;
+        if (self.animation.tick(now_us)) {
+            self.scene_tree.node.setPosition(
+                @intFromFloat(self.animation.cur_x),
+                @intFromFloat(self.animation.cur_y),
+            );
+            return true;
+        }
+        return false;
     }
 
     fn handleMap(listener: *wl.Listener(void)) void {
