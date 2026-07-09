@@ -253,3 +253,10 @@ so future installers match distro expectations.
 - QEMU virtual outputs advertise 1280x800 as "preferred" even when larger modes exist.
 - For outputs named Virtual-* KidulWM now selects the largest available mode up to 4K.
 - Verified in VM: Virtual-1 now commits at 3840x2160.
+
+### Animation disabled (temporary)
+
+- Window motion animation removed to reduce VM lag/pixelation.
+- setLayoutTarget snaps current geometry to the target immediately.
+- Per-frame spring stepping replaced by direct target application in tickAnimation.
+- Can be re-enabled once rendering budget is understood.

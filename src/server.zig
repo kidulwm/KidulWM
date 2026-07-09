@@ -736,16 +736,17 @@ pub const Server = struct {
     }
 
     fn pickOutputMode(wlr_output: *wlr.Output) ?*wlr.Output.Mode {
-        // Virtual/QEMU outputs tend to advertise a low preferred mode (e.g. 1280x800)
-        // while offering much larger modes. Use the largest available mode up to 4K
-        // so the compositor fills the VM window.
+        // Virtual/QEMU outputs advertise a tiny preferred mode (e.g. 1280x800) while
+        // offering huge 4K/5K modes. For software-raster GLES2 (kms_swrast) 4K is too
+        // heavy, so pick the largest advertised mode up to 1920x1080. This keeps text
+        // sharp while leaving enough CPU/GPU headroom for motion.
         const is_virtual = std.mem.startsWith(u8, std.mem.span(wlr_output.name), "Virtual");
         const preferred = wlr_output.preferredMode();
         if (!is_virtual) return preferred;
 
         var best: ?*wlr.Output.Mode = null;
         var best_pixels: i32 = 0;
-        const max_pixels: i32 = 3840 * 2160;
+        const max_pixels: i32 = 1920 * 1080;
         var it = wlr_output.modes.iterator(.forward);
         while (it.next()) |mode| {
             const pixels = mode.width * mode.height;
