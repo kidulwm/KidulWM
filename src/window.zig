@@ -64,12 +64,16 @@ pub const Window = struct {
     fn handleMap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("map", listener);
         std.log.info("KidulWM: window mapped", .{});
+        window.server.focusWindow(window);
         window.server.requestLayout();
     }
 
     fn handleUnmap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("unmap", listener);
         std.log.info("KidulWM: window unmapped", .{});
+        if (window.server.focused_window == window) {
+            window.server.clearFocus();
+        }
         window.server.requestLayout();
     }
 
@@ -77,15 +81,16 @@ pub const Window = struct {
         const window: *Window = @fieldParentPtr("destroy", listener);
         std.log.info("KidulWM: window destroyed", .{});
         if (window.server.focused_window == window) {
-            window.server.focused_window = null;
+            window.server.clearFocus();
         }
-
+        // wlroots emits the destroy signal while the surface and its signals still
+        // exist, so it is safe and required to remove our listeners now.
         window.map.link.remove();
         window.unmap.link.remove();
         window.commit.link.remove();
+        // Remove the destroy listener itself from the signal currently emitting us.
         window.destroy.link.remove();
         window.link.remove();
-
         window.server.allocator.destroy(window);
     }
 

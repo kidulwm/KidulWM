@@ -1,9 +1,9 @@
 window.background {
-    background: #222425;
+    background: transparent;
 }
 
 .rkt-panel {
-    background: #222425;
+    background: transparent;
 }
 
 .rkt-panel > * {

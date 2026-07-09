@@ -77,10 +77,7 @@ fn build_ui(app: &gtk4::Application) {
                 .build();
             left_win.set_default_size(side_w, h);
             left_win.set_size_request(side_w, h);
-            // Force a dark background so the panel is visible.
             left_win.add_css_class("rkt-panel");
-            // Also set the window's CSS directly as a fallback.
-            let _ = left_win.settings(); // ensure settings are loaded
             init_layer_shell(&left_win, true, Some(&mon));
             left_win.set_exclusive_zone(side_w);
             eprintln!("[rkt] build_ui: calling build_left");
@@ -98,6 +95,7 @@ fn build_ui(app: &gtk4::Application) {
                 .build();
             right_win.set_default_size(side_w, h);
             right_win.set_size_request(side_w, h);
+            right_win.add_css_class("rkt-panel");
             init_layer_shell(&right_win, false, Some(&mon));
             right_win.set_exclusive_zone(side_w);
             let right_panel = panels::build_right(&mon_cfg, h, &values);

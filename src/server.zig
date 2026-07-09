@@ -120,6 +120,10 @@ pub const Server = struct {
         switch (req) {
             .quit => self.requestQuit(),
             .get_layout => return self.getLayoutResponse(),
+            .set_focus => |p| {
+                self.focusWindowByIndex(p.window_id);
+                return .{ .ok = true };
+            },
             .set_theme => |p| {
                 std.log.info("theme update: {s} = {s}", .{ p.key, p.value });
                 self.applyTheme(p.key, p.value);
@@ -177,7 +181,7 @@ pub const Server = struct {
                 .split_bottom => {
                     state.applyPreset(style.layout.vertical_bottom_split, .vertical, 1);
                 },
-                .set_focus => |p| state.focused_window = p.window_id,
+                .set_focus => {}, // handled at Server.handleRequest level
                 .subscribe => return .{ .ok = true, .message = "subscription registered" },
                 .set_theme, .quit => {},
             }
@@ -438,10 +442,51 @@ pub const Server = struct {
         };
     }
 
+    fn syncFocusIndex(self: *Server) void {
+        var it = self.windows.iterator(.forward);
+        var idx: usize = 0;
+        while (it.next()) |window| : (idx += 1) {
+            if (self.focused_window == window) {
+                self.state.focused_window = @intCast(idx);
+                return;
+            }
+        }
+        self.state.focused_window = 0;
+    }
+
+    pub fn focusWindowByIndex(self: *Server, idx: usize) void {
+        var it = self.windows.iterator(.forward);
+        var i: usize = 0;
+        while (it.next()) |window| : (i += 1) {
+            if (i == idx) {
+                if (window.toplevel.base.surface.mapped) {
+                    self.focusWindow(window);
+                }
+                return;
+            }
+        }
+    }
+
+    pub fn clearFocus(self: *Server) void {
+        self.focused_window = null;
+        self.state.focused_window = 0;
+        self.seat.keyboardNotifyClearFocus();
+    }
+
     pub fn focusWindow(self: *Server, window: *Window) void {
-        if (self.focused_window == window) return;
+        if (self.focused_window == window) {
+            // Ensure the seat focus is on this surface even if it already appears selected.
+            window.focus(self.seat);
+            self.syncFocusIndex();
+            return;
+        }
+        if (!window.toplevel.base.surface.mapped) {
+            std.log.debug("KidulWM: refusing focus on unmapped surface", .{});
+            return;
+        }
         self.focused_window = window;
         window.focus(self.seat);
+        self.syncFocusIndex();
     }
 
     pub fn focusAtCursor(self: *Server) void {
@@ -478,7 +523,7 @@ pub const Server = struct {
 
         const window_count = self.windows.length();
         if (window_count == 0 or self.state.focused_window >= window_count) {
-            self.focused_window = null;
+            self.clearFocus();
             return;
         }
 

@@ -10,7 +10,7 @@
   "left_panel": {
     "width": 360,
     "widgets": [],
-    "logo_path": "assets/control-center-logo.png",
+    "logo_path": "assets/bobHat.png",
     "control_center_command": null,
     "launcher_command": null,
     "terminal_command": null,
