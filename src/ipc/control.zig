@@ -146,21 +146,23 @@ fn readClient(self: *Server, fd: i32) !bool {
     if (client.offset >= client.buf.len) return true;
 
     const read_slice = client.buf[client.offset..client.buf.len];
-    const n = linux.read(fd, read_slice.ptr, read_slice.len);
-    if (n < 0) {
-        const err = linux.getErrno(n);
-        switch (err) {
-            .AGAIN, .INTR => return false,
-            else => {
-                std.log.err("ipc read error: {}", .{err});
-                return true;
-            },
-        }
-    }
+    const rc = linux.read(fd, read_slice.ptr, read_slice.len);
+    const n = switch (linux.errno(rc)) {
+        .SUCCESS => rc,
+        .AGAIN, .INTR => return false,
+        else => |err| {
+            std.log.err("ipc read error: {}", .{err});
+            return true;
+        },
+    };
 
     if (n == 0) return true;
     const base = client.offset;
     client.offset += @intCast(n);
+    if (client.offset > client.buf.len) {
+        std.log.warn("KidulWM: IPC read overflow, closing client", .{});
+        return true;
+    }
 
     var start = base;
     const end = client.offset;
@@ -168,14 +170,20 @@ fn readClient(self: *Server, fd: i32) !bool {
         const slice = client.buf[start..end];
         if (std.mem.indexOf(u8, slice, "\n")) |newline| {
             const line = std.mem.trim(u8, slice[0..newline], " \t\r");
-            try self.handleLine(fd, line);
+            if (line.len > 0) {
+                self.handleLine(fd, line) catch |err| {
+                    std.log.err("ipc handle error: {}", .{err});
+                };
+            }
             start += newline + 1;
         } else break;
     }
 
     if (start > 0) {
         const unconsumed = client.offset - start;
-        @memcpy(client.buf[0..unconsumed], client.buf[start..client.offset]);
+        if (unconsumed > 0) {
+            std.mem.copyForwards(u8, client.buf[0..unconsumed], client.buf[start..client.offset]);
+        }
         client.offset = unconsumed;
     }
 

@@ -24,8 +24,8 @@ pub const Request = union(RequestTag) {
     set_focus: struct {
         window_id: u32,
     },
-    focus_next,
-    focus_prev,
+    focus_next: void,
+    focus_prev: void,
     set_gap: struct {
         gap: u32,
     },

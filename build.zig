@@ -81,6 +81,16 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{ .name = "kidulwm", .root_module = root_mod });
     b.installArtifact(exe);
 
+    const control_mod = b.createModule(.{
+        .root_source_file = b.path("src/kidulwm-control.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    control_mod.addImport("ipc", b.createModule(.{ .root_source_file = b.path("src/ipc.zig") }));
+    const control_exe = b.addExecutable(.{ .name = "kidulwm-control", .root_module = control_mod });
+    b.installArtifact(control_exe);
+
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);
