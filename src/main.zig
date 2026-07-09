@@ -4,6 +4,14 @@ const Server = @import("server.zig").Server;
 pub fn main(init: std.process.Init.Minimal) !void {
     std.log.info("KidulWM boot", .{});
 
+    // Ignore SIGCHLD so children spawned by keybindings are auto-reaped.
+    var sa = std.os.linux.Sigaction{
+        .handler = .{ .handler = @as(std.os.linux.Sigaction.handler_fn, @ptrFromInt(1)) },
+        .mask = std.os.linux.sigemptyset(),
+        .flags = 0,
+    };
+    _ = std.os.linux.sigaction(.CHLD, &sa, null);
+
     var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();

@@ -35,14 +35,14 @@ pub const InputManager = struct {
             .keyboard => {
                 const keyboard = device.toKeyboard();
                 self.configureKeyboard(keyboard);
-                self.server.keyboard.listen(keyboard);
+                self.server.keyboard.listen(keyboard, device);
                 seat.setKeyboard(keyboard);
                 self.server.input_device_counts.keyboard += 1;
                 std.log.info("KidulWM: keyboard attached to seat", .{});
             },
             .pointer => {
                 const pointer = device.toPointer();
-                self.server.pointer.listen(pointer);
+                self.server.pointer.listen(pointer, device);
                 self.server.cursor.attachInputDevice(device);
                 self.server.input_device_counts.pointer += 1;
                 std.log.info("KidulWM: pointer device discovered", .{});
@@ -74,14 +74,12 @@ pub const InputManager = struct {
             std.log.warn("KidulWM: failed to set keymap on keyboard", .{});
         }
     }
-}
 
     fn handleRequestSetCursor(
         listener: *wl.Listener(*wlr.Seat.event.RequestSetCursor),
         event: *wlr.Seat.event.RequestSetCursor,
     ) void {
         const self: *InputManager = @fieldParentPtr("request_set_cursor", listener);
-        _ = self;
         if (event.surface) |surface| {
             self.server.cursor.setSurface(surface, event.hotspot_x, event.hotspot_y);
         } else {

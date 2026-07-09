@@ -48,6 +48,10 @@ pub const Window = struct {
 
     pub fn focus(self: *Window, seat: *wlr.Seat) void {
         const surface = self.toplevel.base.surface;
+        if (!surface.mapped) {
+            std.log.debug("KidulWM: refusing focus on unmapped surface", .{});
+            return;
+        }
         if (seat.getKeyboard()) |keyboard| {
             const keycodes: []const u32 = keyboard.keycodes[0..keyboard.num_keycodes];
             seat.keyboardNotifyEnter(surface, keycodes, &keyboard.modifiers);
@@ -88,6 +92,12 @@ pub const Window = struct {
     fn handleCommit(listener: *wl.Listener(*wlr.Surface), surface: *wlr.Surface) void {
         const window: *Window = @fieldParentPtr("commit", listener);
         _ = surface;
-        _ = window;
+        if (window.toplevel.base.initial_commit) {
+            // Send the initial configure now that the XDG surface role is initialized.
+            _ = window.toplevel.setSize(0, 0);
+        }
+        // Do not request a layout pass here: map/unmap already trigger layout,
+        // and running a full layout pass on every surface commit causes a
+        // configure storm once multiple XDG toplevels are mapped.
     }
 };

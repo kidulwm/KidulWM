@@ -2,75 +2,105 @@ const std = @import("std");
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const Server = @import("../server.zig").Server;
-const Window = @import("../window.zig").Window;
 
-pub const PointerManager = struct {
-    server: *Server,
+const PointerDevice = struct {
+    manager: *PointerManager,
+    pointer: *wlr.Pointer,
+    input_device: *wlr.InputDevice,
+    link: wl.list.Link,
 
     motion: wl.Listener(*wlr.Pointer.event.Motion),
     motion_absolute: wl.Listener(*wlr.Pointer.event.MotionAbsolute),
     button: wl.Listener(*wlr.Pointer.event.Button),
     axis: wl.Listener(*wlr.Pointer.event.Axis),
     frame: wl.Listener(*wlr.Pointer),
+    device_destroy: wl.Listener(*wlr.InputDevice),
 
-    pub fn init(server: *Server) PointerManager {
-        var self = PointerManager{
-            .server = server,
+    fn create(
+        manager: *PointerManager,
+        pointer: *wlr.Pointer,
+        input_device: *wlr.InputDevice,
+        allocator: std.mem.Allocator,
+    ) !*PointerDevice {
+        const device = try allocator.create(PointerDevice);
+        device.* = .{
+            .manager = manager,
+            .pointer = pointer,
+            .input_device = input_device,
+            .link = undefined,
             .motion = wl.Listener(*wlr.Pointer.event.Motion).init(handleMotion),
             .motion_absolute = wl.Listener(*wlr.Pointer.event.MotionAbsolute).init(handleMotionAbsolute),
             .button = wl.Listener(*wlr.Pointer.event.Button).init(handleButton),
             .axis = wl.Listener(*wlr.Pointer.event.Axis).init(handleAxis),
             .frame = wl.Listener(*wlr.Pointer).init(handleFrame),
+            .device_destroy = wl.Listener(*wlr.InputDevice).init(handleDestroy),
         };
-        self.motion.link.init();
-        self.motion_absolute.link.init();
-        self.button.link.init();
-        self.axis.link.init();
-        self.frame.link.init();
-        return self;
+        device.motion.link.init();
+        device.motion_absolute.link.init();
+        device.button.link.init();
+        device.axis.link.init();
+        device.frame.link.init();
+        device.device_destroy.link.init();
+        device.link.init();
+
+        pointer.events.motion.add(&device.motion);
+        pointer.events.motion_absolute.add(&device.motion_absolute);
+        pointer.events.button.add(&device.button);
+        pointer.events.axis.add(&device.axis);
+        pointer.events.frame.add(&device.frame);
+        input_device.events.destroy.add(&device.device_destroy);
+
+        manager.devices.append(device);
+        return device;
     }
 
-    pub fn listen(self: *PointerManager, pointer: *wlr.Pointer) void {
-        pointer.events.motion.add(&self.motion);
-        pointer.events.motion_absolute.add(&self.motion_absolute);
-        pointer.events.button.add(&self.button);
-        pointer.events.axis.add(&self.axis);
-        pointer.events.frame.add(&self.frame);
+    fn destroy(self: *PointerDevice) void {
+        // The input device and its signals are being destroyed; do not try to
+        // remove listeners here because wlroots may have already cleared the
+        // signal lists.  Just detach from the manager list and free our state.
+        self.link.remove();
+        self.manager.server.cursor.detachInputDevice(self.input_device);
+        self.manager.server.input_device_counts.pointer -|= 1;
+        self.manager.server.allocator.destroy(self);
     }
 
-    fn timeMsec() u32 {
-        var ts: std.os.linux.timespec = undefined;
-        _ = std.os.linux.clock_gettime(std.os.linux.CLOCK.MONOTONIC, &ts);
-        return @intCast(@mod(@as(i64, ts.sec) * 1000 + @divFloor(ts.nsec, std.time.ns_per_ms), std.math.maxInt(u32)));
+    fn handleDestroy(listener: *wl.Listener(*wlr.InputDevice), input_device: *wlr.InputDevice) void {
+        const self: *PointerDevice = @fieldParentPtr("device_destroy", listener);
+        _ = input_device;
+        self.destroy();
     }
 
     fn handleMotion(listener: *wl.Listener(*wlr.Pointer.event.Motion), event: *wlr.Pointer.event.Motion) void {
-        const self: *PointerManager = @fieldParentPtr("motion", listener);
-        self.server.cursor_x += event.delta_x;
-        self.server.cursor_y += event.delta_y;
-        self.server.cursor.move(event.delta_x, event.delta_y);
-        self.server.seat.pointerNotifyMotion(timeMsec(), self.server.cursor_x, self.server.cursor_y);
+        const self: *PointerDevice = @fieldParentPtr("motion", listener);
+        const server = self.manager.server;
+        server.cursor_x += event.delta_x;
+        server.cursor_y += event.delta_y;
+        server.cursor.move(null, event.delta_x, event.delta_y);
+        server.seat.pointerNotifyMotion(timeMsec(), server.cursor_x, server.cursor_y);
     }
 
     fn handleMotionAbsolute(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
-        const self: *PointerManager = @fieldParentPtr("motion_absolute", listener);
-        self.server.cursor_x = event.x;
-        self.server.cursor_y = event.y;
-        self.server.cursor.warpAbsolute(null, event.x, event.y);
-        self.server.seat.pointerNotifyMotion(event.time_msec, self.server.cursor_x, self.server.cursor_y);
+        const self: *PointerDevice = @fieldParentPtr("motion_absolute", listener);
+        const server = self.manager.server;
+        server.cursor_x = event.x;
+        server.cursor_y = event.y;
+        server.cursor.warpAbsolute(null, event.x, event.y);
+        server.seat.pointerNotifyMotion(event.time_msec, server.cursor_x, server.cursor_y);
     }
 
     fn handleButton(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
-        const self: *PointerManager = @fieldParentPtr("button", listener);
-        _ = self.server.seat.pointerNotifyButton(event.time_msec, event.button, event.state);
+        const self: *PointerDevice = @fieldParentPtr("button", listener);
+        const server = self.manager.server;
+        _ = server.seat.pointerNotifyButton(event.time_msec, event.button, event.state);
         if (event.state == .pressed) {
-            self.server.focusAtCursor();
+            server.focusAtCursor();
         }
     }
 
     fn handleAxis(listener: *wl.Listener(*wlr.Pointer.event.Axis), event: *wlr.Pointer.event.Axis) void {
-        const self: *PointerManager = @fieldParentPtr("axis", listener);
-        self.server.seat.pointerNotifyAxis(
+        const self: *PointerDevice = @fieldParentPtr("axis", listener);
+        const server = self.manager.server;
+        server.seat.pointerNotifyAxis(
             event.time_msec,
             event.orientation,
             event.delta,
@@ -82,7 +112,38 @@ pub const PointerManager = struct {
 
     fn handleFrame(listener: *wl.Listener(*wlr.Pointer), pointer: *wlr.Pointer) void {
         _ = pointer;
-        const self: *PointerManager = @fieldParentPtr("frame", listener);
-        self.server.seat.pointerNotifyFrame();
+        const self: *PointerDevice = @fieldParentPtr("frame", listener);
+        self.manager.server.seat.pointerNotifyFrame();
+    }
+
+    fn timeMsec() u32 {
+        var ts: std.os.linux.timespec = undefined;
+        _ = std.os.linux.clock_gettime(std.os.linux.CLOCK.MONOTONIC, &ts);
+        return @intCast(@mod(@as(i64, ts.sec) * 1000 + @divFloor(ts.nsec, std.time.ns_per_ms), std.math.maxInt(u32)));
+    }
+};
+
+pub const PointerManager = struct {
+    server: *Server,
+    devices: wl.list.Head(PointerDevice, .link),
+
+    pub fn init(self: *PointerManager, server: *Server) void {
+        self.* = .{
+            .server = server,
+            .devices = undefined,
+        };
+        self.devices.init();
+    }
+
+    pub fn listen(self: *PointerManager, pointer: *wlr.Pointer, input_device: *wlr.InputDevice) void {
+        _ = PointerDevice.create(self, pointer, input_device, self.server.allocator) catch |err| {
+            std.log.err("failed to allocate pointer device state: {}", .{err});
+        };
+    }
+
+    pub fn deinit(self: *PointerManager) void {
+        while (self.devices.first()) |device| {
+            device.destroy();
+        }
     }
 };

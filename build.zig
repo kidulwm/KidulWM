@@ -64,6 +64,20 @@ pub fn build(b: *std.Build) void {
     root_mod.linkSystemLibrary("pixman-1", .{});
     root_mod.linkSystemLibrary("libinput", .{});
 
+    const dm_mod = b.createModule(.{
+        .root_source_file = b.path("src/dm/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    dm_mod.linkSystemLibrary("cairo", .{});
+    dm_mod.linkSystemLibrary("png16", .{});
+    dm_mod.linkSystemLibrary("drm", .{});
+    dm_mod.linkSystemLibrary("seat", .{});
+
+    const dm_exe = b.addExecutable(.{ .name = "kiduldm", .root_module = dm_mod });
+    b.installArtifact(dm_exe);
+
     const exe = b.addExecutable(.{ .name = "kidulwm", .root_module = root_mod });
     b.installArtifact(exe);
 

@@ -7,12 +7,59 @@ const Window = @import("window.zig").Window;
 const InputManager = @import("input.zig").InputManager;
 const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
-const TrayManager = @import("tray.zig").TrayManager;
-const SettingsTray = @import("tray.zig").SettingsTray;
 const style = @import("core/style.zig");
 const layout = @import("core/layout.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
+
+const Output = struct {
+    server: *Server,
+    wlr_output: *wlr.Output,
+    scene_output: *wlr.SceneOutput,
+    link: wl.list.Link,
+    frame: wl.Listener(*wlr.Output),
+    destroy: wl.Listener(*wlr.Output),
+
+    pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
+        self.* = .{
+            .server = server,
+            .wlr_output = wlr_output,
+            .scene_output = scene_output,
+            .link = undefined,
+            .frame = wl.Listener(*wlr.Output).init(handleFrame),
+            .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
+        };
+        server.outputs.append(self);
+        wlr_output.events.frame.add(&self.frame);
+        wlr_output.events.destroy.add(&self.destroy);
+    }
+
+    pub fn deinit(self: *Output) void {
+        self.frame.link.remove();
+        self.destroy.link.remove();
+    }
+
+    fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
+        const self: *Output = @fieldParentPtr("frame", listener);
+        _ = wlr_output;
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
+        const ok = self.scene_output.commit(null);
+        if (!ok) {
+            std.log.warn("KidulWM: scene output commit failed, skipping frame done", .{});
+            return;
+        }
+        self.scene_output.sendFrameDone(@ptrCast(&ts));
+    }
+
+    fn handleDestroy(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
+        const self: *Output = @fieldParentPtr("destroy", listener);
+        self.link.remove();
+        self.deinit();
+        self.server.allocator.destroy(self);
+        _ = wlr_output;
+    }
+};
 
 pub const Server = struct {
     allocator: std.mem.Allocator,
@@ -58,9 +105,6 @@ pub const Server = struct {
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
 
-    tray: *TrayManager,
-    settings_tray: *SettingsTray,
-
     new_output: wl.Listener(*wlr.Output),
     backend_destroy: wl.Listener(*wlr.Backend),
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel),
@@ -70,6 +114,7 @@ pub const Server = struct {
         rect: ?*wlr.SceneRect,
         color: [4]f32,
     },
+    outputs: wl.list.Head(Output, .link),
 
     fn handleRequest(self: *Server, req: ipc.message.Request) ipc.message.Response {
         switch (req) {
@@ -211,8 +256,6 @@ pub const Server = struct {
             .cursor_y = 0,
             .input_device_counts = .{},
             .focused_window = null,
-            .tray = undefined,
-            .settings_tray = undefined,
             .ipc_server = undefined,
             .ipc_thread = null,
             .ipc_running = std.atomic.Value(bool).init(false),
@@ -230,12 +273,15 @@ pub const Server = struct {
                 .rect = null,
                 .color = style.default_style.color_background.toF32(),
             },
+            .outputs = undefined,
         };
+
+        server.outputs.init();
 
         server.background.rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
 
-        server.pointer = PointerManager.init(server);
-        server.keyboard = KeyboardManager.init(server);
+        server.pointer.init(server);
+        server.keyboard.init(server);
         server.windows.init();
         server.input_manager = try server.allocator.create(InputManager);
         InputManager.init(server.input_manager, server);
@@ -263,12 +309,6 @@ pub const Server = struct {
             break :blk fds;
         };
         server.layout_source = try event_loop.addFd(*Server, server.layout_pipe[0], .{ .readable = true }, handleLayoutEventFd, server);
-
-        server.tray = try server.allocator.create(TrayManager);
-        try TrayManager.init(server, server.tray);
-
-        server.settings_tray = try server.allocator.create(SettingsTray);
-        try SettingsTray.init(server, server.settings_tray);
 
         return server;
     }
@@ -315,6 +355,10 @@ pub const Server = struct {
     }
 
     pub fn deinit(self: *Server) void {
+        // Disconnect all clients before tearing down globals, otherwise
+        // wl_display_destroy asserts if clients are still connected.
+        self.wl_server.destroyClients();
+
         if (self.ipc_thread) |thread| {
             self.ipc_running.store(false, .monotonic);
             thread.join();
@@ -323,28 +367,43 @@ pub const Server = struct {
         self.ipc_server.destroy();
 
         self.input_manager.deinit();
+        self.allocator.destroy(self.input_manager);
+        self.pointer.deinit();
+        self.keyboard.deinit();
         self.layout.deinit();
 
         _ = linux.close(self.layout_pipe[0]);
         _ = linux.close(self.layout_pipe[1]);
 
-        self.output_layout_change.link.remove();
-        self.output_layout.destroy();
+        // Tear down outputs before the scene and layout that back them.
+        while (self.outputs.first()) |output| {
+            output.link.remove();
+            output.deinit();
+            self.allocator.destroy(output);
+        }
 
+        self.output_layout_change.link.remove();
+        self.new_xdg_toplevel.link.remove();
         self.new_output.link.remove();
         self.backend_destroy.link.remove();
+
+        self.cursor.destroy();
+
+        // scene/scene_output_layout and most globals do not expose destroy()
+        // wrappers in this zig-wlroots version; the display teardown frees them.
+        // Destroy only the singletons that have explicit wrappers.
+        self.seat.destroy();
+        // output_manager has no explicit destroy wrapper in this version.
+        self.output_layout.destroy();
+
         if (self.backend_started) {
             self.backend.destroy();
         } else {
             std.log.info("KidulWM: backend was not started, skipping destroy", .{});
         }
 
-        self.tray.deinit();
-        self.allocator.destroy(self.tray);
-
-        self.cursor.destroy();
-        self.settings_tray.deinit();
-        self.allocator.destroy(self.settings_tray);
+        self.renderer_allocator.destroy();
+        self.renderer.destroy();
         self.wl_server.destroy();
         const allocator = self.allocator;
         allocator.destroy(self);
@@ -409,6 +468,7 @@ pub const Server = struct {
         const height = @as(u32, @intCast(wlr_output.height));
 
         if (self.layout.outputs.items.len == 0) {
+            self.layout.deinit();
             self.layout = layout.LayoutModel.init(self.allocator, width, height, self.state.gap) catch |err| {
                 std.log.err("layout model init failed: {}", .{err});
                 return;
@@ -442,7 +502,7 @@ pub const Server = struct {
             const target = layout.LayoutModel.columnTarget(output, col_idx);
             window.scene_tree.node.setPosition(@intCast(target.x), @intCast(target.y));
             _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
-            if (col_idx == self.state.focused_window) {
+            if (col_idx == self.state.focused_window and window.toplevel.base.surface.mapped) {
                 window_to_focus = window;
             }
         }
@@ -500,13 +560,18 @@ pub const Server = struct {
             std.log.err("failed to add output to layout: {}", .{err});
             return;
         };
-        _ = self.scene.createSceneOutput(wlr_output) catch |err| {
+        const scene_output = self.scene.createSceneOutput(wlr_output) catch |err| {
             std.log.err("scene output create failed: {}", .{err});
             return;
         };
+        const output = self.allocator.create(Output) catch |err| {
+            std.log.err("failed to allocate output state: {}", .{err});
+            return;
+        };
+        output.init(self, wlr_output, scene_output);
         std.log.info("KidulWM: output added to layout", .{});
         self.requestLayout();
-        self.tray.arrange();
+        wlr_output.scheduleFrame();
     }
 
     fn handleBackendDestroy(listener: *wl.Listener(*wlr.Backend), backend: *wlr.Backend) void {
@@ -538,7 +603,6 @@ pub const Server = struct {
         }
 
         self.requestLayout();
-        self.tray.arrange();
     }
 
     fn handleShutdownTimer(server: *@This()) c_int {
