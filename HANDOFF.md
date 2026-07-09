@@ -231,3 +231,11 @@ so future installers match distro expectations.
 - Unfocused Slides get a semi-transparent black overlay (18% alpha).
 - Focused window hides the overlay.
 - dim_rect stored on Window; recreated/ resized each layout pass using surface current size.
+
+### Per-output SlideDecks
+
+- Each Output now owns its own SlideDeck (src/server.zig).
+- Server has focused_output; new windows assign to the active output.
+- applyLayout iterates every output, resizes each deck to the output geometry, sets window targets.
+- IPC split/gap/orientation live on Server and apply to all outputs (per-output overrides later).
+- get_layout reports slide_count (deck size) and window_count (global list).

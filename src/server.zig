@@ -449,6 +449,10 @@ pub const Server = struct {
         const was_requested = self.layout_requested.swap(true, .acquire);
         if (was_requested) return;
         _ = linux.write(self.layout_pipe[1], &[_]u8{1}, 1);
+        var output_it = self.outputs.iterator(.forward);
+        while (output_it.next()) |output| {
+            output.wlr_output.scheduleFrame();
+        }
     }
 
     pub fn requestUpdateCapabilities(self: *Server) void {
@@ -651,16 +655,20 @@ pub const Server = struct {
                 if (!window.toplevel.base.surface.mapped) continue;
 
                 const target = output.deck.targetForSlide(slide_idx);
-                const size_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width)) or
-                    window.animation.target_h != @as(f64, @floatFromInt(target.height));
+                const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
+                const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
+                const size_changed = w_changed or h_changed;
                 window.setLayoutTarget(target.x, target.y, target.width, target.height);
-                if (size_changed) {
+                // Only reconfigure the client once the animation has settled; this avoids
+                // forcing terminals to reallocate buffers every frame while sliding.
+                if (size_changed and window.animation.isSettled()) {
                     _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                 }
 
                 if (slide_idx == output.deck.focused_index) {
                     focused_slide_window = window;
                     window.updateDim(true);
+                    window.scene_tree.node.raiseToTop();
                 } else {
                     window.updateDim(false);
                 }
@@ -682,14 +690,16 @@ pub const Server = struct {
                     const window = self.windowById(slide.window_id) orelse continue;
                     if (!window.toplevel.base.surface.mapped) continue;
                     const target = self.deck.targetForSlide(slide_idx);
-                    const size_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width)) or
-                        window.animation.target_h != @as(f64, @floatFromInt(target.height));
+                    const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
+                    const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
+                    const size_changed = w_changed or h_changed;
                     window.setLayoutTarget(target.x, target.y, target.width, target.height);
-                    if (size_changed) {
+                    if (size_changed and window.animation.isSettled()) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
                     if (slide_idx == self.deck.focused_index) {
                         window.updateDim(true);
+                        window.scene_tree.node.raiseToTop();
                         self.focusWindow(window);
                     } else {
                         window.updateDim(false);

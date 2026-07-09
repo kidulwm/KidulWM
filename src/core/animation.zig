@@ -49,13 +49,33 @@ pub const WindowAnimation = struct {
     vh: f64 = 0,
     v_opacity: f64 = 0,
 
+    last_us: TimeUs = 0,
+
     opacity_in_spring: Spring = .{ .stiffness = 18.0, .damping = 0.92, .epsilon = 0.02 },
-    motion_spring: Spring = .{ .stiffness = 7.5, .damping = 0.96, .epsilon = 0.5 },
+    motion_spring: Spring = .{ .stiffness = 9.0, .damping = 0.97, .epsilon = 0.5 },
+
+    /// True when position/size are very close to target and velocity is nil.
+    pub fn isSettled(self: WindowAnimation) bool {
+        return @abs(self.target_x - self.cur_x) < self.motion_spring.epsilon and
+            @abs(self.target_y - self.cur_y) < self.motion_spring.epsilon and
+            @abs(self.target_w - self.cur_w) < self.motion_spring.epsilon and
+            @abs(self.target_h - self.cur_h) < self.motion_spring.epsilon and
+            @abs(self.vx) < self.motion_spring.epsilon and
+            @abs(self.vy) < self.motion_spring.epsilon and
+            @abs(self.vw) < self.motion_spring.epsilon and
+            @abs(self.vh) < self.motion_spring.epsilon;
+    }
 
     /// Update current values toward targets and report whether anything moved.
     pub fn tick(self: *WindowAnimation, now_us: TimeUs) bool {
-        const dt_s: f64 = 1.0 / 120.0; // assume 120 Hz logic step for consistent motion
-        _ = now_us;
+        if (self.last_us == 0) {
+            self.last_us = now_us;
+            return false;
+        }
+        const dt_us = now_us - self.last_us;
+        if (dt_us == 0) return false;
+        // Cap dt at 50 ms so a missed frame does not rocket the spring.
+        const dt_s: f64 = @min(@as(f64, @floatFromInt(dt_us)) / 1_000_000.0, 0.05);
 
         const px = self.motion_spring.step(self.cur_x, self.vx, self.target_x, dt_s);
         const py = self.motion_spring.step(self.cur_y, self.vy, self.target_y, dt_s);

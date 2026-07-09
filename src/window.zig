@@ -83,6 +83,9 @@ pub const Window = struct {
     pub fn setLayoutTarget(self: *Window, x: i32, y: i32, w: u32, h: u32) void {
         const target = self.animation;
         const first = (target.target_w == 0 and target.target_h == 0);
+        if (first) {
+            self.animation.last_us = animation.nowUs();
+        }
         self.animation.target_x = @floatFromInt(x);
         self.animation.target_y = @floatFromInt(y);
         self.animation.target_w = @floatFromInt(w);
