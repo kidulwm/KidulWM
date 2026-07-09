@@ -493,6 +493,7 @@ pub const Server = struct {
         var it = self.windows.iterator(.forward);
         while (it.next()) |window| {
             const node = &window.scene_tree.node;
+            if (!window.toplevel.base.surface.mapped) continue;
             if (!node.enabled) continue;
             var nx: f64 = undefined;
             var ny: f64 = undefined;
@@ -544,10 +545,15 @@ pub const Server = struct {
         var window_to_focus: ?*Window = null;
         while (it.next()) |window| : (col_idx += 1) {
             if (col_idx >= output.columns.items.len) break;
+            if (!window.toplevel.base.surface.mapped) {
+                // Keep the column slot reserved so the matrix geometry is stable
+                // across map/unmap events.
+                continue;
+            }
             const target = layout.LayoutModel.columnTarget(output, col_idx);
             window.scene_tree.node.setPosition(@intCast(target.x), @intCast(target.y));
             _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
-            if (col_idx == self.state.focused_window and window.toplevel.base.surface.mapped) {
+            if (col_idx == self.state.focused_window) {
                 window_to_focus = window;
             }
         }

@@ -108,6 +108,17 @@ Fix (with VM shut off):
 
 The VM then booted cleanly and the KidulWM service started normally.
 
+### Window focus lifecycle
+
+- `Window.handleMap()` now calls `Server.focusWindow(window)` so new windows receive keyboard focus.
+- `Window.handleUnmap()` clears focus from that window if it was focused.
+- `Window.handleDestroy()` clears focus and removes all listeners safely.
+- `Server.focusWindow()` refuses unmapped surfaces and syncs the integer `state.focused_window` index.
+- `Server.focusWindowByIndex()` implements IPC `set_focus`.
+- `Server.clearFocus()` uses `seat.keyboardNotifyClearFocus()`.
+
+Result: mapped windows are focus-aware, IPC `set_focus` works, and shutdown no longer asserts on outstanding toplevel listeners.
+
 ### VM deployment and access workflow
 
 - Service binary lives at `/usr/bin/kidulwm` (FHS path) and is used by `/etc/systemd/system/kidulwm.service`.
