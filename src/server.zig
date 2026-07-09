@@ -735,6 +735,29 @@ pub const Server = struct {
         return 0;
     }
 
+    fn pickOutputMode(wlr_output: *wlr.Output) ?*wlr.Output.Mode {
+        // Virtual/QEMU outputs tend to advertise a low preferred mode (e.g. 1280x800)
+        // while offering much larger modes. Use the largest available mode up to 4K
+        // so the compositor fills the VM window.
+        const is_virtual = std.mem.startsWith(u8, std.mem.span(wlr_output.name), "Virtual");
+        const preferred = wlr_output.preferredMode();
+        if (!is_virtual) return preferred;
+
+        var best: ?*wlr.Output.Mode = null;
+        var best_pixels: i32 = 0;
+        const max_pixels: i32 = 3840 * 2160;
+        var it = wlr_output.modes.iterator(.forward);
+        while (it.next()) |mode| {
+            const pixels = mode.width * mode.height;
+            if (pixels > best_pixels and pixels <= max_pixels) {
+                best = mode;
+                best_pixels = pixels;
+            }
+        }
+        if (best) |b| return b;
+        return preferred;
+    }
+
     fn handleNewOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Server = @fieldParentPtr("new_output", listener);
 
@@ -746,7 +769,7 @@ pub const Server = struct {
         var state = wlr.Output.State.init();
         defer state.finish();
         state.setEnabled(true);
-        if (wlr_output.preferredMode()) |mode| {
+        if (pickOutputMode(wlr_output)) |mode| {
             state.setMode(mode);
         } else {
             state.setCustomMode(1024, 768, 60_000);

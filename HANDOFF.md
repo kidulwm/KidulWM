@@ -239,3 +239,10 @@ so future installers match distro expectations.
 - applyLayout iterates every output, resizes each deck to the output geometry, sets window targets.
 - IPC split/gap/orientation live on Server and apply to all outputs (per-output overrides later).
 - get_layout reports slide_count (deck size) and window_count (global list).
+
+### Lag / Slide-from-behind fixes
+
+- Output.scheduleFrame() called on every requestLayout so motion starts immediately.
+- Focused window scene node raised to top of scene tree each layout pass.
+- XDG toplevel only reconfigured after the spring settles; no buffer churn while sliding.
+- Animation uses variable dt from CLOCK_MONOTONIC, capped at 50 ms. Spring tuned stiffer + more damping.
