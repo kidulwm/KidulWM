@@ -176,13 +176,16 @@ pub const SlideDeck = struct {
         const h = self.height;
 
         const x: i32 = switch (delta) {
-            -1 => 0,
+            // Left neighbour: position so only its rightmost `left_w` pixels
+            // are visible at the left edge of the screen, with its right edge
+            // butting up against the focused window.
+            -1 => -@as(i32, @intCast(self.width)) + left_w,
             0 => left_w,
             1 => left_w + focus_w,
             else => @as(i32, @intCast(delta)) * @as(i32, @intCast(self.width)),
         };
         const width: u32 = switch (delta) {
-            -1 => @intCast(left_w),
+            -1 => self.width,
             0 => @intCast(focus_w),
             1 => @intCast(right_w),
             else => self.width,
