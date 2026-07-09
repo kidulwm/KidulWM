@@ -246,3 +246,10 @@ so future installers match distro expectations.
 - Focused window scene node raised to top of scene tree each layout pass.
 - XDG toplevel only reconfigured after the spring settles; no buffer churn while sliding.
 - Animation uses variable dt from CLOCK_MONOTONIC, capped at 50 ms. Spring tuned stiffer + more damping.
+
+### VM 1/4-screen fix
+
+- KidulDM is not the cause; KidulWM drives the display directly.
+- QEMU virtual outputs advertise 1280x800 as "preferred" even when larger modes exist.
+- For outputs named Virtual-* KidulWM now selects the largest available mode up to 4K.
+- Verified in VM: Virtual-1 now commits at 3840x2160.

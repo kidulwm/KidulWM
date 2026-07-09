@@ -661,7 +661,7 @@ pub const Server = struct {
                 window.setLayoutTarget(target.x, target.y, target.width, target.height);
                 // Only reconfigure the client once the animation has settled; this avoids
                 // forcing terminals to reallocate buffers every frame while sliding.
-                if (size_changed and window.animation.isSettled()) {
+                if (size_changed) {
                     _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                 }
 
@@ -694,7 +694,7 @@ pub const Server = struct {
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
                     window.setLayoutTarget(target.x, target.y, target.width, target.height);
-                    if (size_changed and window.animation.isSettled()) {
+                    if (size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
                     if (slide_idx == self.deck.focused_index) {
