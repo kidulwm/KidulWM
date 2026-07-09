@@ -544,6 +544,7 @@ pub const Server = struct {
         if (self.focused_window == window) {
             // Ensure the seat focus is on this surface even if it already appears selected.
             window.focus(self.seat);
+            self.focused_window_id = window.id;
             self.syncDeckFocus();
             return;
         }
@@ -552,6 +553,7 @@ pub const Server = struct {
             return;
         }
         self.focused_window = window;
+        self.focused_window_id = window.id;
         window.focus(self.seat);
         self.syncDeckFocus();
     }
@@ -603,6 +605,9 @@ pub const Server = struct {
 
             if (slide_idx == self.deck.focused_index) {
                 focused_slide_window = window;
+                window.updateDim(true);
+            } else {
+                window.updateDim(false);
             }
         }
 

@@ -217,3 +217,11 @@ so future installers match distro expectations.
 
 - Fixed `src/ipc/control.zig` read path to use `linux.errno(rc)` instead of a broken unsigned `n < 0` check that caused buffer underflow crashes.
 - Added bounds/defensive handling for EAGAIN/EINTR, empty lines, and handleLine errors.
+
+### SlideDeck grid matrix
+
+- Replaced 3-column LayoutModel with SlideDeck in src/core/slidedeck.zig.
+- Each Slide is a full-screen page on an output. Focused Slide gets central focus rect; neighbours peek from edges.
+- New windows insert near deck centre; focus_next/prev cycle slides with spring motion.
+- Window lifecycle (map/unmap/destroy) inserts/removes slides; deck preserves ordering across unmap.
+- Per-output decks planned: current code has one Deck per Server; move field into Output when multi-output window assignment is wired.

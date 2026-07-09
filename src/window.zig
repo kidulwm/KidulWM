@@ -14,6 +14,9 @@ pub const Window = struct {
 
     animation: animation.WindowAnimation,
 
+    dim_rect: ?*wlr.SceneRect,
+    dim_color: [4]f32,
+
     map: wl.Listener(void),
     unmap: wl.Listener(void),
     destroy: wl.Listener(void),
@@ -35,6 +38,8 @@ pub const Window = struct {
             .id = id,
             .link = undefined,
             .animation = .{},
+            .dim_rect = null,
+            .dim_color = .{ 0.0, 0.0, 0.0, 0.18 },
             .map = wl.Listener(void).init(handleMap),
             .unmap = wl.Listener(void).init(handleUnmap),
             .destroy = wl.Listener(void).init(handleDestroy),
@@ -99,6 +104,29 @@ pub const Window = struct {
             return true;
         }
         return false;
+    }
+
+    /// Dim or undim the window overlay depending on focus.
+    pub fn updateDim(self: *Window, focused: bool) void {
+        const surface = self.toplevel.base.surface;
+        if (!surface.mapped) return;
+        const w: i32 = @intCast(surface.current.width);
+        const h: i32 = @intCast(surface.current.height);
+        if (w <= 0 or h <= 0) return;
+
+        if (focused) {
+            if (self.dim_rect) |rect| {
+                rect.setSize(0, 0);
+            }
+            return;
+        }
+
+        if (self.dim_rect == null) {
+            self.dim_rect = self.scene_tree.createSceneRect(w, h, &self.dim_color) catch return;
+        } else if (self.dim_rect) |rect| {
+            rect.setSize(w, h);
+            rect.setColor(&self.dim_color);
+        }
     }
 
     fn handleMap(listener: *wl.Listener(void)) void {
