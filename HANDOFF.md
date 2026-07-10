@@ -177,10 +177,13 @@ so future installers match distro expectations.
 ## Current status (tonight's result)
 
 - Branch: `chrome-2x`
-- Head commit: `7f2ddf4` (`chrome: equal-thickness variable chamfer; sides=3, chamfers=3.5`)
+- Head commit: `c628157` (`chrome: background-corner mask + variable chamfer ring (sides=3, chamfers=3.5)`)
 - Fallback commit: `d9688bd` (`fallback: variable chamfer with sides=3, chamfers=4`)
 - `zig build` and `zig build test` pass.
-- VM test binary deployed; live visual confirmed: straight side borders and diagonal chamfer legs appear equally thick.
+- VM test binary deployed; live visual confirmed:
+  - grey client-corner bleed past chamfers is masked out,
+  - fine aliasing/halo line inside the focused border is gone,
+  - straight side borders and diagonal chamfer legs read as equally thick.
 
 ### Chrome / border geometry
 
@@ -191,6 +194,7 @@ so future installers match distro expectations.
   - each outer edge is offset inward by its own thickness;
   - inner vertices are recomputed by intersecting adjacent offset edges.
   - `.classic` (rounded) and `.none` remain on the previous uniform path.
+- `src/render/chrome.zig` now masks the area outside the inner content shape with `color_background` before drawing the border ring. This hides client-surface rounded corners / shadows that extend beyond the chamfered content region.
 - `src/server.zig` handles `border_width` and `chamfer_border_width` theme keys at runtime, increments `chrome_style_generation`, and triggers a layout pass.
 - `src/kidulwm-control.zig` exposes `set_theme <key> <value>`.
 - Default values in `src/core/style.zig`:
@@ -203,19 +207,16 @@ so future installers match distro expectations.
 - VM: `cachyos-kidulwm` via `virsh -c qemu:///system`.
 - Host SSH forward: `hostfwd_add tcp::2222-:22`.
 - Service binary target: `/usr/bin/kidulwm`.
-- Deploy via `nbd`:
-  1. `virsh -c qemu:///system shutdown cachyos-kidulwm`
-  2. `modprobe nbd max_part=8`
-  3. `qemu-nbd --connect=/dev/nbd0 /var/lib/libvirt/images/cachyos-kidulwm.qcow2`
-  4. `mount /dev/nbd0p2 /mnt/vmroot`
-  5. `cp zig-out/bin/kidulwm /mnt/vmroot/usr/bin/kidulwm`
-  6. `umount /mnt/vmroot && qemu-nbd --disconnect /dev/nbd0`
-  7. `virsh -c qemu:///system start cachyos-kidulwm`
+- Guest user `kidul@127.0.0.1:2222` has passwordless `sudo`.
+- `nbd` mount is currently broken on host kernel `7.1.3-1-cachyos` (`modprobe nbd` fails). Use live SSH deploy instead:
+  1. `scp -P 2222 zig-out/bin/kidulwm kidul@127.0.0.1:/tmp/kidulwm.new`
+  2. `ssh -p 2222 kidul@127.0.0.1 'sudo systemctl stop kidulwm; sudo -S -p '' cp /tmp/kidulwm.new /usr/bin/kidulwm; sudo -S -p '' systemctl start kidulwm'`
+  3. Re-add port forward if the VM was rebooted: `virsh -c qemu:///system qemu-monitor-command cachyos-kidulwm --hmp 'hostfwd_add tcp::2222-:22'`
 
 ## Next steps
 
-1. Verify `Mod+Return` from a real SPICE/virt-manager keyboard.
-2. Wire `style.zig` tokens into layout/rendering paths.
+1. Investigate / verify right-peek top/bottom border reach under different focus states.
+2. Verify `Mod+Return` from a real SPICE/virt-manager keyboard.
 3. Stub the chamfer/cut-corner SDF shader.
 
 ## Notes
