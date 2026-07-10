@@ -5,17 +5,22 @@ const std = @import("std");
 /// or widgets that display chrome reads from this structure.
 pub const Style = struct {
     gap: u32 = 8,
-    border_width: f32 = 2.0,
+    border_width: f32 = 3.0,
+    chamfer_border_width: f32 = 4.0,
     corner_style: CornerStyle = .cut,
-    corner_depth: f32 = 18.0,
+    corner_depth: f32 = 16.0,
 
     color_background: Color = Color.fromHex(0x222425),
-    color_border: Color = Color.fromHex(0x1a2b3c),
-    color_border_focused: Color = Color.fromHex(0x00f0ff),
+    color_border: Color = Color.fromHex(0x5e5a4c),
+    color_border_focused: Color = Color.fromHex(0x948e7b),
     color_electric: Color = Color.fromHex(0x00f0ff),
     color_purple: Color = Color.fromHex(0xa259ff),
     color_turquoise: Color = Color.fromHex(0x00ffc8),
-    color_glow: Color = Color.fromRgba(0x00f0ff, 0.18),
+    color_gold: Color = Color.fromHex(0x948e7b),
+    color_gold_dim: Color = Color.fromHex(0x5e5a4c),
+    color_glow: Color = Color.fromRgba(0x948e7b, 0.35),
+
+    show_title_bars: bool = false,
 
     pub const CornerStyle = enum {
         classic,
@@ -64,6 +69,15 @@ pub const Style = struct {
                 @as(f32, self.g) / 255.0,
                 @as(f32, self.b) / 255.0,
                 @as(f32, self.a) / 255.0,
+            };
+        }
+
+        pub fn toF64(self: Color) [4]f64 {
+            return .{
+                @as(f64, self.r) / 255.0,
+                @as(f64, self.g) / 255.0,
+                @as(f64, self.b) / 255.0,
+                @as(f64, self.a) / 255.0,
             };
         }
     };

@@ -4,6 +4,10 @@ const wlr = @import("wlroots");
 const Server = @import("server.zig").Server;
 const Output = @import("server.zig").Output;
 const animation = @import("core/animation.zig");
+const c = @import("dm/c.zig").c;
+const chrome_renderer = @import("render/chrome.zig");
+const DataBuffer = @import("render/buffer.zig").DataBuffer;
+const Style = @import("core/style.zig").Style;
 
 pub const Window = struct {
     server: *Server,
@@ -18,6 +22,13 @@ pub const Window = struct {
 
     dim_rect: ?*wlr.SceneRect,
     dim_color: [4]f32,
+
+    chrome_tree: ?*wlr.SceneTree,
+    chrome_scale: u32,
+    chrome_style_generation: u32,
+    chrome_focused: bool,
+    chrome_width: i32,
+    chrome_height: i32,
 
     map: wl.Listener(void),
     unmap: wl.Listener(void),
@@ -43,6 +54,12 @@ pub const Window = struct {
             .animation = .{},
             .dim_rect = null,
             .dim_color = .{ 0.0, 0.0, 0.0, 0.18 },
+            .chrome_tree = null,
+            .chrome_scale = 1,
+            .chrome_style_generation = 0,
+            .chrome_focused = false,
+            .chrome_width = 0,
+            .chrome_height = 0,
             .map = wl.Listener(void).init(handleMap),
             .unmap = wl.Listener(void).init(handleUnmap),
             .destroy = wl.Listener(void).init(handleDestroy),
@@ -118,7 +135,7 @@ pub const Window = struct {
 
     /// Dim or undim the window overlay depending on focus. The overlay size
     /// follows the surface buffer so rounded corners and client-side shading
-    /// stay intact; the scene subtree is clipped to the layout target instead.
+    /// stay intact.
     pub fn updateDim(self: *Window, focused: bool) void {
         const surface = self.toplevel.base.surface;
         if (!surface.mapped) return;
@@ -141,17 +158,66 @@ pub const Window = struct {
         }
     }
 
-    /// Clip the surface subtree to the current layout target so a window that
-    /// was previously focused (and therefore larger) does not draw outside its
-    /// new SlideDeck slot.
-    pub fn updateClip(self: *Window) void {
-        const clip = wlr.Box{
-            .x = 0,
-            .y = 0,
-            .width = @intFromFloat(self.animation.target_w),
-            .height = @intFromFloat(self.animation.target_h),
+    /// Regenerate the compositor-drawn chrome overlay for this window.
+    /// The overlay follows the layout target size and focus state, ensuring
+    /// KidulWM owns the signature corner look regardless of client CSD.
+    pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
+        const w: i32 = @intFromFloat(self.animation.target_w);
+        const h: i32 = @intFromFloat(self.animation.target_h);
+        if (w <= 0 or h <= 0) return;
+
+        // Pick output scale from the output this window is on.
+        var scale: u32 = 1;
+        if (self.output) |output| {
+            scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        }
+
+        const style_gen = self.server.chrome_style_generation;
+        const same = self.chrome_tree != null and
+            self.chrome_width == w and
+            self.chrome_height == h and
+            self.chrome_focused == focused and
+            self.chrome_scale == scale and
+            self.chrome_style_generation == style_gen;
+        if (same) return;
+
+        if (self.chrome_tree) |tree| {
+            tree.node.destroy();
+            self.chrome_tree = null;
+        }
+
+        const tree = self.scene_tree.createSceneTree() catch return;
+        self.chrome_tree = tree;
+        self.chrome_width = w;
+        self.chrome_height = h;
+        self.chrome_focused = focused;
+        self.chrome_scale = scale;
+        self.chrome_style_generation = style_gen;
+
+        const style = self.server.theme;
+        const surface = chrome_renderer.renderChrome(style, w, h, focused, scale, edges) orelse {
+            tree.node.destroy();
+            self.chrome_tree = null;
+            return;
         };
-        self.scene_tree.node.subsurfaceTreeSetClip(&clip);
+        defer c.cairo_surface_destroy(surface);
+        const pixels = chrome_renderer.surfacePixels(surface);
+
+        const buffer = DataBuffer.create(pixels.pixels, pixels.width, pixels.height, pixels.stride) catch {
+            tree.node.destroy();
+            self.chrome_tree = null;
+            return;
+        };
+
+        const scene_buffer = tree.createSceneBuffer(buffer) catch {
+            wlr.Buffer.drop(buffer);
+            tree.node.destroy();
+            self.chrome_tree = null;
+            return;
+        };
+        // The scene buffer took a reference; drop ours so it owns the only one.
+        wlr.Buffer.drop(buffer);
+        scene_buffer.setDestSize(w, h);
     }
 
     fn handleMap(listener: *wl.Listener(void)) void {
@@ -198,6 +264,7 @@ pub const Window = struct {
             // Send the initial configure now that the XDG surface role is initialized.
             _ = window.toplevel.setSize(0, 0);
         }
+
         // Do not request a layout pass here: map/unmap already trigger layout,
         // and running a full layout pass on every surface commit causes a
         // configure storm once multiple XDG toplevels are mapped.

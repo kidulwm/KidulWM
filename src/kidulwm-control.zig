@@ -42,6 +42,17 @@ pub fn main(init: std.process.Init.Minimal) !void {
         if (std.mem.eql(u8, cmd, "split_right")) break :blk .{ .split_right = {} };
         if (std.mem.eql(u8, cmd, "split_top")) break :blk .{ .split_top = {} };
         if (std.mem.eql(u8, cmd, "split_bottom")) break :blk .{ .split_bottom = {} };
+        if (std.mem.eql(u8, cmd, "set_theme")) {
+            const key = it.next() orelse {
+                std.log.err("set_theme requires a key argument", .{});
+                return error.MissingArgument;
+            };
+            const value = it.next() orelse {
+                std.log.err("set_theme requires a value argument", .{});
+                return error.MissingArgument;
+            };
+            break :blk .{ .set_theme = .{ .key = key, .value = value } };
+        }
         std.log.err("unknown command: {s}", .{cmd});
         return error.UnknownCommand;
     };

@@ -177,10 +177,11 @@ so future installers match distro expectations.
 ## Current status (tonight's result)
 
 - `kidulwm.service` is enabled and running with real display output.
+- Service drop-in forces `WLR_RENDERER=gles2`.
 - Log confirms:
   ```
-  KidulWM: renderer pixman=true gles2=false
-  KidulWM: new output Virtual-1 1280x800
+  KidulWM: renderer pixman=false gles2=true
+  KidulWM: new output Virtual-1 1920x1080
   KidulWM: output added to layout
   KidulWM: backend started
   ```
@@ -260,3 +261,19 @@ so future installers match distro expectations.
 - setLayoutTarget snaps current geometry to the target immediately.
 - Per-frame spring stepping replaced by direct target application in tickAnimation.
 - Can be re-enabled once rendering budget is understood.
+
+### Renderer experiment log
+
+| Setting | Visual quality | Speed | Notes |
+|---|---|---|---|
+| `WLR_RENDERER=pixman` + 3840x2160 | pixelated/blurry | poor | Pixman nearest-neighbor upscaling; avoid. |
+| `WLR_RENDERER=gles2` (kms_swrast) + 3840x2160 | crisp | slow | Better than Pixman, but 4K software raster swamps VM CPU. |
+| `WLR_RENDERER=gles2` (kms_swrast) + 1920x1080 | crisp | acceptable for testing | Current sweet spot for VM testing. |
+| `virtio-vga-gl` + SPICE GL | blocked | blocked | Host SPICE/QEMU build rejects gstreamer video encoder; not viable without fixing host encoder. |
+| `virtio-vga-gl` + `egl-headless` | blocked | blocked | QEMU fails to open `/dev/dri/renderD128` or `renderD129`; likely permission or host EGL setup. |
+
+**Current VM config for testing:**
+- Video device: `virtio-vga` (no 3D).
+- Service drop-in `/etc/systemd/system/kidulwm.service.d/gles2.conf`: `WLR_RENDERER=gles2`.
+- Output mode: capped at 1920x1080 in `src/server.zig`.
+- Binary deployed to `/usr/bin/kidulwm`.

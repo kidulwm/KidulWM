@@ -10,6 +10,7 @@ const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
 const style = @import("core/style.zig");
 const slidedeck = @import("core/slidedeck.zig");
 const animation = @import("core/animation.zig");
+const chrome_renderer = @import("render/chrome.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
@@ -119,8 +120,12 @@ pub const Server = struct {
     next_window_id: u32 = 1,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
+    chrome_style_generation: u32,
+
+    decoration_manager: *wlr.XdgDecorationManagerV1,
 
     new_output: wl.Listener(*wlr.Output),
+    new_toplevel_decoration: wl.Listener(*wlr.XdgToplevelDecorationV1),
     backend_destroy: wl.Listener(*wlr.Backend),
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel),
     output_layout_change: wl.Listener(*wlr.OutputLayout),
@@ -251,6 +256,7 @@ pub const Server = struct {
         const data_device_manager = try wlr.DataDeviceManager.create(wl_server);
         const viewporter = try wlr.Viewporter.create(wl_server);
         const fractional_scale_manager = try wlr.FractionalScaleManagerV1.create(wl_server, 1);
+        const decoration_manager = try wlr.XdgDecorationManagerV1.create(wl_server);
 
         const seat = try wlr.Seat.create(wl_server, "seat0");
         seat.setCapabilities(.{ .pointer = true, .keyboard = true });
@@ -276,6 +282,7 @@ pub const Server = struct {
             .data_device_manager = data_device_manager,
             .viewporter = viewporter,
             .fractional_scale_manager = fractional_scale_manager,
+            .decoration_manager = decoration_manager,
             .seat = seat,
             .cursor = cursor,
             .input_manager = undefined,
@@ -302,6 +309,7 @@ pub const Server = struct {
             .layout_pipe = undefined,
             .layout_source = undefined,
             .new_output = undefined,
+            .new_toplevel_decoration = undefined,
             .backend_destroy = undefined,
             .new_xdg_toplevel = undefined,
             .output_layout_change = undefined,
@@ -310,6 +318,7 @@ pub const Server = struct {
                 .color = style.default_style.color_background.toF32(),
             },
             .outputs = undefined,
+            .chrome_style_generation = 0,
         };
 
         server.outputs.init();
@@ -325,6 +334,10 @@ pub const Server = struct {
         server.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
         server.new_output.link.init();
         backend.events.new_output.add(&server.new_output);
+
+        server.new_toplevel_decoration = wl.Listener(*wlr.XdgToplevelDecorationV1).init(handleNewToplevelDecoration);
+        server.new_toplevel_decoration.link.init();
+        decoration_manager.events.new_toplevel_decoration.add(&server.new_toplevel_decoration);
 
         server.backend_destroy = wl.Listener(*wlr.Backend).init(handleBackendDestroy);
         server.backend_destroy.link.init();
@@ -668,9 +681,12 @@ pub const Server = struct {
                 if (slide_idx == output.deck.focused_index) {
                     focused_slide_window = window;
                     window.updateDim(true);
+                    window.updateChrome(true, .all);
                     window.scene_tree.node.raiseToTop();
                 } else {
+                    const edges = if (slide_idx < output.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                     window.updateDim(false);
+                    window.updateChrome(false, edges);
                 }
             }
 
@@ -699,10 +715,13 @@ pub const Server = struct {
                     }
                     if (slide_idx == self.deck.focused_index) {
                         window.updateDim(true);
+                        window.updateChrome(true, .all);
                         window.scene_tree.node.raiseToTop();
                         self.focusWindow(window);
                     } else {
+                        const edges = if (slide_idx < self.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                         window.updateDim(false);
+                        window.updateChrome(false, edges);
                     }
                 }
             }
@@ -807,6 +826,15 @@ pub const Server = struct {
         std.log.info("KidulWM: backend destroyed", .{});
     }
 
+    fn handleNewToplevelDecoration(listener: *wl.Listener(*wlr.XdgToplevelDecorationV1), decoration: *wlr.XdgToplevelDecorationV1) void {
+        const self: *Server = @fieldParentPtr("new_toplevel_decoration", listener);
+        // Default to server-side decorations (no client title bars). Honour the
+        // user's explicit override when they want title bars, but signature look
+        // means SSD by default.
+        const mode: wlr.XdgToplevelDecorationV1.Mode = if (self.theme.show_title_bars) .client_side else .server_side;
+        _ = decoration.setMode(mode);
+    }
+
     fn handleNewXdgToplevel(listener: *wl.Listener(*wlr.XdgToplevel), toplevel: *wlr.XdgToplevel) void {
         const self: *Server = @fieldParentPtr("new_xdg_toplevel", listener);
         std.log.info("KidulWM: new toplevel", .{});
@@ -863,6 +891,25 @@ pub const Server = struct {
                 std.log.warn("invalid background color '{s}': {}", .{ value, err });
                 return;
             };
+
+        } else if (std.mem.eql(u8, key, "border_width")) {
+            const border_width = std.fmt.parseFloat(f32, value) catch |err| {
+                std.log.warn("invalid border_width '{s}': {}", .{ value, err });
+                return;
+            };
+            self.theme.border_width = border_width;
+            self.chrome_style_generation +%= 1;
+            self.requestLayout();
+            return;
+        } else if (std.mem.eql(u8, key, "chamfer_border_width")) {
+            const chamfer_border_width = std.fmt.parseFloat(f32, value) catch |err| {
+                std.log.warn("invalid chamfer_border_width '{s}': {}", .{ value, err });
+                return;
+            };
+            self.theme.chamfer_border_width = chamfer_border_width;
+            self.chrome_style_generation +%= 1;
+            self.requestLayout();
+            return;
         } else if (std.mem.eql(u8, key, "gap")) {
             const gap = std.fmt.parseInt(u32, value, 10) catch |err| {
                 std.log.warn("invalid gap '{s}': {}", .{ value, err });
@@ -870,11 +917,35 @@ pub const Server = struct {
             };
             self.theme.gap = gap;
             self.state.gap = gap;
+        } else if (std.mem.eql(u8, key, "corner_style")) {
+            if (std.mem.eql(u8, value, "cut")) {
+                self.theme.corner_style = .cut;
+            } else if (std.mem.eql(u8, value, "classic")) {
+                self.theme.corner_style = .classic;
+            } else if (std.mem.eql(u8, value, "none")) {
+                self.theme.corner_style = .none;
+            } else {
+                std.log.warn("unknown corner_style '{s}', expected cut/classic/none", .{value});
+                return;
+            }
+            self.chrome_style_generation +%= 1;
+            self.requestLayout();
+            return;
+        } else if (std.mem.eql(u8, key, "show_title_bars")) {
+            if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "1")) {
+                self.theme.show_title_bars = true;
+            } else if (std.mem.eql(u8, value, "false") or std.mem.eql(u8, value, "0")) {
+                self.theme.show_title_bars = false;
+            } else {
+                std.log.warn("unknown show_title_bars '{s}', expected true/false", .{value});
+                return;
+            }
+            self.requestLayout();
+            return;
         } else {
             std.log.info("unknown theme key '{s}', ignoring", .{key});
             return;
         }
-
 
         self.background.color = self.theme.color_background.toF32();
         self.requestLayout();

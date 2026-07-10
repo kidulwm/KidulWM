@@ -63,6 +63,7 @@ pub fn build(b: *std.Build) void {
     root_mod.linkSystemLibrary("xkbcommon", .{});
     root_mod.linkSystemLibrary("pixman-1", .{});
     root_mod.linkSystemLibrary("libinput", .{});
+    root_mod.linkSystemLibrary("cairo", .{});
 
     const dm_mod = b.createModule(.{
         .root_source_file = b.path("src/dm/main.zig"),
