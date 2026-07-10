@@ -17,20 +17,45 @@ pub const EdgeMode = struct {
     pub const right_peek = EdgeMode{ .top = true, .right = false, .bottom = true, .left = true };
 };
 
+const ChamferDepths = struct {
+    tl: f64,
+    tr: f64,
+    br: f64,
+    bl: f64,
+
+    fn uniform(d: f64) ChamferDepths {
+        return .{ .tl = d, .tr = d, .br = d, .bl = d };
+    }
+
+    fn fromEdgeMode(d: f64, edges: EdgeMode) ChamferDepths {
+        return .{
+            .tl = if (edges.top and edges.left) d else 0.0,
+            .tr = if (edges.top and edges.right) d else 0.0,
+            .br = if (edges.bottom and edges.right) d else 0.0,
+            .bl = if (edges.bottom and edges.left) d else 0.0,
+        };
+    }
+};
+
 fn setSource(cr: *c.cairo_t, color: Color, alpha: f64) void {
     const c4 = color.toF64();
     c.cairo_set_source_rgba(cr, c4[0], c4[1], c4[2], c4[3] * alpha);
 }
 
-fn chamferRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, d: f64) void {
-    c.cairo_move_to(cr, x + d, y);
-    c.cairo_line_to(cr, x + w - d, y);
-    c.cairo_line_to(cr, x + w, y + d);
-    c.cairo_line_to(cr, x + w, y + h - d);
-    c.cairo_line_to(cr, x + w - d, y + h);
-    c.cairo_line_to(cr, x + d, y + h);
-    c.cairo_line_to(cr, x, y + h - d);
-    c.cairo_line_to(cr, x, y + d);
+fn chamferRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, d: ChamferDepths) void {
+    // A corner depth of zero draws as a square corner.
+    const tl = d.tl;
+    const tr = d.tr;
+    const br = d.br;
+    const bl = d.bl;
+    c.cairo_move_to(cr, x + tl, y);
+    c.cairo_line_to(cr, x + w - tr, y);
+    if (tr > 0.0) c.cairo_line_to(cr, x + w, y + tr);
+    c.cairo_line_to(cr, x + w, y + h - br);
+    if (br > 0.0) c.cairo_line_to(cr, x + w - br, y + h);
+    c.cairo_line_to(cr, x + bl, y + h);
+    if (bl > 0.0) c.cairo_line_to(cr, x, y + h - bl);
+    c.cairo_line_to(cr, x, y + tl);
     c.cairo_close_path(cr);
 }
 
@@ -87,43 +112,60 @@ fn drawPolygon(cr: *c.cairo_t, points: []const [2]f64) void {
     c.cairo_close_path(cr);
 }
 
-fn chamferInnerPolygon(w: f64, h: f64, depth: f64, straight_inset: f64, chamfer_inset: f64) [8][2]f64 {
-    // Outer CCW chamfer polygon.
+fn chamferInnerPolygon(w: f64, h: f64, depth: ChamferDepths, straight_inset: f64, chamfer_inset: f64, out: *[8][2]f64) usize {
+    const tl = depth.tl;
+    const tr = depth.tr;
+    const br = depth.br;
+    const bl = depth.bl;
+
+    // Outer CCW chamfer polygon with per-corner depths. Square corners are
+    // represented by a duplicated vertex so that zero-length diagonals collapse
+    // when we build the active edge list.
     const outer = [8][2]f64{
-        .{ depth, 0.0 },
-        .{ w - depth, 0.0 },
-        .{ w, depth },
-        .{ w, h - depth },
-        .{ w - depth, h },
-        .{ depth, h },
-        .{ 0.0, h - depth },
-        .{ 0.0, depth },
+        .{ tl, 0.0 },
+        .{ w - tr, 0.0 },
+        if (tr > 0.0) .{ w, tr } else .{ w - tr, 0.0 },
+        .{ w, h - br },
+        if (br > 0.0) .{ w - br, h } else .{ w, h - br },
+        .{ bl, h },
+        if (bl > 0.0) .{ 0.0, h - bl } else .{ bl, h },
+        .{ 0.0, tl },
     };
 
-    // Edge offsets: 0=top, 1=right-chamfer, 2=right, 3=bottom-chamfer,
-    // 4=bottom, 5=left-chamfer, 6=left, 7=top-chamfer.
+    // Edge insets: 0=top, 2=right, 4=bottom, 6=left are straight edges;
+    // 1, 3, 5, 7 are the chamfer diagonals (some may be zero-length).
     const insets = [8]f64{
         straight_inset, chamfer_inset, straight_inset, chamfer_inset,
         straight_inset, chamfer_inset, straight_inset, chamfer_inset,
     };
 
     var offset_edges: [8]EdgeOffset = undefined;
+    var valid: usize = 0;
     for (0..8) |i| {
-        offset_edges[i] = inwardOffsetEdge(outer[i], outer[(i + 1) % 8], insets[i]);
+        const a = outer[i];
+        const b = outer[(i + 1) % 8];
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        if (dx * dx + dy * dy < 0.0001) continue;
+        offset_edges[valid] = inwardOffsetEdge(a, b, insets[i]);
+        valid += 1;
     }
 
-    var inner: [8][2]f64 = undefined;
-    for (0..8) |i| {
+    if (valid < 3) return 0;
+
+    var count: usize = 0;
+    for (0..valid) |i| {
         const e1 = offset_edges[i];
-        const e2 = offset_edges[(i + 1) % 8];
-        inner[i] = lineIntersection(e1.a, e1.b, e2.a, e2.b);
+        const e2 = offset_edges[(i + 1) % valid];
+        out[count] = lineIntersection(e1.a, e1.b, e2.a, e2.b);
+        count += 1;
     }
-    return inner;
+    return count;
 }
 
-fn windowPath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, style: Style) void {
+fn windowPath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, style: Style, depths: ChamferDepths) void {
     switch (style.corner_style) {
-        .cut => chamferRect(cr, x, y, w, h, style.corner_depth),
+        .cut => chamferRect(cr, x, y, w, h, depths),
         .classic => roundedRect(cr, x, y, w, h, style.corner_depth),
         .none => squareRect(cr, x, y, w, h),
     }
@@ -177,35 +219,47 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     const use_variable = scaled_style.corner_style == .cut and depth > 0.0;
     const border_color = if (focused) style.color_border_focused else style.color_border;
 
-    if (use_variable) {
-        if (w > (border + chamfer_border + depth) * 2.0 and h > (border + chamfer_border + depth) * 2.0) {
-            const inner = chamferInnerPolygon(w, h, depth, border, chamfer_border);
+    // Edge-aware per-corner depths. A corner gets a chamfer only when both
+    // adjacent edges are visible; hidden edges get square corners so the
+    // remaining straight borders run cleanly to the seam.
+    const depths = ChamferDepths.fromEdgeMode(depth, edges);
 
-            // Mask: full window square minus inner chamfer shape.
-            squareRect(cr, 0.0, 0.0, w, h);
-            drawPolygon(cr, inner[0..]);
+    if (use_variable) {
+        if (w > (border + chamfer_border + @max(0.0, depth)) * 2.0 and h > (border + chamfer_border + @max(0.0, depth)) * 2.0) {
+            var inner: [8][2]f64 = undefined;
+            const inner_count = chamferInnerPolygon(w, h, depths, border, chamfer_border, &inner);
+
+            // Mask: edge-aware chamfer outer minus parallel-offset inner.
+            // Using the same outer path for both mask and ring avoids
+            // background-coloured wedges and keeps the border thickness uniform.
+            chamferRect(cr, 0.0, 0.0, w, h, depths);
+            drawPolygon(cr, inner[0..inner_count]);
             c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
             setSource(cr, style.color_background, 1.0);
             c.cairo_fill(cr);
 
-            // Border ring: outer chamfer minus inner chamfer.
-            chamferRect(cr, 0.0, 0.0, w, h, depth);
-            drawPolygon(cr, inner[0..]);
+            // Border ring: same edge-aware outer path minus inner path.
+            chamferRect(cr, 0.0, 0.0, w, h, depths);
+            drawPolygon(cr, inner[0..inner_count]);
             c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
             setSource(cr, border_color, 1.0);
             c.cairo_fill(cr);
             c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_WINDING);
         } else {
-            windowPath(cr, 0.0, 0.0, w, h, scaled_style);
+            windowPath(cr, 0.0, 0.0, w, h, scaled_style, depths);
             setSource(cr, border_color, 1.0);
             c.cairo_fill(cr);
         }
     } else {
-        windowPath(cr, 0.0, 0.0, w, h, scaled_style);
+        windowPath(cr, 0.0, 0.0, w, h, scaled_style, depths);
         var inner_style = scaled_style;
+        var inner_depths_uniform = depths;
         if (w > border * 3.0 and h > border * 3.0) {
-            inner_style.corner_depth = @max(@as(f32, 0.0), @as(f32, @floatCast(depth - border)));
-            windowPath(cr, border, border, w - border * 2.0, h - border * 2.0, inner_style);
+            const inset = border;
+            const inner_depth = @max(@as(f32, 0.0), @as(f32, @floatCast(depth - inset)));
+            inner_style.corner_depth = inner_depth;
+            inner_depths_uniform = ChamferDepths.uniform(@floatCast(inner_depth));
+            windowPath(cr, border, border, w - border * 2.0, h - border * 2.0, inner_style, inner_depths_uniform);
         }
         // Mask: outer shape minus inner content shape.
         c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
@@ -237,7 +291,8 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
         if (iw > 1.0 and ih > 1.0) {
             var glow_style = scaled_style;
             glow_style.corner_depth = @max(@as(f32, 0.0), @as(f32, @floatCast(depth - inset)));
-            windowPath(cr, inset, inset, iw, ih, glow_style);
+            const glow_depths = ChamferDepths.fromEdgeMode(@floatCast(depth - inset), edges);
+            windowPath(cr, inset, inset, iw, ih, glow_style, glow_depths);
             const glow = colorF64(style.color_glow);
             c.cairo_set_source_rgba(cr, glow[0], glow[1], glow[2], glow[3]);
             c.cairo_set_line_width(cr, 1.0 * @as(f64, @floatFromInt(s)));
@@ -281,7 +336,7 @@ pub fn renderUnfocusedShade(style: Style, width: i32, height: i32, direction: i8
     c.cairo_pattern_add_color_stop_rgba(grad, 0.0, bg[0], bg[1], bg[2], inner_alpha);
     c.cairo_pattern_add_color_stop_rgba(grad, 1.0, bg[0], bg[1], bg[2], outer_alpha);
 
-    windowPath(cr, 0.0, 0.0, w, h, style);
+    windowPath(cr, 0.0, 0.0, w, h, style, ChamferDepths.uniform(style.corner_depth));
     c.cairo_set_source(cr, grad);
     c.cairo_fill(cr);
 

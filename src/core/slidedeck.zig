@@ -172,7 +172,9 @@ pub const SlideDeck = struct {
         const w: f32 = @floatFromInt(self.width);
         const focus_w: i32 = @intFromFloat(w * self.split.focus);
         const left_w: i32 = @intFromFloat(w * self.split.left_peek);
-        const right_w: i32 = @intFromFloat(w * self.split.right_peek);
+        // Right peek is a full-width window pushed off the right edge, just like
+        // the left peek is a full-width window pushed off the left edge. The
+        // visible sliver is determined by where the output edge cuts it.
         const h = self.height;
 
         const x: i32 = switch (delta) {
@@ -187,7 +189,7 @@ pub const SlideDeck = struct {
         const width: u32 = switch (delta) {
             -1 => self.width,
             0 => @intCast(focus_w),
-            1 => @intCast(right_w),
+            1 => self.width,
             else => self.width,
         };
         return .{ .x = x, .y = 0, .width = width, .height = h };
