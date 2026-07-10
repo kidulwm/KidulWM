@@ -6,7 +6,7 @@ const std = @import("std");
 pub const Style = struct {
     gap: u32 = 8,
     border_width: f32 = 3.0,
-    chamfer_border_width: f32 = 4.0,
+    chamfer_border_width: f32 = 3.5,
     corner_style: CornerStyle = .cut,
     corner_depth: f32 = 16.0,
 
