@@ -8,7 +8,7 @@ Single source of truth. Update `/home/dad/dev/KidulWM/HANDOFF.md` only.
 - Compositor base: wlroots 0.20.
 - Repo: `/home/dad/dev/KidulWM`
 - Branch: `chrome-2x`
-- Last stable commit: `7f2ddf4`
+- Last stable commit: `eb50be0`
 - Build health: `zig build` pass, `zig build test` pass, `scripts/nested-smoke.sh` pass, `scripts/nested-three-window.sh` pass.
 
 ## Barticus' design rules
@@ -177,8 +177,8 @@ so future installers match distro expectations.
 ## Current status (tonight's result)
 
 - Branch: `chrome-2x`
-- Head commit: `c628157` (`chrome: background-corner mask + variable chamfer ring (sides=3, chamfers=3.5)`)
-- Fallback commit: `d9688bd` (`fallback: variable chamfer with sides=3, chamfers=4`)
+- Head commit: `eb50be0` (`chrome: parallel-offset chamfer ring, edge-aware mask, hidden-seam square corners`)
+- Fallback commit: `c628157` (`chrome: background-corner mask + variable chamfer ring (sides=3, chamfers=3.5)`)
 - `zig build` and `zig build test` pass.
 - VM test binary deployed; live visual confirmed:
   - grey client-corner bleed past chamfers is masked out,
