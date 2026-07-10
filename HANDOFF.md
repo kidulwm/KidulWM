@@ -7,8 +7,8 @@ Single source of truth. Update `/home/dad/dev/KidulWM/HANDOFF.md` only.
 - Language: Zig (not Rust/Niri — README/PLAN are stale and should not be trusted).
 - Compositor base: wlroots 0.20.
 - Repo: `/home/dad/dev/KidulWM`
-- Branch: `pre-comms-dial`
-- Last stable commit: `7afa0c7`
+- Branch: `chrome-2x`
+- Last stable commit: `7f2ddf4`
 - Build health: `zig build` pass, `zig build test` pass, `scripts/nested-smoke.sh` pass, `scripts/nested-three-window.sh` pass.
 
 ## Barticus' design rules
@@ -176,22 +176,41 @@ so future installers match distro expectations.
 
 ## Current status (tonight's result)
 
-- `kidulwm.service` is enabled and running with real display output.
-- Service drop-in forces `WLR_RENDERER=gles2`.
-- Log confirms:
-  ```
-  KidulWM: renderer pixman=false gles2=true
-  KidulWM: new output Virtual-1 1920x1080
-  KidulWM: output added to layout
-  KidulWM: backend started
-  ```
-- Guest Wayland socket and IPC socket are both created at `/run/user/1000/`.
-- Output frame listener added in `src/server.zig` calling `wlr_scene_output_commit` each frame; the `#222425` background renders.
-- XDG toplevel crash fixed: initial configure is sent on first surface commit (`src/window.zig`), and `handleCommit` requests a layout pass.
-- Hardcoded `Mod+Return` keybinding added in `src/input/keyboard.zig` that spawns `/usr/bin/ghostty` with the guest Wayland environment.
-- `main.zig` ignores `SIGCHLD` so spawned terminals are auto-reaped.
-- Host IPv4 loopback TCP fixed in `/etc/ufw/before.rules`; SPICE on `127.0.0.1:5900` now answers (`nc -zv 127.0.0.1 5900` succeeds).
-- A ghostty terminal renders in the VM when launched, either by SPICE/`Mod+Return` or by guest-agent.
+- Branch: `chrome-2x`
+- Head commit: `7f2ddf4` (`chrome: equal-thickness variable chamfer; sides=3, chamfers=3.5`)
+- Fallback commit: `d9688bd` (`fallback: variable chamfer with sides=3, chamfers=4`)
+- `zig build` and `zig build test` pass.
+- VM test binary deployed; live visual confirmed: straight side borders and diagonal chamfer legs appear equally thick.
+
+### Chrome / border geometry
+
+- `src/core/style.zig` now defines two independent border tokens:
+  - `border_width` -- perpendicular thickness of straight top/bottom/left/right edges.
+  - `chamfer_border_width` -- perpendicular thickness of the diagonal chamfer legs on `.cut` corners.
+- `src/render/chrome.zig` builds the frame as a variable-thickness ring for `.cut` style:
+  - each outer edge is offset inward by its own thickness;
+  - inner vertices are recomputed by intersecting adjacent offset edges.
+  - `.classic` (rounded) and `.none` remain on the previous uniform path.
+- `src/server.zig` handles `border_width` and `chamfer_border_width` theme keys at runtime, increments `chrome_style_generation`, and triggers a layout pass.
+- `src/kidulwm-control.zig` exposes `set_theme <key> <value>`.
+- Default values in `src/core/style.zig`:
+  - `border_width = 3.0`
+  - `chamfer_border_width = 3.5`
+- The small chamfer surplus (0.5 px) is a visual compensation trick; on a 1:1 display it reads as equal-thickness to the human eye.
+
+### VM deployment (current workflow)
+
+- VM: `cachyos-kidulwm` via `virsh -c qemu:///system`.
+- Host SSH forward: `hostfwd_add tcp::2222-:22`.
+- Service binary target: `/usr/bin/kidulwm`.
+- Deploy via `nbd`:
+  1. `virsh -c qemu:///system shutdown cachyos-kidulwm`
+  2. `modprobe nbd max_part=8`
+  3. `qemu-nbd --connect=/dev/nbd0 /var/lib/libvirt/images/cachyos-kidulwm.qcow2`
+  4. `mount /dev/nbd0p2 /mnt/vmroot`
+  5. `cp zig-out/bin/kidulwm /mnt/vmroot/usr/bin/kidulwm`
+  6. `umount /mnt/vmroot && qemu-nbd --disconnect /dev/nbd0`
+  7. `virsh -c qemu:///system start cachyos-kidulwm`
 
 ## Next steps
 
