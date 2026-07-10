@@ -1,7 +1,7 @@
 # Chrome / border geometry
 
 Single source of truth for KidulWM chamfered (`cut`) and rounded (`classic`)
-window chrome. Last verified: chrome-2x branch, commit `eb50be0`.
+window chrome. Last verified: chrome-2x branch, commit `b970fe9`.
 
 ## Tokens
 
@@ -27,9 +27,14 @@ All live in `src/core/style.zig`.
 4. Fill the outside area with the compositor background colour to hide client
    rounded corners / shadows.
 
-Key rule: the mask outer path and the ring outer path must be **identical**.
-Using a square rectangle for the mask outer path while the ring uses a chamfered
-outer path produces background-coloured wedges at the corners.
+Key rule: the background mask must cover the **entire window bounds** (use
+`squareRect(0, 0, w, h)`), while the border ring uses the edge-aware chamfered
+outer path. This hides client rounded corners / shadows in the cut-off triangles
+without producing background-coloured wedges.
+
+Because side-peek chrome is a **full-window overlay** positioned off-screen,
+the hidden-edge clear strips fall outside the visible sliver and do not clip the
+top/bottom borders. Do not shrink the chrome buffer to the visible sliver.
 
 ## Edge-aware corners
 
@@ -66,9 +71,10 @@ offset of each edge. There is no pre-shrink such as
   caused background wedges and squared-off visible corners.
 - Pre-shrinking `inner_depths` with `(border + chamfer_border) * 0.5`: made
   chamfer borders super thin.
-- Applying hidden-edge clear strips too wide or with the wrong placement: erased
-  visible chamfer triangles. The fix was to keep side peeks at full window width
-  in `src/core/slidedeck.zig` so the hidden strip falls off-screen.
+- Shrinking the chrome overlay to the visible sliver: the hidden-edge clear
+  strip then falls inside the visible area and clips the top/bottom borders.
+  Keep side-peek chrome as a full-window overlay and let correct off-screen
+  placement hide the outer edge instead.
 
 ## Verification recipe
 
