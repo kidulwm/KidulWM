@@ -229,10 +229,11 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
             var inner: [8][2]f64 = undefined;
             const inner_count = chamferInnerPolygon(w, h, depths, border, chamfer_border, &inner);
 
-            // Mask: edge-aware chamfer outer minus parallel-offset inner.
-            // Using the same outer path for both mask and ring avoids
-            // background-coloured wedges and keeps the border thickness uniform.
-            chamferRect(cr, 0.0, 0.0, w, h, depths);
+            // Mask: full bounding rectangle minus parallel-offset inner.
+            // The mask must cover the entire window bounds so client rounded
+            // corners / shadows that extend past the chamfer triangles are
+            // hidden by the compositor background colour.
+            squareRect(cr, 0.0, 0.0, w, h);
             drawPolygon(cr, inner[0..inner_count]);
             c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
             setSource(cr, style.color_background, 1.0);
@@ -275,11 +276,39 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     // Trim borders on hidden/shared edges. Clear a strip that is wide enough
     // to remove both the straight border and the chamfer wedge at the seam.
     const clear_w = @min(w / 2.0, depth + @max(border, chamfer_border) + 1.0);
+    const clear_left = if (!edges.left) clear_w else 0.0;
+    const clear_right = if (!edges.right) clear_w else 0.0;
+    const clear_top = if (!edges.top) clear_w else 0.0;
+    const clear_bottom = if (!edges.bottom) clear_w else 0.0;
+
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_DEST_OUT);
-    if (!edges.left) c.cairo_rectangle(cr, 0.0, 0.0, clear_w, h);
-    if (!edges.right) c.cairo_rectangle(cr, w - clear_w, 0.0, clear_w, h);
-    if (!edges.top) c.cairo_rectangle(cr, 0.0, 0.0, w, clear_w);
-    if (!edges.bottom) c.cairo_rectangle(cr, 0.0, h - clear_w, w, clear_w);
+    if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, clear_left, h);
+    if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, 0.0, clear_right, h);
+    if (clear_top > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, w, clear_top);
+    if (clear_bottom > 0.0) c.cairo_rectangle(cr, 0.0, h - clear_bottom, w, clear_bottom);
+    c.cairo_fill(cr);
+
+    // Re-paint the visible straight-edge border segments that were clipped by the
+    // clear strips, so they run all the way to the buffer edge. The hidden edge
+    // itself stays clear.
+    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+    setSource(cr, border_color, 1.0);
+    if (clear_top > 0.0) {
+        if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, clear_left, border);
+        if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, 0.0, clear_right, border);
+    }
+    if (clear_bottom > 0.0) {
+        if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, h - border, clear_left, border);
+        if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, h - border, clear_right, border);
+    }
+    if (clear_left > 0.0) {
+        if (clear_top > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, border, clear_top);
+        if (clear_bottom > 0.0) c.cairo_rectangle(cr, 0.0, h - clear_bottom, border, clear_bottom);
+    }
+    if (clear_right > 0.0) {
+        if (clear_top > 0.0) c.cairo_rectangle(cr, w - border, 0.0, border, clear_top);
+        if (clear_bottom > 0.0) c.cairo_rectangle(cr, w - border, h - clear_bottom, border, clear_bottom);
+    }
     c.cairo_fill(cr);
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 

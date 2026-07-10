@@ -678,15 +678,24 @@ pub const Server = struct {
                     _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                 }
 
+                const output_w = @as(i32, @intCast(width));
+                const output_h = @as(i32, @intCast(height));
+                const visible_x = @max(target.x, 0);
+                const visible_y = @max(target.y, 0);
+                const tw: i32 = target.x + @as(i32, @intCast(target.width));
+                const th: i32 = target.y + @as(i32, @intCast(target.height));
+                const visible_w = @max(0, @min(tw, output_w) - visible_x);
+                const visible_h = @max(0, @min(th, output_h) - visible_y);
+
                 if (slide_idx == output.deck.focused_index) {
                     focused_slide_window = window;
                     window.updateDim(true);
-                    window.updateChrome(true, .all);
+                    window.updateChrome(true, .all, visible_x, visible_y, visible_w, visible_h);
                     window.scene_tree.node.raiseToTop();
                 } else {
                     const edges = if (slide_idx < output.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                     window.updateDim(false);
-                    window.updateChrome(false, edges);
+                    window.updateChrome(false, edges, visible_x, visible_y, visible_w, visible_h);
                 }
             }
 
@@ -713,15 +722,25 @@ pub const Server = struct {
                     if (size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
+
+                    const output_w = @as(i32, @intCast(self.deck.width));
+                    const output_h = @as(i32, @intCast(self.deck.height));
+                    const visible_x = @max(target.x, 0);
+                    const visible_y = @max(target.y, 0);
+                    const tw: i32 = target.x + @as(i32, @intCast(target.width));
+                    const th: i32 = target.y + @as(i32, @intCast(target.height));
+                    const visible_w = @max(0, @min(tw, output_w) - visible_x);
+                    const visible_h = @max(0, @min(th, output_h) - visible_y);
+
                     if (slide_idx == self.deck.focused_index) {
                         window.updateDim(true);
-                        window.updateChrome(true, .all);
+                        window.updateChrome(true, .all, visible_x, visible_y, visible_w, visible_h);
                         window.scene_tree.node.raiseToTop();
                         self.focusWindow(window);
                     } else {
                         const edges = if (slide_idx < self.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                         window.updateDim(false);
-                        window.updateChrome(false, edges);
+                        window.updateChrome(false, edges, visible_x, visible_y, visible_w, visible_h);
                     }
                 }
             }
