@@ -287,29 +287,6 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     if (clear_top > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, w, clear_top);
     if (clear_bottom > 0.0) c.cairo_rectangle(cr, 0.0, h - clear_bottom, w, clear_bottom);
     c.cairo_fill(cr);
-
-    // Re-paint the visible straight-edge border segments that were clipped by the
-    // clear strips, so they run all the way to the buffer edge. The hidden edge
-    // itself stays clear.
-    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
-    setSource(cr, border_color, 1.0);
-    if (clear_top > 0.0) {
-        if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, clear_left, border);
-        if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, 0.0, clear_right, border);
-    }
-    if (clear_bottom > 0.0) {
-        if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, h - border, clear_left, border);
-        if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, h - border, clear_right, border);
-    }
-    if (clear_left > 0.0) {
-        if (clear_top > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, border, clear_top);
-        if (clear_bottom > 0.0) c.cairo_rectangle(cr, 0.0, h - clear_bottom, border, clear_bottom);
-    }
-    if (clear_right > 0.0) {
-        if (clear_top > 0.0) c.cairo_rectangle(cr, w - border, 0.0, border, clear_top);
-        if (clear_bottom > 0.0) c.cairo_rectangle(cr, w - border, h - clear_bottom, border, clear_bottom);
-    }
-    c.cairo_fill(cr);
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
     // Focused: inner glow line, just inside the inner border edge.

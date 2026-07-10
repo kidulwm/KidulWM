@@ -29,8 +29,6 @@ pub const Window = struct {
     chrome_focused: bool,
     chrome_width: i32,
     chrome_height: i32,
-    chrome_visible_x: i32,
-    chrome_visible_y: i32,
 
     map: wl.Listener(void),
     unmap: wl.Listener(void),
@@ -62,8 +60,6 @@ pub const Window = struct {
             .chrome_focused = false,
             .chrome_width = 0,
             .chrome_height = 0,
-            .chrome_visible_x = 0,
-            .chrome_visible_y = 0,
             .map = wl.Listener(void).init(handleMap),
             .unmap = wl.Listener(void).init(handleUnmap),
             .destroy = wl.Listener(void).init(handleDestroy),
@@ -162,12 +158,13 @@ pub const Window = struct {
         }
     }
 
-    /// Regenerate the compositor-drawn chrome overlay for the *visible* portion
-    /// of this window. For side peeks this is only the on-screen sliver so the
-    /// border sits at the seam instead of being hidden inside the full-width
-    /// off-screen window.
-    pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode, visible_x: i32, visible_y: i32, visible_w: i32, visible_h: i32) void {
-        if (visible_w <= 0 or visible_h <= 0) return;
+    /// Regenerate the compositor-drawn chrome overlay for this window.
+    /// The overlay follows the layout target size and focus state, ensuring
+    /// KidulWM owns the signature corner look regardless of client CSD.
+    pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
+        const w: i32 = @intFromFloat(self.animation.target_w);
+        const h: i32 = @intFromFloat(self.animation.target_h);
+        if (w <= 0 or h <= 0) return;
 
         // Pick output scale from the output this window is on.
         var scale: u32 = 1;
@@ -177,10 +174,8 @@ pub const Window = struct {
 
         const style_gen = self.server.chrome_style_generation;
         const same = self.chrome_tree != null and
-            self.chrome_width == visible_w and
-            self.chrome_height == visible_h and
-            self.chrome_visible_x == visible_x and
-            self.chrome_visible_y == visible_y and
+            self.chrome_width == w and
+            self.chrome_height == h and
             self.chrome_focused == focused and
             self.chrome_scale == scale and
             self.chrome_style_generation == style_gen;
@@ -193,16 +188,14 @@ pub const Window = struct {
 
         const tree = self.scene_tree.createSceneTree() catch return;
         self.chrome_tree = tree;
-        self.chrome_width = visible_w;
-        self.chrome_height = visible_h;
-        self.chrome_visible_x = visible_x;
-        self.chrome_visible_y = visible_y;
+        self.chrome_width = w;
+        self.chrome_height = h;
         self.chrome_focused = focused;
         self.chrome_scale = scale;
         self.chrome_style_generation = style_gen;
 
         const style = self.server.theme;
-        const surface = chrome_renderer.renderChrome(style, visible_w, visible_h, focused, scale, edges) orelse {
+        const surface = chrome_renderer.renderChrome(style, w, h, focused, scale, edges) orelse {
             tree.node.destroy();
             self.chrome_tree = null;
             return;
@@ -224,14 +217,7 @@ pub const Window = struct {
         };
         // The scene buffer took a reference; drop ours so it owns the only one.
         wlr.Buffer.drop(buffer);
-        scene_buffer.setDestSize(visible_w, visible_h);
-
-        // Position the overlay so it lands on the visible sliver. The scene tree
-        // itself is at the window's layout position; this offset moves the overlay
-        // to the screen-space visible rect.
-        const target_x: i32 = @intFromFloat(self.animation.target_x);
-        const target_y: i32 = @intFromFloat(self.animation.target_y);
-        tree.node.setPosition(visible_x - target_x, visible_y - target_y);
+        scene_buffer.setDestSize(w, h);
     }
 
     fn handleMap(listener: *wl.Listener(void)) void {
