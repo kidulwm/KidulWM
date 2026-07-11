@@ -202,19 +202,37 @@ pub const Window = struct {
     }
 
     /// Set the internal surface offset for a peek window so the visible sliver
-    /// shows the correct edge of the surface buffer.
+    /// shows the correct edge of the surface buffer. The surface is kept at its
+    /// natural size; only the content geometry is aligned to the visible sliver.
     pub fn setSurfaceOffsetForPeek(self: *Window, edges: chrome_renderer.EdgeMode) void {
         const surface = self.toplevel.base.surface;
         if (!surface.mapped) return;
 
-        const buffer_w = @max(0, @as(i32, @intCast(surface.current.width)));
-        const tree_w: i32 = @intFromFloat(self.animation.target_w);
+        const geom = self.toplevel.base.geometry;
+        const target_w: i32 = @intFromFloat(self.animation.target_w);
 
-        // Left peek: align buffer right edge with wrapper right edge so the
-        // visible rightmost sliver of the peek is visible. Right peek: keep the
-        // buffer left-aligned with the wrapper left edge.
-        const x = if (!edges.left and tree_w > buffer_w) tree_w - buffer_w else 0;
-        const y: i32 = 0;
+        var x: i32 = 0;
+        if (edges.left) {
+            // Left peek: show the rightmost content pixels.
+            x = target_w - (geom.x + geom.width);
+        } else {
+            // Right peek: show the leftmost content pixels.
+            x = -geom.x;
+        }
+        const y: i32 = -geom.y;
+
+        std.log.info("KidulWM peek offset window={d} edges={s} geom={d},{d} {d}x{d} target_w={d} offset={d},{d}", .{
+            self.id,
+            if (edges.left) "left" else "right",
+            geom.x,
+            geom.y,
+            geom.width,
+            geom.height,
+            target_w,
+            x,
+            y,
+        });
+
         self.setSurfaceOffset(x, y);
     }
 
