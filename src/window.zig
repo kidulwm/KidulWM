@@ -202,28 +202,43 @@ pub const Window = struct {
     }
 
     /// Set the internal surface offset for a peek window so the visible sliver
-    /// shows the correct edge of the surface buffer. The surface is kept at its
-    /// natural size; only the content geometry is aligned to the visible sliver.
+    /// shows the correct edge of the surface content. The XDG scene tree already
+    /// accounts for geometry.x/y internally, so we only need to align the
+    /// content area (geom.width x geom.height) to the wrapper.
     pub fn setSurfaceOffsetForPeek(self: *Window, edges: chrome_renderer.EdgeMode) void {
         const surface = self.toplevel.base.surface;
         if (!surface.mapped) return;
 
+        // Reset the destination size to the natural buffer size so a window
+        // that was previously focused (and scaled) returns to full resolution
+        // when it becomes a peek.
+        self.setSurfaceDestSize(@intCast(surface.current.width), @intCast(surface.current.height));
+
         const geom = self.toplevel.base.geometry;
         const target_w: i32 = @intFromFloat(self.animation.target_w);
 
+        // Position the XDG geometry top-left within the wrapper. The scene tree
+        // will render the actual buffer with its own geometry offset, so content
+        // (not CSD shadow) starts at this position.
+        //
+        // The visible sliver is the on-screen portion of the wrapper:
+        //   - A left peek is visible along the left edge of the wrapper, so show
+        //     the leftmost content pixels (x = 0).
+        //   - A right peek is visible along the right edge of the wrapper, so show
+        //     the rightmost content pixels (x = target_w - geom.width).
         var x: i32 = 0;
         if (edges.left) {
-            // Left peek: show the rightmost content pixels.
-            x = target_w - (geom.x + geom.width);
+            x = 0;
         } else {
-            // Right peek: show the leftmost content pixels.
-            x = -geom.x;
+            x = target_w - geom.width;
         }
-        const y: i32 = -geom.y;
+        const y: i32 = 0;
 
-        std.log.info("KidulWM peek offset window={d} edges={s} geom={d},{d} {d}x{d} target_w={d} offset={d},{d}", .{
+        std.log.info("KidulWM peek offset window={d} edges={s} buf={d}x{d} geom={d},{d} {d}x{d} target_w={d} offset={d},{d}", .{
             self.id,
             if (edges.left) "left" else "right",
+            surface.current.width,
+            surface.current.height,
             geom.x,
             geom.y,
             geom.width,
