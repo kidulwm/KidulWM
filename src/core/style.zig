@@ -5,14 +5,14 @@ const std = @import("std");
 /// or widgets that display chrome reads from this structure.
 pub const Style = struct {
     gap: u32 = 8,
-    border_width: f32 = 3.0,
-    chamfer_border_width: f32 = 3.5,
+    border_width: f32 = 2.0,
+    chamfer_border_width: f32 = 2.5,
     corner_style: CornerStyle = .cut,
     corner_depth: f32 = 16.0,
 
     color_background: Color = Color.fromHex(0x222425),
-    color_border: Color = Color.fromHex(0x5e5a4c),
-    color_border_focused: Color = Color.fromHex(0x948e7b),
+    color_border: Color = Color.fromHex(0x4d4a40),
+    color_border_focused: Color = Color.fromHex(0x696555),
     color_electric: Color = Color.fromHex(0x00f0ff),
     color_purple: Color = Color.fromHex(0xa259ff),
     color_turquoise: Color = Color.fromHex(0x00ffc8),

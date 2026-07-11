@@ -296,23 +296,6 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     c.cairo_fill(cr);
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-    // Focused: inner glow line, just inside the inner border edge.
-    if (focused) {
-        const inset = border + @max(border, chamfer_border);
-        const iw: f64 = w - inset * 2.0;
-        const ih: f64 = h - inset * 2.0;
-        if (iw > 1.0 and ih > 1.0) {
-            var glow_style = scaled_style;
-            glow_style.corner_depth = @max(@as(f32, 0.0), @as(f32, @floatCast(depth - inset)));
-            const glow_depths = ChamferDepths.fromEdgeMode(@floatCast(depth - inset), edges);
-            windowPath(cr, inset, inset, iw, ih, glow_style, glow_depths);
-            const glow = colorF64(style.color_glow);
-            c.cairo_set_source_rgba(cr, glow[0], glow[1], glow[2], glow[3]);
-            c.cairo_set_line_width(cr, 1.0 * @as(f64, @floatFromInt(s)));
-            c.cairo_stroke(cr);
-        }
-    }
-
     return surface;
 }
 
