@@ -26,6 +26,8 @@ pub const Window = struct {
     dim_rect: ?*wlr.SceneRect,
     dim_color: [4]f32,
 
+    bg_rect: ?*wlr.SceneRect,
+
     chrome_tree: ?*wlr.SceneTree,
     chrome_scale: u32,
     chrome_style_generation: u32,
@@ -44,6 +46,9 @@ pub const Window = struct {
         errdefer server.allocator.destroy(window);
 
         const scene_tree = try server.scene.tree.createSceneTree();
+        // Background fill behind the client surface so gaps between the border
+        // and the client content area are filled with the KidulWM background color.
+        const bg_rect = try scene_tree.createSceneRect(1, 1, &server.theme.color_background.toF32());
         const surface_tree = try scene_tree.createSceneXdgSurface(toplevel.base);
 
         const id = server.next_window_id;
@@ -60,6 +65,7 @@ pub const Window = struct {
             .animation = .{},
             .dim_rect = null,
             .dim_color = .{ 0.0, 0.0, 0.0, 0.18 },
+            .bg_rect = bg_rect,
             .chrome_tree = null,
             .chrome_scale = 1,
             .chrome_style_generation = 0,
@@ -116,6 +122,11 @@ pub const Window = struct {
         self.animation.cur_w = self.animation.target_w;
         self.animation.cur_h = self.animation.target_h;
         self.scene_tree.node.setPosition(x, y);
+        if (self.bg_rect) |rect| {
+            const color = self.server.theme.color_background.toF32();
+            rect.setSize(@intCast(w), @intCast(h));
+            rect.setColor(&color);
+        }
         if (first) {
             self.animation.last_us = animation.nowUs();
         }
