@@ -123,16 +123,15 @@ pub const SlideDeck = struct {
     }
 
     /// Visual focus position: an integer where real slides sit at 0..n-1 and
-    /// the two virtual end slots are -2 and n+1.  The extra gap means that
-    /// when focus rests past the ends, the nearest real slide is pushed fully
-    /// off-screen, leaving a completely empty view.
+    /// the two virtual end slots are -1 and n.  This keeps the nearest real
+    /// slide in the adjacent peek slot when focus rests past the ends.
     fn virtualFocus(self: *const SlideDeck) isize {
         const n: isize = @intCast(self.slides.items.len);
         const idx: isize = @intCast(self.focused_index);
         return switch (self.empty_slot) {
             .none => idx,
-            .before_first => -2,
-            .after_last => n + 1,
+            .before_first => -1,
+            .after_last => n,
         };
     }
 
@@ -161,12 +160,14 @@ pub const SlideDeck = struct {
             },
             .none => {},
         }
-        const insert_at = self.slides.items.len / 2;
+        // Insert the new slide immediately to the right of the currently
+        // focused slide. This keeps the deck in chronological/left-to-right
+        // order: the previously focused window becomes the left peek.
+        const insert_at = @min(self.focused_index + 1, self.slides.items.len);
         self.slides.insert(self.allocator, insert_at, .{ .window_id = window_id }) catch {
             std.log.err("SlideDeck: failed to insert new slide", .{});
             return;
         };
-        // The new slide becomes the focused one; it is placed centre-out.
         self.focused_index = insert_at;
     }
 
@@ -313,20 +314,20 @@ test "horizontal slide targets fill the output" {
     try std.testing.expectEqual(@as(u32, 134), left.width);
 }
 
-test "centre-out insertion" {
+test "insert at focused slide" {
     const allocator = std.testing.allocator;
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
     deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
-    deck.addWindow(10); // inserted at 0
-    deck.addWindow(20); // len=1, centre=0, insert at 0; focus index bumps to 1
-    deck.addWindow(30); // len=2, centre=1, insert at 1
+    deck.addWindow(10); // first slide at 0, focused
+    deck.addWindow(20); // insert to right of focus, focused
+    deck.addWindow(30); // insert to right of focus (index 1), focused
 
-    // Expect order: 20, 30, 10 with focus on 30
-    try std.testing.expectEqual(deck.slides.items[0].window_id, 20);
+    // Expect order: 10, 30, 20 with focus on 30
+    try std.testing.expectEqual(deck.slides.items[0].window_id, 10);
     try std.testing.expectEqual(deck.slides.items[1].window_id, 30);
-    try std.testing.expectEqual(deck.slides.items[2].window_id, 10);
+    try std.testing.expectEqual(deck.slides.items[2].window_id, 20);
     try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
 }
 
