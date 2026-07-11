@@ -160,6 +160,23 @@ pub const Window = struct {
         }
     }
 
+    /// Set the destination size of the client surface buffer. This ensures
+    /// wlroots considers the surface visible (so it receives frame callbacks)
+    /// even when the committed buffer has not yet caught up to the configured
+    /// size.
+    pub fn setSurfaceDestSize(self: *Window, w: i32, h: i32) void {
+        const Size = struct { w: c_int, h: c_int };
+        var size = Size{ .w = w, .h = h };
+        self.scene_tree.node.forEachBuffer(*Size, struct {
+            fn iter(buffer: *wlr.SceneBuffer, sx: c_int, sy: c_int, data: *Size) void {
+                _ = sx;
+                _ = sy;
+                if (wlr.SceneSurface.tryFromBuffer(buffer) == null) return;
+                buffer.setDestSize(data.w, data.h);
+            }
+        }.iter, &size);
+    }
+
     /// Regenerate the compositor-drawn chrome overlay for this window.
     /// The overlay follows the layout target size and focus state, ensuring
     /// KidulWM owns the signature corner look regardless of client CSD.

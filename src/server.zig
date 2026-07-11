@@ -693,6 +693,9 @@ pub const Server = struct {
                 if (size_changed) {
                     _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                 }
+                // Ensure the scene graph considers the intended visible area part of
+                // the surface, even before the client has committed a matching size.
+                window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
 
                 if (slide_idx == output.deck.focused_index) {
                     focused_slide_window = window;
@@ -729,6 +732,7 @@ pub const Server = struct {
                     if (size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
+                    window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
                     if (slide_idx == self.deck.focused_index) {
                         window.updateDim(true);
                         window.updateChrome(true, .all);
