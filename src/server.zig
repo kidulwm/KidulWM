@@ -647,6 +647,8 @@ pub const Server = struct {
     }
 
     pub fn focusAtCursor(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.empty_slot != .none) return;
         var it = self.windows.iterator(.forward);
         while (it.next()) |window| {
             const node = &window.scene_tree.node;
@@ -716,8 +718,10 @@ pub const Server = struct {
             }
 
             if (deck_ptr == active_deck) {
-                if (focused_slide_window) |window| {
-                    self.focusWindow(window);
+                if (deck_ptr.empty_slot == .none) {
+                    if (focused_slide_window) |window| {
+                        self.focusWindow(window);
+                    }
                 }
             }
         }
@@ -750,7 +754,9 @@ pub const Server = struct {
                         window.updateDim(true);
                         window.updateChrome(true, .all);
                         window.scene_tree.node.raiseToTop();
-                        self.focusWindow(window);
+                        if (self.deck.empty_slot == .none) {
+                            self.focusWindow(window);
+                        }
                     } else {
                         const edges = if (slide_idx < self.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                         window.updateDim(false);
