@@ -43,9 +43,15 @@ pub const Slide = struct {
     window_id: u32,
 };
 
+pub const EmptySlot = enum { none, before_first, after_last };
+
 /// SlideDeck: a per-output stack of full-screen Slides.
 /// Only the focused Slide and its immediate neighbours are visible;
 /// deeper slides sit off-screen and animate into view when focused.
+///
+/// Focus may also rest on a virtual empty slot before the first or after the
+/// last real slide.  From those slots the nearest real slide becomes the peek
+/// on the side it sits, and new windows open into the empty slot.
 pub const SlideDeck = struct {
     allocator: std.mem.Allocator,
     slides: std.ArrayList(Slide),
@@ -53,6 +59,7 @@ pub const SlideDeck = struct {
     height: u32,
     gap: u32,
     focused_index: usize,
+    empty_slot: EmptySlot,
     split: Split,
     orientation: Orientation,
 
@@ -64,6 +71,7 @@ pub const SlideDeck = struct {
             .height = 0,
             .gap = style.layout.gap,
             .focused_index = 0,
+            .empty_slot = .none,
             .split = .{
                 .left_peek = style.layout.default_split.left_peek,
                 .focus = style.layout.default_split.focus,
@@ -100,16 +108,59 @@ pub const SlideDeck = struct {
     fn clampFocus(self: *SlideDeck) void {
         if (self.slides.items.len == 0) {
             self.focused_index = 0;
+            self.empty_slot = .none;
             return;
         }
         if (self.focused_index >= self.slides.items.len) {
             self.focused_index = self.slides.items.len - 1;
         }
+        // Ensure the empty slot still references a real slide edge.
+        switch (self.empty_slot) {
+            .none => {},
+            .before_first => self.focused_index = 0,
+            .after_last => self.focused_index = self.slides.items.len - 1,
+        }
     }
 
-    /// Add a new Slide. New windows open near the centre of the deck so the
-    /// matrix grows outward from the middle.
+    /// Visual focus position: an integer where real slides sit at 0..n-1 and
+    /// the two virtual end slots are -2 and n+1.  The extra gap means that
+    /// when focus rests past the ends, the nearest real slide is pushed fully
+    /// off-screen, leaving a completely empty view.
+    fn virtualFocus(self: *const SlideDeck) isize {
+        const n: isize = @intCast(self.slides.items.len);
+        const idx: isize = @intCast(self.focused_index);
+        return switch (self.empty_slot) {
+            .none => idx,
+            .before_first => -2,
+            .after_last => n + 1,
+        };
+    }
+
+    /// Add a new Slide. New windows open near the centre unless focus is on a
+    /// virtual end slot, in which case they open at that end and the closest
+    /// existing slide becomes the peek from that side.
     pub fn addWindow(self: *SlideDeck, window_id: u32) void {
+        switch (self.empty_slot) {
+            .before_first => {
+                self.slides.insert(self.allocator, 0, .{ .window_id = window_id }) catch {
+                    std.log.err("SlideDeck: failed to insert new slide", .{});
+                    return;
+                };
+                self.focused_index = 0;
+                self.empty_slot = .none;
+                return;
+            },
+            .after_last => {
+                self.slides.append(self.allocator, .{ .window_id = window_id }) catch {
+                    std.log.err("SlideDeck: failed to append new slide", .{});
+                    return;
+                };
+                self.focused_index = self.slides.items.len - 1;
+                self.empty_slot = .none;
+                return;
+            },
+            .none => {},
+        }
         const insert_at = self.slides.items.len / 2;
         self.slides.insert(self.allocator, insert_at, .{ .window_id = window_id }) catch {
             std.log.err("SlideDeck: failed to insert new slide", .{});
@@ -135,21 +186,44 @@ pub const SlideDeck = struct {
 
     pub fn focusNext(self: *SlideDeck) void {
         if (self.slides.items.len == 0) return;
-        self.focused_index = (self.focused_index + 1) % self.slides.items.len;
+        switch (self.empty_slot) {
+            .before_first => {
+                self.empty_slot = .none;
+                self.focused_index = 0;
+            },
+            .none => {
+                if (self.focused_index + 1 < self.slides.items.len) {
+                    self.focused_index += 1;
+                } else {
+                    self.empty_slot = .after_last;
+                }
+            },
+            .after_last => {},
+        }
     }
 
     pub fn focusPrev(self: *SlideDeck) void {
         if (self.slides.items.len == 0) return;
-        if (self.focused_index == 0) {
-            self.focused_index = self.slides.items.len - 1;
-        } else {
-            self.focused_index -= 1;
+        switch (self.empty_slot) {
+            .after_last => {
+                self.empty_slot = .none;
+                self.focused_index = self.slides.items.len - 1;
+            },
+            .none => {
+                if (self.focused_index > 0) {
+                    self.focused_index -= 1;
+                } else {
+                    self.empty_slot = .before_first;
+                }
+            },
+            .before_first => {},
         }
     }
 
     pub fn focusWindowByIndex(self: *SlideDeck, index: usize) void {
         if (index < self.slides.items.len) {
             self.focused_index = index;
+            self.empty_slot = .none;
         }
     }
 
@@ -160,7 +234,7 @@ pub const SlideDeck = struct {
         if (slide_index >= self.slides.items.len) {
             return .{ .x = 0, .y = 0, .width = self.width, .height = self.height };
         }
-        const delta: isize = @as(isize, @intCast(slide_index)) - @as(isize, @intCast(self.focused_index));
+        const delta: isize = @as(isize, @intCast(slide_index)) - self.virtualFocus();
         const result = switch (self.orientation) {
             .horizontal => self.horizontalTarget(delta),
             .vertical => self.verticalTarget(delta),

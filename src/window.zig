@@ -27,6 +27,7 @@ pub const Window = struct {
     chrome_scale: u32,
     chrome_style_generation: u32,
     chrome_focused: bool,
+    chrome_edges: chrome_renderer.EdgeMode,
     chrome_width: i32,
     chrome_height: i32,
 
@@ -58,6 +59,7 @@ pub const Window = struct {
             .chrome_scale = 1,
             .chrome_style_generation = 0,
             .chrome_focused = false,
+            .chrome_edges = chrome_renderer.EdgeMode.all,
             .chrome_width = 0,
             .chrome_height = 0,
             .map = wl.Listener(void).init(handleMap),
@@ -177,6 +179,7 @@ pub const Window = struct {
             self.chrome_width == w and
             self.chrome_height == h and
             self.chrome_focused == focused and
+            self.chrome_edges.eql(edges) and
             self.chrome_scale == scale and
             self.chrome_style_generation == style_gen;
         if (same) return;
@@ -191,6 +194,7 @@ pub const Window = struct {
         self.chrome_width = w;
         self.chrome_height = h;
         self.chrome_focused = focused;
+        self.chrome_edges = edges;
         self.chrome_scale = scale;
         self.chrome_style_generation = style_gen;
 

@@ -15,6 +15,13 @@ pub const EdgeMode = struct {
     // with a border on each side while keeping the outer edges clean.
     pub const left_peek = EdgeMode{ .top = true, .right = true, .bottom = true, .left = false };
     pub const right_peek = EdgeMode{ .top = true, .right = false, .bottom = true, .left = true };
+
+    pub fn eql(self: EdgeMode, other: EdgeMode) bool {
+        return self.top == other.top and
+            self.right == other.right and
+            self.bottom == other.bottom and
+            self.left == other.left;
+    }
 };
 
 const ChamferDepths = struct {

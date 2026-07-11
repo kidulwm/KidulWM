@@ -498,6 +498,7 @@ pub const Server = struct {
         for (deck.slides.items, 0..) |slide, i| {
             if (slide.window_id == self.focused_window_id) {
                 deck.focused_index = i;
+                deck.empty_slot = .none;
                 return;
             }
         }
@@ -555,11 +556,17 @@ pub const Server = struct {
         return null;
     }
 
-    /// Focus the next mapped window in the list, wrapping around.
+    /// Focus the next slide, pushing into the virtual empty slot past the end
+    /// instead of wrapping around.
     pub fn focusNext(self: *Server) void {
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
         deck.focusNext();
+        if (deck.empty_slot != .none) {
+            self.clearFocus();
+            self.requestLayout();
+            return;
+        }
         const slide = deck.slides.items[deck.focused_index];
         self.focused_window_id = slide.window_id;
         const window = self.windowById(slide.window_id) orelse return;
@@ -568,10 +575,18 @@ pub const Server = struct {
             self.requestLayout();
         }
     }
+
+    /// Focus the previous slide, pushing into the virtual empty slot before the
+    /// first slide instead of wrapping around.
     pub fn focusPrev(self: *Server) void {
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
         deck.focusPrev();
+        if (deck.empty_slot != .none) {
+            self.clearFocus();
+            self.requestLayout();
+            return;
+        }
         const slide = deck.slides.items[deck.focused_index];
         self.focused_window_id = slide.window_id;
         const window = self.windowById(slide.window_id) orelse return;
@@ -580,6 +595,7 @@ pub const Server = struct {
             self.requestLayout();
         }
     }
+
     fn focusFirstMapped(self: *Server) void {
         var it = self.windows.iterator(.forward);
         while (it.next()) |window| {
