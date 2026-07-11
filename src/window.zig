@@ -295,6 +295,21 @@ pub const Window = struct {
     fn handleUnmap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("unmap", listener);
         std.log.info("KidulWM: window unmapped", .{});
+        // Destroy the compositor-drawn fill and chrome so the slide frame does
+        // not linger on screen after the client surface disappears.
+        if (window.bg_rect) |rect| {
+            rect.node.destroy();
+            window.bg_rect = null;
+        }
+        if (window.chrome_tree) |tree| {
+            tree.node.destroy();
+            window.chrome_tree = null;
+        }
+        // Also destroy any dim overlay left behind.
+        if (window.dim_rect) |rect| {
+            rect.node.destroy();
+            window.dim_rect = null;
+        }
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
