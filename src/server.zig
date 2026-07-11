@@ -684,28 +684,34 @@ pub const Server = struct {
                 if (!window.toplevel.base.surface.mapped) continue;
 
                 const target = output.deck.targetForSlide(slide_idx);
+                const is_focused = slide_idx == output.deck.focused_index;
+                const peek_edges = if (slide_idx < output.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                 const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
                 window.setLayoutTarget(target.x, target.y, target.width, target.height);
-                // Only reconfigure the client once the animation has settled; this avoids
-                // forcing terminals to reallocate buffers every frame while sliding.
-                if (size_changed) {
+                // Only reconfigure and scale the actual client surface for the focused
+                // slide. Side peeks keep their full-window scene tree (so the chrome
+                // overlay masks the entire bounds), but the surface buffer itself is
+                // left at its natural size and only offset within that tree.
+                if (is_focused and size_changed) {
                     _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                 }
-                // Ensure the scene graph considers the intended visible area part of
-                // the surface, even before the client has committed a matching size.
-                window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
+                if (is_focused) {
+                    window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
+                    window.setSurfaceOffset(0, 0);
+                } else {
+                    window.setSurfaceOffsetForPeek(peek_edges);
+                }
 
-                if (slide_idx == output.deck.focused_index) {
+                if (is_focused) {
                     focused_slide_window = window;
                     window.updateDim(true);
                     window.updateChrome(true, .all);
                     window.scene_tree.node.raiseToTop();
                 } else {
-                    const edges = if (slide_idx < output.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                     window.updateDim(false);
-                    window.updateChrome(false, edges);
+                    window.updateChrome(false, peek_edges);
                 }
             }
 
@@ -725,15 +731,22 @@ pub const Server = struct {
                     const window = self.windowById(slide.window_id) orelse continue;
                     if (!window.toplevel.base.surface.mapped) continue;
                     const target = self.deck.targetForSlide(slide_idx);
+                    const is_focused = slide_idx == self.deck.focused_index;
                     const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
                     window.setLayoutTarget(target.x, target.y, target.width, target.height);
-                    if (size_changed) {
+                    if (is_focused and size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
-                    window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
-                    if (slide_idx == self.deck.focused_index) {
+                    if (is_focused) {
+                        window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
+                        window.setSurfaceOffset(0, 0);
+                    } else {
+                        const edges = if (slide_idx < self.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
+                        window.setSurfaceOffsetForPeek(edges);
+                    }
+                    if (is_focused) {
                         window.updateDim(true);
                         window.updateChrome(true, .all);
                         window.scene_tree.node.raiseToTop();

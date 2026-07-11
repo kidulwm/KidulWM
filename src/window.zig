@@ -12,7 +12,10 @@ const Style = @import("core/style.zig").Style;
 pub const Window = struct {
     server: *Server,
     toplevel: *wlr.XdgToplevel,
+    /// Layout/wrapper tree moved around the output.
     scene_tree: *wlr.SceneTree,
+    /// Child tree containing the XDG surface; can be offset for peeks.
+    surface_tree: *wlr.SceneTree,
 
     output: ?*Output,
     id: u32,
@@ -40,7 +43,8 @@ pub const Window = struct {
         const window = try server.allocator.create(Window);
         errdefer server.allocator.destroy(window);
 
-        const scene_tree = try server.scene.tree.createSceneXdgSurface(toplevel.base);
+        const scene_tree = try server.scene.tree.createSceneTree();
+        const surface_tree = try scene_tree.createSceneXdgSurface(toplevel.base);
 
         const id = server.next_window_id;
         server.next_window_id += 1;
@@ -49,6 +53,7 @@ pub const Window = struct {
             .server = server,
             .toplevel = toplevel,
             .scene_tree = scene_tree,
+            .surface_tree = surface_tree,
             .output = null,
             .id = id,
             .link = undefined,
@@ -167,7 +172,7 @@ pub const Window = struct {
     pub fn setSurfaceDestSize(self: *Window, w: i32, h: i32) void {
         const Size = struct { w: c_int, h: c_int };
         var size = Size{ .w = w, .h = h };
-        self.scene_tree.node.forEachBuffer(*Size, struct {
+        self.surface_tree.node.forEachBuffer(*Size, struct {
             fn iter(buffer: *wlr.SceneBuffer, sx: c_int, sy: c_int, data: *Size) void {
                 _ = sx;
                 _ = sy;
@@ -175,6 +180,31 @@ pub const Window = struct {
                 buffer.setDestSize(data.w, data.h);
             }
         }.iter, &size);
+    }
+
+    /// Offset the XDG surface within its wrapper tree, used to keep the visible
+    /// sliver on the correct side of a peek window. For left peeks the surface
+    /// is pulled right so its right edge aligns with the visible sliver; for
+    /// right peeks it stays left-aligned; focused windows are top-left aligned.
+    pub fn setSurfaceOffset(self: *Window, x: i32, y: i32) void {
+        self.surface_tree.node.setPosition(x, y);
+    }
+
+    /// Set the internal surface offset for a peek window so the visible sliver
+    /// shows the correct edge of the surface buffer.
+    pub fn setSurfaceOffsetForPeek(self: *Window, edges: chrome_renderer.EdgeMode) void {
+        const surface = self.toplevel.base.surface;
+        if (!surface.mapped) return;
+
+        const buffer_w = @max(0, @as(i32, @intCast(surface.current.width)));
+        const tree_w: i32 = @intFromFloat(self.animation.target_w);
+
+        // Left peek: align buffer right edge with wrapper right edge so the
+        // visible rightmost sliver of the peek is visible. Right peek: keep the
+        // buffer left-aligned with the wrapper left edge.
+        const x = if (!edges.left and tree_w > buffer_w) tree_w - buffer_w else 0;
+        const y: i32 = 0;
+        self.setSurfaceOffset(x, y);
     }
 
     /// Regenerate the compositor-drawn chrome overlay for this window.
@@ -289,5 +319,12 @@ pub const Window = struct {
         // Do not request a layout pass here: map/unmap already trigger layout,
         // and running a full layout pass on every surface commit causes a
         // configure storm once multiple XDG toplevels are mapped.
+        //
+        // However, when this window is a side peek, the surface buffer may have
+        // been committed/resized after the layout ran. Re-apply the peek offset
+        // so the visible sliver stays aligned to the correct edge of the buffer.
+        if (!window.chrome_edges.eql(chrome_renderer.EdgeMode.all)) {
+            window.setSurfaceOffsetForPeek(window.chrome_edges);
+        }
     }
 };
