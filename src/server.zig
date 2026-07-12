@@ -11,6 +11,8 @@ const style = @import("core/style.zig");
 const slidedeck = @import("core/slidedeck.zig");
 const animation = @import("core/animation.zig");
 const chrome_renderer = @import("render/chrome.zig");
+const render_image = @import("render/image.zig");
+const DataBuffer = @import("render/buffer.zig").DataBuffer;
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
@@ -131,8 +133,11 @@ pub const Server = struct {
     output_layout_change: wl.Listener(*wlr.OutputLayout),
 
     background: struct {
-        rect: ?*wlr.SceneRect,
+        node: ?*wlr.SceneNode,
         color: [4]f32,
+        rect: ?*wlr.SceneRect,
+        image_buffer: ?*wlr.Buffer,
+        image_scene_buffer: ?*wlr.SceneBuffer,
     },
     outputs: wl.list.Head(Output, .link),
 
@@ -314,8 +319,11 @@ pub const Server = struct {
             .new_xdg_toplevel = undefined,
             .output_layout_change = undefined,
             .background = .{
+                .node = null,
                 .rect = null,
                 .color = style.default_style.color_background.toF32(),
+                .image_buffer = null,
+                .image_scene_buffer = null,
             },
             .outputs = undefined,
             .chrome_style_generation = 0,
@@ -323,7 +331,13 @@ pub const Server = struct {
 
         server.outputs.init();
 
-        server.background.rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
+        const bg_rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
+        server.background.rect = bg_rect;
+        server.background.node = &bg_rect.node;
+
+        server.loadWallpaper("/home/kidul/Pictures/Wallpapers/kidulBG01.png") catch |err| {
+            std.log.warn("KidulWM: failed to load wallpaper, using fallback color: {}", .{err});
+        };
 
         server.pointer.init(server);
         server.keyboard.init(server);
@@ -890,12 +904,61 @@ pub const Server = struct {
 
         var box: wlr.Box = undefined;
         self.output_layout.getBox(null, &box);
-        if (self.background.rect) |rect| {
-            rect.node.setPosition(box.x, box.y);
-            rect.setSize(box.width, box.height);
-        }
+        self.updateBackgroundLayout(&box);
 
         self.requestLayout();
+    }
+
+    fn updateBackgroundLayout(self: *Server, box: *const wlr.Box) void {
+        if (self.background.node) |node| {
+            node.setPosition(box.x, box.y);
+        }
+        if (self.background.image_scene_buffer) |scene_buffer| {
+            scene_buffer.setDestSize(box.width, box.height);
+        } else if (self.background.rect) |rect| {
+            rect.setSize(box.width, box.height);
+        }
+    }
+
+    fn loadWallpaper(self: *Server, path: []const u8) !void {
+        // Tear down any existing background node and image buffer first.
+        if (self.background.node) |node| {
+            node.destroy();
+            self.background.node = null;
+        }
+        if (self.background.image_buffer) |buffer| {
+            wlr.Buffer.drop(buffer);
+            self.background.image_buffer = null;
+            self.background.image_scene_buffer = null;
+        }
+
+        const image = render_image.Image.loadPng(path) catch |err| {
+            std.log.warn("KidulWM: failed to load wallpaper '{s}': {}", .{ path, err });
+            // Fall back to a solid-colour background rect.
+            const rect = try self.scene.tree.createSceneRect(1, 1, &self.background.color);
+            self.background.rect = rect;
+            self.background.image_scene_buffer = null;
+            self.background.node = &rect.node;
+            return;
+        };
+        defer image.deinit();
+
+        const buffer = try DataBuffer.create(image.data, image.width, image.height, image.stride);
+        errdefer wlr.Buffer.drop(buffer);
+
+        // Attach the image buffer directly to the root scene tree so there is
+        // no intermediate transform to get wrong. The buffer remains referenced
+        // by image_buffer and by the scene buffer (which locks it), so both must
+        // be released before replacement.
+        const scene_buffer = try self.scene.tree.createSceneBuffer(buffer);
+        scene_buffer.setDestSize(image.width, image.height);
+
+        self.background.rect = null;
+        self.background.image_buffer = buffer;
+        self.background.image_scene_buffer = scene_buffer;
+        self.background.node = &scene_buffer.node;
+
+        std.log.info("KidulWM: loaded wallpaper '{s}' ({d}x{d})", .{ path, image.width, image.height });
     }
 
     fn handleShutdownTimer(server: *@This()) c_int {
@@ -987,6 +1050,11 @@ pub const Server = struct {
         }
 
         self.background.color = self.theme.color_background.toF32();
+        if (self.background.image_scene_buffer == null) {
+            if (self.background.rect) |rect| {
+                rect.setColor(&self.background.color);
+            }
+        }
         self.requestLayout();
     }
 };
