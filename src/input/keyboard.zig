@@ -99,6 +99,20 @@ const KeyboardDevice = struct {
             server.nextAnimationKind();
             return;
         }
+        if (mod4_active and server.tray.isOpen()) {
+            if (sym == xkb.Keysym.Up) {
+                server.tray.selectPrev();
+                return;
+            }
+            if (sym == xkb.Keysym.Down) {
+                server.tray.selectNext();
+                return;
+            }
+            if (sym == xkb.Keysym.Return) {
+                server.tray.activateSelected();
+                return;
+            }
+        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 
