@@ -91,6 +91,14 @@ const KeyboardDevice = struct {
             server.focusPrev();
             return;
         }
+        if (mod4_active and sym == xkb.Keysym.t) {
+            server.tray.toggle();
+            return;
+        }
+        if (mod4_active and sym == xkb.Keysym.a) {
+            server.nextAnimationKind();
+            return;
+        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 

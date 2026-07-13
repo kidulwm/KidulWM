@@ -1076,6 +1076,17 @@ pub const Server = struct {
         return self.tray.handlePointerClick(x, y);
     }
 
+    pub fn logPointerDiagnostic(self: *Server, tag: []const u8, x: f64, y: f64) void {
+        _ = self;
+        const now = @import("core/animation.zig").nowUs();
+        const S = struct {
+            var last: u64 = 0;
+        };
+        if (now - S.last < 1_000_000) return;
+        S.last = now;
+        std.log.info("KidulWM: pointer {s} x={d:.1} y={d:.1}", .{ tag, x, y });
+    }
+
     fn applyTheme(self: *Server, key: []const u8, value: []const u8) void {
         if (std.mem.eql(u8, key, "border_focused")) {
             self.theme.color_border_focused = style.Style.Color.fromString(value) catch |err| {
