@@ -1,13 +1,12 @@
 const std = @import("std");
 
 /// Single source of truth for window chrome dimensions and colours.
-/// Every rendering path that draws borders, focus rings, chamfer highlights,
+/// Every rendering path that draws borders, focus rings, focus highlights,
 /// or widgets that display chrome reads from this structure.
 pub const Style = struct {
     gap: u32 = 8,
     border_width: f32 = 2.0,
-    chamfer_border_width: f32 = 2.5,
-    corner_style: CornerStyle = .cut,
+    corner_style: CornerStyle = .classic,
     corner_depth: f32 = 16.0,
 
     color_background: Color = Color.fromHex(0x222425),
@@ -24,7 +23,6 @@ pub const Style = struct {
 
     pub const CornerStyle = enum {
         classic,
-        cut,
         none,
     };
 

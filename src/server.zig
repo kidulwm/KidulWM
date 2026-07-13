@@ -1003,15 +1003,6 @@ pub const Server = struct {
             self.chrome_style_generation +%= 1;
             self.requestLayout();
             return;
-        } else if (std.mem.eql(u8, key, "chamfer_border_width")) {
-            const chamfer_border_width = std.fmt.parseFloat(f32, value) catch |err| {
-                std.log.warn("invalid chamfer_border_width '{s}': {}", .{ value, err });
-                return;
-            };
-            self.theme.chamfer_border_width = chamfer_border_width;
-            self.chrome_style_generation +%= 1;
-            self.requestLayout();
-            return;
         } else if (std.mem.eql(u8, key, "gap")) {
             const gap = std.fmt.parseInt(u32, value, 10) catch |err| {
                 std.log.warn("invalid gap '{s}': {}", .{ value, err });
@@ -1020,14 +1011,12 @@ pub const Server = struct {
             self.theme.gap = gap;
             self.state.gap = gap;
         } else if (std.mem.eql(u8, key, "corner_style")) {
-            if (std.mem.eql(u8, value, "cut")) {
-                self.theme.corner_style = .cut;
-            } else if (std.mem.eql(u8, value, "classic")) {
+            if (std.mem.eql(u8, value, "classic")) {
                 self.theme.corner_style = .classic;
             } else if (std.mem.eql(u8, value, "none")) {
                 self.theme.corner_style = .none;
             } else {
-                std.log.warn("unknown corner_style '{s}', expected cut/classic/none", .{value});
+                std.log.warn("unknown corner_style '{s}', expected classic/none", .{value});
                 return;
             }
             self.chrome_style_generation +%= 1;

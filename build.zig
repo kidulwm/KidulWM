@@ -106,15 +106,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    const render_tests = b.addTest(.{
-        .name = "render-test",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/core/chamfer.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    const test_step = b.step("test", "Run layout and render tests");
+    const test_step = b.step("test", "Run layout tests");
     test_step.dependOn(&layout_tests.step);
-    test_step.dependOn(&render_tests.step);
 }
