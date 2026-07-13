@@ -3,6 +3,7 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const c = @import("../dm/c.zig").c;
 const style = @import("../core/style.zig");
+const animation = @import("../core/animation.zig");
 
 pub const OutputInfo = struct {
     x: i32,
@@ -10,36 +11,31 @@ pub const OutputInfo = struct {
     width: i32,
     height: i32,
     scale: f32,
+    focus_left: i32,
 };
 
 pub const TrayHost = struct {
     ctx: *anyopaque,
     output_count: *const fn (ctx: *anyopaque) usize,
     output_info: *const fn (ctx: *anyopaque, index: usize) OutputInfo,
-    get_animation_kind: *const fn (ctx: *anyopaque) @import("../core/animation.zig").AnimationKind,
+    get_animation_kind: *const fn (ctx: *anyopaque) animation.AnimationKind,
     cycle_animation: *const fn (ctx: *anyopaque) void,
-    request_layout: *const fn (ctx: *anyopaque) void,
+    request_frame: *const fn (ctx: *anyopaque) void,
     theme: *const style.Style,
-};
-
-const Item = struct {
-    id: []const u8,
-    label: []const u8,
-    icon_char: u8,
-    preview_line: []const u8,
-};
-
-const ItemKind = enum { normal, toggle };
-const TrayItem = struct {
-    item: Item,
-    kind: ItemKind = .normal,
-    action: Action,
 };
 
 const Action = union(enum) {
     cycle_animation,
     toggle_tray,
+    next_animation,
+    spawn: []const u8,
     none,
+};
+
+const TrayItem = struct {
+    id: []const u8,
+    label: []const u8,
+    action: Action,
 };
 
 const PerOutput = struct {
@@ -55,47 +51,37 @@ pub const Tray = struct {
     host: TrayHost,
     root: *wlr.SceneTree,
 
+    open: bool = false,
     pinned: bool = false,
     hovered: bool = false,
     open_amount: f32 = 0.0,
     selected_index: usize = 0,
     hover_index: ?usize = null,
+    scroll_offset: f32 = 0.0,
     last_update_us: u64 = 0,
 
     outputs: std.ArrayList(PerOutput),
     items: []const TrayItem,
 
-    const panel_width: i32 = 120;
-    const item_height: i32 = 56;
-    const handle_height: i32 = 12;
-    const preview_height: i32 = 90;
+    const button_height: i32 = 44;
+    const button_gap: i32 = 8;
+    const hmargin: i32 = 8;
+    const bottom_margin: i32 = 10;
+    const top_margin: i32 = 10;
+    const max_stack_items_visible: usize = 12;
     const update_rate_hz: f32 = 30.0;
-    const slide_rate: f32 = 14.0;
+    const slide_rate: f32 = 16.0;
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
-        const items = try allocator.alloc(TrayItem, 5);
-        items[0] = .{
-            .item = .{ .id = "weather", .label = "Weather", .icon_char = 'W', .preview_line = "22 C / cloudy" },
-            .action = .none,
-        };
-        items[1] = .{
-            .item = .{ .id = "vol", .label = "Volume", .icon_char = 'V', .preview_line = "50%" },
-            .action = .none,
-        };
-        items[2] = .{
-            .item = .{ .id = "bri", .label = "Brightness", .icon_char = 'B', .preview_line = "80%" },
-            .action = .none,
-        };
-        items[3] = .{
-            .item = .{ .id = "anim", .label = "Motion", .icon_char = 'M', .preview_line = "snap" },
-            .action = .cycle_animation,
-        };
-        items[4] = .{
-            .item = .{ .id = "hide", .label = "Hide", .icon_char = 'x', .preview_line = "close dock" },
-            .action = .toggle_tray,
-        };
+        const items = try allocator.alloc(TrayItem, 6);
+        items[0] = .{ .id = "settings", .label = "Settings", .action = .toggle_tray };
+        items[1] = .{ .id = "term", .label = "Terminal", .action = .{ .spawn = "" } };
+        items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "" } };
+        items[3] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "" } };
+        items[4] = .{ .id = "anim", .label = "Motion", .action = .cycle_animation };
+        items[5] = .{ .id = "hide", .label = "Hide", .action = .toggle_tray };
         return .{
             .allocator = allocator,
             .host = host,
@@ -122,7 +108,7 @@ pub const Tray = struct {
             .tree = tree,
             .scene_buffer = null,
             .buffer = null,
-            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0 },
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
         };
         self.outputs.append(self.allocator, po) catch |err| {
             std.log.err("KidulWM: failed to append tray output: {}", .{err});
@@ -141,8 +127,7 @@ pub const Tray = struct {
         }
     }
 
-    fn destroyPerOutput(self: *Self, po: *PerOutput) void {
-        _ = self;
+    fn destroyPerOutput(_: *Self, po: *PerOutput) void {
         if (po.scene_buffer) |sb| sb.node.destroy();
         if (po.buffer) |buf| wlr.Buffer.drop(buf);
         po.tree.node.destroy();
@@ -155,29 +140,38 @@ pub const Tray = struct {
     }
 
     pub fn toggle(self: *Self) void {
-        self.pinned = !self.pinned;
-        self.hovered = self.pinned;
+        self.open = !self.open;
+        self.pinned = self.open;
+        self.hovered = self.open;
+        self.scroll_offset = 0.0;
+        if (!self.open) self.hover_index = null;
         self.requestUpdate();
-        self.host.request_layout(self.host.ctx);
-        if (!self.pinned) self.hover_index = null;
-        std.log.info("KidulWM: tray toggled -> {}", .{self.pinned});
+        self.host.request_frame(self.host.ctx);
     }
 
     pub fn selectNext(self: *Self) void {
-        if (!self.isOpen()) return;
+        if (!self.isOpen()) {
+            self.toggle();
+            return;
+        }
         self.selected_index = (self.selected_index + 1) % self.items.len;
         self.hover_index = self.selected_index;
+        self.ensureSelectedVisible();
         self.requestUpdate();
     }
 
     pub fn selectPrev(self: *Self) void {
-        if (!self.isOpen()) return;
+        if (!self.isOpen()) {
+            self.toggle();
+            return;
+        }
         if (self.selected_index == 0) {
             self.selected_index = self.items.len - 1;
         } else {
             self.selected_index -= 1;
         }
         self.hover_index = self.selected_index;
+        self.ensureSelectedVisible();
         self.requestUpdate();
     }
 
@@ -190,32 +184,64 @@ pub const Tray = struct {
     }
 
     pub fn isOpen(self: *const Self) bool {
-        return self.pinned or self.open_amount > 0.5;
+        return self.open or self.open_amount > 0.01;
+    }
+
+    pub fn scroll(self: *Self, delta: f32) void {
+        if (!self.isOpen()) return;
+        const max_scroll = self.maxScroll();
+        self.scroll_offset = std.math.clamp(self.scroll_offset - delta, 0.0, max_scroll);
+        self.requestUpdate();
+    }
+
+    fn ensureSelectedVisible(self: *Self) void {
+        const visible_count = @min(max_stack_items_visible, self.items.len - 1);
+        if (visible_count == 0) return;
+        const item_size: f32 = @floatFromInt(button_height + button_gap);
+        const first_in_stack = self.selected_index;
+        if (first_in_stack == 0) {
+            self.scroll_offset = 0.0;
+            return;
+        }
+        const max_visible_first: f32 = @floatFromInt(self.items.len -| visible_count);
+        const desired_first: f32 = @max(@as(f32, @floatFromInt(first_in_stack -| visible_count)) + 1.0, 0.0);
+        const desired_offset: f32 = @min(desired_first, max_visible_first) * item_size;
+        self.scroll_offset = desired_offset;
+    }
+
+    fn maxScroll(self: *const Self) f32 {
+        const stack_count = self.items.len -| 1;
+        const needed_items = @min(max_stack_items_visible, stack_count);
+        const item_size: f32 = @floatFromInt(button_height + button_gap);
+        const stack_h = @as(f32, @floatFromInt(stack_count)) * item_size - @as(f32, @floatFromInt(button_gap));
+        const view_h = @as(f32, @floatFromInt(needed_items)) * item_size - @as(f32, @floatFromInt(button_gap));
+        return @max(0.0, stack_h - view_h);
     }
 
     fn activateItem(self: *Self, index: usize) void {
         if (index >= self.items.len) return;
         const it = &self.items[index];
-        std.log.info("KidulWM: tray activate {s}", .{it.item.id});
+        std.log.info("KidulWM: tray activate {s}", .{it.id});
         switch (it.action) {
             .cycle_animation => self.host.cycle_animation(self.host.ctx),
+            .next_animation => {
+                var k: u8 = 0;
+                while (k < 1) : (k += 1) self.host.cycle_animation(self.host.ctx);
+            },
             .toggle_tray => self.toggle(),
+            .spawn => {},
             .none => {},
         }
-        // Later: spawn apps, adjust volume/brightness, etc.
     }
 
     pub fn update(self: *Self) void {
-        const now_us = @import("../core/animation.zig").nowUs();
+        const now_us = animation.nowUs();
         const prev = self.last_update_us;
         defer self.last_update_us = now_us;
 
         const should_redraw = prev == 0 or (now_us - prev) > @as(u64, @intFromFloat(1_000_000.0 / update_rate_hz));
 
-        // Preview labels can be updated here in the future; layout-time mutation
-        // of comptime strings is avoided.
-
-        const desired: f32 = if (self.hovered or self.pinned) 1.0 else 0.0;
+        const desired: f32 = if (self.open or self.pinned or self.hovered) 1.0 else 0.0;
         if (self.open_amount != desired) {
             const dt = if (prev == 0) 0.0 else @as(f32, @floatFromInt(now_us - prev)) / 1_000_000.0;
             const step = std.math.clamp(dt * slide_rate, 0.0, 1.0);
@@ -226,24 +252,42 @@ pub const Tray = struct {
             }
         }
 
-        _ = self.host.output_count(self.host.ctx);
         for (self.outputs.items) |*po| {
             self.updatePerOutput(po, should_redraw);
         }
     }
 
-    fn visibleHeight(self: *const Self) i32 {
-        const needed = self.items.len * item_height + handle_height + 16;
-        return @max(handle_height, @as(i32, @intFromFloat(@round(@as(f32, @floatFromInt(needed)) * self.open_amount))));
+    fn panelWidth(self: *const Self, info: OutputInfo) i32 {
+        _ = self;
+        const base = info.focus_left - info.x;
+        return @max(80, base - 2 * hmargin);
+    }
+
+    fn panelHeightFor(self: *const Self, info: OutputInfo, stack_open_amount: f32) i32 {
+        const stack_count = self.items.len -| 1;
+        const visible_items = @min(max_stack_items_visible, stack_count);
+        const item_size = button_height + button_gap;
+        const max_stack_h = @min(
+            info.height - top_margin - bottom_margin - button_height,
+            @as(i32, @intCast(visible_items)) * item_size - button_gap,
+        );
+        const actual_stack_h: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(max_stack_h)) * stack_open_amount));
+        return button_height + bottom_margin + actual_stack_h;
+    }
+
+    fn totalStackHeight(self: *const Self) i32 {
+        const count = @as(i32, @intCast(self.items.len -| 1));
+        if (count <= 0) return 0;
+        return count * (button_height + button_gap) - button_gap;
     }
 
     fn updatePerOutput(self: *Self, po: *PerOutput, should_redraw: bool) void {
         const info = po.info;
-        const h = self.visibleHeight();
-        const w = panel_width;
-        const x: i32 = info.x;
-        const y: i32 = info.y + info.height - h;
         const s = info.scale;
+        const w = self.panelWidth(info);
+        const h = self.panelHeightFor(info, self.open_amount);
+        const x: i32 = info.x + hmargin;
+        const y: i32 = info.y + info.height - h;
 
         po.tree.node.setPosition(x, y);
 
@@ -271,51 +315,34 @@ pub const Tray = struct {
         defer c.cairo_destroy(cr);
 
         const scale_d: f64 = @as(f64, s);
-        const panel_h = @as(f64, dev_h);
+        const bw: f64 = @as(f64, dev_w);
+        const bh: f64 = @as(f64, button_height) * scale_d;
+        const gap: f64 = @as(f64, button_gap) * scale_d;
 
-        // Background.
+        // Transparent background.
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
         c.cairo_paint(cr);
-
-        const bg = self.host.theme.color_background;
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-        c.cairo_set_source_rgba(cr, @as(f64, bg.r) / 255.0, @as(f64, bg.g) / 255.0, @as(f64, bg.b) / 255.0, 0.85);
-        c.cairo_rectangle(cr, 0, 0, @as(f64, dev_w), panel_h - @as(f64, handle_height) * scale_d);
-        c.cairo_fill(cr);
 
-        // Glassy dock border line on the right edge.
-        const border = self.host.theme.color_border;
-        c.cairo_set_source_rgba(cr, @as(f64, border.r) / 255.0, @as(f64, border.g) / 255.0, @as(f64, border.b) / 255.0, 0.55);
-        c.cairo_set_line_width(cr, 2.0 * scale_d);
-        c.cairo_move_to(cr, @as(f64, dev_w) - 1.0 * scale_d, 0);
-        c.cairo_line_to(cr, @as(f64, dev_w) - 1.0 * scale_d, panel_h - @as(f64, handle_height) * scale_d);
-        c.cairo_stroke(cr);
+        const settings_top: f64 = @as(f64, dev_h) - bh - @as(f64, bottom_margin) * scale_d;
+        const item_size = bh + gap;
 
-        // Items.
-        if (self.open_amount > 0.1) {
-            const cell_h_f: f64 = @as(f64, item_height) * scale_d;
-            for (self.items, 0..) |it, idx| {
-                const iy = @as(f64, @floatFromInt(idx)) * cell_h_f + 6.0 * scale_d;
-                const selected = self.selected_index == idx;
-                const hover = if (self.hover_index) |hi| hi == idx else false;
-                self.drawItem(cr, @as(f64, dev_w), cell_h_f, iy, it, selected, hover, scale_d);
-                if (hover and self.open_amount > 0.8) {
-                    self.drawPreview(cr, @as(f64, dev_w), iy, it, scale_d);
-                }
+        // Settings button is always index 0 and sits at the bottom.
+        self.drawButton(cr, 0.0, settings_top, bw, bh, self.items[0], self.selected_index == 0, self.hover_index == 0, scale_d);
+
+        if (self.open_amount > 0.01 and self.items.len > 1) {
+            const scroll_px: f64 = @floor(@as(f64, self.scroll_offset) * scale_d);
+            for (self.items[1..], 1..) |it, idx| {
+                const i: f64 = @floatFromInt(idx);
+                const top = settings_top - i * item_size + scroll_px;
+                if (top + bh < 0.0 or top > @as(f64, dev_h)) continue;
+                self.drawButton(cr, 0.0, top, bw, bh, it, self.selected_index == idx, self.hover_index == idx, scale_d);
             }
         }
 
-        // Bottom handle strip.
-        const accent = self.host.theme.color_gold;
-        const handle_alpha: f64 = if (self.hovered or self.pinned) 0.5 else 0.22;
-        c.cairo_set_source_rgba(cr, @as(f64, accent.r) / 255.0, @as(f64, accent.g) / 255.0, @as(f64, accent.b) / 255.0, handle_alpha);
-        c.cairo_rectangle(cr, 0, panel_h - @as(f64, handle_height) * scale_d, @as(f64, dev_w), @as(f64, handle_height) * scale_d);
-        c.cairo_fill(cr);
-
-        const db_stride: i32 = @intCast(stride);
         const DataBuffer = @import("../render/buffer.zig").DataBuffer;
-        const buffer = DataBuffer.create(temp, dev_w, dev_h, db_stride) catch |err| {
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
             std.log.err("KidulWM: failed to create tray buffer: {}", .{err});
             return;
         };
@@ -333,81 +360,35 @@ pub const Tray = struct {
         po.tree.node.raiseToTop();
     }
 
-    fn drawItem(self: *const Self, cr: *c.cairo_t, dev_w: f64, cell_h: f64, y: f64, it: TrayItem, selected: bool, hover: bool, s: f64) void {
-        _ = self;
-        const margin: f64 = 6.0 * s;
-        const cell_w: f64 = dev_w - 2.0 * margin;
-        const r: f64 = 8.0 * s;
+    fn drawButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, it: TrayItem, selected: bool, hover: bool, s: f64) void {
+        const r: f64 = 6.0 * s;
+        const accent_bright = self.host.theme.color_gold;
+        const accent_dim = self.host.theme.color_gold_dim;
 
-        if (selected or hover) {
-            c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, if (hover) 0.18 else 0.10);
-            roundedRect(cr, margin, y, cell_w, cell_h - 4.0 * s, r);
-            c.cairo_fill(cr);
-        }
-
-        const icon_size: f64 = 22.0 * s;
-        const ix = margin + 8.0 * s;
-        const iy = y + (cell_h - icon_size) / 2.0;
-
-        // Glassy icon backing.
-        roundedRect(cr, ix, iy, icon_size, icon_size, 5.0 * s);
-        c.cairo_set_source_rgba(cr, 0.18, 0.52, 0.78, 0.60);
+        // Black glass button fill.
+        roundedRect(cr, x + 1.0 * s, y + 1.0 * s, w - 2.0 * s, h - 2.0 * s, r);
+        c.cairo_set_source_rgba(cr, 0.04, 0.04, 0.05, 0.92);
         c.cairo_fill(cr);
-        c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.75);
-        c.cairo_set_line_width(cr, 1.0 * s);
-        roundedRect(cr, ix, iy, icon_size, icon_size, 5.0 * s);
+
+        // Border / raised effect on hover/selection.
+        const border_alpha: f64 = if (hover or selected) 0.70 else 0.35;
+        const gold = if (hover or selected) accent_bright else accent_dim;
+        c.cairo_set_source_rgba(cr, @as(f64, gold.r) / 255.0, @as(f64, gold.g) / 255.0, @as(f64, gold.b) / 255.0, border_alpha);
+        c.cairo_set_line_width(cr, if (hover or selected) 1.8 * s else 1.2 * s);
+        roundedRect(cr, x + 1.0 * s, y + 1.0 * s, w - 2.0 * s, h - 2.0 * s, r);
         c.cairo_stroke(cr);
 
-        // Icon glyph.
-        c.cairo_set_source_rgba(cr, 0.95, 0.95, 0.95, 1.0);
-        c.cairo_select_font_face(cr, "sans-serif", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+        // Gold text label.
+        const label_c: [*c]const u8 = @ptrCast(it.label);
+        var extents: c.cairo_text_extents_t = undefined;
+        c.cairo_select_font_face(cr, "serif", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
         c.cairo_set_font_size(cr, 13.0 * s);
-        var extents: c.cairo_text_extents_t = undefined;
-        const glyph_c: [*c]const u8 = @ptrCast(&it.item.icon_char);
-        c.cairo_text_extents(cr, glyph_c, &extents);
-        const gx = ix + (icon_size - extents.width) / 2.0;
-        const gy = iy + (icon_size + extents.height) / 2.0;
-        c.cairo_move_to(cr, gx, gy);
-        c.cairo_show_text(cr, glyph_c);
-
-        // Label.
-        c.cairo_set_source_rgba(cr, 0.9, 0.9, 0.9, 1.0);
-        c.cairo_select_font_face(cr, "sans-serif", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
-        c.cairo_set_font_size(cr, 11.0 * s);
-        const text_c: [*c]const u8 = @ptrCast(it.item.label);
-        c.cairo_text_extents(cr, text_c, &extents);
-        const tx = ix + icon_size + 8.0 * s;
-        const ty = y + (cell_h + extents.height) / 2.0;
+        c.cairo_text_extents(cr, label_c, &extents);
+        c.cairo_set_source_rgba(cr, @as(f64, gold.r) / 255.0, @as(f64, gold.g) / 255.0, @as(f64, gold.b) / 255.0, 1.0);
+        const tx = x + (w - extents.width) / 2.0;
+        const ty = y + (h + extents.height) / 2.0;
         c.cairo_move_to(cr, tx, ty);
-        c.cairo_show_text(cr, text_c);
-    }
-
-    fn drawPreview(self: *const Self, cr: *c.cairo_t, dev_w: f64, item_y: f64, it: TrayItem, s: f64) void {
-        const line = if (it.action == .cycle_animation)
-            switch (self.host.get_animation_kind(self.host.ctx)) {
-                .snap => "snap",
-                .wobble => "wobble",
-                .ripple => "ripple",
-            }
-        else
-            it.item.preview_line;
-        const pw: f64 = 170.0 * s;
-        const ph: f64 = 70.0 * s;
-        const px: f64 = dev_w + 10.0 * s;
-        const py: f64 = item_y;
-        roundedRect(cr, px, py, pw, ph, 8.0 * s);
-        c.cairo_set_source_rgba(cr, 0.06, 0.06, 0.08, 0.92);
-        c.cairo_fill(cr);
-        c.cairo_set_source_rgba(cr, 0.9, 0.9, 0.9, 1.0);
-        c.cairo_select_font_face(cr, "sans-serif", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
-        c.cairo_set_font_size(cr, 12.0 * s);
-        const line_c: [*c]const u8 = @ptrCast(line);
-        var extents: c.cairo_text_extents_t = undefined;
-        c.cairo_text_extents(cr, line_c, &extents);
-        const tx = px + (pw - extents.width) / 2.0;
-        const ty = py + (ph + extents.height) / 2.0;
-        c.cairo_move_to(cr, tx, ty);
-        c.cairo_show_text(cr, line_c);
+        c.cairo_show_text(cr, label_c);
     }
 
     fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
@@ -420,42 +401,60 @@ pub const Tray = struct {
         c.cairo_close_path(cr);
     }
 
-    pub fn handlePointerMove(self: *Self, x: f64, y: f64) bool {
+    fn pointInside(self: *const Self, info: OutputInfo, px: f64, py: f64) bool {
+        const w = self.panelWidth(info);
+        const h = self.panelHeightFor(info, self.open_amount);
+        const x: f64 = @floatFromInt(info.x + hmargin);
+        const y: f64 = @floatFromInt(info.y + info.height - h);
+        return px >= x and px < x + @as(f64, @floatFromInt(w)) and py >= y and py < y + @as(f64, @floatFromInt(h));
+    }
+
+    pub fn handlePointerMove(self: *Self, px: f64, py: f64) bool {
         const out_count = self.host.output_count(self.host.ctx);
         var inside_any = false;
-        self.hover_index = null;
+        var new_hover: ?usize = null;
         for (0..out_count) |i| {
             const info = self.host.output_info(self.host.ctx, i);
-            const h = self.visibleHeight();
-            const min_x: f64 = @floatFromInt(info.x);
-            const max_x: f64 = @floatFromInt(info.x + panel_width);
-            const min_y: f64 = @floatFromInt(info.y + info.height - h);
-            const max_y: f64 = @floatFromInt(info.y + info.height);
             if (i < self.outputs.items.len) self.outputs.items[i].info = info;
-            if (x >= min_x and x < max_x and y >= min_y and y < max_y) {
-                inside_any = true;
-                const local_y = y - min_y;
-                const idx = @as(usize, @intFromFloat(@floor(local_y / @as(f64, item_height))));
-                if (idx < self.items.len) self.hover_index = idx;
+            if (!self.pointInside(info, px, py)) continue;
+            inside_any = true;
+            // local coordinates relative to top-left of tree
+            const local_y = py - @as(f64, @floatFromInt(info.y + info.height - self.panelHeightFor(info, self.open_amount)));
+            const bh: f64 = @as(f64, button_height) * info.scale;
+            const gap: f64 = @as(f64, button_gap) * info.scale;
+            const settings_top: f64 = @as(f64, self.panelHeightFor(info, self.open_amount) - bottom_margin) * info.scale - bh;
+            const scroll_px: f64 = self.scroll_offset * info.scale;
+            if (local_y >= settings_top and local_y < settings_top + bh) {
+                new_hover = 0;
+            } else if (local_y < settings_top and self.items.len > 1) {
+                const dist = settings_top - local_y + scroll_px;
+                const idx: usize = @as(usize, @intFromFloat(@floor(dist / (bh + gap)))) + 1;
+                if (idx < self.items.len) new_hover = idx;
             }
         }
         self.hovered = inside_any;
+        if (new_hover) |hi| self.hover_index = hi;
+        if (inside_any and !self.open and !self.pinned) {
+            self.open = true;
+            self.requestUpdate();
+            self.host.request_frame(self.host.ctx);
+        } else if (!inside_any and self.open and !self.pinned) {
+            self.open = false;
+            self.hover_index = null;
+            self.requestUpdate();
+            self.host.request_frame(self.host.ctx);
+        }
         return inside_any;
     }
 
-    pub fn handlePointerClick(self: *Self, x: f64, y: f64) bool {
+    pub fn handlePointerClick(self: *Self, px: f64, py: f64) bool {
         const out_count = self.host.output_count(self.host.ctx);
         var inside = false;
         var output_index: usize = 0;
         for (0..out_count) |i| {
             const info = self.host.output_info(self.host.ctx, i);
-            const h = self.visibleHeight();
-            const min_x: f64 = @floatFromInt(info.x);
-            const max_x: f64 = @floatFromInt(info.x + panel_width);
-            const min_y: f64 = @floatFromInt(info.y + info.height - h);
-            const max_y: f64 = @floatFromInt(info.y + info.height);
             if (i < self.outputs.items.len) self.outputs.items[i].info = info;
-            if (x >= min_x and x < max_x and y >= min_y and y < max_y) {
+            if (self.pointInside(info, px, py)) {
                 inside = true;
                 output_index = i;
             }
@@ -463,26 +462,29 @@ pub const Tray = struct {
         if (!inside) {
             if (self.pinned) {
                 self.pinned = false;
+                self.open = false;
                 self.hovered = false;
-                return true;
+                self.hover_index = null;
+                self.requestUpdate();
+                self.host.request_frame(self.host.ctx);
             }
-            return false;
+            return self.pinned;
         }
 
         const info = self.host.output_info(self.host.ctx, output_index);
-        const h = self.visibleHeight();
-        const local_y = y - @as(f64, @floatFromInt(info.y + info.height - h));
-        const idx: usize = @intFromFloat(@floor(local_y / @as(f64, item_height)));
-        if (idx < self.items.len) {
-            if (self.pinned) {
-                self.selected_index = idx;
-                self.activateItem(idx);
-            } else {
-                self.toggle();
-            }
-        } else {
-            self.toggle();
+        const local_y = py - @as(f64, @floatFromInt(info.y + info.height - self.panelHeightFor(info, self.open_amount)));
+        const bh: f64 = @as(f64, button_height) * info.scale;
+        const settings_top: f64 = @as(f64, self.panelHeightFor(info, self.open_amount) - bottom_margin) * info.scale - bh;
+        const scroll_px: f64 = self.scroll_offset * info.scale;
+        var idx: usize = 0;
+        if (local_y < settings_top) {
+            const dist = settings_top - local_y + scroll_px;
+            idx = @as(usize, @intFromFloat(@floor(dist / (bh + @as(f64, button_gap) * info.scale)))) + 1;
+            if (idx >= self.items.len) idx = 0;
         }
+        self.selected_index = idx;
+        self.hover_index = idx;
+        self.activateItem(idx);
         return true;
     }
 };

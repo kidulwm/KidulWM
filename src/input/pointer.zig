@@ -86,9 +86,11 @@ const PointerDevice = struct {
     fn handleMotionAbsolute(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
         const self: *PointerDevice = @fieldParentPtr("motion_absolute", listener);
         const server = self.manager.server;
-        server.cursor_x = event.x;
-        server.cursor_y = event.y;
-        server.cursor.warpAbsolute(null, event.x, event.y);
+        var box: wlr.Box = undefined;
+        server.output_layout.getBox(null, &box);
+        server.cursor_x = event.x * @as(f64, @floatFromInt(box.width));
+        server.cursor_y = event.y * @as(f64, @floatFromInt(box.height));
+        server.cursor.warpAbsolute(null, server.cursor_x, server.cursor_y);
         if (server.handlePointerMove(server.cursor_x, server.cursor_y)) {
             server.logPointerDiagnostic("abs", server.cursor_x, server.cursor_y);
             return;

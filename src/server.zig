@@ -86,6 +86,7 @@ pub const Server = struct {
     renderer_allocator: *wlr.Allocator,
     compositor: *wlr.Compositor,
     scene: *wlr.Scene,
+    overlay_tree: *wlr.SceneTree,
     output_layout: *wlr.OutputLayout,
     scene_output_layout: *wlr.SceneOutputLayout,
     xdg_shell: *wlr.XdgShell,
@@ -335,6 +336,7 @@ pub const Server = struct {
                 .image_buffer = null,
                 .image_scene_buffer = null,
             },
+            .overlay_tree = undefined,
             .outputs = undefined,
             .chrome_style_generation = 0,
             .tray = undefined,
@@ -342,7 +344,10 @@ pub const Server = struct {
 
         server.outputs.init();
 
-        server.tray = try ui.Tray.init(server.allocator, Server.makeTrayHost(server), &server.scene.tree);
+        const overlay_tree = try server.scene.tree.createSceneTree();
+        server.overlay_tree = overlay_tree;
+
+        server.tray = try ui.Tray.init(server.allocator, Server.makeTrayHost(server), overlay_tree);
 
         const bg_rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
         server.background.rect = bg_rect;
@@ -444,6 +449,7 @@ pub const Server = struct {
 
         self.tray.deinit();
         self.keybinds.deinit();
+        self.overlay_tree.node.destroy();
 
         self.input_manager.deinit();
         self.allocator.destroy(self.input_manager);
@@ -750,6 +756,7 @@ pub const Server = struct {
                     window.updateDim(true);
                     window.updateChrome(true, .all);
                     window.scene_tree.node.raiseToTop();
+                    self.overlay_tree.node.raiseToTop();
                 } else {
                     window.updateDim(false);
                     window.updateChrome(false, peek_edges);
@@ -796,6 +803,7 @@ pub const Server = struct {
                         window.updateDim(true);
                         window.updateChrome(true, .all);
                         window.scene_tree.node.raiseToTop();
+                        self.overlay_tree.node.raiseToTop();
                         if (self.deck.empty_slot == .none) {
                             self.focusWindow(window);
                         }
@@ -1028,16 +1036,18 @@ pub const Server = struct {
                         if (i == index) {
                             var box: wlr.Box = undefined;
                             s.output_layout.getBox(output.wlr_output, &box);
+                            const left_w: i32 = @intFromFloat(@as(f32, @floatFromInt(box.width)) * output.deck.split.left_peek);
                             return .{
                                 .x = box.x,
                                 .y = box.y,
                                 .width = box.width,
                                 .height = box.height,
                                 .scale = output.wlr_output.scale,
+                                .focus_left = box.x + left_w,
                             };
                         }
                     }
-                    return .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0 };
+                    return .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 };
                 }
             }.f,
             .get_animation_kind = struct {
@@ -1052,10 +1062,13 @@ pub const Server = struct {
                     s.nextAnimationKind();
                 }
             }.f,
-            .request_layout = struct {
+            .request_frame = struct {
                 fn f(ctx: *anyopaque) void {
                     const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    s.requestLayout();
+                    var it = s.outputs.iterator(.forward);
+                    while (it.next()) |output| {
+                        output.wlr_output.scheduleFrame();
+                    }
                 }
             }.f,
             .theme = &self.theme,
