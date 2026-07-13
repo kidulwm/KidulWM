@@ -26,8 +26,6 @@ pub const Window = struct {
     dim_rect: ?*wlr.SceneRect,
     dim_color: [4]f32,
 
-    bg_rect: ?*wlr.SceneRect,
-
     chrome_tree: ?*wlr.SceneTree,
     chrome_scale: u32,
     chrome_style_generation: u32,
@@ -46,9 +44,6 @@ pub const Window = struct {
         errdefer server.allocator.destroy(window);
 
         const scene_tree = try server.scene.tree.createSceneTree();
-        // Background fill behind the client surface so gaps between the border
-        // and the client content area are filled with the KidulWM background color.
-        const bg_rect = try scene_tree.createSceneRect(1, 1, &server.theme.color_background.toF32());
         const surface_tree = try scene_tree.createSceneXdgSurface(toplevel.base);
 
         const id = server.next_window_id;
@@ -65,7 +60,6 @@ pub const Window = struct {
             .animation = .{},
             .dim_rect = null,
             .dim_color = .{ 0.0, 0.0, 0.0, 0.0 },
-            .bg_rect = bg_rect,
             .chrome_tree = null,
             .chrome_scale = 1,
             .chrome_style_generation = 0,
@@ -108,47 +102,63 @@ pub const Window = struct {
         std.log.info("KidulWM: focused window", .{});
     }
 
-    /// Layout is applied immediately. Animation is disabled to keep motion crisp
-    /// and avoid VM rendering overhead; we only use the target fields for bounds.
+    /// Layout target is recorded. By default windows snap instantly to their
+    /// correct SlideDeck position. Call `startTransition()` to animate this
+    /// particular layout change over 120 ms.
     pub fn setLayoutTarget(self: *Window, x: i32, y: i32, w: u32, h: u32) void {
-        const target = self.animation;
-        const first = (target.target_w == 0 and target.target_h == 0);
-        self.animation.target_x = @floatFromInt(x);
-        self.animation.target_y = @floatFromInt(y);
-        self.animation.target_w = @floatFromInt(w);
-        self.animation.target_h = @floatFromInt(h);
-        self.animation.cur_x = self.animation.target_x;
-        self.animation.cur_y = self.animation.target_y;
-        self.animation.cur_w = self.animation.target_w;
-        self.animation.cur_h = self.animation.target_h;
-        self.scene_tree.node.setPosition(x, y);
-        if (self.bg_rect) |rect| {
-            const color = self.server.theme.color_background.toF32();
-            rect.setSize(@intCast(w), @intCast(h));
-            rect.setColor(&color);
+        const tx = @as(f64, @floatFromInt(x));
+        const ty = @as(f64, @floatFromInt(y));
+        const tw = @as(f64, @floatFromInt(w));
+        const th = @as(f64, @floatFromInt(h));
+
+        self.animation.target_x = tx;
+        self.animation.target_y = ty;
+        self.animation.target_w = tw;
+        self.animation.target_h = th;
+
+        // Size and opacity snap immediately; position is only animated while a
+        // transition is active.
+        self.animation.cur_w = tw;
+        self.animation.cur_h = th;
+        self.animation.cur_opacity = self.animation.target_opacity;
+
+        if (self.animation.last_us == 0) {
+            self.animation.cur_x = tx;
+            self.animation.cur_y = ty;
+            self.animation.start_x = tx;
+            self.animation.start_y = ty;
         }
-        if (first) {
-            self.animation.last_us = animation.nowUs();
-        }
+
+        self.scene_tree.node.setPosition(
+            @intFromFloat(@round(self.animation.cur_x)),
+            @intFromFloat(@round(self.animation.cur_y)),
+        );
     }
 
-    /// Animation is disabled; synchronise the scene node with the target.
-    pub fn tickAnimation(self: *Window, _: animation.TimeUs) bool {
+    /// Start a 120 ms position transition from the window's current position to
+    /// the layout target that was just set by `setLayoutTarget`.
+    pub fn startTransition(self: *Window) void {
+        self.animation.start_x = self.animation.cur_x;
+        self.animation.start_y = self.animation.cur_y;
+        self.animation.last_us = animation.nowUs();
+    }
+
+    /// Advance any active transition and update the scene.
+    pub fn tickAnimation(self: *Window, now_us: animation.TimeUs) bool {
         if (!self.toplevel.base.surface.mapped) return false;
-        if (self.animation.cur_x != self.animation.target_x or
-            self.animation.cur_y != self.animation.target_y)
-        {
-            self.animation.cur_x = self.animation.target_x;
-            self.animation.cur_y = self.animation.target_y;
-            self.animation.cur_w = self.animation.target_w;
-            self.animation.cur_h = self.animation.target_h;
+        if (self.animation.last_us == 0) return false;
+        const moved = self.animation.tick(now_us);
+        if (moved) {
             self.scene_tree.node.setPosition(
-                @intFromFloat(self.animation.cur_x),
-                @intFromFloat(self.animation.cur_y),
+                @intFromFloat(@round(self.animation.cur_x)),
+                @intFromFloat(@round(self.animation.cur_y)),
             );
-            return true;
+            self.updateChrome(self.chrome_focused, self.chrome_edges);
+        } else {
+            // Transition finished; reset so future layouts snap.
+            self.animation.last_us = 0;
         }
-        return false;
+        return moved;
     }
 
     /// Dim or undim the window overlay depending on focus. The overlay size
@@ -255,8 +265,8 @@ pub const Window = struct {
     /// The overlay follows the layout target size and focus state, ensuring
     /// KidulWM owns the signature corner look regardless of client CSD.
     pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
-        const w: i32 = @intFromFloat(self.animation.target_w);
-        const h: i32 = @intFromFloat(self.animation.target_h);
+        const w: i32 = @intFromFloat(@round(self.animation.cur_w));
+        const h: i32 = @intFromFloat(@round(self.animation.cur_h));
         if (w <= 0 or h <= 0) return;
 
         // Pick output scale from the output this window is on.
@@ -328,12 +338,8 @@ pub const Window = struct {
     fn handleUnmap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("unmap", listener);
         std.log.info("KidulWM: window unmapped", .{});
-        // Destroy the compositor-drawn fill and chrome so the slide frame does
-        // not linger on screen after the client surface disappears.
-        if (window.bg_rect) |rect| {
-            rect.node.destroy();
-            window.bg_rect = null;
-        }
+        // Destroy the compositor-drawn chrome so the slide frame does not linger
+        // on screen after the client surface disappears.
         if (window.chrome_tree) |tree| {
             tree.node.destroy();
             window.chrome_tree = null;

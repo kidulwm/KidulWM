@@ -247,24 +247,18 @@ pub const SlideDeck = struct {
         const w: f32 = @floatFromInt(self.width);
         const focus_w: i32 = @intFromFloat(w * self.split.focus);
         const left_w: i32 = @intFromFloat(w * self.split.left_peek);
-        // Right peek is a full-width window pushed off the right edge, just like
-        // the left peek is a full-width window pushed off the left edge. The
-        // visible sliver is determined by where the output edge cuts it.
         const h = self.height;
 
         const x: i32 = switch (delta) {
-            // Left neighbour: position so only its rightmost `left_w` pixels
-            // are visible at the left edge of the screen, with its right edge
-            // butting up against the focused window.
             -1 => -@as(i32, @intCast(self.width)) + left_w,
             0 => left_w,
             1 => left_w + focus_w,
-            else => @as(i32, @intCast(delta)) * @as(i32, @intCast(self.width)),
+            // Deeper slides sit just off the nearest edge so focus changes only
+            // animate the focused slide and its immediate neighbours.
+            else => if (delta < 0) -@as(i32, @intCast(self.width)) else left_w + focus_w,
         };
         const width: u32 = switch (delta) {
-            -1 => self.width,
             0 => @intCast(focus_w),
-            1 => self.width,
             else => self.width,
         };
         return .{ .x = x, .y = 0, .width = width, .height = h };
@@ -274,19 +268,16 @@ pub const SlideDeck = struct {
         const h: f32 = @floatFromInt(self.height);
         const focus_h: i32 = @intFromFloat(h * self.split.focus);
         const top_h: i32 = @intFromFloat(h * self.split.left_peek);
-        const bottom_h: i32 = @intFromFloat(h * self.split.right_peek);
         const w = self.width;
 
         const y: i32 = switch (delta) {
-            -1 => 0,
+            -1 => -@as(i32, @intCast(self.height)) + top_h,
             0 => top_h,
             1 => top_h + focus_h,
-            else => @as(i32, @intCast(delta)) * @as(i32, @intCast(self.height)),
+            else => if (delta < 0) -@as(i32, @intCast(self.height)) else top_h + focus_h,
         };
         const height: u32 = switch (delta) {
-            -1 => @intCast(top_h),
             0 => @intCast(focus_h),
-            1 => @intCast(bottom_h),
             else => self.height,
         };
         return .{ .x = 0, .y = y, .width = w, .height = height };

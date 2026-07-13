@@ -119,6 +119,7 @@ pub const Server = struct {
     focused_window: ?*Window,
     focused_window_id: u32 = 0,
     focused_output: ?*Output = null,
+    last_focused_slide_id: u32 = 0,
     next_window_id: u32 = 1,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
@@ -681,6 +682,12 @@ pub const Server = struct {
         self.layout_requested.store(false, .monotonic);
 
         const active_deck = self.currentDeck();
+        const current_focused_slide_id: u32 = if (active_deck.empty_slot == .none and active_deck.slides.items.len > 0)
+            active_deck.slides.items[active_deck.focused_index].window_id
+        else
+            0;
+        const focus_changed = self.last_focused_slide_id != current_focused_slide_id;
+
         var any_slides = false;
 
         var output_it = self.outputs.iterator(.forward);
@@ -706,6 +713,9 @@ pub const Server = struct {
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
                 window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                if (focus_changed) {
+                    window.startTransition();
+                }
                 // Only reconfigure and scale the actual client surface for the focused
                 // slide. Side peeks keep their full-window scene tree (so the chrome
                 // overlay masks the entire bounds), but the surface buffer itself is
@@ -754,6 +764,9 @@ pub const Server = struct {
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
                     window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                    if (focus_changed) {
+                        window.startTransition();
+                    }
                     if (is_focused and size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
@@ -783,6 +796,8 @@ pub const Server = struct {
         if (!any_slides) {
             self.clearFocus();
         }
+
+        self.last_focused_slide_id = current_focused_slide_id;
     }
 
     fn ipcThreadLoop(self: *Server) void {

@@ -43,58 +43,41 @@ pub const WindowAnimation = struct {
     cur_h: f64 = 0,
     cur_opacity: f64 = 1,
 
-    vx: f64 = 0,
-    vy: f64 = 0,
-    vw: f64 = 0,
-    vh: f64 = 0,
-    v_opacity: f64 = 0,
+    /// Position at the start of the current transition.
+    start_x: f64 = 0,
+    start_y: f64 = 0,
 
     last_us: TimeUs = 0,
 
-    opacity_in_spring: Spring = .{ .stiffness = 18.0, .damping = 0.92, .epsilon = 0.02 },
-    motion_spring: Spring = .{ .stiffness = 9.0, .damping = 0.97, .epsilon = 0.5 },
+    /// 120 ms ease-out interpolation used only between SlideDeck states.
+    position_duration_us: TimeUs = 120_000,
+    position_ease_power: u32 = 3,
 
-    /// True when position/size are very close to target and velocity is nil.
     pub fn isSettled(self: WindowAnimation) bool {
-        return @abs(self.target_x - self.cur_x) < self.motion_spring.epsilon and
-            @abs(self.target_y - self.cur_y) < self.motion_spring.epsilon and
-            @abs(self.target_w - self.cur_w) < self.motion_spring.epsilon and
-            @abs(self.target_h - self.cur_h) < self.motion_spring.epsilon and
-            @abs(self.vx) < self.motion_spring.epsilon and
-            @abs(self.vy) < self.motion_spring.epsilon and
-            @abs(self.vw) < self.motion_spring.epsilon and
-            @abs(self.vh) < self.motion_spring.epsilon;
+        return @abs(self.target_x - self.cur_x) < 1.0 and
+            @abs(self.target_y - self.cur_y) < 1.0 and
+            @abs(self.target_w - self.cur_w) < 1.0 and
+            @abs(self.target_h - self.cur_h) < 1.0;
     }
 
-    /// Update current values toward targets and report whether anything moved.
+    /// Interpolate position toward target over `position_duration_us`. Size and
+    /// opacity snap immediately. Returns true while moving.
     pub fn tick(self: *WindowAnimation, now_us: TimeUs) bool {
         if (self.last_us == 0) {
             self.last_us = now_us;
             return false;
         }
-        const dt_us = now_us - self.last_us;
-        if (dt_us == 0) return false;
-        // Cap dt at 50 ms so a missed frame does not rocket the spring.
-        const dt_s: f64 = @min(@as(f64, @floatFromInt(dt_us)) / 1_000_000.0, 0.05);
-
-        const px = self.motion_spring.step(self.cur_x, self.vx, self.target_x, dt_s);
-        const py = self.motion_spring.step(self.cur_y, self.vy, self.target_y, dt_s);
-        const pw = self.motion_spring.step(self.cur_w, self.vw, self.target_w, dt_s);
-        const ph = self.motion_spring.step(self.cur_h, self.vh, self.target_h, dt_s);
-        const po = self.opacity_in_spring.step(self.cur_opacity, self.v_opacity, self.target_opacity, dt_s);
-
-        self.cur_x = px.value;
-        self.vx = px.velocity;
-        self.cur_y = py.value;
-        self.vy = py.velocity;
-        self.cur_w = pw.value;
-        self.vw = pw.velocity;
-        self.cur_h = ph.value;
-        self.vh = ph.velocity;
-        self.cur_opacity = po.value;
-        self.v_opacity = po.velocity;
-
-        return !(px.settled and py.settled and pw.settled and ph.settled and po.settled);
+        const elapsed = now_us - self.last_us;
+        if (elapsed >= self.position_duration_us) {
+            self.cur_x = self.target_x;
+            self.cur_y = self.target_y;
+            return false;
+        }
+        const t = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(self.position_duration_us));
+        const eased = 1.0 - std.math.pow(f64, 1.0 - t, self.position_ease_power);
+        self.cur_x = self.start_x + (self.target_x - self.start_x) * eased;
+        self.cur_y = self.start_y + (self.target_y - self.start_y) * eased;
+        return true;
     }
 };
 
