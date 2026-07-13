@@ -92,6 +92,8 @@ pub fn build(b: *std.Build) void {
     const control_exe = b.addExecutable(.{ .name = "kidulwm-control", .root_module = control_mod });
     b.installArtifact(control_exe);
 
+    b.installFile("config/keybinds.conf", "share/kidulwm/keybinds.conf");
+
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);

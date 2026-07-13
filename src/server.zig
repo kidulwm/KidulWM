@@ -14,6 +14,7 @@ const chrome_renderer = @import("render/chrome.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const ui = @import("./ui/tray.zig");
+const keybinds = @import("config/keybinds.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
@@ -120,6 +121,7 @@ pub const Server = struct {
     layout_requested: std.atomic.Value(bool),
 
     focused_window: ?*Window,
+    keybinds: keybinds.Keybinds,
     focused_window_id: u32 = 0,
     focused_output: ?*Output = null,
     last_focused_slide_id: u32 = 0,
@@ -317,7 +319,8 @@ pub const Server = struct {
             .deck_orientation = .horizontal,
             .windows = undefined,
             .layout_requested = std.atomic.Value(bool).init(false),
-            .deck = slidedeck.SlideDeck.init(allocator),
+            .keybinds = keybinds.Keybinds.load(allocator),
+        .deck = slidedeck.SlideDeck.init(allocator),
             .layout_pipe = undefined,
             .layout_source = undefined,
             .new_output = undefined,
@@ -440,6 +443,7 @@ pub const Server = struct {
         self.ipc_server.destroy();
 
         self.tray.deinit();
+        self.keybinds.deinit();
 
         self.input_manager.deinit();
         self.allocator.destroy(self.input_manager);
@@ -1066,6 +1070,51 @@ pub const Server = struct {
         };
         std.log.info("KidulWM: animation preset -> {s}", .{@tagName(self.current_transition_kind)});
         self.tray.requestUpdate();
+    }
+
+    pub fn spawnCommand(self: *Server, cmd: []const u8) void {
+        _ = self;
+        const pid = linux.fork();
+        if (@as(isize, @bitCast(pid)) < 0) {
+            std.log.warn("KidulWM: fork failed for spawn", .{});
+            return;
+        }
+        if (pid != 0) return;
+
+        // redirect stdio so the compositor keeps its pipe fds
+        const devnull = linux.open("/dev/null", .{ .ACCMODE = .RDONLY }, 0);
+        if (@as(isize, @bitCast(devnull)) >= 0) {
+            const fd: i32 = @intCast(devnull);
+            _ = linux.dup2(fd, linux.STDIN_FILENO);
+            _ = linux.dup2(fd, linux.STDOUT_FILENO);
+            _ = linux.dup2(fd, linux.STDERR_FILENO);
+            _ = linux.close(fd);
+        }
+
+        const child_allocator = std.heap.page_allocator;
+        var it = std.mem.tokenizeScalar(u8, cmd, ' ');
+        var argv: [33:null]?[*:0]const u8 = undefined;
+        var argc: usize = 0;
+        while (it.next()) |arg| {
+            if (argc >= argv.len - 1) break;
+            const z = child_allocator.dupeZ(u8, arg) catch break;
+            argv[argc] = z.ptr;
+            argc += 1;
+        }
+        if (argc == 0) {
+            std.log.warn("KidulWM: empty spawn command", .{});
+            linux.exit(127);
+        }
+        argv[argc] = null;
+
+        const envp = [_:null]?[*:0]const u8{
+            "WAYLAND_DISPLAY=wayland-1",
+            "XDG_RUNTIME_DIR=/run/user/1000",
+            "GHOSTTY_RESOURCES_DIR=/usr/share/ghostty",
+            null,
+        };
+        _ = linux.execve(argv[0].?, &argv, &envp);
+        linux.exit(127);
     }
 
     pub fn handlePointerMove(self: *Server, x: f64, y: f64) bool {

@@ -79,41 +79,52 @@ const KeyboardDevice = struct {
             "Mod4",
             @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
         ) > 0;
-        if (mod4_active and sym == xkb.Keysym.Return) {
-            spawnTerminal();
-            return;
-        }
-        if (mod4_active and sym == xkb.Keysym.j) {
-            server.focusNext();
-            return;
-        }
-        if (mod4_active and sym == xkb.Keysym.k) {
-            server.focusPrev();
-            return;
-        }
-        if (mod4_active and sym == xkb.Keysym.t) {
-            server.tray.toggle();
-            return;
-        }
-        if (mod4_active and sym == xkb.Keysym.a) {
-            server.nextAnimationKind();
-            return;
-        }
-        if (mod4_active and server.tray.isOpen()) {
-            if (sym == xkb.Keysym.Up) {
-                server.tray.selectPrev();
-                return;
-            }
-            if (sym == xkb.Keysym.Down) {
-                server.tray.selectNext();
-                return;
-            }
-            if (sym == xkb.Keysym.Return) {
-                server.tray.activateSelected();
-                return;
+
+        if (mod4_active) {
+            const action = server.keybinds.match(true, sym);
+            if (action) |a| {
+                if (handleAction(server, a)) return;
             }
         }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
+    }
+
+    fn handleAction(server: *Server, action: @import("../config/keybinds.zig").Action) bool {
+        switch (action) {
+            .spawn => |cmd| {
+                server.spawnCommand(cmd);
+                return true;
+            },
+            .focus_next => {
+                server.focusNext();
+                return true;
+            },
+            .focus_prev => {
+                server.focusPrev();
+                return true;
+            },
+            .tray_toggle => {
+                server.tray.toggle();
+                return true;
+            },
+            .tray_select_next => {
+                if (server.tray.isOpen()) server.tray.selectNext() else server.tray.toggle();
+                return true;
+            },
+            .tray_select_prev => {
+                if (server.tray.isOpen()) server.tray.selectPrev() else server.tray.toggle();
+                return true;
+            },
+            .tray_activate => {
+                if (server.tray.isOpen()) server.tray.activateSelected() else server.tray.toggle();
+                return true;
+            },
+            .next_animation => {
+                server.nextAnimationKind();
+                return true;
+            },
+            .none => return false,
+        }
     }
 
     fn handleModifiers(listener: *wl.Listener(*wlr.Keyboard), keyboard: *wlr.Keyboard) void {
@@ -121,34 +132,6 @@ const KeyboardDevice = struct {
         self.manager.server.seat.keyboardNotifyModifiers(&keyboard.modifiers);
     }
 
-    fn spawnTerminal() void {
-        const pid = linux.fork();
-        if (@as(isize, @bitCast(pid)) < 0) {
-            std.log.warn("KidulWM: fork failed", .{});
-            return;
-        }
-        if (pid != 0) return; // parent
-
-        const devnull = linux.open("/dev/null", .{ .ACCMODE = .RDONLY }, 0);
-        if (@as(isize, @bitCast(devnull)) < 0) {
-            std.log.warn("KidulWM: failed to open /dev/null", .{});
-            linux.exit(127);
-        }
-        const fd: i32 = @intCast(devnull);
-        _ = linux.dup2(fd, linux.STDIN_FILENO);
-        _ = linux.dup2(fd, linux.STDOUT_FILENO);
-        _ = linux.dup2(fd, linux.STDERR_FILENO);
-        _ = linux.close(fd);
-
-        const argv = [_:null]?[*:0]const u8{"/usr/bin/ghostty"};
-        const envp = [_:null]?[*:0]const u8{
-            "WAYLAND_DISPLAY=wayland-1",
-            "XDG_RUNTIME_DIR=/run/user/1000",
-            "GHOSTTY_RESOURCES_DIR=/usr/share/ghostty",
-        };
-        _ = linux.execve("/usr/bin/ghostty", &argv, &envp);
-        linux.exit(127);
-    }
 };
 
 pub const KeyboardManager = struct {
