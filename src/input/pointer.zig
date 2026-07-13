@@ -76,6 +76,8 @@ const PointerDevice = struct {
         server.cursor_x += event.delta_x;
         server.cursor_y += event.delta_y;
         server.cursor.move(null, event.delta_x, event.delta_y);
+        if (server.handlePointerMove(server.cursor_x, server.cursor_y))
+            return;
         server.seat.pointerNotifyMotion(timeMsec(), server.cursor_x, server.cursor_y);
     }
 
@@ -85,12 +87,18 @@ const PointerDevice = struct {
         server.cursor_x = event.x;
         server.cursor_y = event.y;
         server.cursor.warpAbsolute(null, event.x, event.y);
+        if (server.handlePointerMove(server.cursor_x, server.cursor_y))
+            return;
         server.seat.pointerNotifyMotion(event.time_msec, server.cursor_x, server.cursor_y);
     }
 
     fn handleButton(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
         const self: *PointerDevice = @fieldParentPtr("button", listener);
         const server = self.manager.server;
+        if (event.state == .pressed) {
+            if (server.handlePointerClick(server.cursor_x, server.cursor_y))
+                return;
+        }
         _ = server.seat.pointerNotifyButton(event.time_msec, event.button, event.state);
         if (event.state == .pressed) {
             server.focusAtCursor();

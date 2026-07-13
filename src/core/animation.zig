@@ -30,6 +30,12 @@ pub const Spring = struct {
 };
 
 /// Animation state for a single window.
+pub const AnimationKind = enum {
+    snap,
+    wobble,
+    ripple,
+};
+
 pub const WindowAnimation = struct {
     target_x: f64 = 0,
     target_y: f64 = 0,
@@ -47,6 +53,12 @@ pub const WindowAnimation = struct {
     start_x: f64 = 0,
     start_y: f64 = 0,
 
+    /// Velocity used for spring-based presets (wobble / ripple).
+    vx: f64 = 0,
+    vy: f64 = 0,
+
+    kind: AnimationKind = .snap,
+    start_us: TimeUs = 0,
     last_us: TimeUs = 0,
 
     /// 120 ms ease-out interpolation used only between SlideDeck states.
@@ -60,24 +72,68 @@ pub const WindowAnimation = struct {
             @abs(self.target_h - self.cur_h) < 1.0;
     }
 
-    /// Interpolate position toward target over `position_duration_us`. Size and
-    /// opacity snap immediately. Returns true while moving.
+    /// Interpolate position toward target. Size and opacity snap immediately.
+    /// Returns true while moving.
     pub fn tick(self: *WindowAnimation, now_us: TimeUs) bool {
-        if (self.last_us == 0) {
+        if (self.start_us == 0) {
+            self.start_us = now_us;
             self.last_us = now_us;
             return false;
         }
-        const elapsed = now_us - self.last_us;
-        if (elapsed >= self.position_duration_us) {
-            self.cur_x = self.target_x;
-            self.cur_y = self.target_y;
-            return false;
+        const elapsed = now_us - self.start_us;
+        switch (self.kind) {
+            .snap => {
+                if (elapsed >= self.position_duration_us) {
+                    self.cur_x = self.target_x;
+                    self.cur_y = self.target_y;
+                    return false;
+                }
+                const t = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(self.position_duration_us));
+                const eased = 1.0 - std.math.pow(f64, 1.0 - t, self.position_ease_power);
+                self.cur_x = self.start_x + (self.target_x - self.start_x) * eased;
+                self.cur_y = self.start_y + (self.target_y - self.start_y) * eased;
+                return true;
+            },
+            .wobble => {
+                if (elapsed >= self.position_duration_us) {
+                    // Spring got at least the minimal snap window; continue until settled.
+                }
+                const dt = @as(f64, @floatFromInt(now_us - self.last_us)) / 1_000_000.0;
+                self.last_us = now_us;
+                if (dt <= 0.0) return true;
+                const spring = Spring{ .stiffness = 25.0, .damping = 0.82, .epsilon = 2.0 };
+                const rx = spring.step(self.cur_x, self.vx, self.target_x, dt);
+                const ry = spring.step(self.cur_y, self.vy, self.target_y, dt);
+                self.cur_x = rx.value;
+                self.cur_y = ry.value;
+                self.vx = rx.velocity;
+                self.vy = ry.velocity;
+                if (rx.settled and ry.settled) {
+                    self.cur_x = self.target_x;
+                    self.cur_y = self.target_y;
+                    return false;
+                }
+                return true;
+            },
+            .ripple => {
+                const dt = @as(f64, @floatFromInt(now_us - self.last_us)) / 1_000_000.0;
+                self.last_us = now_us;
+                if (dt <= 0.0) return true;
+                const spring = Spring{ .stiffness = 18.0, .damping = 0.90, .epsilon = 1.5 };
+                const rx = spring.step(self.cur_x, self.vx, self.target_x, dt);
+                const ry = spring.step(self.cur_y, self.vy, self.target_y, dt);
+                self.cur_x = rx.value;
+                self.cur_y = ry.value;
+                self.vx = rx.velocity;
+                self.vy = ry.velocity;
+                if (rx.settled and ry.settled) {
+                    self.cur_x = self.target_x;
+                    self.cur_y = self.target_y;
+                    return false;
+                }
+                return true;
+            },
         }
-        const t = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(self.position_duration_us));
-        const eased = 1.0 - std.math.pow(f64, 1.0 - t, self.position_ease_power);
-        self.cur_x = self.start_x + (self.target_x - self.start_x) * eased;
-        self.cur_y = self.start_y + (self.target_y - self.start_y) * eased;
-        return true;
     }
 };
 

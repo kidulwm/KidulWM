@@ -137,10 +137,14 @@ pub const Window = struct {
 
     /// Start a 120 ms position transition from the window's current position to
     /// the layout target that was just set by `setLayoutTarget`.
-    pub fn startTransition(self: *Window) void {
+    pub fn startTransition(self: *Window, kind: animation.AnimationKind) void {
         self.animation.start_x = self.animation.cur_x;
         self.animation.start_y = self.animation.cur_y;
-        self.animation.last_us = animation.nowUs();
+        self.animation.kind = kind;
+        self.animation.start_us = animation.nowUs();
+        self.animation.last_us = self.animation.start_us;
+        self.animation.vx = 0;
+        self.animation.vy = 0;
     }
 
     /// Advance any active transition and update the scene.
@@ -157,6 +161,7 @@ pub const Window = struct {
         } else {
             // Transition finished; reset so future layouts snap.
             self.animation.last_us = 0;
+            self.animation.start_us = 0;
         }
         return moved;
     }

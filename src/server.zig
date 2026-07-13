@@ -13,6 +13,7 @@ const animation = @import("core/animation.zig");
 const chrome_renderer = @import("render/chrome.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
+const ui = @import("./ui/tray.zig");
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
@@ -41,6 +42,7 @@ pub const Output = struct {
     }
 
     pub fn deinit(self: *Output) void {
+        self.server.tray.removeOutput(self);
         self.frame.link.remove();
         self.destroy.link.remove();
         self.deck.deinit();
@@ -54,6 +56,7 @@ pub const Output = struct {
         while (it.next()) |window| {
             _ = window.tickAnimation(now_us);
         }
+        self.server.tray.update();
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
         const ok = self.scene_output.commit(null);
@@ -120,7 +123,10 @@ pub const Server = struct {
     focused_window_id: u32 = 0,
     focused_output: ?*Output = null,
     last_focused_slide_id: u32 = 0,
+    current_transition_kind: animation.AnimationKind = .snap,
     next_window_id: u32 = 1,
+
+    tray: ui.Tray,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
     chrome_style_generation: u32,
@@ -328,9 +334,12 @@ pub const Server = struct {
             },
             .outputs = undefined,
             .chrome_style_generation = 0,
+            .tray = undefined,
         };
 
         server.outputs.init();
+
+        server.tray = try ui.Tray.init(server.allocator, Server.makeTrayHost(server), &server.scene.tree);
 
         const bg_rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
         server.background.rect = bg_rect;
@@ -429,6 +438,8 @@ pub const Server = struct {
             self.ipc_thread = null;
         }
         self.ipc_server.destroy();
+
+        self.tray.deinit();
 
         self.input_manager.deinit();
         self.allocator.destroy(self.input_manager);
@@ -714,7 +725,7 @@ pub const Server = struct {
                 const size_changed = w_changed or h_changed;
                 window.setLayoutTarget(target.x, target.y, target.width, target.height);
                 if (focus_changed) {
-                    window.startTransition();
+                    window.startTransition(self.current_transition_kind);
                 }
                 // Only reconfigure and scale the actual client surface for the focused
                 // slide. Side peeks keep their full-window scene tree (so the chrome
@@ -763,10 +774,10 @@ pub const Server = struct {
                     const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
-                    window.setLayoutTarget(target.x, target.y, target.width, target.height);
-                    if (focus_changed) {
-                        window.startTransition();
-                    }
+                window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                if (focus_changed) {
+                    window.startTransition(self.current_transition_kind);
+                }
                     if (is_focused and size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
@@ -883,6 +894,7 @@ pub const Server = struct {
         };
         output.init(self, wlr_output, scene_output);
         std.log.info("KidulWM: output added to layout", .{});
+        self.tray.addOutput(output);
         self.requestLayout();
         wlr_output.scheduleFrame();
     }
@@ -990,6 +1002,78 @@ pub const Server = struct {
         source.timerUpdate(1) catch |err| {
             std.log.err("failed to arm quit timer: {}", .{err});
         };
+    }
+
+    /// Provide the tray with per-output geometry and state access without
+    /// creating a circular module dependency on server.zig.
+    fn makeTrayHost(self: *Server) ui.TrayHost {
+        return .{
+            .ctx = self,
+            .output_count = struct {
+                fn f(ctx: *anyopaque) usize {
+                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
+                    return s.outputs.length();
+                }
+            }.f,
+            .output_info = struct {
+                fn f(ctx: *anyopaque, index: usize) ui.OutputInfo {
+                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
+                    var it = s.outputs.iterator(.forward);
+                    var i: usize = 0;
+                    while (it.next()) |output| : (i += 1) {
+                        if (i == index) {
+                            var box: wlr.Box = undefined;
+                            s.output_layout.getBox(output.wlr_output, &box);
+                            return .{
+                                .x = box.x,
+                                .y = box.y,
+                                .width = box.width,
+                                .height = box.height,
+                                .scale = output.wlr_output.scale,
+                            };
+                        }
+                    }
+                    return .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0 };
+                }
+            }.f,
+            .get_animation_kind = struct {
+                fn f(ctx: *anyopaque) animation.AnimationKind {
+                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
+                    return s.current_transition_kind;
+                }
+            }.f,
+            .cycle_animation = struct {
+                fn f(ctx: *anyopaque) void {
+                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
+                    s.nextAnimationKind();
+                }
+            }.f,
+            .request_layout = struct {
+                fn f(ctx: *anyopaque) void {
+                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
+                    s.requestLayout();
+                }
+            }.f,
+            .theme = &self.theme,
+        };
+    }
+
+    pub fn nextAnimationKind(self: *Server) void {
+        self.current_transition_kind = switch (self.current_transition_kind) {
+            .snap => .wobble,
+            .wobble => .ripple,
+            .ripple => .snap,
+        };
+        std.log.info("KidulWM: animation preset -> {s}", .{@tagName(self.current_transition_kind)});
+        self.tray.requestUpdate();
+    }
+
+    pub fn handlePointerMove(self: *Server, x: f64, y: f64) bool {
+        return self.tray.handlePointerMove(x, y);
+    }
+
+    pub fn handlePointerClick(self: *Server, x: f64, y: f64) bool {
+        return self.tray.handlePointerClick(x, y);
     }
 
     fn applyTheme(self: *Server, key: []const u8, value: []const u8) void {
