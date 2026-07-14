@@ -9,6 +9,23 @@ const chrome_renderer = @import("render/chrome.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const Style = @import("core/style.zig").Style;
 
+const Label = struct {
+    buf: [64]u8 = undefined,
+    len: u8 = 0,
+
+    fn asSlice(self: *const Label) []const u8 {
+        return self.buf[0..self.len];
+    }
+
+    fn set(self: *Label, s: []const u8) bool {
+        const clipped = @min(s.len, self.buf.len);
+        if (clipped == self.len and std.mem.eql(u8, self.buf[0..clipped], s[0..clipped])) return false;
+        @memcpy(self.buf[0..clipped], s[0..clipped]);
+        self.len = @intCast(clipped);
+        return true;
+    }
+};
+
 pub const Window = struct {
     server: *Server,
     toplevel: *wlr.XdgToplevel,
@@ -33,11 +50,17 @@ pub const Window = struct {
     chrome_edges: chrome_renderer.EdgeMode,
     chrome_width: i32,
     chrome_height: i32,
+    chrome_label: Label,
+
+    title: Label,
+    app_id: Label,
 
     map: wl.Listener(void),
     unmap: wl.Listener(void),
     destroy: wl.Listener(void),
     commit: wl.Listener(*wlr.Surface),
+    set_title: wl.Listener(void),
+    set_app_id: wl.Listener(void),
 
     pub fn create(server: *Server, toplevel: *wlr.XdgToplevel) !*Window {
         const window = try server.allocator.create(Window);
@@ -67,24 +90,119 @@ pub const Window = struct {
             .chrome_edges = chrome_renderer.EdgeMode.all,
             .chrome_width = 0,
             .chrome_height = 0,
+            .chrome_label = .{},
+            .title = .{},
+            .app_id = .{},
             .map = wl.Listener(void).init(handleMap),
             .unmap = wl.Listener(void).init(handleUnmap),
             .destroy = wl.Listener(void).init(handleDestroy),
             .commit = wl.Listener(*wlr.Surface).init(handleCommit),
+            .set_title = wl.Listener(void).init(handleSetTitle),
+            .set_app_id = wl.Listener(void).init(handleSetAppId),
         };
 
         window.map.link.init();
         window.unmap.link.init();
         window.destroy.link.init();
         window.commit.link.init();
+        window.set_title.link.init();
+        window.set_app_id.link.init();
         window.link.init();
 
         toplevel.base.surface.events.map.add(&window.map);
         toplevel.base.surface.events.unmap.add(&window.unmap);
         toplevel.base.events.destroy.add(&window.destroy);
         toplevel.base.surface.events.commit.add(&window.commit);
+        toplevel.events.set_title.add(&window.set_title);
+        toplevel.events.set_app_id.add(&window.set_app_id);
+
+        // Capture initial title/app_id if already provided.
+        window.captureTitle();
+        window.captureAppId();
+        window.refreshPeekLabel();
 
         return window;
+    }
+
+    fn captureTitle(window: *Window) void {
+        if (window.toplevel.title) |ptr| {
+            const s = std.mem.sliceTo(ptr, 0);
+            _ = window.title.set(s);
+        }
+    }
+
+    fn captureAppId(window: *Window) void {
+        if (window.toplevel.app_id) |ptr| {
+            const s = std.mem.sliceTo(ptr, 0);
+            _ = window.app_id.set(s);
+        }
+    }
+
+    fn handleSetTitle(listener: *wl.Listener(void)) void {
+        const window: *Window = @fieldParentPtr("set_title", listener);
+        window.captureTitle();
+        window.refreshPeekLabel();
+    }
+
+    fn handleSetAppId(listener: *wl.Listener(void)) void {
+        const window: *Window = @fieldParentPtr("set_app_id", listener);
+        window.captureAppId();
+        window.refreshPeekLabel();
+    }
+
+    fn refreshPeekLabel(window: *Window) void {
+        const label = window.computePeekLabel();
+        if (window.chrome_label.set(label)) {
+            // Force chrome regen on next layout.
+            window.chrome_width = 0;
+            window.chrome_height = 0;
+        }
+    }
+
+    fn computePeekLabel(window: *Window) []const u8 {
+        const app_slice = window.app_id.asSlice();
+        const title_slice = window.title.asSlice();
+
+        // Known app_id nicknames.
+        if (appSliceContains(app_slice, "ghostty")) return "Ghostty";
+        if (appSliceContains(app_slice, "nano")) return "Nano";
+        if (appSliceContains(app_slice, "helium") or
+            appSliceContains(app_slice, "brave") or
+            appSliceContains(app_slice, "chrome") or
+            appSliceContains(app_slice, "firefox")) return "Helium";
+        if (appSliceContains(app_slice, "hermes") or appSliceContains(app_slice, "bob")) return "Bob";
+
+        if (app_slice.len > 0) {
+            const cleaned = cleanAppId(app_slice);
+            if (cleaned.len > 0) return cleaned;
+        }
+
+        if (title_slice.len > 0) {
+            if (std.mem.indexOfScalar(u8, title_slice, ' ')) |sp| {
+                return title_slice[0..sp];
+            }
+            return title_slice;
+        }
+
+        return "App";
+    }
+
+    fn appSliceContains(haystack: []const u8, needle: []const u8) bool {
+        var lower_buf: [256]u8 = undefined;
+        if (haystack.len > lower_buf.len) return false;
+        const lowered = std.ascii.lowerString(lower_buf[0..haystack.len], haystack);
+        return std.mem.indexOf(u8, lowered, needle) != null;
+    }
+
+    fn cleanAppId(app_id_str: []const u8) []const u8 {
+        var start: usize = 0;
+        // Strip common reverse-DNS prefixes.
+        while (std.mem.indexOf(u8, app_id_str[start..], ".")) |dot| {
+            start += dot + 1;
+        }
+        const s = app_id_str[start..];
+        if (s.len > 0) return s;
+        return app_id_str;
     }
 
     pub fn focus(self: *Window, seat: *wlr.Seat) void {
@@ -281,13 +399,15 @@ pub const Window = struct {
         }
 
         const style_gen = self.server.chrome_style_generation;
+        const label = if (edges.eql(chrome_renderer.EdgeMode.all)) null else self.chrome_label.asSlice();
         const same = self.chrome_tree != null and
             self.chrome_width == w and
             self.chrome_height == h and
             self.chrome_focused == focused and
             self.chrome_edges.eql(edges) and
             self.chrome_scale == scale and
-            self.chrome_style_generation == style_gen;
+            self.chrome_style_generation == style_gen and
+            std.mem.eql(u8, self.chrome_label.asSlice(), if (label) |l| l else "");
         if (same) return;
 
         if (self.chrome_tree) |tree| {
@@ -305,7 +425,7 @@ pub const Window = struct {
         self.chrome_style_generation = style_gen;
 
         const style = self.server.theme;
-        const surface = chrome_renderer.renderChrome(style, w, h, focused, scale, edges) orelse {
+        const surface = chrome_renderer.renderChrome(style, w, h, focused, scale, edges, label) orelse {
             tree.node.destroy();
             self.chrome_tree = null;
             return;
@@ -371,6 +491,8 @@ pub const Window = struct {
         window.map.link.remove();
         window.unmap.link.remove();
         window.commit.link.remove();
+        window.set_title.link.remove();
+        window.set_app_id.link.remove();
         // Remove the destroy listener itself from the signal currently emitting us.
         window.destroy.link.remove();
         window.server.deckForWindow(window).removeWindow(window.id);

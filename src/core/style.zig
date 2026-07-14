@@ -19,6 +19,13 @@ pub const Style = struct {
     color_gold_dim: Color = Color.fromHex(0x5e5a4c),
     color_glow: Color = Color.fromRgba(0x948e7b, 0.35),
 
+    peek_glass_alpha_top: f32 = 0.90,
+    peek_glass_alpha_mid: f32 = 0.40,
+    peek_glass_alpha_outer: f32 = 0.45,
+    peek_glass_alpha_inner: f32 = 0.05,
+    peek_label_font_size: f32 = 15.0,
+    peek_label_inset: i32 = 10,
+
     show_title_bars: bool = false,
 
     pub const CornerStyle = enum {
