@@ -31,6 +31,8 @@ pub const Style = struct {
     tray_text_color: Color = Color.fromHex(0x948e7b),
     tray_text_focused_color: Color = Color.fromHex(0xb8b09b),
     tray_bg_color: Color = Color.fromHex(0x0a0a0b),
+    tray_icon_size: f32 = 24.0,
+    tray_icon_gap: f32 = 8.0,
 
     show_title_bars: bool = false,
 

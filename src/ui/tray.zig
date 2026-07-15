@@ -35,6 +35,7 @@ const Action = union(enum) {
 const TrayItem = struct {
     id: []const u8,
     label: []const u8,
+    icon: ?[]const u8 = null,
     action: Action,
 };
 
@@ -59,9 +60,11 @@ pub const Tray = struct {
     hover_index: ?usize = null,
     scroll_offset: f32 = 0.0,
     last_update_us: u64 = 0,
+    bottom_activated: bool = false,
 
     outputs: std.ArrayList(PerOutput),
     items: []const TrayItem,
+    icon_cache: std.StringHashMap(*c.cairo_surface_t),
 
     const button_height: i32 = 44;
     const button_gap: i32 = 8;
@@ -75,25 +78,30 @@ pub const Tray = struct {
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
-        const items = try allocator.alloc(TrayItem, 6);
-        items[0] = .{ .id = "settings", .label = "All The Things", .action = .toggle_tray };
+        const items = try allocator.alloc(TrayItem, 5);
+        items[0] = .{ .id = "all-things", .label = "All The Things", .action = .toggle_tray };
         items[1] = .{ .id = "term", .label = "Terminal", .action = .{ .spawn = "" } };
         items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "" } };
         items[3] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "" } };
         items[4] = .{ .id = "anim", .label = "Motion", .action = .cycle_animation };
-        items[5] = .{ .id = "hide", .label = "Hide", .action = .toggle_tray };
         return .{
             .allocator = allocator,
             .host = host,
             .root = root,
             .outputs = .empty,
             .items = items,
+            .icon_cache = std.StringHashMap(*c.cairo_surface_t).init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
         for (self.outputs.items) |*po| self.destroyPerOutput(po);
         self.outputs.deinit(self.allocator);
+        var it = self.icon_cache.iterator();
+        while (it.next()) |entry| {
+            c.cairo_surface_destroy(entry.value_ptr.*);
+        }
+        self.icon_cache.deinit();
         self.allocator.free(self.items);
     }
 
@@ -228,7 +236,20 @@ pub const Tray = struct {
                 var k: u8 = 0;
                 while (k < 1) : (k += 1) self.host.cycle_animation(self.host.ctx);
             },
-            .toggle_tray => self.toggle(),
+            .toggle_tray => {
+                if (index == 0 and !self.bottom_activated) {
+                    self.bottom_activated = true;
+                    self.open = true;
+                    self.pinned = true;
+                    self.hovered = true;
+                    self.selected_index = 0;
+                    self.hover_index = 0;
+                    self.requestUpdate();
+                    self.host.request_frame(self.host.ctx);
+                } else {
+                    self.toggle();
+                }
+            },
             .spawn => {},
             .none => {},
         }
@@ -250,6 +271,10 @@ pub const Tray = struct {
             } else {
                 self.open_amount = @max(desired, self.open_amount - step);
             }
+        }
+
+        if (self.open_amount <= 0.01 and self.bottom_activated) {
+            self.bottom_activated = false;
         }
 
         for (self.outputs.items) |*po| {
@@ -330,9 +355,13 @@ pub const Tray = struct {
         const settings_top: f64 = @as(f64, dev_h) - bh - @as(f64, bottom_margin) * scale_d;
         const item_size = bh + gap;
 
-        // Settings button is always index 0 and sits at the bottom.
+        // Bottom slot shows "All The Things" when closed, "Hide" when open.
         const bottom_focused = self.open_amount > 0.01 and (self.selected_index == 0 or self.hover_index == 0);
-        self.drawButton(cr, 0.0, settings_top, bw, bh, self.items[0], bottom_focused, scale_d);
+        var bottom_item = self.items[0];
+        if (self.bottom_activated and self.open_amount > 0.01) {
+            bottom_item.label = "Hide";
+        }
+        self.drawButton(cr, 0.0, settings_top, bw, bh, bottom_item, bottom_focused, scale_d);
 
         if (self.open_amount > 0.01 and self.items.len > 1) {
             const scroll_px: f64 = @floor(@as(f64, self.scroll_offset) * scale_d);
@@ -364,7 +393,40 @@ pub const Tray = struct {
         po.tree.node.raiseToTop();
     }
 
-    fn drawButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, it: TrayItem, focused: bool, s: f64) void {
+
+    fn loadIcon(self: *Self, path: []const u8) ?*c.cairo_surface_t {
+        if (self.icon_cache.get(path)) |surf| return surf;
+        if (!std.mem.endsWith(u8, path, ".png")) {
+            std.log.err("KidulWM: only PNG icons are currently supported ({s})", .{path});
+            return null;
+        }
+        const zpath = self.allocator.dupeZ(u8, path) catch return null;
+        defer self.allocator.free(zpath);
+        const surf = c.cairo_image_surface_create_from_png(@ptrCast(zpath.ptr)) orelse return null;
+        if (c.cairo_surface_status(surf) != c.CAIRO_STATUS_SUCCESS) {
+            c.cairo_surface_destroy(surf);
+            return null;
+        }
+        self.icon_cache.put(path, surf) catch {
+            c.cairo_surface_destroy(surf);
+            return null;
+        };
+        return surf;
+    }
+
+    fn drawIcon(cr: *c.cairo_t, icon: *c.cairo_surface_t, x: f64, y: f64, target_h: f64) void {
+        const sw_f: f64 = @floatFromInt(c.cairo_image_surface_get_width(icon));
+        const sh_f: f64 = @floatFromInt(c.cairo_image_surface_get_height(icon));
+        const target_w = target_h * (sw_f / sh_f);
+        c.cairo_save(cr);
+        c.cairo_translate(cr, x, y);
+        c.cairo_scale(cr, target_w / sw_f, target_h / sh_f);
+        c.cairo_set_source_surface(cr, icon, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_restore(cr);
+    }
+
+    fn drawButton(self: *Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, it: TrayItem, focused: bool, s: f64) void {
         const text_color = if (focused) self.host.theme.tray_text_focused_color else self.host.theme.tray_text_color;
         const font_size = self.host.theme.tray_font_size * s;
 
@@ -380,28 +442,67 @@ pub const Tray = struct {
         var extents: c.cairo_text_extents_t = undefined;
         c.cairo_text_extents(cr, label_c, &extents);
 
-        // Measure one "M" width for a 1-char left buffer and 1-char text padding.
         var m_ext: c.cairo_text_extents_t = undefined;
         c.cairo_text_extents(cr, m_c, &m_ext);
         var char_width = m_ext.width;
 
+        // Load optional icon and compute its size.
+        var icon: ?*c.cairo_surface_t = null;
+        var icon_w: f64 = 0.0;
+        var icon_h: f64 = 0.0;
+        if (it.icon) |icon_path| {
+            icon = self.loadIcon(icon_path);
+            if (icon) |surf| {
+                icon_h = @min(self.host.theme.tray_icon_size * s, h - 2.0 * char_width);
+                const sw_f: f64 = @floatFromInt(c.cairo_image_surface_get_width(surf));
+                const sh_f: f64 = @floatFromInt(c.cairo_image_surface_get_height(surf));
+                icon_w = icon_h * (sw_f / sh_f);
+            }
+        }
+
+        // Compute text area with a 1-char left buffer/margin.
+        var text_x = x + char_width;
+        var text_avail = @max(0.0, w - 2.0 * char_width);
+        if (icon != null and extents.width > 0.0) {
+            const gap = self.host.theme.tray_icon_gap * s;
+            text_x += icon_w + gap;
+            text_avail = @max(0.0, w - text_x - char_width);
+        }
+
         // Fit font to available width if needed.
-        const avail = @max(0.0, w - 2.0 * char_width);
-        if (avail > 0.0 and extents.width > avail) {
-            const shrink = avail / extents.width;
+        if (text_avail > 0.0 and extents.width > text_avail) {
+            const shrink = text_avail / extents.width;
             c.cairo_set_font_size(cr, font_size * shrink);
             c.cairo_text_extents(cr, label_c, &extents);
             c.cairo_text_extents(cr, m_c, &m_ext);
             char_width = m_ext.width;
+            text_x = x + char_width;
+            text_avail = @max(0.0, w - 2.0 * char_width);
+            if (icon != null and extents.width > 0.0) {
+                const gap = self.host.theme.tray_icon_gap * s;
+                text_x += icon_w + gap;
+                text_avail = @max(0.0, w - text_x - char_width);
+            }
         }
 
-        // Glass-look underline under the active button only, sized to the text.
-        if (focused) {
+        const has_text = extents.width > 0.0;
+        const content_w = if (has_text and icon != null)
+            icon_w + self.host.theme.tray_icon_gap * s + extents.width
+        else if (icon != null)
+            icon_w
+        else
+            extents.width;
+
+        // Glass-look underline under the active button only.
+        if (focused and content_w > 0.0) {
             const border_h: f64 = h * 0.12;
             const by = y + h - border_h;
             const r: f64 = 3.0 * s;
-            const ux = x + char_width;
-            const uw = extents.width + 2.0 * char_width;
+            var ux = x + char_width;
+            if (icon != null and !has_text) {
+                ux = x + (w - content_w) / 2.0 - char_width;
+            }
+            const uw = content_w + 2.0 * char_width;
             roundedRect(cr, ux, by, uw, border_h, r);
 
             const grad = c.cairo_pattern_create_linear(ux, by, ux, by + border_h);
@@ -412,21 +513,32 @@ pub const Tray = struct {
             c.cairo_fill_preserve(cr);
             c.cairo_pattern_destroy(grad);
 
-            // Thin top rim highlight.
             c.cairo_set_source_rgba(cr, 245.0 / 255.0, 250.0 / 255.0, 255.0 / 255.0, 50.0 / 255.0);
             c.cairo_set_line_width(cr, 1.0 * s);
             c.cairo_stroke(cr);
         }
 
-        const c4 = text_color.toF64();
-        c.cairo_set_source_rgba(cr, c4[0], c4[1], c4[2], 1.0);
+        // Draw icon if present.
+        if (icon) |surf| {
+            const icon_y = y + (h - icon_h) / 2.0;
+            if (has_text) {
+                const gap = self.host.theme.tray_icon_gap * s;
+                drawIcon(cr, surf, text_x - icon_w - gap, icon_y, icon_h);
+            } else {
+                const icon_x = x + (w - icon_w) / 2.0;
+                drawIcon(cr, surf, icon_x, icon_y, icon_h);
+            }
+        }
 
-        const tx = x + char_width;
-        const ty = y + (h + extents.height) / 2.0;
-        c.cairo_move_to(cr, tx, ty);
-        c.cairo_show_text(cr, label_c);
+        // Draw text if present.
+        if (has_text) {
+            const c4 = text_color.toF64();
+            c.cairo_set_source_rgba(cr, c4[0], c4[1], c4[2], 1.0);
+            const ty = y + (h + extents.height) / 2.0;
+            c.cairo_move_to(cr, text_x, ty);
+            c.cairo_show_text(cr, label_c);
+        }
     }
-
     fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
         const radius = @min(r, w / 2.0, h / 2.0);
         c.cairo_new_sub_path(cr);
