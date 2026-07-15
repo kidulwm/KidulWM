@@ -27,6 +27,11 @@ pub const Style = struct {
     peek_label_font_size: f32 = 15.0,
     peek_label_inset: i32 = 10,
 
+    tray_font_size: f32 = 16.0,
+    tray_text_color: Color = Color.fromHex(0x948e7b),
+    tray_text_focused_color: Color = Color.fromHex(0xb8b09b),
+    tray_bg_color: Color = Color.fromHex(0x0a0a0b),
+
     show_title_bars: bool = false,
 
     pub const CornerStyle = enum {

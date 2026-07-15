@@ -76,7 +76,7 @@ pub const Tray = struct {
 
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
         const items = try allocator.alloc(TrayItem, 6);
-        items[0] = .{ .id = "settings", .label = "Settings", .action = .toggle_tray };
+        items[0] = .{ .id = "settings", .label = "All The Things", .action = .toggle_tray };
         items[1] = .{ .id = "term", .label = "Terminal", .action = .{ .spawn = "" } };
         items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "" } };
         items[3] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "" } };
@@ -260,8 +260,9 @@ pub const Tray = struct {
     fn panelWidth(self: *const Self, info: OutputInfo) i32 {
         _ = self;
         const base = info.focus_left - info.x;
-        return @max(80, base - 2 * hmargin);
+        return @max(80, base);
     }
+
 
     fn panelHeightFor(self: *const Self, info: OutputInfo, stack_open_amount: f32) i32 {
         const stack_count = self.items.len -| 1;
@@ -286,7 +287,7 @@ pub const Tray = struct {
         const s = info.scale;
         const w = self.panelWidth(info);
         const h = self.panelHeightFor(info, self.open_amount);
-        const x: i32 = info.x + hmargin;
+        const x: i32 = info.x;
         const y: i32 = info.y + info.height - h;
 
         po.tree.node.setPosition(x, y);
@@ -323,13 +324,15 @@ pub const Tray = struct {
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
         c.cairo_paint(cr);
+
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
         const settings_top: f64 = @as(f64, dev_h) - bh - @as(f64, bottom_margin) * scale_d;
         const item_size = bh + gap;
 
         // Settings button is always index 0 and sits at the bottom.
-        self.drawButton(cr, 0.0, settings_top, bw, bh, self.items[0], self.selected_index == 0, self.hover_index == 0, scale_d);
+        const bottom_focused = self.open_amount > 0.01 and (self.selected_index == 0 or self.hover_index == 0);
+        self.drawButton(cr, 0.0, settings_top, bw, bh, self.items[0], bottom_focused, scale_d);
 
         if (self.open_amount > 0.01 and self.items.len > 1) {
             const scroll_px: f64 = @floor(@as(f64, self.scroll_offset) * scale_d);
@@ -337,7 +340,8 @@ pub const Tray = struct {
                 const i: f64 = @floatFromInt(idx);
                 const top = settings_top - i * item_size + scroll_px;
                 if (top + bh < 0.0 or top > @as(f64, dev_h)) continue;
-                self.drawButton(cr, 0.0, top, bw, bh, it, self.selected_index == idx, self.hover_index == idx, scale_d);
+                const focused = self.selected_index == idx or self.hover_index == idx;
+                self.drawButton(cr, 0.0, top, bw, bh, it, focused, scale_d);
             }
         }
 
@@ -360,32 +364,64 @@ pub const Tray = struct {
         po.tree.node.raiseToTop();
     }
 
-    fn drawButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, it: TrayItem, selected: bool, hover: bool, s: f64) void {
-        const r: f64 = 6.0 * s;
-        const accent_bright = self.host.theme.color_gold;
-        const accent_dim = self.host.theme.color_gold_dim;
+    fn drawButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, it: TrayItem, focused: bool, s: f64) void {
+        const text_color = if (focused) self.host.theme.tray_text_focused_color else self.host.theme.tray_text_color;
+        const font_size = self.host.theme.tray_font_size * s;
 
-        // Black glass button fill.
-        roundedRect(cr, x + 1.0 * s, y + 1.0 * s, w - 2.0 * s, h - 2.0 * s, r);
-        c.cairo_set_source_rgba(cr, 0.04, 0.04, 0.05, 0.92);
-        c.cairo_fill(cr);
-
-        // Border / raised effect on hover/selection.
-        const border_alpha: f64 = if (hover or selected) 0.70 else 0.35;
-        const gold = if (hover or selected) accent_bright else accent_dim;
-        c.cairo_set_source_rgba(cr, @as(f64, gold.r) / 255.0, @as(f64, gold.g) / 255.0, @as(f64, gold.b) / 255.0, border_alpha);
-        c.cairo_set_line_width(cr, if (hover or selected) 1.8 * s else 1.2 * s);
-        roundedRect(cr, x + 1.0 * s, y + 1.0 * s, w - 2.0 * s, h - 2.0 * s, r);
-        c.cairo_stroke(cr);
-
-        // Gold text label.
         const label_c: [*c]const u8 = @ptrCast(it.label);
+        const m_c: [*c]const u8 = @ptrCast("M");
+        if (focused) {
+            c.cairo_select_font_face(cr, "Fantasque Sans Mono", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+        } else {
+            c.cairo_select_font_face(cr, "Fantasque Sans Mono", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+        }
+        c.cairo_set_font_size(cr, font_size);
+
         var extents: c.cairo_text_extents_t = undefined;
-        c.cairo_select_font_face(cr, "serif", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
-        c.cairo_set_font_size(cr, 13.0 * s);
         c.cairo_text_extents(cr, label_c, &extents);
-        c.cairo_set_source_rgba(cr, @as(f64, gold.r) / 255.0, @as(f64, gold.g) / 255.0, @as(f64, gold.b) / 255.0, 1.0);
-        const tx = x + (w - extents.width) / 2.0;
+
+        // Measure one "M" width for a 1-char left buffer and 1-char text padding.
+        var m_ext: c.cairo_text_extents_t = undefined;
+        c.cairo_text_extents(cr, m_c, &m_ext);
+        var char_width = m_ext.width;
+
+        // Fit font to available width if needed.
+        const avail = @max(0.0, w - 2.0 * char_width);
+        if (avail > 0.0 and extents.width > avail) {
+            const shrink = avail / extents.width;
+            c.cairo_set_font_size(cr, font_size * shrink);
+            c.cairo_text_extents(cr, label_c, &extents);
+            c.cairo_text_extents(cr, m_c, &m_ext);
+            char_width = m_ext.width;
+        }
+
+        // Glass-look underline under the active button only, sized to the text.
+        if (focused) {
+            const border_h: f64 = h * 0.12;
+            const by = y + h - border_h;
+            const r: f64 = 3.0 * s;
+            const ux = x + char_width;
+            const uw = extents.width + 2.0 * char_width;
+            roundedRect(cr, ux, by, uw, border_h, r);
+
+            const grad = c.cairo_pattern_create_linear(ux, by, ux, by + border_h);
+            c.cairo_pattern_add_color_stop_rgba(grad, 0.0, 5.0 / 255.0, 5.0 / 255.0, 5.0 / 255.0, 235.0 / 255.0);
+            c.cairo_pattern_add_color_stop_rgba(grad, 0.5, 5.0 / 255.0, 5.0 / 255.0, 5.0 / 255.0, 140.0 / 255.0);
+            c.cairo_pattern_add_color_stop_rgba(grad, 1.0, 5.0 / 255.0, 5.0 / 255.0, 5.0 / 255.0, 235.0 / 255.0);
+            c.cairo_set_source(cr, grad);
+            c.cairo_fill_preserve(cr);
+            c.cairo_pattern_destroy(grad);
+
+            // Thin top rim highlight.
+            c.cairo_set_source_rgba(cr, 245.0 / 255.0, 250.0 / 255.0, 255.0 / 255.0, 50.0 / 255.0);
+            c.cairo_set_line_width(cr, 1.0 * s);
+            c.cairo_stroke(cr);
+        }
+
+        const c4 = text_color.toF64();
+        c.cairo_set_source_rgba(cr, c4[0], c4[1], c4[2], 1.0);
+
+        const tx = x + char_width;
         const ty = y + (h + extents.height) / 2.0;
         c.cairo_move_to(cr, tx, ty);
         c.cairo_show_text(cr, label_c);
@@ -404,7 +440,7 @@ pub const Tray = struct {
     fn pointInside(self: *const Self, info: OutputInfo, px: f64, py: f64) bool {
         const w = self.panelWidth(info);
         const h = self.panelHeightFor(info, self.open_amount);
-        const x: f64 = @floatFromInt(info.x + hmargin);
+        const x: f64 = @floatFromInt(info.x);
         const y: f64 = @floatFromInt(info.y + info.height - h);
         return px >= x and px < x + @as(f64, @floatFromInt(w)) and py >= y and py < y + @as(f64, @floatFromInt(h));
     }
