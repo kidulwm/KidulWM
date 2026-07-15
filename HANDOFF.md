@@ -7,8 +7,8 @@ Auto-regenerate friendly. Manually update only the **Current focus** and **Runti
 | Item | Value |
 |---|---|
 | Branch | `corner-bg-fix` |
-| Head | `6604ee7` |
-| Last stable tag | `greatest-yet` (`b6ff45d`) |
+| Head | `75872af` |
+| Last stable tag | `greatest-yet` (`75872af`) |
 | Work VM | `bob-is-a-douche` |
 | SSH port | `2228` |
 | Active skills | `kidulwm-v2` (sub-skills: chrome, layout, debug-vm, input, wayland) |
@@ -25,8 +25,8 @@ Auto-regenerate friendly. Manually update only the **Current focus** and **Runti
 
 ## Current focus
 
-- Peek chrome: full dark glass + 2 px `color_border` rim, overlay-tree rendering.
-- Granular KidulWM skill split + DumpFile dynamic-handoff refactor.
+- Tray: optional PNG icons, dynamic "All The Things" / "Hide" toggle.
+- Peek chrome stable; granular skill split landed.
 
 ## How to resume
 
