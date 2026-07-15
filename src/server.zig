@@ -372,7 +372,7 @@ pub const Server = struct {
         server.background.rect = bg_rect;
         server.background.node = &bg_rect.node;
 
-        server.loadWallpaper("/home/kidul/Pictures/Wallpapers/kidulBG01.png") catch |err| {
+        server.loadWallpaper("/home/kidul/Pictures/Wallpapers/theWallpaper.png") catch |err| {
             std.log.warn("KidulWM: failed to load wallpaper, using fallback color: {}", .{err});
         };
 
