@@ -7,7 +7,7 @@ Auto-regenerate friendly. Manually update only the **Current focus** and **Runti
 | Item | Value |
 |---|---|
 | Branch | `corner-bg-fix` |
-| Head | `c304ef8` |
+| Head | `0fc34eb` |
 | Last stable tag | `greatest-yet` (`b6ff45d`) |
 | Work VM | `bob-is-a-douche` |
 | SSH port | `2228` |
