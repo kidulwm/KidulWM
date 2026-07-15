@@ -6,7 +6,7 @@ const std = @import("std");
 pub const Style = struct {
     gap: u32 = 8,
     border_width: f32 = 2.0,
-    corner_style: CornerStyle = .classic,
+    corner_style: CornerStyle = .none,
     corner_depth: f32 = 16.0,
 
     color_background: Color = Color.fromHex(0x222425),
@@ -19,10 +19,11 @@ pub const Style = struct {
     color_gold_dim: Color = Color.fromHex(0x5e5a4c),
     color_glow: Color = Color.fromRgba(0x948e7b, 0.35),
 
-    peek_glass_alpha_top: f32 = 0.90,
-    peek_glass_alpha_mid: f32 = 0.40,
-    peek_glass_alpha_outer: f32 = 0.45,
-    peek_glass_alpha_inner: f32 = 0.05,
+    peek_glass_alpha_top: f32 = 0.97,
+    peek_glass_alpha_mid: f32 = 0.45,
+    peek_glass_alpha_outer: f32 = 0.90,
+    peek_glass_alpha_inner: f32 = 0.55,
+    peek_glass_border_color: Color = Color.fromHex(0x4d4a40),
     peek_label_font_size: f32 = 15.0,
     peek_label_inset: i32 = 10,
 

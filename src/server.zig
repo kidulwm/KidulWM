@@ -16,6 +16,23 @@ const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const ui = @import("./ui/tray.zig");
 const keybinds = @import("config/keybinds.zig");
 
+extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+extern fn unsetenv(name: [*:0]const u8) c_int;
+
+fn applyTitleBarEnvironment(show_title_bars: bool) void {
+    if (show_title_bars) {
+        std.log.info("KidulWM: enabling client title bars", .{});
+        _ = unsetenv("GTK_CSD");
+        _ = unsetenv("GDK_DEBUG");
+        _ = unsetenv("QT_WAYLAND_DISABLE_WINDOWDECORATION");
+    } else {
+        std.log.info("KidulWM: disabling client title bars", .{});
+        _ = setenv("GTK_CSD", "0", 1);
+        _ = setenv("GDK_DEBUG", "no-csd", 1);
+        _ = setenv("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1", 1);
+    }
+}
+
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
 pub const Output = struct {
@@ -343,6 +360,8 @@ pub const Server = struct {
         };
 
         server.outputs.init();
+
+        applyTitleBarEnvironment(server.theme.show_title_bars);
 
         const overlay_tree = try server.scene.tree.createSceneTree();
         server.overlay_tree = overlay_tree;
@@ -1160,6 +1179,7 @@ pub const Server = struct {
                 std.log.warn("invalid border color '{s}': {}", .{ value, err });
                 return;
             };
+            self.theme.peek_glass_border_color = self.theme.color_border;
         } else if (std.mem.eql(u8, key, "background")) {
             self.theme.color_background = style.Style.Color.fromString(value) catch |err| {
                 std.log.warn("invalid background color '{s}': {}", .{ value, err });
@@ -1203,6 +1223,7 @@ pub const Server = struct {
                 std.log.warn("unknown show_title_bars '{s}', expected true/false", .{value});
                 return;
             }
+            applyTitleBarEnvironment(self.theme.show_title_bars);
             self.requestLayout();
             return;
         } else {

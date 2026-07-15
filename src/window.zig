@@ -251,6 +251,12 @@ pub const Window = struct {
             @intFromFloat(@round(self.animation.cur_x)),
             @intFromFloat(@round(self.animation.cur_y)),
         );
+        if (self.chrome_tree) |chrome| {
+            chrome.node.setPosition(
+                @intFromFloat(@round(self.animation.cur_x)),
+                @intFromFloat(@round(self.animation.cur_y)),
+            );
+        }
     }
 
     /// Start a 120 ms position transition from the window's current position to
@@ -275,6 +281,12 @@ pub const Window = struct {
                 @intFromFloat(@round(self.animation.cur_x)),
                 @intFromFloat(@round(self.animation.cur_y)),
             );
+            if (self.chrome_tree) |chrome| {
+                chrome.node.setPosition(
+                    @intFromFloat(@round(self.animation.cur_x)),
+                    @intFromFloat(@round(self.animation.cur_y)),
+                );
+            }
             self.updateChrome(self.chrome_focused, self.chrome_edges);
         } else {
             // Transition finished; reset so future layouts snap.
@@ -415,7 +427,17 @@ pub const Window = struct {
             self.chrome_tree = null;
         }
 
-        const tree = self.scene_tree.createSceneTree() catch return;
+        // Put the chrome in the server overlay tree so it floats above all
+        // window surfaces, including the focused slide.
+        const tree = self.server.overlay_tree.createSceneTree() catch return;
+        tree.node.setPosition(
+            @intFromFloat(@round(self.animation.cur_x)),
+            @intFromFloat(@round(self.animation.cur_y)),
+        );
+        // Peeks must stay on top so their visible seam border is not covered by
+        // the focused window's chrome.
+        const is_peek = !edges.eql(chrome_renderer.EdgeMode.all);
+        if (is_peek) tree.node.raiseToTop();
         self.chrome_tree = tree;
         self.chrome_width = w;
         self.chrome_height = h;
@@ -445,7 +467,6 @@ pub const Window = struct {
             self.chrome_tree = null;
             return;
         };
-        // The scene buffer took a reference; drop ours so it owns the only one.
         wlr.Buffer.drop(buffer);
         scene_buffer.setDestSize(w, h);
     }
@@ -469,6 +490,7 @@ pub const Window = struct {
             tree.node.destroy();
             window.chrome_tree = null;
         }
+
         // Also destroy any dim overlay left behind.
         if (window.dim_rect) |rect| {
             rect.node.destroy();

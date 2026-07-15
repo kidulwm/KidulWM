@@ -50,20 +50,11 @@ fn windowPath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, style: Style) void
     }
 }
 
-fn colorF64(color: Color) [4]f64 {
-    return .{
-        @as(f64, @floatFromInt(color.r)) / 255.0,
-        @as(f64, @floatFromInt(color.g)) / 255.0,
-        @as(f64, @floatFromInt(color.b)) / 255.0,
-        @as(f64, @floatFromInt(color.a)) / 255.0,
-    };
-}
-
-/// Render black glass + label + border for a peek window, or just the border
-/// overlay for a focused window. If `label` is non-null and edges is not `all`,
-/// the glass gradient and gold program label are drawn behind the border ring.
-pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale: u32, edges: EdgeMode, label: ?[]const u8) ?*c.cairo_surface_t {
-    if (width <= 0 or height <= 0) return null;
+/// Render chrome overlay for a peek or focused window. Peeks get a full
+/// dark glass fill with a hard 2 px border using the unfocused-slide border
+/// color; focused windows keep the background mask and border ring.
+pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale: u32, edges: EdgeMode, _: ?[]const u8) ?*c.cairo_surface_t {
+        if (width <= 0 or height <= 0) return null;
     const s: i32 = @max(1, @as(i32, @intCast(scale)));
     const bw: i32 = width * s;
     const bh: i32 = height * s;
@@ -89,127 +80,76 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
     c.cairo_paint(cr);
 
-    const border_color = if (focused) style.color_border_focused else style.color_border;
+    const border_color = if (focused) style.color_border_focused else if (is_peek) style.color_gold_dim else style.color_border;
 
     if (is_peek) {
-        // Draw the glass into an area guaranteed to survive the outer-edge trim.
-        // Peeks hide the outer edge and trim the seam, so keep glass inset from
-        // those sides. Leave the top/bottom border margin too.
-        const inset = @max(border + depth + 1.0, @as(f64, @floatFromInt(style.peek_label_inset)));
-        const glass_x = 0.0 + inset;
-        const glass_y = 0.0 + border;
-        const glass_w = w - inset * 2.0;
-        const glass_h = h - border * 2.0;
-        // Don't let a tiny sliver produce negative glass rect.
-        if (glass_w > 4.0 and glass_h > 4.0) {
-            drawPeekGlass(cr, glass_x, glass_y, glass_w, glass_h, style, edges, label);
+        // Peek: full wrapper fill with black glass, then a hard 2 px border
+        // on top. The overlay tree guarantees this is above the focused window.
+        scaled_style.corner_style = .none;
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.85);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_rectangle(cr, 0.0, 0.0, w, h);
+        c.cairo_fill(cr);
+
+        const outer_border_w: f64 = 2.0 * @as(f64, @floatFromInt(s));
+        c.cairo_set_line_width(cr, outer_border_w);
+        setSource(cr, style.color_border, 1.0);
+        c.cairo_rectangle(cr, outer_border_w / 2.0, outer_border_w / 2.0, w - outer_border_w, h - outer_border_w);
+        c.cairo_stroke(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        // Trim off hidden off-screen edges.
+        const clear_w = @min(w / 2.0, depth + border + 1.0);
+        const clear_left = if (!edges.left) clear_w else 0.0;
+        const clear_right = if (!edges.right) clear_w else 0.0;
+        const clear_top = if (!edges.top) clear_w else 0.0;
+        const clear_bottom = if (!edges.bottom) clear_w else 0.0;
+
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_DEST_OUT);
+        if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, clear_left, h);
+        if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, 0.0, clear_right, h);
+        if (clear_top > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, w, clear_top);
+        if (clear_bottom > 0.0) c.cairo_rectangle(cr, 0.0, h - clear_bottom, w, clear_bottom);
+        c.cairo_fill(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+    } else {
+        // Focused / normal window: background mask and border ring.
+        windowPath(cr, 0.0, 0.0, w, h, scaled_style);
+        if (w > border * 3.0 and h > border * 3.0) {
+            var inner_style = scaled_style;
+            const inner_depth = @max(@as(f32, 0.0), @as(f32, @floatCast(depth - border)));
+            inner_style.corner_depth = inner_depth;
+            windowPath(cr, border, border, w - border * 2.0, h - border * 2.0, inner_style);
         }
+
+        c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
+        setSource(cr, style.color_background, 1.0);
+        c.cairo_fill_preserve(cr);
+
+        c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
+        setSource(cr, border_color, 1.0);
+        c.cairo_fill(cr);
+        c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_WINDING);
+
+        const clear_w = if (scaled_style.corner_style == .none)
+            border + 1.0
+        else
+            @min(w / 2.0, depth + border + 1.0);
+        const clear_left = if (!edges.left) clear_w else 0.0;
+        const clear_right = if (!edges.right) clear_w else 0.0;
+        const clear_top = if (!edges.top) clear_w else 0.0;
+        const clear_bottom = if (!edges.bottom) clear_w else 0.0;
+
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_DEST_OUT);
+        if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, clear_left, h);
+        if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, 0.0, clear_right, h);
+        if (clear_top > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, w, clear_top);
+        if (clear_bottom > 0.0) c.cairo_rectangle(cr, 0.0, h - clear_bottom, w, clear_bottom);
+        c.cairo_fill(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
     }
-
-    // Background mask and border ring.
-    // Client surfaces are rectangular and may leak rounded corners/shadows into
-    // the area outside the intended content shape. Fill that region with the
-    // compositor background colour so the window edge is clean, then paint the
-    // border ring on top.
-    windowPath(cr, 0.0, 0.0, w, h, scaled_style);
-    if (w > border * 3.0 and h > border * 3.0) {
-        var inner_style = scaled_style;
-        const inner_depth = @max(@as(f32, 0.0), @as(f32, @floatCast(depth - border)));
-        inner_style.corner_depth = inner_depth;
-        windowPath(cr, border, border, w - border * 2.0, h - border * 2.0, inner_style);
-    }
-
-    c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
-    setSource(cr, style.color_background, 1.0);
-    c.cairo_fill_preserve(cr);
-
-    c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
-    setSource(cr, border_color, 1.0);
-    c.cairo_fill(cr);
-    c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_WINDING);
-
-    // Trim borders on hidden/shared edges. Clear a strip that is wide enough
-    // to remove both the straight border and the corner arc at the seam.
-    const clear_w = @min(w / 2.0, depth + border + 1.0);
-    const clear_left = if (!edges.left) clear_w else 0.0;
-    const clear_right = if (!edges.right) clear_w else 0.0;
-    const clear_top = if (!edges.top) clear_w else 0.0;
-    const clear_bottom = if (!edges.bottom) clear_w else 0.0;
-
-    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_DEST_OUT);
-    if (clear_left > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, clear_left, h);
-    if (clear_right > 0.0) c.cairo_rectangle(cr, w - clear_right, 0.0, clear_right, h);
-    if (clear_top > 0.0) c.cairo_rectangle(cr, 0.0, 0.0, w, clear_top);
-    if (clear_bottom > 0.0) c.cairo_rectangle(cr, 0.0, h - clear_bottom, w, clear_bottom);
-    c.cairo_fill(cr);
-    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
     return surface;
-}
-
-fn drawPeekGlass(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, style: Style, edges: EdgeMode, label: ?[]const u8) void {
-    // Clip to the glass rectangle only; don't touch corners/seams.
-    c.cairo_save(cr);
-    c.cairo_rectangle(cr, x, y, w, h);
-    c.cairo_clip(cr);
-
-    // 1. Vertical gradient: more solid at top/bottom, more transparent mid.
-    const v_grad = c.cairo_pattern_create_linear(x, y, x, y + h);
-    defer c.cairo_pattern_destroy(v_grad);
-    c.cairo_pattern_add_color_stop_rgba(v_grad, 0.0, 0.0, 0.0, 0.0, style.peek_glass_alpha_top);
-    c.cairo_pattern_add_color_stop_rgba(v_grad, 0.5, 0.0, 0.0, 0.0, style.peek_glass_alpha_mid);
-    c.cairo_pattern_add_color_stop_rgba(v_grad, 1.0, 0.0, 0.0, 0.0, style.peek_glass_alpha_top);
-
-    c.cairo_rectangle(cr, x, y, w, h);
-    c.cairo_set_source(cr, v_grad);
-    c.cairo_fill(cr);
-
-    // 2. Horizontal fade: inner edge (by focused window) stays as-is; outer edge
-    //    gets an extra darker overlay so it's less transparent than the middle.
-    //    For left/right peeks the outer edge is the hidden one, so on the visible
-    //    sliver the gradient ramps from inner (less extra) to outer (more extra).
-    var x0: f64 = x + w;
-    var x1: f64 = x;
-    if (edges.left) {
-        // left peek visible left; outer = left; inner = right
-        x0 = x;
-        x1 = x + w;
-    }
-    const h_grad = c.cairo_pattern_create_linear(x0, y, x1, y);
-    defer c.cairo_pattern_destroy(h_grad);
-    c.cairo_pattern_add_color_stop_rgba(h_grad, 0.0, 0.0, 0.0, 0.0, style.peek_glass_alpha_outer);
-    c.cairo_pattern_add_color_stop_rgba(h_grad, 1.0, 0.0, 0.0, 0.0, style.peek_glass_alpha_inner);
-
-    c.cairo_rectangle(cr, x, y, w, h);
-    c.cairo_set_source(cr, h_grad);
-    c.cairo_fill(cr);
-
-    // 3. Program-name label at the top, anchored toward the inner (visible) edge.
-    if (label) |text| {
-        const font_size: f64 = @max(8.0, @as(f64, style.peek_label_font_size));
-        c.cairo_select_font_face(cr, "FantasqueSansM Nerd Font", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
-        c.cairo_set_font_size(cr, font_size);
-
-        var extents: c.cairo_text_extents_t = undefined;
-        if (text.len > 0) {
-            c.cairo_text_extents(cr, text.ptr, &extents);
-        }
-        const pad: f64 = @as(f64, @floatFromInt(style.peek_label_inset));
-        const label_x = if (edges.left) x + pad else x + w - extents.width - pad;
-        const label_y = y + pad + font_size;
-
-        // Subtle dark drop shadow for legibility over any content.
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.8);
-        c.cairo_move_to(cr, label_x + 1.0, label_y + 1.0);
-        c.cairo_show_text(cr, text.ptr);
-
-        const gold = colorF64(style.color_gold);
-        c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 1.0);
-        c.cairo_move_to(cr, label_x, label_y);
-        c.cairo_show_text(cr, text.ptr);
-    }
-
-    c.cairo_restore(cr);
 }
 
 /// Render a dark shading overlay for unfocused side slides.
@@ -241,7 +181,7 @@ pub fn renderUnfocusedShade(style: Style, width: i32, height: i32, direction: i8
 
     const grad = c.cairo_pattern_create_linear(x0, y0, x1, y1);
     defer c.cairo_pattern_destroy(grad);
-    const bg = colorF64(style.color_background);
+    const bg = style.color_background.toF64();
     c.cairo_pattern_add_color_stop_rgba(grad, 0.0, bg[0], bg[1], bg[2], inner_alpha);
     c.cairo_pattern_add_color_stop_rgba(grad, 1.0, bg[0], bg[1], bg[2], outer_alpha);
 
