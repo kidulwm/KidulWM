@@ -162,7 +162,9 @@ pub const Tray = struct {
             self.toggle();
             return;
         }
-        self.selected_index = (self.selected_index + 1) % self.items.len;
+        if (self.selected_index < self.items.len - 1) {
+            self.selected_index += 1;
+        }
         self.hover_index = self.selected_index;
         self.ensureSelectedVisible();
         self.requestUpdate();
@@ -173,9 +175,7 @@ pub const Tray = struct {
             self.toggle();
             return;
         }
-        if (self.selected_index == 0) {
-            self.selected_index = self.items.len - 1;
-        } else {
+        if (self.selected_index > 1) {
             self.selected_index -= 1;
         }
         self.hover_index = self.selected_index;
@@ -203,6 +203,11 @@ pub const Tray = struct {
     }
 
     fn ensureSelectedVisible(self: *Self) void {
+        const max_scroll = self.maxScroll();
+        if (max_scroll <= 0.0) {
+            self.scroll_offset = 0.0;
+            return;
+        }
         const visible_count = @min(max_stack_items_visible, self.items.len - 1);
         if (visible_count == 0) return;
         const item_size: f32 = @floatFromInt(button_height + button_gap);
@@ -214,7 +219,7 @@ pub const Tray = struct {
         const max_visible_first: f32 = @floatFromInt(self.items.len -| visible_count);
         const desired_first: f32 = @max(@as(f32, @floatFromInt(first_in_stack -| visible_count)) + 1.0, 0.0);
         const desired_offset: f32 = @min(desired_first, max_visible_first) * item_size;
-        self.scroll_offset = desired_offset;
+        self.scroll_offset = std.math.clamp(desired_offset, 0.0, max_scroll);
     }
 
     fn maxScroll(self: *const Self) f32 {
@@ -293,9 +298,11 @@ pub const Tray = struct {
         const stack_count = self.items.len -| 1;
         const visible_items = @min(max_stack_items_visible, stack_count);
         const item_size = button_height + button_gap;
+        // Reserve a full button row as a buffer between the bottom button and the stack.
+        const stack_buffer = item_size;
         const max_stack_h = @min(
             info.height - top_margin - bottom_margin - button_height,
-            @as(i32, @intCast(visible_items)) * item_size - button_gap,
+            @as(i32, @intCast(visible_items)) * item_size - button_gap + stack_buffer,
         );
         const actual_stack_h: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(max_stack_h)) * stack_open_amount));
         return button_height + bottom_margin + actual_stack_h;
@@ -363,12 +370,15 @@ pub const Tray = struct {
         }
         self.drawButton(cr, 0.0, settings_top, bw, bh, bottom_item, bottom_focused, scale_d);
 
+        // Stack items sit one full row above the bottom button, never overlapping it.
+        const stack_origin: f64 = settings_top - item_size;
+
         if (self.open_amount > 0.01 and self.items.len > 1) {
             const scroll_px: f64 = @floor(@as(f64, self.scroll_offset) * scale_d);
             for (self.items[1..], 1..) |it, idx| {
                 const i: f64 = @floatFromInt(idx);
-                const top = settings_top - i * item_size + scroll_px;
-                if (top + bh < 0.0 or top > @as(f64, dev_h)) continue;
+                const top = stack_origin - i * item_size + scroll_px;
+                if (top + bh < 0.0 or top >= stack_origin) continue;
                 const focused = self.selected_index == idx or self.hover_index == idx;
                 self.drawButton(cr, 0.0, top, bw, bh, it, focused, scale_d);
             }
@@ -571,12 +581,14 @@ pub const Tray = struct {
             const bh: f64 = @as(f64, button_height) * info.scale;
             const gap: f64 = @as(f64, button_gap) * info.scale;
             const settings_top: f64 = @as(f64, self.panelHeightFor(info, self.open_amount) - bottom_margin) * info.scale - bh;
+            const item_size_ptr: f64 = bh + gap;
+            const stack_origin: f64 = settings_top - item_size_ptr;
             const scroll_px: f64 = self.scroll_offset * info.scale;
             if (local_y >= settings_top and local_y < settings_top + bh) {
                 new_hover = 0;
-            } else if (local_y < settings_top and self.items.len > 1) {
-                const dist = settings_top - local_y + scroll_px;
-                const idx: usize = @as(usize, @intFromFloat(@floor(dist / (bh + gap)))) + 1;
+            } else if (local_y < stack_origin and self.items.len > 1) {
+                const dist = stack_origin - local_y + scroll_px;
+                const idx: usize = @as(usize, @intFromFloat(@floor(dist / item_size_ptr))) + 1;
                 if (idx < self.items.len) new_hover = idx;
             }
         }
@@ -623,11 +635,13 @@ pub const Tray = struct {
         const local_y = py - @as(f64, @floatFromInt(info.y + info.height - self.panelHeightFor(info, self.open_amount)));
         const bh: f64 = @as(f64, button_height) * info.scale;
         const settings_top: f64 = @as(f64, self.panelHeightFor(info, self.open_amount) - bottom_margin) * info.scale - bh;
+        const item_size_ptr: f64 = bh + @as(f64, button_gap) * info.scale;
+        const stack_origin: f64 = settings_top - item_size_ptr;
         const scroll_px: f64 = self.scroll_offset * info.scale;
         var idx: usize = 0;
-        if (local_y < settings_top) {
-            const dist = settings_top - local_y + scroll_px;
-            idx = @as(usize, @intFromFloat(@floor(dist / (bh + @as(f64, button_gap) * info.scale)))) + 1;
+        if (local_y < stack_origin and local_y >= 0.0) {
+            const dist = stack_origin - local_y + scroll_px;
+            idx = @as(usize, @intFromFloat(@floor(dist / item_size_ptr))) + 1;
             if (idx >= self.items.len) idx = 0;
         }
         self.selected_index = idx;

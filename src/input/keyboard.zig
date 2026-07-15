@@ -108,11 +108,11 @@ const KeyboardDevice = struct {
                 return true;
             },
             .tray_select_next => {
-                if (server.tray.isOpen()) server.tray.selectNext() else server.tray.toggle();
+                if (server.tray.isOpen()) server.tray.selectPrev() else server.tray.toggle();
                 return true;
             },
             .tray_select_prev => {
-                if (server.tray.isOpen()) server.tray.selectPrev() else server.tray.toggle();
+                if (server.tray.isOpen()) server.tray.selectNext() else server.tray.toggle();
                 return true;
             },
             .tray_activate => {
