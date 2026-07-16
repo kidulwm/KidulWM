@@ -644,7 +644,7 @@ pub const Tray = struct {
         c.cairo_restore(cr);
 
         // Hover/selected brightness overlay.
-        const lit: f64 = if (self.hover_index == 0 or self.selected_index == 0) 0.18 else 0.0;
+        const lit: f64 = if (self.hover_index == 0) 0.10 else 0.0;
         if (lit > 0.001) {
             roundedRect(cr, loz_x, y, loz_w, h, rx);
             c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, lit);
