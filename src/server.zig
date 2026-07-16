@@ -376,6 +376,10 @@ pub const Server = struct {
             std.log.warn("KidulWM: failed to load wallpaper, using fallback color: {}", .{err});
         };
 
+        // Background/wallpaper nodes were created after the tray, so ensure the
+        // overlay tree stays on top of the background for immediate visibility.
+        server.overlay_tree.node.raiseToTop();
+
         server.pointer.init(server);
         server.keyboard.init(server);
         server.windows.init();
@@ -926,6 +930,9 @@ pub const Server = struct {
         output.init(self, wlr_output, scene_output);
         std.log.info("KidulWM: output added to layout", .{});
         self.tray.addOutput(output);
+        // Compute layout immediately so window panels appear on the first frame,
+        // instead of waiting for the asynchronous layout-event loop tick.
+        self.applyLayout();
         self.requestLayout();
         wlr_output.scheduleFrame();
     }
@@ -964,6 +971,7 @@ pub const Server = struct {
         self.output_layout.getBox(null, &box);
         self.updateBackgroundLayout(&box);
 
+        self.applyLayout();
         self.requestLayout();
     }
 

@@ -123,6 +123,9 @@ pub const Tray = struct {
             tree.node.destroy();
         };
         self.requestUpdate();
+        // Synchronously draw the tray once so the buffer exists before the first
+        // output frame. This avoids the tray popping in after the background.
+        self.update();
     }
 
     pub fn removeOutput(self: *Self, output_ctx: *anyopaque) void {
@@ -282,7 +285,10 @@ pub const Tray = struct {
             self.bottom_activated = false;
         }
 
-        for (self.outputs.items) |*po| {
+        for (self.outputs.items, 0..) |*po, i| {
+            // Refresh output geometry before drawing; pointer events handle this
+            // otherwise, but on boot the first draw may happen before any input.
+            po.info = self.host.output_info(self.host.ctx, i);
             self.updatePerOutput(po, should_redraw);
         }
     }
