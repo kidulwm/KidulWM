@@ -611,47 +611,12 @@ pub const Tray = struct {
         const loz_w: f64 = w - 2.0 * margin;
         const loz_x: f64 = x + margin;
 
-        const grad = self.createGradient(cr, loz_x, y, loz_w, h);
-
-        // Soft glow behind lozenge.
-        c.cairo_save(cr);
-        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SCREEN);
-        const glow = c.cairo_pattern_create_radial(loz_x + loz_w / 2.0, y + h / 2.0, 0.0, loz_x + loz_w / 2.0, y + h / 2.0, h * 1.2).?;
-        const g4 = self.host.theme.color_glow.toF64();
-        c.cairo_pattern_add_color_stop_rgba(glow, 0.0, g4[0], g4[1], g4[2], 0.55);
-        c.cairo_pattern_add_color_stop_rgba(glow, 1.0, g4[0], g4[1], g4[2], 0.0);
-        c.cairo_set_source(cr, glow);
-        c.cairo_paint(cr);
-        c.cairo_pattern_destroy(glow);
-        c.cairo_restore(cr);
-
-        // Dark lozenge body.
-        roundedRect(cr, loz_x, y, loz_w, h, rx);
-        c.cairo_set_source_rgba(cr, 0.03, 0.03, 0.04, 0.72);
-        c.cairo_fill_preserve(cr);
-
-        // Gradient rim.
-        c.cairo_set_line_width(cr, 1.5 * s);
-        c.cairo_set_source(cr, grad);
-        c.cairo_stroke(cr);
-        c.cairo_pattern_destroy(grad);
-
-        // Barry dog illustration.
         c.cairo_save(cr);
         roundedRect(cr, loz_x, y, loz_w, h, rx);
         c.cairo_clip(cr);
         self.drawBarry(cr, loz_x, y, loz_w, h, s);
         c.cairo_restore(cr);
-
-        // Hover/selected brightness overlay.
-        const lit: f64 = if (self.hover_index == 0) 0.10 else 0.0;
-        if (lit > 0.001) {
-            roundedRect(cr, loz_x, y, loz_w, h, rx);
-            c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, lit);
-            c.cairo_fill(cr);
-        }
     }
-
     fn drawBarry(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
         const surfs = [_]*c.cairo_surface_t{ self.barry_lay, self.barry_sit, self.barry_stand };
         const t: f64 = @as(f64, std.math.clamp(self.barry_state_t, 0.0, 2.0));
@@ -665,9 +630,6 @@ pub const Tray = struct {
 
         const margin: f64 = 4.0 * s;
         const avail_w = w - 2.0 * margin;
-        const avail_h = h - 2.0 * margin;
-        const cx = x + w / 2.0;
-        const cy = y + h / 2.0;
 
         for ([_]usize{ idx0, idx1 }) |idx| {
             if (idx > 2) continue;
@@ -678,15 +640,15 @@ pub const Tray = struct {
             const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
             if (img_w <= 0.0 or img_h <= 0.0) continue;
 
-            const scale = @min(avail_w / img_w, avail_h / img_h) * breath;
-            const draw_w = img_w * scale;
-            const draw_h = img_h * scale;
-            const draw_x = cx - draw_w / 2.0;
-            const draw_y = cy - draw_h / 2.0 + bob;
+            // Scale so the icon occupies ~35 % of the button height.
+            const scale = @min(avail_w / img_w, h * 0.70 / img_h) * breath;
+            const draw_x = x + (w - img_w * scale) / 2.0;
+            const draw_y = y + (h - img_h * scale) / 2.0 + bob;
 
             c.cairo_save(cr);
-            c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-            c.cairo_set_source_surface(cr, surf, draw_x, draw_y);
+            c.cairo_translate(cr, draw_x, draw_y);
+            c.cairo_scale(cr, scale, scale);
+            c.cairo_set_source_surface(cr, surf, 0, 0);
             c.cairo_paint_with_alpha(cr, alpha);
             c.cairo_restore(cr);
         }
