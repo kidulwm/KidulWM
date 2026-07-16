@@ -153,7 +153,7 @@ pub const Tray = struct {
     const button_gap: i32 = 8;
     const hmargin: i32 = 8;
     const bottom_margin: i32 = 10;
-    const top_margin: i32 = 10;
+    const top_margin: i32 = 48;
     const max_stack_items_visible: usize = 12;
     const min_panel_w: i32 = 120;
 
@@ -516,7 +516,7 @@ pub const Tray = struct {
         const w = self.panelWidth(info);
         const h = self.panelHeightFor(info);
         const x: i32 = info.x;
-        const y: i32 = info.y + info.height - h;
+        const y: i32 = info.y + top_margin;
 
         po.tree.node.setPosition(x, y);
 
@@ -780,7 +780,7 @@ pub const Tray = struct {
         const w = self.panelWidth(info);
         const h = self.panelHeightFor(info);
         const x: f64 = @floatFromInt(info.x);
-        const y: f64 = @floatFromInt(info.y + info.height - h);
+        const y: f64 = @floatFromInt(info.y + top_margin);
         return px >= x and px < x + @as(f64, @floatFromInt(w)) and py >= y and py < y + @as(f64, @floatFromInt(h));
     }
 
@@ -795,7 +795,7 @@ pub const Tray = struct {
             inside_any = true;
 
             const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
-            const local_y = py - @as(f64, @floatFromInt(info.y + info.height - self.panelHeightFor(info)));
+            const local_y = py - @as(f64, @floatFromInt(info.y + top_margin));
             const by: f64 = bottom_margin;
             const bh: f64 = barry_button_height;
             const gap: f64 = button_gap;
@@ -861,7 +861,7 @@ pub const Tray = struct {
 
         const info = self.host.output_info(self.host.ctx, output_index);
         const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
-        const local_y = py - @as(f64, @floatFromInt(info.y + info.height - self.panelHeightFor(info)));
+        const local_y = py - @as(f64, @floatFromInt(info.y + top_margin));
         const by: f64 = bottom_margin;
         const bh: f64 = barry_button_height;
         const gap: f64 = button_gap;
