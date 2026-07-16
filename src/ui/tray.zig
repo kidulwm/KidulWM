@@ -198,8 +198,12 @@ pub const Tray = struct {
             self.toggle();
             return;
         }
-        if (self.selected_index < self.items.len) {
-            self.selected_index += 1;
+        if (self.selected_index > 0) {
+            self.selected_index -= 1;
+        }
+        if (self.selected_index == 0) {
+            self.setBarryState(.sitting);
+        } else {
             self.setBarryState(.standing);
         }
         self.hover_index = self.selected_index;
@@ -212,12 +216,8 @@ pub const Tray = struct {
             self.toggle();
             return;
         }
-        if (self.selected_index > 0) {
-            self.selected_index -= 1;
-        }
-        if (self.selected_index == 0) {
-            self.setBarryState(.sitting);
-        } else {
+        if (self.selected_index < self.items.len) {
+            self.selected_index += 1;
             self.setBarryState(.standing);
         }
         self.hover_index = self.selected_index;
