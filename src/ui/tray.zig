@@ -149,7 +149,7 @@ pub const Tray = struct {
     barry_stand: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
-    const barry_button_height: i32 = 56;
+    const barry_button_height: i32 = 84;
     const button_gap: i32 = 8;
     const hmargin: i32 = 8;
     const bottom_margin: i32 = 10;
@@ -607,7 +607,7 @@ pub const Tray = struct {
 
     fn drawBarryButton(self: *Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
         const margin: f64 = @as(f64, hmargin) * s;
-        const rx: f64 = h / 2.0;
+        const rx: f64 = h / 3.0;
         const loz_w: f64 = w - 2.0 * margin;
         const loz_x: f64 = x + margin;
 
