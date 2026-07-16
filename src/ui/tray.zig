@@ -5,6 +5,65 @@ const c = @import("../dm/c.zig").c;
 const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
 
+const lay_png = @embedFile("assets/barry/lay.png");
+const sit_png = @embedFile("assets/barry/sit.png");
+const stand_png = @embedFile("assets/barry/stand.png");
+
+const BarryPngStream = struct {
+    data: []const u8,
+    offset: usize,
+};
+
+fn readBarryPngStream(closure: *anyopaque, out: [*c]u8, len: c_uint) callconv(.c) c.cairo_status_t {
+    const ctx: *BarryPngStream = @ptrCast(@alignCast(closure));
+    const l: usize = len;
+    if (ctx.offset >= ctx.data.len) {
+        @memset(out[0..l], 0);
+    } else {
+        const remaining = ctx.data.len - ctx.offset;
+        const copy = @min(remaining, l);
+        if (copy > 0) {
+            @memcpy(out[0..copy], ctx.data[ctx.offset .. ctx.offset + copy]);
+            ctx.offset += copy;
+        }
+        if (copy < l) {
+            @memset(out[copy..l], 0);
+        }
+    }
+    return c.CAIRO_STATUS_SUCCESS;
+}
+
+fn loadPngFromBytes(bytes: []const u8) !*c.cairo_surface_t {
+    var ctx = BarryPngStream{ .data = bytes, .offset = 0 };
+    const surf = c.cairo_image_surface_create_from_png_stream(
+        @ptrCast(&readBarryPngStream),
+        @ptrCast(&ctx),
+    ) orelse return error.OutOfMemory;
+    if (c.cairo_surface_status(surf) != c.CAIRO_STATUS_SUCCESS) {
+        c.cairo_surface_destroy(surf);
+        return error.InvalidPng;
+    }
+    const format = c.cairo_image_surface_get_format(surf);
+    if (format == c.CAIRO_FORMAT_ARGB32) return surf;
+
+    const w = c.cairo_image_surface_get_width(surf);
+    const h = c.cairo_image_surface_get_height(surf);
+    const argb = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, w, h) orelse {
+        c.cairo_surface_destroy(surf);
+        return error.OutOfMemory;
+    };
+    const cr = c.cairo_create(argb) orelse {
+        c.cairo_surface_destroy(argb);
+        c.cairo_surface_destroy(surf);
+        return error.OutOfMemory;
+    };
+    defer c.cairo_destroy(cr);
+    c.cairo_set_source_surface(cr, surf, 0, 0);
+    c.cairo_paint(cr);
+    c.cairo_surface_destroy(surf);
+    return argb;
+}
+
 pub const OutputInfo = struct {
     x: i32,
     y: i32,
@@ -85,6 +144,9 @@ pub const Tray = struct {
     items: []TrayItem,
     manual_order: std.ArrayList(usize),
     icon_cache: std.StringHashMap(*c.cairo_surface_t),
+    barry_lay: *c.cairo_surface_t,
+    barry_sit: *c.cairo_surface_t,
+    barry_stand: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
     const barry_button_height: i32 = 56;
@@ -108,6 +170,13 @@ pub const Tray = struct {
         errdefer manual_order.deinit(allocator);
         try manual_order.appendSlice(allocator, &[_]usize{ 0, 1, 2, 3 });
 
+        const barry_lay = try loadPngFromBytes(lay_png);
+        errdefer c.cairo_surface_destroy(barry_lay);
+        const barry_sit = try loadPngFromBytes(sit_png);
+        errdefer c.cairo_surface_destroy(barry_sit);
+        const barry_stand = try loadPngFromBytes(stand_png);
+        errdefer c.cairo_surface_destroy(barry_stand);
+
         return .{
             .allocator = allocator,
             .host = host,
@@ -116,6 +185,9 @@ pub const Tray = struct {
             .items = items,
             .manual_order = manual_order,
             .icon_cache = std.StringHashMap(*c.cairo_surface_t).init(allocator),
+            .barry_lay = barry_lay,
+            .barry_sit = barry_sit,
+            .barry_stand = barry_stand,
         };
     }
 
@@ -127,6 +199,9 @@ pub const Tray = struct {
             c.cairo_surface_destroy(entry.value_ptr.*);
         }
         self.icon_cache.deinit();
+        c.cairo_surface_destroy(self.barry_lay);
+        c.cairo_surface_destroy(self.barry_sit);
+        c.cairo_surface_destroy(self.barry_stand);
         self.manual_order.deinit(self.allocator);
         self.allocator.free(self.items);
     }
@@ -530,7 +605,7 @@ pub const Tray = struct {
         return 1.0 - u * u * u;
     }
 
-    fn drawBarryButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
+    fn drawBarryButton(self: *Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
         const margin: f64 = @as(f64, hmargin) * s;
         const rx: f64 = h / 2.0;
         const loz_w: f64 = w - 2.0 * margin;
@@ -562,7 +637,11 @@ pub const Tray = struct {
         c.cairo_pattern_destroy(grad);
 
         // Barry dog illustration.
+        c.cairo_save(cr);
+        roundedRect(cr, loz_x, y, loz_w, h, rx);
+        c.cairo_clip(cr);
         self.drawBarry(cr, loz_x, y, loz_w, h, s);
+        c.cairo_restore(cr);
 
         // Hover/selected brightness overlay.
         const lit: f64 = if (self.hover_index == 0 or self.selected_index == 0) 0.18 else 0.0;
@@ -574,112 +653,43 @@ pub const Tray = struct {
     }
 
     fn drawBarry(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const cx: f64 = x + w / 2.0;
-        const cy: f64 = y + h / 2.0;
-        const size: f64 = @min(w, h) * 0.72;
+        const surfs = [_]*c.cairo_surface_t{ self.barry_lay, self.barry_sit, self.barry_stand };
+        const t: f64 = @as(f64, std.math.clamp(self.barry_state_t, 0.0, 2.0));
+        const idx0: usize = @intFromFloat(@floor(t));
+        const idx1: usize = @min(idx0 + 1, 2);
+        const blend: f64 = t - @floor(t);
 
-        // Breathing and pose blend.
+        // Breathing pulse + bob.
         const breath: f64 = 1.0 + 0.03 * @sin(self.barry_breath_t * 2.0);
-        const pose: f64 = self.barry_state_t;
-        const sit = std.math.clamp(pose, 0.0, 1.0);
-        const stand = std.math.clamp(pose - 1.0, 0.0, 1.0);
+        const bob: f64 = 1.5 * s * @sin(self.barry_breath_t * 2.0);
 
-        const ear_perk: f64 = 0.6 * sit + 1.0 * stand;
-        const body_rise: f64 = -0.12 * size * sit - 0.22 * size * stand;
-        const tail_wag: f64 = @sin(self.barry_breath_t * 6.0) * (0.08 + 0.08 * stand);
+        const margin: f64 = 4.0 * s;
+        const avail_w = w - 2.0 * margin;
+        const avail_h = h - 2.0 * margin;
+        const cx = x + w / 2.0;
+        const cy = y + h / 2.0;
 
-        // Soft silhouette behind.
-        c.cairo_save(cr);
-        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SCREEN);
-        const sil = c.cairo_pattern_create_radial(cx, cy + body_rise, 0.0, cx, cy + body_rise, size * 0.55).?;
-        c.cairo_pattern_add_color_stop_rgba(sil, 0.0, 0.64, 0.35, 1.0, 0.35 * breath);
-        c.cairo_pattern_add_color_stop_rgba(sil, 1.0, 0.0, 0.94, 1.0, 0.0);
-        c.cairo_set_source(cr, sil);
-        c.cairo_arc(cr, cx, cy + body_rise, size * 0.5 * breath, 0.0, std.math.tau);
-        c.cairo_fill(cr);
-        c.cairo_pattern_destroy(sil);
-        c.cairo_restore(cr);
+        for ([_]usize{ idx0, idx1 }) |idx| {
+            if (idx > 2) continue;
+            const alpha: f64 = if (idx == idx0) (1.0 - blend) else if (idx == idx1) blend else 0.0;
+            if (alpha < 0.001) continue;
+            const surf = surfs[idx];
+            const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
+            const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
+            if (img_w <= 0.0 or img_h <= 0.0) continue;
 
-        // Tail.
-        c.cairo_save(cr);
-        c.cairo_set_line_width(cr, 3.5 * s);
-        c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
-        c.cairo_set_source_rgba(cr, 0.75, 0.72, 0.58, 1.0);
-        const tail_x = cx + size * (0.42 + tail_wag);
-        const tail_y = cy + body_rise + size * 0.15;
-        c.cairo_move_to(cr, tail_x, tail_y);
-        c.cairo_curve_to(cr, tail_x + size * 0.12, tail_y - size * 0.18, tail_x + size * 0.22, tail_y - size * 0.22, tail_x + size * 0.26, tail_y - size * 0.12);
-        c.cairo_stroke(cr);
-        c.cairo_restore(cr);
+            const scale = @min(avail_w / img_w, avail_h / img_h) * breath;
+            const draw_w = img_w * scale;
+            const draw_h = img_h * scale;
+            const draw_x = cx - draw_w / 2.0;
+            const draw_y = cy - draw_h / 2.0 + bob;
 
-        // Body.
-        c.cairo_save(cr);
-        c.cairo_set_line_width(cr, 3.0 * s);
-        c.cairo_set_source_rgba(cr, 0.85, 0.82, 0.68, 1.0);
-        const bx = cx;
-        const by_body = cy + body_rise + size * 0.18;
-        c.cairo_move_to(cr, bx - size * 0.32, by_body + size * 0.25);
-        c.cairo_line_to(cr, bx - size * 0.30, by_body - size * 0.18);
-        c.cairo_arc(cr, bx, by_body - size * 0.18, size * 0.30, std.math.pi, 0.0);
-        c.cairo_line_to(cr, bx + size * 0.32, by_body + size * 0.25);
-        c.cairo_line_to(cr, bx - size * 0.32, by_body + size * 0.25);
-        c.cairo_stroke_preserve(cr);
-        c.cairo_set_source_rgba(cr, 0.08, 0.07, 0.08, 0.55);
-        c.cairo_fill(cr);
-        c.cairo_restore(cr);
-
-        // Head.
-        c.cairo_save(cr);
-        c.cairo_set_line_width(cr, 3.0 * s);
-        c.cairo_set_source_rgba(cr, 0.85, 0.82, 0.68, 1.0);
-        const hx = cx;
-        const hy = cy + body_rise - size * 0.12;
-        // Broad grumpy head.
-        c.cairo_move_to(cr, hx - size * 0.32, hy + size * 0.18);
-        c.cairo_curve_to(cr, hx - size * 0.36, hy - size * 0.16, hx - size * 0.16, hy - size * 0.34, hx + size * 0.06, hy - size * 0.34);
-        c.cairo_curve_to(cr, hx + size * 0.28, hy - size * 0.34, hx + size * 0.36, hy - size * 0.14, hx + size * 0.30, hy + size * 0.18);
-        c.cairo_curve_to(cr, hx + size * 0.12, hy + size * 0.25, hx - size * 0.12, hy + size * 0.25, hx - size * 0.32, hy + size * 0.18);
-        c.cairo_stroke_preserve(cr);
-        c.cairo_set_source_rgba(cr, 0.08, 0.07, 0.08, 0.45);
-        c.cairo_fill(cr);
-        c.cairo_restore(cr);
-
-        // Ears.
-        c.cairo_save(cr);
-        c.cairo_set_line_width(cr, 2.5 * s);
-        c.cairo_set_source_rgba(cr, 0.75, 0.72, 0.58, 1.0);
-        const ear_drop = size * 0.10 * (1.0 - ear_perk);
-        c.cairo_move_to(cr, hx - size * 0.24, hy - size * 0.18);
-        c.cairo_line_to(cr, hx - size * 0.28, hy - size * 0.32 + ear_drop);
-        c.cairo_line_to(cr, hx - size * 0.12, hy - size * 0.22);
-        c.cairo_move_to(cr, hx + size * 0.18, hy - size * 0.22);
-        c.cairo_line_to(cr, hx + size * 0.24, hy - size * 0.34 + ear_drop);
-        c.cairo_line_to(cr, hx + size * 0.30, hy - size * 0.16);
-        c.cairo_stroke(cr);
-        c.cairo_restore(cr);
-
-        // Muzzle and nose.
-        c.cairo_save(cr);
-        c.cairo_set_line_width(cr, 2.0 * s);
-        c.cairo_set_source_rgba(cr, 0.55, 0.52, 0.42, 1.0);
-        c.cairo_move_to(cr, hx - size * 0.10, hy + size * 0.02);
-        c.cairo_line_to(cr, hx - size * 0.08, hy + size * 0.14);
-        c.cairo_line_to(cr, hx + size * 0.10, hy + size * 0.12);
-        c.cairo_line_to(cr, hx + size * 0.10, hy);
-        c.cairo_stroke(cr);
-        c.cairo_set_source_rgba(cr, 0.18, 0.16, 0.14, 1.0);
-        c.cairo_arc(cr, hx + size * 0.11, hy + size * 0.06, size * 0.05, 0.0, std.math.tau);
-        c.cairo_fill(cr);
-        c.cairo_restore(cr);
-
-        // Eyes.
-        c.cairo_save(cr);
-        c.cairo_set_source_rgba(cr, 0.12, 0.11, 0.10, 1.0);
-        c.cairo_arc(cr, hx - size * 0.08, hy - size * 0.06, size * 0.035, 0.0, std.math.tau);
-        c.cairo_fill(cr);
-        c.cairo_arc(cr, hx + size * 0.10, hy - size * 0.06, size * 0.035, 0.0, std.math.tau);
-        c.cairo_fill(cr);
-        c.cairo_restore(cr);
+            c.cairo_save(cr);
+            c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+            c.cairo_set_source_surface(cr, surf, draw_x, draw_y);
+            c.cairo_paint_with_alpha(cr, alpha);
+            c.cairo_restore(cr);
+        }
     }
 
     fn drawStackButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, stack_index: usize, focused: bool, hovered: bool, alpha: f64, s: f64) void {
