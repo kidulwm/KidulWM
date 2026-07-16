@@ -476,30 +476,29 @@ pub const Tray = struct {
         c.cairo_paint(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-        // Barry lozenge at bottom.
+        // Barry lozenge at top.
         const bh: f64 = @as(f64, barry_button_height) * scale_d;
         const bmargin: f64 = @as(f64, bottom_margin) * scale_d;
-        const by: f64 = @as(f64, dev_h) - bh - bmargin;
+        const by: f64 = bmargin;
         self.drawBarryButton(cr, 0.0, by, bw, bh, scale_d);
 
-        // Stack above Barry with stagger.
+        // Stack below Barry with stagger.
         if (self.open_amount > 0.001 and self.items.len > 0) {
             const gap: f64 = @as(f64, button_gap) * scale_d;
             const item_h: f64 = @as(f64, button_height) * scale_d;
             const item_size = item_h + gap;
             const scroll_px: f64 = @floor(@as(f64, self.scroll_offset) * scale_d);
-            const stack_origin: f64 = by - item_size;
+            const stack_origin: f64 = by + bh + gap;
             const stagger_delay: f32 = 0.05;
 
             for (0..self.items.len) |raw_idx| {
-                const idx = self.items.len - 1 - raw_idx;
-                const stack_index: usize = self.items.len - 1 - idx;
-                const visual_i: i32 = @intCast(idx);
-                const top = stack_origin - @as(f64, @floatFromInt(visual_i)) * item_size + scroll_px;
-                if (top + item_h < 0.0 or top >= stack_origin) continue;
+                const idx = raw_idx;
+                const stack_index: usize = idx;
+                const top = stack_origin + @as(f64, @floatFromInt(idx)) * item_size - scroll_px;
+                if (top + item_h < stack_origin or top >= @as(f64, dev_h)) continue;
 
                 const stagger_t = std.math.clamp(self.open_amount - @as(f32, @floatFromInt(stack_index)) * stagger_delay, 0.0, 1.0);
-                const local_top = top + item_size * @as(f64, 1.0 - @as(f64, @floatCast(easeOutCubic(stagger_t))));
+                const local_top = top - item_size * @as(f64, 1.0 - @as(f64, @floatCast(easeOutCubic(stagger_t))));
                 const alpha: f64 = @floatCast(stagger_t);
                 const focused = self.selected_index == stack_index + 1;
                 const hovered = self.hover_index == stack_index + 1;
@@ -823,20 +822,19 @@ pub const Tray = struct {
             if (!self.pointInside(info, px, py)) continue;
             inside_any = true;
 
+            const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
             const local_y = py - @as(f64, @floatFromInt(info.y + info.height - self.panelHeightFor(info)));
-            const s = info.scale;
-            const bh: f64 = @as(f64, barry_button_height) * s;
-            const bmargin: f64 = @as(f64, bottom_margin) * s;
-            const by: f64 = @as(f64, self.panelHeightFor(info)) * s - bh - bmargin;
-            const gap: f64 = @as(f64, button_gap) * s;
-            const item_h: f64 = @as(f64, button_height) * s;
-            const stack_origin: f64 = by - gap - item_h;
-            const scroll_px: f64 = self.scroll_offset * s;
+            const by: f64 = bottom_margin;
+            const bh: f64 = barry_button_height;
+            const gap: f64 = button_gap;
+            const item_h: f64 = button_height;
+            const stack_origin: f64 = by + bh + gap;
+            const scroll_px: f64 = self.scroll_offset;
 
             if (local_y >= by and local_y < by + bh) {
                 new_hover = 0;
-            } else if (local_y <= stack_origin and self.items.len > 0) {
-                const dist = stack_origin - local_y + scroll_px;
+            } else if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
+                const dist = local_y - stack_origin + scroll_px;
                 const idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
                 if (idx <= self.items.len) new_hover = idx;
             }
@@ -890,25 +888,20 @@ pub const Tray = struct {
         }
 
         const info = self.host.output_info(self.host.ctx, output_index);
+        const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
         const local_y = py - @as(f64, @floatFromInt(info.y + info.height - self.panelHeightFor(info)));
-        const s = info.scale;
-        const bh: f64 = @as(f64, barry_button_height) * s;
-        const bmargin: f64 = @as(f64, bottom_margin) * s;
-        const by: f64 = @as(f64, self.panelHeightFor(info)) * s - bh - bmargin;
-        const gap: f64 = @as(f64, button_gap) * s;
-        const item_h: f64 = @as(f64, button_height) * s;
-        const stack_origin: f64 = by - gap - item_h;
-        const scroll_px: f64 = self.scroll_offset * s;
+        const by: f64 = bottom_margin;
+        const bh: f64 = barry_button_height;
+        const gap: f64 = button_gap;
+        const item_h: f64 = button_height;
+        const stack_origin: f64 = by + bh + gap;
+        const scroll_px: f64 = self.scroll_offset;
 
         var idx: usize = 0;
-        if (local_y < by) {
-            if (local_y <= stack_origin and self.items.len > 0) {
-                const dist = stack_origin - local_y + scroll_px;
-                const stack_idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
-                if (stack_idx <= self.items.len) idx = stack_idx;
-            }
-        } else {
-            idx = 0;
+        if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
+            const dist = local_y - stack_origin + scroll_px;
+            const stack_idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
+            if (stack_idx <= self.items.len) idx = stack_idx;
         }
         self.selected_index = idx;
         self.hover_index = idx;
@@ -919,4 +912,5 @@ pub const Tray = struct {
         }
         return true;
     }
+
 };
