@@ -729,7 +729,8 @@ pub const Tray = struct {
     }
 
     fn petWidth(self: *const Self, info: OutputInfo) i32 {
-        return @intFromFloat(@round(@as(f32, @floatFromInt(self.panelWidth(info))) * 1.5));
+        // Keep Barry exactly within the left peek panel width, not wider.
+        return self.panelWidth(info);
     }
 
     fn petHeight() i32 {
