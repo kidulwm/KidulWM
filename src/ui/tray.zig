@@ -861,8 +861,9 @@ pub const Tray = struct {
     fn drawStackButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, stack_index: usize, focused: bool, hovered: bool, alpha: f64, s: f64) void {
         const it = self.activeItemAt(stack_index);
         const margin: f64 = @as(f64, hmargin) * s;
+        const left_nudge: f64 = 2.0 * s;
         const peek_border: f64 = 6.0 * s;
-        const pill_x: f64 = x + margin;
+        const pill_x: f64 = x + margin - left_nudge;
         const pill_w: f64 = w - margin - peek_border;
         const r: f64 = h / 2.0;
         const chamfer: f64 = r * 0.30;
