@@ -947,16 +947,15 @@ pub const Tray = struct {
     }
 
     fn createGradient(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64) *c.cairo_pattern_t {
-        const grad = c.cairo_pattern_create_linear(x, y, x + w, y + h).?;
-        const p = self.host.theme.color_purple.toF64();
-        const b = self.host.theme.color_electric.toF64();
-        const t = self.host.theme.color_turquoise.toF64();
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, p[0], p[1], p[2], 1.0);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.25, p[0], p[1], p[2], 1.0);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.5, b[0], b[1], b[2], 1.0);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.75, t[0], t[1], t[2], 1.0);
-        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, t[0], t[1], t[2], 1.0);
+        const grad = c.cairo_pattern_create_linear(x, y, x, y + h).?;
+        // Black-glass underline: subtle top sheen over deep black.
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, 0.18, 0.18, 0.20, 0.95);
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.35, 0.08, 0.08, 0.10, 0.95);
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.65, 0.05, 0.05, 0.06, 0.95);
+        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.12, 0.12, 0.14, 0.95);
+        _ = self;
         _ = cr;
+        _ = w;
         return grad;
     }
 
