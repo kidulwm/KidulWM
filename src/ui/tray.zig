@@ -557,13 +557,13 @@ pub const Tray = struct {
         // Barry/Bob animation only during movement; short settle wobble after.
         const moving = !open_step.settled or !state_step.settled or !us_step.settled;
         if (moving) {
-            self.barry_breath_t += dt * 3.0;
+            self.barry_breath_t += dt * 1.5;
             self.barry_breath_amp = @min(0.04, self.barry_breath_amp + dt * 0.4);
-            self.barry_bob_amp = @min(2.0, self.barry_bob_amp + dt * 5.0);
+            self.barry_bob_amp = @min(1.5, self.barry_bob_amp + dt * 5.0);
             self.was_moving = true;
         } else if (self.was_moving) {
             // One clean settle pulse, then completely still.
-            const settle_duration: f64 = 0.45;
+            const settle_duration: f64 = 0.32;
             self.settle_t += dt;
             if (self.settle_t >= settle_duration) {
                 self.was_moving = false;
@@ -573,8 +573,8 @@ pub const Tray = struct {
             } else {
                 const pulse = std.math.sin((self.settle_t / settle_duration) * std.math.pi);
                 self.barry_breath_amp = 0.025 * pulse;
-                self.barry_bob_amp = 1.0 * pulse;
-                self.barry_breath_t += dt * 1.5;
+                self.barry_bob_amp = 0.9 * pulse;
+                self.barry_breath_t += dt * 0.7;
             }
         } else {
             self.barry_breath_amp = 0.0;
