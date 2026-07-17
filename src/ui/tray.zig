@@ -151,8 +151,13 @@ pub const Tray = struct {
     barry_state_t: f32 = 0.0,
     barry_state_vel: f32 = 0.0,
     barry_breath_t: f64 = 0.0,
+    barry_breath_amp: f64 = 0.0,
+    barry_bob_amp: f64 = 0.0,
+    was_moving: bool = false,
+    settle_t: f64 = 0.0,
     underline_x: f32 = 0.0,
     underline_vel: f32 = 0.0,
+    close_after_us: u64 = 0,
 
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
@@ -322,10 +327,12 @@ pub const Tray = struct {
         self.hovered = self.open;
         self.scroll_offset = 0.0;
         if (self.open) {
+            self.keepOpen();
             self.selected_index = 1;
             self.hover_index = 1;
             self.setBarryState(.sitting);
         } else {
+            self.close_after_us = 0;
             self.selected_index = 0;
             self.hover_index = null;
             self.setBarryState(.laying);
@@ -335,6 +342,7 @@ pub const Tray = struct {
     }
 
     pub fn selectNext(self: *Self) void {
+        self.keepOpen();
         if (!self.isOpen() or self.items.len == 0) {
             self.toggle();
             return;
@@ -353,6 +361,7 @@ pub const Tray = struct {
     }
 
     pub fn selectPrev(self: *Self) void {
+        self.keepOpen();
         if (!self.isOpen() or self.items.len == 0) {
             self.toggle();
             return;
@@ -393,6 +402,7 @@ pub const Tray = struct {
     }
 
     pub fn scroll(self: *Self, delta: f32) void {
+        self.keepOpen();
         if (!self.isOpen()) return;
         const max_scroll = self.maxScroll();
         self.scroll_offset = std.math.clamp(self.scroll_offset - delta, 0.0, max_scroll);
@@ -410,6 +420,11 @@ pub const Tray = struct {
         };
         self.order_mode = next;
         self.requestUpdate();
+    }
+
+
+    fn keepOpen(self: *Self) void {
+        self.close_after_us = animation.nowUs() + 4_000_000; // 4 s idle timeout
     }
 
     fn setBarryState(self: *Self, state: BarryState) void {
@@ -492,9 +507,13 @@ pub const Tray = struct {
 
         const dt = if (prev == 0) 0.0 else @as(f64, @floatFromInt(now_us - prev)) / 1_000_000.0;
 
-        // Spring open/close.
+        // Snap open quickly, ease closed slowly.
         const desired: f32 = if (self.open or self.pinned or self.hovered) 1.0 else 0.0;
-        const open_spring = animation.Spring{ .stiffness = 10.0, .damping = 0.90, .epsilon = 0.001 };
+        const closing = desired < self.open_amount;
+        const open_spring = if (closing)
+            animation.Spring{ .stiffness = 2.5, .damping = 0.92, .epsilon = 0.001 }
+        else
+            animation.Spring{ .stiffness = 80.0, .damping = 0.95, .epsilon = 0.001 };
         const open_step = open_spring.step(self.open_amount, self.open_amount_vel, desired, dt);
         self.open_amount = @floatCast(open_step.value);
         self.open_amount_vel = @floatCast(open_step.velocity);
@@ -509,7 +528,6 @@ pub const Tray = struct {
         const state_step = state_spring.step(self.barry_state_t, self.barry_state_vel, target_state, dt);
         self.barry_state_t = @floatCast(state_step.value);
         self.barry_state_vel = @floatCast(state_step.velocity);
-        self.barry_breath_t += dt;
 
         // Selection underline position spring.
         const target_underline: f32 = self.underlineTarget();
@@ -517,6 +535,32 @@ pub const Tray = struct {
         const us_step = us.step(self.underline_x, self.underline_vel, target_underline, dt);
         self.underline_x = @floatCast(us_step.value);
         self.underline_vel = @floatCast(us_step.velocity);
+
+        // Barry/Bob animation only during movement; short settle wobble after.
+        const moving = !open_step.settled or !state_step.settled or !us_step.settled;
+        if (moving) {
+            self.barry_breath_t += dt * 3.0;
+            self.barry_breath_amp = @min(0.04, self.barry_breath_amp + dt * 0.4);
+            self.barry_bob_amp = @min(2.0, self.barry_bob_amp + dt * 5.0);
+            self.was_moving = true;
+        } else if (self.was_moving) {
+            self.settle_t += dt;
+            if (self.settle_t >= 0.8) {
+                self.was_moving = false;
+                self.settle_t = 0.0;
+                self.barry_breath_amp = 0.0;
+                self.barry_bob_amp = 0.0;
+            } else {
+                const decay = 1.0 - (self.settle_t / 0.8);
+                const wobble = std.math.sin(self.settle_t * 18.0) * decay;
+                self.barry_breath_amp = 0.02 + 0.02 * wobble;
+                self.barry_bob_amp = 1.2 * wobble;
+                self.barry_breath_t += dt * 2.0;
+            }
+        } else {
+            self.barry_breath_amp = 0.0;
+            self.barry_bob_amp = 0.0;
+        }
 
         var needs_redraw = prev == 0 or
             (self.open_amount > 0.001 and self.open_amount < 0.999) or
@@ -780,9 +824,9 @@ pub const Tray = struct {
         const idx1: usize = @min(idx0 + 1, 2);
         const blend: f64 = t - @floor(t);
 
-        // Breathing pulse + bob.
-        const breath: f64 = 1.0 + 0.03 * @sin(self.barry_breath_t * 2.0);
-        const bob: f64 = 1.5 * s * @sin(self.barry_breath_t * 2.0);
+        // Movement-driven breath + bob.
+        const breath: f64 = 1.0 + self.barry_breath_amp * @sin(self.barry_breath_t * 2.0);
+        const bob: f64 = self.barry_bob_amp * s * @sin(self.barry_breath_t * 2.0);
 
         const margin: f64 = 4.0 * s;
         const avail_w = w - 2.0 * margin;
@@ -1037,18 +1081,25 @@ pub const Tray = struct {
 
         if (inside_any and !self.open and !self.pinned) {
             self.open = true;
+            self.keepOpen();
             self.selected_index = 1;
             self.hover_index = 1;
             self.setBarryState(.sitting);
             self.requestUpdate();
             self.host.request_frame(self.host.ctx);
         } else if (!inside_any and self.open and !self.pinned) {
-            self.open = false;
-            self.hover_index = null;
-            self.selected_index = 0;
-            self.setBarryState(.laying);
-            self.requestUpdate();
-            self.host.request_frame(self.host.ctx);
+            if (animation.nowUs() >= self.close_after_us) {
+                self.open = false;
+                self.close_after_us = 0;
+                self.hover_index = null;
+                self.selected_index = 0;
+                self.setBarryState(.laying);
+                self.requestUpdate();
+                self.host.request_frame(self.host.ctx);
+            } else {
+                self.requestUpdate();
+                self.host.request_frame(self.host.ctx);
+            }
         }
         return inside_any;
     }
