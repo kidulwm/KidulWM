@@ -859,21 +859,23 @@ pub const Tray = struct {
     fn drawStackButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, stack_index: usize, focused: bool, hovered: bool, alpha: f64, s: f64) void {
         const it = self.activeItemAt(stack_index);
         const margin: f64 = @as(f64, hmargin) * s;
+        const peek_border: f64 = 2.0 * s;
         const pill_x: f64 = x + margin;
-        const pill_w: f64 = w - 2.0 * margin;
+        const pill_w: f64 = w - margin - peek_border;
         const r: f64 = h / 2.0;
+        const chamfer: f64 = r * 0.55;
 
         c.cairo_save(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
         // Shadow.
-        roundedRect(cr, pill_x + 2.0 * s, y + 3.0 * s, pill_w, h, r);
+        chamferedRect(cr, pill_x + 2.0 * s, y + 3.0 * s, pill_w, h, chamfer);
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35 * alpha);
         c.cairo_fill(cr);
 
         // Glass body.
         _ = hovered;
-        roundedRect(cr, pill_x, y, pill_w, h, r);
+        chamferedRect(cr, pill_x, y, pill_w, h, chamfer);
         const glass = c.cairo_pattern_create_linear(pill_x, y, pill_x, y + h).?;
         c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.09, 0.09, 0.10, 0.85 * alpha);
         c.cairo_pattern_add_color_stop_rgba(glass, 0.5, 0.06, 0.06, 0.07, 0.82 * alpha);
@@ -974,6 +976,20 @@ pub const Tray = struct {
         c.cairo_arc(cr, x + w - radius, y + h - radius, radius, 0, std.math.pi / 2.0);
         c.cairo_arc(cr, x + radius, y + h - radius, radius, std.math.pi / 2.0, std.math.pi);
         c.cairo_arc(cr, x + radius, y + radius, radius, std.math.pi, -std.math.pi / 2.0);
+        c.cairo_close_path(cr);
+    }
+
+    fn chamferedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, ch: f64) void {
+        const chamfer = @min(ch, w / 2.0, h / 2.0);
+        c.cairo_new_sub_path(cr);
+        c.cairo_move_to(cr, x + chamfer, y);
+        c.cairo_line_to(cr, x + w - chamfer, y);
+        c.cairo_line_to(cr, x + w, y + chamfer);
+        c.cairo_line_to(cr, x + w, y + h - chamfer);
+        c.cairo_line_to(cr, x + w - chamfer, y + h);
+        c.cairo_line_to(cr, x + chamfer, y + h);
+        c.cairo_line_to(cr, x, y + h - chamfer);
+        c.cairo_line_to(cr, x, y + chamfer);
         c.cairo_close_path(cr);
     }
 
