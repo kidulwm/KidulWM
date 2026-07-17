@@ -159,6 +159,10 @@ pub const Tray = struct {
     underline_vel: f32 = 0.0,
     close_after_us: u64 = 0,
 
+    // Lazy Barry mirror state.
+    bob_wants_state: BarryState = .laying,
+    barry_follow_deadline_us: u64 = 0,
+
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
     items: []TrayItem,
@@ -330,12 +334,12 @@ pub const Tray = struct {
             self.keepOpen();
             self.selected_index = 1;
             self.hover_index = 1;
-            self.setBarryState(.sitting);
+            self.bobChangedState(.sitting);
         } else {
             self.close_after_us = 0;
             self.selected_index = 0;
             self.hover_index = null;
-            self.setBarryState(.laying);
+            self.bobChangedState(.laying);
         }
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
@@ -351,9 +355,9 @@ pub const Tray = struct {
             self.selected_index -= 1;
         }
         if (self.selected_index == 0) {
-            self.setBarryState(.sitting);
+            self.bobChangedState(.sitting);
         } else {
-            self.setBarryState(.standing);
+            self.bobChangedState(.standing);
         }
         self.hover_index = self.selected_index;
         self.ensureSelectedVisible();
@@ -368,7 +372,7 @@ pub const Tray = struct {
         }
         if (self.selected_index < self.items.len) {
             self.selected_index += 1;
-            self.setBarryState(.standing);
+            self.bobChangedState(.standing);
         }
         self.hover_index = self.selected_index;
         self.ensureSelectedVisible();
@@ -407,7 +411,7 @@ pub const Tray = struct {
         const max_scroll = self.maxScroll();
         self.scroll_offset = std.math.clamp(self.scroll_offset - delta, 0.0, max_scroll);
         if (self.scroll_offset > 0.1) {
-            self.setBarryState(.standing);
+            self.bobChangedState(.standing);
         }
         self.requestUpdate();
     }
@@ -425,6 +429,14 @@ pub const Tray = struct {
 
     fn keepOpen(self: *Self) void {
         self.close_after_us = animation.nowUs() + 4_000_000; // 4 s idle timeout
+    }
+
+    fn bobChangedState(self: *Self, state: BarryState) void {
+        if (self.bob_wants_state == state) return;
+        self.bob_wants_state = state;
+        // Barry delays: ~250-600 ms lazy Bulldog response.
+        self.barry_follow_deadline_us = animation.nowUs() + 250_000 + @as(u64, @intCast(@rem(animation.nowUs(), 350_000)));
+        self.requestUpdate();
     }
 
     fn setBarryState(self: *Self, state: BarryState) void {
@@ -511,7 +523,7 @@ pub const Tray = struct {
         const desired: f32 = if (self.open or self.pinned or self.hovered) 1.0 else 0.0;
         const closing = desired < self.open_amount;
         const open_spring = if (closing)
-            animation.Spring{ .stiffness = 2.5, .damping = 0.92, .epsilon = 0.001 }
+            animation.Spring{ .stiffness = 6.0, .damping = 0.94, .epsilon = 0.001 }
         else
             animation.Spring{ .stiffness = 80.0, .damping = 0.95, .epsilon = 0.001 };
         const open_step = open_spring.step(self.open_amount, self.open_amount_vel, desired, dt);
@@ -529,6 +541,12 @@ pub const Tray = struct {
         self.barry_state_t = @floatCast(state_step.value);
         self.barry_state_vel = @floatCast(state_step.velocity);
 
+        // Lazy Bulldog Barry: follow Bob after the deadline.
+        if (animation.nowUs() >= self.barry_follow_deadline_us and self.barry_follow_deadline_us != 0) {
+            self.barry_follow_deadline_us = 0;
+            self.setBarryState(self.bob_wants_state);
+        }
+
         // Selection underline position spring.
         const target_underline: f32 = self.underlineTarget();
         const us = animation.Spring{ .stiffness = 18.0, .damping = 0.85, .epsilon = 0.5 };
@@ -544,18 +562,19 @@ pub const Tray = struct {
             self.barry_bob_amp = @min(2.0, self.barry_bob_amp + dt * 5.0);
             self.was_moving = true;
         } else if (self.was_moving) {
+            // 1.5 short breaths after movement stops, then still.
             self.settle_t += dt;
-            if (self.settle_t >= 0.8) {
+            if (self.settle_t >= 0.55) {
                 self.was_moving = false;
                 self.settle_t = 0.0;
                 self.barry_breath_amp = 0.0;
                 self.barry_bob_amp = 0.0;
             } else {
-                const decay = 1.0 - (self.settle_t / 0.8);
-                const wobble = std.math.sin(self.settle_t * 18.0) * decay;
-                self.barry_breath_amp = 0.02 + 0.02 * wobble;
-                self.barry_bob_amp = 1.2 * wobble;
-                self.barry_breath_t += dt * 2.0;
+                const decay = 1.0 - (self.settle_t / 0.55);
+                const wobble = std.math.sin(self.settle_t * 22.0) * decay;
+                self.barry_breath_amp = 0.015 + 0.015 * wobble;
+                self.barry_bob_amp = 0.8 * wobble;
+                self.barry_breath_t += dt * 2.5;
             }
         } else {
             self.barry_breath_amp = 0.0;
