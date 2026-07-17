@@ -172,10 +172,6 @@ pub const Tray = struct {
     underline_vel: f32 = 0.0,
     close_after_us: u64 = 0,
 
-    // Two-phase close: snap to almost-closed, pause, then ease the rest shut.
-    close_phase: enum { snap, pause, ease, none } = .none,
-    close_pause_us: u64 = 0,
-
     // Lazy Barry mirror state.
     barry_follow_deadline_us: u64 = 0,
 
@@ -540,55 +536,11 @@ pub const Tray = struct {
         // Snap open quickly, ease closed slowly.
         const desired: f32 = if (self.open or self.pinned or self.hovered) 1.0 else 0.0;
         const closing = desired < self.open_amount;
-
-        const OpenStep = struct { value: f64, velocity: f64, settled: bool };
-        var open_step: OpenStep = undefined;
-        if (closing) {
-            // Two-phase close:
-            //  - snap to ~0.05 (almost closed) quickly
-            //  - pause ~125 ms
-            //  - ease the final bit shut slowly.
-            const snap_spring = animation.Spring{ .stiffness = 80.0, .damping = 0.95, .epsilon = 0.005 };
-            const ease_spring = animation.Spring{ .stiffness = 3.5, .damping = 0.98, .epsilon = 0.001 };
-            const almost = 0.05;
-
-            if (self.close_phase == .none) {
-                self.close_phase = if (self.open_amount <= almost) .ease else .snap;
-            }
-
-            if (self.close_phase == .snap) {
-                open_step = OpenStep{
-                    .value = snap_spring.step(self.open_amount, self.open_amount_vel, almost, dt).value,
-                    .velocity = snap_spring.step(self.open_amount, self.open_amount_vel, almost, dt).velocity,
-                    .settled = snap_spring.step(self.open_amount, self.open_amount_vel, almost, dt).settled,
-                };
-                if (open_step.settled or open_step.value <= almost + 0.005) {
-                    self.close_phase = .pause;
-                    self.close_pause_us = now_us + 125_000;
-                    open_step.value = almost;
-                    open_step.velocity = 0;
-                    open_step.settled = false;
-                }
-            } else if (self.close_phase == .pause) {
-                if (now_us >= self.close_pause_us) {
-                    self.close_phase = .ease;
-                }
-                open_step = .{ .value = self.open_amount, .velocity = 0, .settled = self.open_amount > 0.0 };
-            } else if (self.close_phase == .ease) {
-                const raw_ease = ease_spring.step(self.open_amount, self.open_amount_vel, 0.0, dt);
-                open_step = OpenStep{ .value = raw_ease.value, .velocity = raw_ease.velocity, .settled = raw_ease.settled };
-                if (open_step.settled) {
-                    self.close_phase = .none;
-                }
-            } else {
-                open_step = OpenStep{ .value = self.open_amount, .velocity = 0, .settled = true };
-            }
-        } else {
-            const open_spring = animation.Spring{ .stiffness = 80.0, .damping = 0.95, .epsilon = 0.001 };
-            const raw_open = open_spring.step(self.open_amount, self.open_amount_vel, desired, dt);
-            open_step = OpenStep{ .value = raw_open.value, .velocity = raw_open.velocity, .settled = raw_open.settled };
-            self.close_phase = .none;
-        }
+        const open_spring = if (closing)
+            animation.Spring{ .stiffness = 6.0, .damping = 0.94, .epsilon = 0.001 }
+        else
+            animation.Spring{ .stiffness = 80.0, .damping = 0.95, .epsilon = 0.001 };
+        const open_step = open_spring.step(self.open_amount, self.open_amount_vel, desired, dt);
         self.open_amount = @floatCast(open_step.value);
         self.open_amount_vel = @floatCast(open_step.velocity);
 
