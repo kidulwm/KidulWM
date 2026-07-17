@@ -8,6 +8,9 @@ const animation = @import("../core/animation.zig");
 const lay_png = @embedFile("assets/barry/lay.png");
 const sit_png = @embedFile("assets/barry/sit.png");
 const stand_png = @embedFile("assets/barry/stand.png");
+const puppy_lay_png = @embedFile("assets/barry/puppy-lay.png");
+const puppy_sit_png = @embedFile("assets/barry/puppy-sit.png");
+const puppy_stand_png = @embedFile("assets/barry/puppy-stand.png");
 
 const BarryPngStream = struct {
     data: []const u8,
@@ -105,10 +108,21 @@ const PerOutput = struct {
     info: OutputInfo,
     last_w: i32 = 0,
     last_h: i32 = 0,
-    last_open_amount: f32 = 0,
+    last_open_amount: f32 = 0.0,
     last_selected: usize = 9999,
     last_hover: ?usize = null,
     last_order_mode: OrderMode = .preset,
+};
+
+const BarryPet = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_barry_state: BarryState = .laying,
 };
 
 pub const OrderMode = enum { manual, alphabetical, preset };
@@ -141,12 +155,16 @@ pub const Tray = struct {
     underline_vel: f32 = 0.0,
 
     outputs: std.ArrayList(PerOutput),
+    barry_pets: std.ArrayList(BarryPet),
     items: []TrayItem,
     manual_order: std.ArrayList(usize),
     icon_cache: std.StringHashMap(*c.cairo_surface_t),
     barry_lay: *c.cairo_surface_t,
     barry_sit: *c.cairo_surface_t,
     barry_stand: *c.cairo_surface_t,
+    barry_puppy_lay: *c.cairo_surface_t,
+    barry_puppy_sit: *c.cairo_surface_t,
+    barry_puppy_stand: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
     const barry_button_height: i32 = 84;
@@ -176,24 +194,36 @@ pub const Tray = struct {
         errdefer c.cairo_surface_destroy(barry_sit);
         const barry_stand = try loadPngFromBytes(stand_png);
         errdefer c.cairo_surface_destroy(barry_stand);
+        const barry_puppy_lay = try loadPngFromBytes(puppy_lay_png);
+        errdefer c.cairo_surface_destroy(barry_puppy_lay);
+        const barry_puppy_sit = try loadPngFromBytes(puppy_sit_png);
+        errdefer c.cairo_surface_destroy(barry_puppy_sit);
+        const barry_puppy_stand = try loadPngFromBytes(puppy_stand_png);
+        errdefer c.cairo_surface_destroy(barry_puppy_stand);
 
         return .{
             .allocator = allocator,
             .host = host,
             .root = root,
             .outputs = .empty,
+            .barry_pets = .empty,
             .items = items,
             .manual_order = manual_order,
             .icon_cache = std.StringHashMap(*c.cairo_surface_t).init(allocator),
             .barry_lay = barry_lay,
             .barry_sit = barry_sit,
             .barry_stand = barry_stand,
+            .barry_puppy_lay = barry_puppy_lay,
+            .barry_puppy_sit = barry_puppy_sit,
+            .barry_puppy_stand = barry_puppy_stand,
         };
     }
 
     pub fn deinit(self: *Self) void {
         for (self.outputs.items) |*po| self.destroyPerOutput(po);
+        for (self.barry_pets.items) |*pet| self.destroyPet(pet);
         self.outputs.deinit(self.allocator);
+        self.barry_pets.deinit(self.allocator);
         var it = self.icon_cache.iterator();
         while (it.next()) |entry| {
             c.cairo_surface_destroy(entry.value_ptr.*);
@@ -202,6 +232,9 @@ pub const Tray = struct {
         c.cairo_surface_destroy(self.barry_lay);
         c.cairo_surface_destroy(self.barry_sit);
         c.cairo_surface_destroy(self.barry_stand);
+        c.cairo_surface_destroy(self.barry_puppy_lay);
+        c.cairo_surface_destroy(self.barry_puppy_sit);
+        c.cairo_surface_destroy(self.barry_puppy_stand);
         self.manual_order.deinit(self.allocator);
         self.allocator.free(self.items);
     }
@@ -219,9 +252,27 @@ pub const Tray = struct {
             .buffer = null,
             .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
         };
+        const pet_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create barry pet scene tree: {}", .{err});
+            tree.node.destroy();
+            return;
+        };
         self.outputs.append(self.allocator, po) catch |err| {
             std.log.err("KidulWM: failed to append tray output: {}", .{err});
             tree.node.destroy();
+            pet_tree.node.destroy();
+            return;
+        };
+        const pet = BarryPet{
+            .output_ctx = output_ctx,
+            .tree = pet_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.barry_pets.append(self.allocator, pet) catch |err| {
+            std.log.err("KidulWM: failed to append barry pet: {}", .{err});
+            pet_tree.node.destroy();
             return;
         };
         self.requestUpdate();
@@ -233,9 +284,24 @@ pub const Tray = struct {
             if (po.output_ctx == output_ctx) {
                 self.destroyPerOutput(po);
                 _ = self.outputs.orderedRemove(i);
+                break;
+            }
+        }
+        for (self.barry_pets.items, 0..) |*pet, i| {
+            if (pet.output_ctx == output_ctx) {
+                self.destroyPet(pet);
+                _ = self.barry_pets.orderedRemove(i);
                 return;
             }
         }
+    }
+
+    fn destroyPet(_: *Self, pet: *BarryPet) void {
+        if (pet.scene_buffer) |sb| sb.node.destroy();
+        if (pet.buffer) |buf| wlr.Buffer.drop(buf);
+        pet.tree.node.destroy();
+        pet.scene_buffer = null;
+        pet.buffer = null;
     }
 
     fn destroyPerOutput(_: *Self, po: *PerOutput) void {
@@ -479,6 +545,21 @@ pub const Tray = struct {
             self.updatePerOutput(po, needs_redraw);
         }
 
+        for (self.barry_pets.items, 0..) |*pet, i| {
+            pet.info = self.host.output_info(self.host.ctx, i);
+            const pw = self.panelWidth(pet.info);
+            const ph = petHeight();
+            if (pet.last_w != pw or pet.last_h != ph or
+                pet.last_barry_state != self.barry_state)
+            {
+                needs_redraw = true;
+            }
+            pet.last_w = pw;
+            pet.last_h = ph;
+            pet.last_barry_state = self.barry_state;
+            self.updatePetPerOutput(pet, needs_redraw);
+        }
+
         if (needs_redraw) {
             self.host.request_frame(self.host.ctx);
         }
@@ -508,6 +589,79 @@ pub const Tray = struct {
         );
         const actual_stack_h: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(max_stack_h)) * self.open_amount));
         return barry_button_height + bottom_margin + actual_stack_h;
+    }
+
+    fn petWidth(self: *const Self, info: OutputInfo) i32 {
+        return @intFromFloat(@round(@as(f32, @floatFromInt(self.panelWidth(info))) * 1.5));
+    }
+
+    fn petHeight() i32 {
+        return barry_button_height + bottom_margin * 2;
+    }
+
+    fn updatePetPerOutput(self: *Self, pet: *BarryPet, should_redraw: bool) void {
+        const info = pet.info;
+        const s = info.scale;
+        const w = self.petWidth(info);
+        const h = petHeight();
+        const x: i32 = info.x;
+        const y: i32 = info.y + info.height - h;
+
+        pet.tree.node.setPosition(x, y);
+
+        if (w <= 0 or h <= 0) return;
+        if (!should_redraw) return;
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(w)) * s));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(h)) * s));
+
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: barry pet buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for barry pet", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        const scale_d: f64 = @as(f64, s);
+        const bw: f64 = @as(f64, dev_w);
+
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        const bh: f64 = @as(f64, barry_button_height) * scale_d;
+        const bmargin: f64 = @as(f64, bottom_margin) * scale_d;
+        const by: f64 = @as(f64, dev_h) - bh - bmargin;
+        self.drawPetButton(cr, 0.0, by, bw, bh, scale_d);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create barry pet buffer: {}", .{err});
+            return;
+        };
+        if (pet.buffer) |old| wlr.Buffer.drop(old);
+        pet.buffer = buffer;
+        if (pet.scene_buffer) |old| old.node.destroy();
+        const sb = pet.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create barry pet scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            pet.buffer = null;
+            return;
+        };
+        sb.setDestSize(w, h);
+        pet.scene_buffer = sb;
+        pet.tree.node.raiseToTop();
     }
 
     fn updatePerOutput(self: *Self, po: *PerOutput, should_redraw: bool) void {
@@ -640,9 +794,57 @@ pub const Tray = struct {
             const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
             if (img_w <= 0.0 or img_h <= 0.0) continue;
 
-            // Scale so the icon occupies ~35 % of the button height.
-            const scale = @min(avail_w / img_w, h * 0.70 / img_h) * breath;
+            // Scale so the icon occupies ~90 % of the button height.
+            const scale = @min(avail_w / img_w, h * 0.90 / img_h) * breath;
             const draw_x = x + (w - img_w * scale) / 2.0;
+            const draw_y = y + (h - img_h * scale) / 2.0 + bob;
+
+            c.cairo_save(cr);
+            c.cairo_translate(cr, draw_x, draw_y);
+            c.cairo_scale(cr, scale, scale);
+            c.cairo_set_source_surface(cr, surf, 0, 0);
+            c.cairo_paint_with_alpha(cr, alpha);
+            c.cairo_restore(cr);
+        }
+    }
+
+
+    fn drawPetButton(self: *Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
+        const margin: f64 = @as(f64, hmargin) * s;
+        const rx: f64 = h / 3.0;
+        const loz_w: f64 = w - 2.0 * margin;
+        const loz_x: f64 = x + margin;
+
+        c.cairo_save(cr);
+        roundedRect(cr, loz_x, y, loz_w, h, rx);
+        c.cairo_clip(cr);
+        self.drawPet(cr, loz_x, y, loz_w, h, s);
+        c.cairo_restore(cr);
+    }
+    fn drawPet(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
+        const surfs = [_]*c.cairo_surface_t{ self.barry_puppy_lay, self.barry_puppy_sit, self.barry_puppy_stand };
+        const t: f64 = @as(f64, std.math.clamp(self.barry_state_t, 0.0, 2.0));
+        const idx0: usize = @intFromFloat(@floor(t));
+        const idx1: usize = @min(idx0 + 1, 2);
+        const blend: f64 = t - @floor(t);
+
+        const breath: f64 = 1.0 + 0.03 * @sin(self.barry_breath_t * 2.0);
+        const bob: f64 = 1.5 * s * @sin(self.barry_breath_t * 2.0);
+
+        const margin: f64 = 4.0 * s;
+        const avail_w = w - 2.0 * margin;
+
+        for ([_]usize{ idx0, idx1 }) |idx| {
+            if (idx > 2) continue;
+            const alpha: f64 = if (idx == idx0) (1.0 - blend) else if (idx == idx1) blend else 0.0;
+            if (alpha < 0.001) continue;
+            const surf = surfs[idx];
+            const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
+            const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
+            if (img_w <= 0.0 or img_h <= 0.0) continue;
+
+            const scale = @min(avail_w / img_w, h * 1.15 / img_h) * breath;
+            const draw_x = x + margin;
             const draw_y = y + (h - img_h * scale) / 2.0 + bob;
 
             c.cairo_save(cr);
