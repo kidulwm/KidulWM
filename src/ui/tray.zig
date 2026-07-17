@@ -980,8 +980,9 @@ pub const Tray = struct {
             const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
             if (img_w <= 0.0 or img_h <= 0.0) continue;
 
-            const scale = @min(avail_w / img_w, h * 1.15 / img_h) * breath;
-            const draw_x = x + margin;
+            // Scale so the icon occupies ~90 % of the button height.
+            const scale = @min(avail_w / img_w, h * 0.90 / img_h) * breath;
+            const draw_x = x + (w - img_w * scale) / 2.0;
             const draw_y = y + (h - img_h * scale) / 2.0 + bob;
 
             c.cairo_save(cr);
@@ -992,6 +993,7 @@ pub const Tray = struct {
             c.cairo_restore(cr);
         }
     }
+
 
     fn drawStackButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, stack_index: usize, focused: bool, hovered: bool, alpha: f64, s: f64) void {
         const it = self.activeItemAt(stack_index);
