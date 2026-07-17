@@ -1098,6 +1098,16 @@ pub const Server = struct {
                     }
                 }
             }.f,
+            .is_transition_active = struct {
+                fn f(ctx: *anyopaque) bool {
+                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
+                    var it = s.windows.iterator(.forward);
+                    while (it.next()) |window| {
+                        if (window.animation.last_us != 0) return true;
+                    }
+                    return false;
+                }
+            }.f,
             .theme = &self.theme,
         };
     }

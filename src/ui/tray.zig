@@ -83,6 +83,7 @@ pub const TrayHost = struct {
     get_animation_kind: *const fn (ctx: *anyopaque) animation.AnimationKind,
     cycle_animation: *const fn (ctx: *anyopaque) void,
     request_frame: *const fn (ctx: *anyopaque) void,
+    is_transition_active: *const fn (ctx: *anyopaque) bool,
     theme: *const style.Style,
 };
 
@@ -446,8 +447,8 @@ pub const Tray = struct {
         if (self.barry_state_target == state) return;
         self.barry_state_target = state;
         self.bob_state_vel = 0.0;
-        // Barry waits until Bob has settled, then follows: ~0.17 s up, ~0.5 s down.
-        const delay_us: u64 = if (state == .laying) 500_000 else 170_000;
+        // Barry waits until Bob has fully settled, then follows ~3 s later.
+        const delay_us: u64 = if (state == .laying) 3_500_000 else 3_000_000;
         self.barry_follow_deadline_us = animation.nowUs() + delay_us;
         self.requestUpdate();
     }
@@ -543,30 +544,6 @@ pub const Tray = struct {
         self.open_amount = @floatCast(open_step.value);
         self.open_amount_vel = @floatCast(open_step.velocity);
 
-        // Spring Bob/Barry state blend.
-        const target_state: f32 = switch (self.barry_state_target) {
-            .laying => 0.0,
-            .sitting => 1.0,
-            .standing => 2.0,
-        };
-
-        // Bob snaps to the target pose.
-        const bob_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
-        const bob_state_step = bob_state_spring.step(self.bob_state_t, self.bob_state_vel, target_state, dt);
-        self.bob_state_t = @floatCast(bob_state_step.value);
-        self.bob_state_vel = @floatCast(bob_state_step.velocity);
-
-        // Barry follows Bob after his lazy delay.
-        const barry_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
-        const barry_state_step = barry_state_spring.step(self.barry_state_t, self.barry_state_vel, target_state, dt);
-        self.barry_state_t = @floatCast(barry_state_step.value);
-        self.barry_state_vel = @floatCast(barry_state_step.velocity);
-
-        if (animation.nowUs() >= self.barry_follow_deadline_us and self.barry_follow_deadline_us != 0) {
-            self.barry_follow_deadline_us = 0;
-            self.setBarryState(self.barry_state_target);
-        }
-
         // Selection underline position spring.
         const target_underline: f32 = self.underlineTarget();
         const us = animation.Spring{ .stiffness = 18.0, .damping = 0.85, .epsilon = 0.5 };
@@ -574,62 +551,112 @@ pub const Tray = struct {
         self.underline_x = @floatCast(us_step.value);
         self.underline_vel = @floatCast(us_step.velocity);
 
-        // Bob animates during tray/underline/state movement; short settle pulse after.
-        const bob_moving = !open_step.settled or !bob_state_step.settled or !us_step.settled;
-        if (bob_moving) {
-            self.barry_breath_t += dt * 1.5;
-            self.bob_breath_amp = @min(0.04, self.bob_breath_amp + dt * 0.4);
-            self.bob_bob_amp = @min(1.0, self.bob_bob_amp + dt * 5.0);
-            self.bob_was_moving = true;
-        } else if (self.bob_was_moving) {
-            const settle_dur: f64 = 0.17;
-            self.bob_settle_t += dt;
-            if (self.bob_settle_t >= settle_dur) {
-                self.bob_was_moving = false;
-                self.bob_settle_t = 0.0;
+        // Freeze Bob/Barry while slides/windows are moving so they stay rock solid.
+        const windows_moving = self.host.is_transition_active(self.host.ctx);
+
+        var bob_settled: bool = true;
+        var barry_settled: bool = true;
+
+        if (!windows_moving) {
+            const target_state: f32 = switch (self.barry_state_target) {
+                .laying => 0.0,
+                .sitting => 1.0,
+                .standing => 2.0,
+            };
+
+            // Bob snaps to the target pose.
+            const bob_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
+            const bob_state_step = bob_state_spring.step(self.bob_state_t, self.bob_state_vel, target_state, dt);
+            self.bob_state_t = @floatCast(bob_state_step.value);
+            self.bob_state_vel = @floatCast(bob_state_step.velocity);
+            bob_settled = bob_state_step.settled;
+
+            // Barry follows Bob after his lazy delay.
+            const barry_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
+            const barry_state_step = barry_state_spring.step(self.barry_state_t, self.barry_state_vel, target_state, dt);
+            self.barry_state_t = @floatCast(barry_state_step.value);
+            self.barry_state_vel = @floatCast(barry_state_step.velocity);
+            barry_settled = barry_state_step.settled;
+
+            if (animation.nowUs() >= self.barry_follow_deadline_us and self.barry_follow_deadline_us != 0) {
+                self.barry_follow_deadline_us = 0;
+                self.setBarryState(self.barry_state_target);
+            }
+
+            // Bob animates during tray/underline/state movement; short settle pulse after.
+            const bob_moving = !open_step.settled or !bob_state_step.settled or !us_step.settled;
+            if (bob_moving) {
+                self.barry_breath_t += dt * 1.5;
+                self.bob_breath_amp = @min(0.04, self.bob_breath_amp + dt * 0.4);
+                self.bob_bob_amp = @min(1.0, self.bob_bob_amp + dt * 5.0);
+                self.bob_was_moving = true;
+            } else if (self.bob_was_moving) {
+                const settle_dur: f64 = 0.17;
+                self.bob_settle_t += dt;
+                if (self.bob_settle_t >= settle_dur) {
+                    self.bob_was_moving = false;
+                    self.bob_settle_t = 0.0;
+                    self.bob_breath_amp = 0.0;
+                    self.bob_bob_amp = 0.0;
+                } else {
+                    const pulse = std.math.sin((self.bob_settle_t / settle_dur) * std.math.pi);
+                    self.bob_breath_amp = 0.025 * pulse;
+                    self.bob_bob_amp = 0.9 * pulse;
+                    self.barry_breath_t += dt * 0.7;
+                }
+            } else {
                 self.bob_breath_amp = 0.0;
                 self.bob_bob_amp = 0.0;
-            } else {
-                const pulse = std.math.sin((self.bob_settle_t / settle_dur) * std.math.pi);
-                self.bob_breath_amp = 0.025 * pulse;
-                self.bob_bob_amp = 0.9 * pulse;
-                self.barry_breath_t += dt * 0.7;
             }
-        } else {
-            self.bob_breath_amp = 0.0;
-            self.bob_bob_amp = 0.0;
-        }
 
-        // Barry mirrors Bob's pose with a delay, then does his own short pulse.
-        const barry_moving = !barry_state_step.settled;
-        if (barry_moving) {
-            self.barry_breath_t += dt * 1.5;
-            self.barry_breath_amp = @min(0.04, self.barry_breath_amp + dt * 0.4);
-            self.barry_bob_amp = @min(1.0, self.barry_bob_amp + dt * 5.0);
-            self.barry_was_moving = true;
-        } else if (self.barry_was_moving) {
-            const settle_dur: f64 = 0.17;
-            self.barry_settle_t += dt;
-            if (self.barry_settle_t >= settle_dur) {
-                self.barry_was_moving = false;
-                self.barry_settle_t = 0.0;
+            // Barry mirrors Bob's pose with a delay, then does his own short pulse.
+            const barry_moving = !barry_state_step.settled;
+            if (barry_moving) {
+                self.barry_breath_t += dt * 1.5;
+                self.barry_breath_amp = @min(0.04, self.barry_breath_amp + dt * 0.4);
+                self.barry_bob_amp = @min(1.0, self.barry_bob_amp + dt * 5.0);
+                self.barry_was_moving = true;
+            } else if (self.barry_was_moving) {
+                const settle_dur: f64 = 0.17;
+                self.barry_settle_t += dt;
+                if (self.barry_settle_t >= settle_dur) {
+                    self.barry_was_moving = false;
+                    self.barry_settle_t = 0.0;
+                    self.barry_breath_amp = 0.0;
+                    self.barry_bob_amp = 0.0;
+                } else {
+                    const pulse = std.math.sin((self.barry_settle_t / settle_dur) * std.math.pi);
+                    self.barry_breath_amp = 0.025 * pulse;
+                    self.barry_bob_amp = 0.9 * pulse;
+                    self.barry_breath_t += dt * 0.7;
+                }
+            } else {
                 self.barry_breath_amp = 0.0;
                 self.barry_bob_amp = 0.0;
-            } else {
-                const pulse = std.math.sin((self.barry_settle_t / settle_dur) * std.math.pi);
-                self.barry_breath_amp = 0.025 * pulse;
-                self.barry_bob_amp = 0.9 * pulse;
-                self.barry_breath_t += dt * 0.7;
             }
         } else {
+            // Slides/windows moving: keep poses and amplitudes frozen.
+            self.bob_state_vel = 0.0;
+            self.barry_state_vel = 0.0;
+            self.bob_breath_amp = 0.0;
+            self.bob_bob_amp = 0.0;
             self.barry_breath_amp = 0.0;
             self.barry_bob_amp = 0.0;
+            self.bob_was_moving = false;
+            self.bob_settle_t = 0.0;
+            self.barry_was_moving = false;
+            self.barry_settle_t = 0.0;
+            // Push Barry's deadline so he doesn't start until motion has stopped.
+            if (self.barry_follow_deadline_us != 0) {
+                const delay_us: u64 = if (self.barry_state_target == .laying) 3_500_000 else 3_000_000;
+                self.barry_follow_deadline_us = animation.nowUs() + delay_us;
+            }
         }
 
         var needs_redraw = prev == 0 or
             (self.open_amount > 0.001 and self.open_amount < 0.999) or
-            !bob_state_step.settled or
-            !barry_state_step.settled or
+            !bob_settled or
+            !barry_settled or
             !us_step.settled;
 
         for (self.outputs.items, 0..) |*po, i| {
