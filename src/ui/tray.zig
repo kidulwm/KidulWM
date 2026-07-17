@@ -574,8 +574,10 @@ pub const Tray = struct {
 
     fn panelWidth(self: *const Self, info: OutputInfo) i32 {
         _ = self;
-        const base = info.focus_left - info.x;
-        return @max(min_panel_w, base);
+        const peek_w = info.focus_left - info.x;
+        const desired = @as(f64, @floatFromInt(peek_w)) * 0.97;
+        const desired_i: i32 = @intFromFloat(@round(desired));
+        return @max(min_panel_w, desired_i);
     }
 
     fn panelHeightFor(self: *const Self, info: OutputInfo) i32 {
@@ -859,11 +861,11 @@ pub const Tray = struct {
     fn drawStackButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, stack_index: usize, focused: bool, hovered: bool, alpha: f64, s: f64) void {
         const it = self.activeItemAt(stack_index);
         const margin: f64 = @as(f64, hmargin) * s;
-        const peek_border: f64 = 2.0 * s;
+        const peek_border: f64 = 6.0 * s;
         const pill_x: f64 = x + margin;
         const pill_w: f64 = w - margin - peek_border;
         const r: f64 = h / 2.0;
-        const chamfer: f64 = r * 0.55;
+        const chamfer: f64 = r * 0.30;
 
         c.cairo_save(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
@@ -950,12 +952,12 @@ pub const Tray = struct {
 
     fn createGradient(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64) *c.cairo_pattern_t {
         const grad = c.cairo_pattern_create_linear(x, y, x, y + h).?;
-        // Black-glass underline: subtle top sheen over deep black.
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, 0.18, 0.18, 0.20, 0.95);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.35, 0.08, 0.08, 0.10, 0.95);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.65, 0.05, 0.05, 0.06, 0.95);
-        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.12, 0.12, 0.14, 0.95);
-        _ = self;
+        const gold = self.host.theme.tray_text_focused_color.toF64();
+        // Top of underline matches the muted goldish focus highlight of the button.
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, gold[0], gold[1], gold[2], 0.70);
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.45, gold[0], gold[1], gold[2], 0.35);
+        // Bottom fades to the same translucent grey-black used for the bottom of the button body.
+        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.04, 0.04, 0.05, 0.30);
         _ = cr;
         _ = w;
         return grad;
