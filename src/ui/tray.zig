@@ -146,21 +146,32 @@ pub const Tray = struct {
 
     order_mode: OrderMode = .preset,
 
-    // Animation state.
+    // Desired pose for Bob (immediate) and Barry (delayed).
+    barry_state_target: BarryState = .laying,
+
+    // Bob's pose interpolation.
+    bob_state_t: f32 = 0.0,
+    bob_state_vel: f32 = 0.0,
+
+    // Barry's pose interpolation.
     barry_state: BarryState = .laying,
     barry_state_t: f32 = 0.0,
     barry_state_vel: f32 = 0.0,
+
     barry_breath_t: f64 = 0.0,
+    bob_breath_amp: f64 = 0.0,
+    bob_bob_amp: f64 = 0.0,
     barry_breath_amp: f64 = 0.0,
     barry_bob_amp: f64 = 0.0,
-    was_moving: bool = false,
-    settle_t: f64 = 0.0,
+    bob_was_moving: bool = false,
+    bob_settle_t: f64 = 0.0,
+    barry_was_moving: bool = false,
+    barry_settle_t: f64 = 0.0,
     underline_x: f32 = 0.0,
     underline_vel: f32 = 0.0,
     close_after_us: u64 = 0,
 
     // Lazy Barry mirror state.
-    bob_wants_state: BarryState = .laying,
     barry_follow_deadline_us: u64 = 0,
 
     outputs: std.ArrayList(PerOutput),
@@ -432,10 +443,12 @@ pub const Tray = struct {
     }
 
     fn bobChangedState(self: *Self, state: BarryState) void {
-        if (self.bob_wants_state == state) return;
-        self.bob_wants_state = state;
-        // Barry delays: ~250-600 ms lazy Bulldog response.
-        self.barry_follow_deadline_us = animation.nowUs() + 250_000 + @as(u64, @intCast(@rem(animation.nowUs(), 350_000)));
+        if (self.barry_state_target == state) return;
+        self.barry_state_target = state;
+        self.bob_state_vel = 0.0;
+        // Barry waits until Bob has settled, then follows: ~0.17 s up, ~0.5 s down.
+        const delay_us: u64 = if (state == .laying) 500_000 else 170_000;
+        self.barry_follow_deadline_us = animation.nowUs() + delay_us;
         self.requestUpdate();
     }
 
@@ -530,21 +543,28 @@ pub const Tray = struct {
         self.open_amount = @floatCast(open_step.value);
         self.open_amount_vel = @floatCast(open_step.velocity);
 
-        // Spring Barry state blend.
-        const target_state: f32 = switch (self.barry_state) {
+        // Spring Bob/Barry state blend.
+        const target_state: f32 = switch (self.barry_state_target) {
             .laying => 0.0,
             .sitting => 1.0,
             .standing => 2.0,
         };
-        const state_spring = animation.Spring{ .stiffness = 24.0, .damping = 0.92, .epsilon = 0.005 };
-        const state_step = state_spring.step(self.barry_state_t, self.barry_state_vel, target_state, dt);
-        self.barry_state_t = @floatCast(state_step.value);
-        self.barry_state_vel = @floatCast(state_step.velocity);
 
-        // Lazy Bulldog Barry: follow Bob after the deadline.
+        // Bob snaps to the target pose.
+        const bob_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
+        const bob_state_step = bob_state_spring.step(self.bob_state_t, self.bob_state_vel, target_state, dt);
+        self.bob_state_t = @floatCast(bob_state_step.value);
+        self.bob_state_vel = @floatCast(bob_state_step.velocity);
+
+        // Barry follows Bob after his lazy delay.
+        const barry_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
+        const barry_state_step = barry_state_spring.step(self.barry_state_t, self.barry_state_vel, target_state, dt);
+        self.barry_state_t = @floatCast(barry_state_step.value);
+        self.barry_state_vel = @floatCast(barry_state_step.velocity);
+
         if (animation.nowUs() >= self.barry_follow_deadline_us and self.barry_follow_deadline_us != 0) {
             self.barry_follow_deadline_us = 0;
-            self.setBarryState(self.bob_wants_state);
+            self.setBarryState(self.barry_state_target);
         }
 
         // Selection underline position spring.
@@ -554,24 +574,49 @@ pub const Tray = struct {
         self.underline_x = @floatCast(us_step.value);
         self.underline_vel = @floatCast(us_step.velocity);
 
-        // Barry/Bob animation only during movement; short settle wobble after.
-        const moving = !open_step.settled or !state_step.settled or !us_step.settled;
-        if (moving) {
+        // Bob animates during tray/underline/state movement; short settle pulse after.
+        const bob_moving = !open_step.settled or !bob_state_step.settled or !us_step.settled;
+        if (bob_moving) {
+            self.barry_breath_t += dt * 1.5;
+            self.bob_breath_amp = @min(0.04, self.bob_breath_amp + dt * 0.4);
+            self.bob_bob_amp = @min(1.0, self.bob_bob_amp + dt * 5.0);
+            self.bob_was_moving = true;
+        } else if (self.bob_was_moving) {
+            const settle_dur: f64 = 0.17;
+            self.bob_settle_t += dt;
+            if (self.bob_settle_t >= settle_dur) {
+                self.bob_was_moving = false;
+                self.bob_settle_t = 0.0;
+                self.bob_breath_amp = 0.0;
+                self.bob_bob_amp = 0.0;
+            } else {
+                const pulse = std.math.sin((self.bob_settle_t / settle_dur) * std.math.pi);
+                self.bob_breath_amp = 0.025 * pulse;
+                self.bob_bob_amp = 0.9 * pulse;
+                self.barry_breath_t += dt * 0.7;
+            }
+        } else {
+            self.bob_breath_amp = 0.0;
+            self.bob_bob_amp = 0.0;
+        }
+
+        // Barry mirrors Bob's pose with a delay, then does his own short pulse.
+        const barry_moving = !barry_state_step.settled;
+        if (barry_moving) {
             self.barry_breath_t += dt * 1.5;
             self.barry_breath_amp = @min(0.04, self.barry_breath_amp + dt * 0.4);
-            self.barry_bob_amp = @min(1.5, self.barry_bob_amp + dt * 5.0);
-            self.was_moving = true;
-        } else if (self.was_moving) {
-            // One clean settle pulse, then completely still.
-            const settle_duration: f64 = 0.32;
-            self.settle_t += dt;
-            if (self.settle_t >= settle_duration) {
-                self.was_moving = false;
-                self.settle_t = 0.0;
+            self.barry_bob_amp = @min(1.0, self.barry_bob_amp + dt * 5.0);
+            self.barry_was_moving = true;
+        } else if (self.barry_was_moving) {
+            const settle_dur: f64 = 0.17;
+            self.barry_settle_t += dt;
+            if (self.barry_settle_t >= settle_dur) {
+                self.barry_was_moving = false;
+                self.barry_settle_t = 0.0;
                 self.barry_breath_amp = 0.0;
                 self.barry_bob_amp = 0.0;
             } else {
-                const pulse = std.math.sin((self.settle_t / settle_duration) * std.math.pi);
+                const pulse = std.math.sin((self.barry_settle_t / settle_dur) * std.math.pi);
                 self.barry_breath_amp = 0.025 * pulse;
                 self.barry_bob_amp = 0.9 * pulse;
                 self.barry_breath_t += dt * 0.7;
@@ -583,8 +628,8 @@ pub const Tray = struct {
 
         var needs_redraw = prev == 0 or
             (self.open_amount > 0.001 and self.open_amount < 0.999) or
-            !state_step.settled or
-            self.barry_state != .laying or
+            !bob_state_step.settled or
+            !barry_state_step.settled or
             !us_step.settled;
 
         for (self.outputs.items, 0..) |*po, i| {
@@ -838,14 +883,14 @@ pub const Tray = struct {
     }
     fn drawBarry(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
         const surfs = [_]*c.cairo_surface_t{ self.barry_lay, self.barry_sit, self.barry_stand };
-        const t: f64 = @as(f64, std.math.clamp(self.barry_state_t, 0.0, 2.0));
+        const t: f64 = @as(f64, std.math.clamp(self.bob_state_t, 0.0, 2.0));
         const idx0: usize = @intFromFloat(@floor(t));
         const idx1: usize = @min(idx0 + 1, 2);
         const blend: f64 = t - @floor(t);
 
-        // Movement-driven breath + bob.
-        const breath: f64 = 1.0 + self.barry_breath_amp * @sin(self.barry_breath_t * 2.0);
-        const bob: f64 = self.barry_bob_amp * s * @sin(self.barry_breath_t * 2.0);
+        // Movement-driven breath + bob for Bob.
+        const breath: f64 = 1.0 + self.bob_breath_amp * @sin(self.barry_breath_t * 2.0);
+        const bob: f64 = self.bob_bob_amp * s * @sin(self.barry_breath_t * 2.0);
 
         const margin: f64 = 4.0 * s;
         const avail_w = w - 2.0 * margin;
