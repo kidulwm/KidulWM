@@ -536,7 +536,7 @@ pub const Tray = struct {
             .sitting => 1.0,
             .standing => 2.0,
         };
-        const state_spring = animation.Spring{ .stiffness = 12.0, .damping = 0.88, .epsilon = 0.005 };
+        const state_spring = animation.Spring{ .stiffness = 24.0, .damping = 0.92, .epsilon = 0.005 };
         const state_step = state_spring.step(self.barry_state_t, self.barry_state_vel, target_state, dt);
         self.barry_state_t = @floatCast(state_step.value);
         self.barry_state_vel = @floatCast(state_step.velocity);
@@ -562,19 +562,19 @@ pub const Tray = struct {
             self.barry_bob_amp = @min(2.0, self.barry_bob_amp + dt * 5.0);
             self.was_moving = true;
         } else if (self.was_moving) {
-            // 1.5 short breaths after movement stops, then still.
+            // One clean settle pulse, then completely still.
+            const settle_duration: f64 = 0.45;
             self.settle_t += dt;
-            if (self.settle_t >= 0.55) {
+            if (self.settle_t >= settle_duration) {
                 self.was_moving = false;
                 self.settle_t = 0.0;
                 self.barry_breath_amp = 0.0;
                 self.barry_bob_amp = 0.0;
             } else {
-                const decay = 1.0 - (self.settle_t / 0.55);
-                const wobble = std.math.sin(self.settle_t * 22.0) * decay;
-                self.barry_breath_amp = 0.015 + 0.015 * wobble;
-                self.barry_bob_amp = 0.8 * wobble;
-                self.barry_breath_t += dt * 2.5;
+                const pulse = std.math.sin((self.settle_t / settle_duration) * std.math.pi);
+                self.barry_breath_amp = 0.025 * pulse;
+                self.barry_bob_amp = 1.0 * pulse;
+                self.barry_breath_t += dt * 1.5;
             }
         } else {
             self.barry_breath_amp = 0.0;
