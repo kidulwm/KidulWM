@@ -1036,19 +1036,20 @@ pub const Tray = struct {
         const pill_x: f64 = x + margin - left_nudge;
         const pill_w: f64 = w - margin - peek_border;
         const r: f64 = h / 2.0;
-        const chamfer: f64 = r * 0.30;
+        const depth: f64 = r * 0.30;
+        const tstyle = self.host.theme.style;
 
         c.cairo_save(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
         // Shadow.
-        chamferedRect(cr, pill_x + 2.0 * s, y + 3.0 * s, pill_w, h, chamfer);
+        panelOutline(tstyle, cr, pill_x + 2.0 * s, y + 3.0 * s, pill_w, h, depth);
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35 * alpha);
         c.cairo_fill(cr);
 
         // Glass body.
         _ = hovered;
-        chamferedRect(cr, pill_x, y, pill_w, h, chamfer);
+        panelOutline(tstyle, cr, pill_x, y, pill_w, h, depth);
         const glass = c.cairo_pattern_create_linear(pill_x, y, pill_x, y + h).?;
         c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.09, 0.09, 0.10, 0.85 * alpha);
         c.cairo_pattern_add_color_stop_rgba(glass, 0.5, 0.06, 0.06, 0.07, 0.82 * alpha);
@@ -1106,7 +1107,7 @@ pub const Tray = struct {
             const by = y + h - border_h - 2.0 * s;
             const ux = pill_x + char_w;
             const uw = pill_w - 2.0 * char_w;
-            roundedRect(cr, ux, by, uw, border_h, 2.0 * s);
+            panelOutline(tstyle, cr, ux, by, uw, border_h, 2.0 * s);
 
             const grad = self.createGradient(cr, ux, by, uw, border_h);
             c.cairo_set_source(cr, grad);
@@ -1164,6 +1165,18 @@ pub const Tray = struct {
         c.cairo_line_to(cr, x, y + h - chamfer);
         c.cairo_line_to(cr, x, y + chamfer);
         c.cairo_close_path(cr);
+    }
+
+    fn squareRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64) void {
+        c.cairo_rectangle(cr, x, y, w, h);
+    }
+
+    fn panelOutline(tstyle: style.Style, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, depth: f64) void {
+        switch (tstyle.corner_style) {
+            .round => roundedRect(cr, x, y, w, h, depth),
+            .chamfer => chamferedRect(cr, x, y, w, h, depth),
+            .square => squareRect(cr, x, y, w, h),
+        }
     }
 
     fn pointInside(self: *const Self, info: OutputInfo, px: f64, py: f64) bool {
@@ -1487,8 +1500,8 @@ pub const Tray = struct {
             c.cairo_paint(cr);
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-            const radius: f64 = @min(14.0, @min(w, h) * 0.05);
-            cairoRoundedRect(cr, 0.0, 0.0, w, h, radius);
+            const corner_depth: f64 = @min(14.0, @min(w, h) * 0.05);
+            panelOutline(tstyle, cr, 0.0, 0.0, w, h, corner_depth);
 
             // Body fill.
             const bg4 = bg.toF64();
@@ -1501,8 +1514,8 @@ pub const Tray = struct {
             c.cairo_set_line_width(cr, 2.0);
             c.cairo_stroke(cr);
 
-            // Clip to rounded interior so nothing spills past the rim.
-            cairoRoundedRect(cr, 1.0, 1.0, w - 2.0, h - 2.0, radius - 1.0);
+            // Clip to interior so nothing spills past the rim.
+            panelOutline(tstyle, cr, 1.0, 1.0, w - 2.0, h - 2.0, corner_depth - 1.0);
             c.cairo_clip(cr);
 
             const pad_x: f64 = 30.0;
@@ -1661,7 +1674,7 @@ pub const Tray = struct {
 
                 if (cell.in_month) {
                     // subtle glass cell border
-                    cairoRoundedRect(cr, cell_rect_x, cell_rect_y, cell_rect_w, cell_rect_h, 4.0);
+                    panelOutline(tstyle, cr, cell_rect_x, cell_rect_y, cell_rect_w, cell_rect_h, 4.0);
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.35);
                     c.cairo_set_line_width(cr, 1.0);
                     c.cairo_stroke(cr);
@@ -1669,7 +1682,7 @@ pub const Tray = struct {
 
                 // Today gets a gold-tinted background.
                 if (cell.is_today) {
-                    cairoRoundedRect(cr, cell_rect_x + 2.0, cell_rect_y + 2.0, cell_rect_w - 4.0, cell_rect_h - 4.0, 4.0);
+                    panelOutline(tstyle, cr, cell_rect_x + 2.0, cell_rect_y + 2.0, cell_rect_w - 4.0, cell_rect_h - 4.0, 4.0);
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.22);
                     c.cairo_fill_preserve(cr);
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.65);
