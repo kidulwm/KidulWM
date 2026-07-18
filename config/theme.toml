@@ -36,6 +36,7 @@ font_size_m = 16
 font_size_l = 22
 
 [spacing]
+border_width = 2
 button_height = 44
 button_gap = 8
 corner_radius = 8

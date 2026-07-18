@@ -66,8 +66,10 @@ fn windowPath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, style: Style) void
 }
 
 /// Render chrome overlay for a peek or focused window. Peeks get a full
-/// dark glass fill with a hard 2 px border using the unfocused-slide border
-/// color; focused windows keep the background mask and border ring.
+/// dark glass fill with a hard border using the theme's border width and
+/// corner style; the fill is clipped strictly inside the border so the
+/// background can never spill past it. Focused windows keep the background
+/// mask and border ring.
 pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale: u32, edges: EdgeMode, _: ?[]const u8) ?*c.cairo_surface_t {
         if (width <= 0 or height <= 0) return null;
     const s: i32 = @max(1, @as(i32, @intCast(scale)));
@@ -95,25 +97,30 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
     c.cairo_paint(cr);
 
-    const border_color = if (focused) style.color_border_focused else if (is_peek) style.color_gold_dim else style.color_border;
+    const border_color = if (focused) style.color_border_focused else if (is_peek) style.peek_glass_border_color else style.color_border;
 
     if (is_peek) {
-        // Peek: full wrapper fill with black glass, then a hard 2 px border
-        // on top. The overlay tree guarantees this is above the focused window.
-        scaled_style.corner_style = .square;
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.85);
+        // Peek: fill strictly inside the border, then stroke the border on top.
+        // The border is the authority: the background cannot pass it.
+        const inset = border / 2.0;
+
+        // Inner background uses the theme's corner style and sits exactly inside
+        // the border centerline.
+        windowPath(cr, inset, inset, w - border, h - border, scaled_style);
+        const bg = style.tray_bg_color.toF64();
+        c.cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], bg[3]);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
-        c.cairo_rectangle(cr, 0.0, 0.0, w, h);
         c.cairo_fill(cr);
 
-        const outer_border_w: f64 = 2.0 * @as(f64, @floatFromInt(s));
-        c.cairo_set_line_width(cr, outer_border_w);
-        setSource(cr, style.color_border, 1.0);
-        c.cairo_rectangle(cr, outer_border_w / 2.0, outer_border_w / 2.0, w - outer_border_w, h - outer_border_w);
+        // Border stroke on the same centerline, using the theme border width.
+        c.cairo_set_line_width(cr, border);
+        setSource(cr, border_color, 1.0);
+        windowPath(cr, inset, inset, w - border, h - border, scaled_style);
         c.cairo_stroke(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-        // Trim off hidden off-screen edges.
+        // Trim off hidden off-screen edges. Clear a region large enough to
+        // remove the border + corner falloff on each hidden side.
         const clear_w = @min(w / 2.0, depth + border + 1.0);
         const clear_left = if (!edges.left) clear_w else 0.0;
         const clear_right = if (!edges.right) clear_w else 0.0;

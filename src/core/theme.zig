@@ -108,6 +108,9 @@ pub const Theme = struct {
         self.style.font_size_l = @floatFromInt(cfg.typography.font_size_l);
         self.style.tray_font_size = self.style.font_size_m;
 
+        // Window chrome geometry from theme.
+        self.style.border_width = @floatFromInt(cfg.spacing.border_width);
+
         // Corner style propagates to both Theme (string) and Style (enum).
         if (std.mem.eql(u8, cfg.spacing.corner_style, "round")) {
             self.style.corner_style = .round;
@@ -231,6 +234,7 @@ const TypeTokens = struct {
 };
 
 const SpacingTokens = struct {
+    border_width: i32 = 2,
     corner_style: []const u8 = "round",
     button_height: i32 = 44,
     button_gap: i32 = 8,
@@ -256,4 +260,3 @@ const AnimationTokens = struct {
 fn parseColor(s: []const u8) ?Style.Color {
     return Style.Color.fromString(s) catch null;
 }
-
