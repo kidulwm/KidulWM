@@ -12,6 +12,8 @@ pub fn build(b: *std.Build) void {
     scanner.addSystemProtocol("staging/ext-session-lock/ext-session-lock-v1.xml");
     scanner.addSystemProtocol("staging/cursor-shape/cursor-shape-v1.xml");
     scanner.addSystemProtocol("staging/tearing-control/tearing-control-v1.xml");
+    scanner.addSystemProtocol("staging/color-management/color-management-v1.xml");
+    scanner.addSystemProtocol("staging/color-representation/color-representation-v1.xml");
 
     scanner.addCustomProtocol(b.path("protocol/wlr-layer-shell-unstable-v1.xml"));
     scanner.addCustomProtocol(b.path("protocol/wlr-output-power-management-unstable-v1.xml"));
@@ -29,6 +31,8 @@ pub fn build(b: *std.Build) void {
     scanner.generate("ext_session_lock_manager_v1", 1);
     scanner.generate("wp_cursor_shape_manager_v1", 1);
     scanner.generate("wp_tearing_control_manager_v1", 1);
+    scanner.generate("wp_color_manager_v1", 1);
+    scanner.generate("wp_color_representation_manager_v1", 1);
 
     scanner.generate("zwlr_layer_shell_v1", 5);
     scanner.generate("zwlr_output_power_manager_v1", 1);
@@ -38,6 +42,7 @@ pub fn build(b: *std.Build) void {
 
     const xkbcommon = b.dependency("xkbcommon", .{}).module("xkbcommon");
     const pixman = b.dependency("pixman", .{}).module("pixman");
+    const toml = b.dependency("toml", .{}).module("toml");
 
     const wlroots = b.dependency("wlroots", .{}).module("wlroots");
     wlroots.addImport("wayland", wayland);
@@ -57,6 +62,7 @@ pub fn build(b: *std.Build) void {
     root_mod.addImport("wlroots", wlroots);
     root_mod.addImport("xkbcommon", xkbcommon);
     root_mod.addImport("pixman", pixman);
+    root_mod.addImport("toml", toml);
 
     root_mod.linkSystemLibrary("wayland-server", .{});
     root_mod.linkSystemLibrary("wlroots-0.20", .{});

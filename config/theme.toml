@@ -1,0 +1,56 @@
+# KidulWM shared theme tokens.
+# Search order (first match wins):
+#   ~/.config/kidulwm/theme.toml
+#   /etc/kidulwm/theme.toml
+#   /usr/share/kidulwm/theme.toml
+
+[metadata]
+name = "KidulWM Default"
+version = "1.0.0"
+
+[colors]
+background = "#222425"
+gold = "#948e7b"
+gold_dim = "#5e5a4c"
+gold_soft = "rgba(148, 142, 123, 0.35)"
+text_body = "#948e7b"
+text_focused = "#b8b09b"
+text_muted = "#6a6354"
+black_glass = "rgba(10, 10, 11, 0.92)"
+black_glass_mid = "rgba(10, 10, 11, 0.60)"
+black_glass_deep = "rgba(4, 4, 5, 0.78)"
+rim_light = "rgba(255, 255, 255, 0.08)"
+border = "#4d4a40"
+border_focused = "#696555"
+urgent = "#BF616A"
+info = "#88C0D0"
+purple = "#a259ff"
+turquoise = "#00ffc8"
+blue = "#5E81AC"
+electric = "#00f0ff"
+
+[typography]
+font_mono = "Fantasque Sans Mono"
+font_size_s = 13
+font_size_m = 16
+font_size_l = 22
+
+[spacing]
+button_height = 44
+button_gap = 8
+corner_radius = 8
+icon_size = 24
+icon_gap = 8
+tray_top_margin = 48
+tray_bottom_margin = 10
+tray_hmargin = 8
+barry_button_height = 84
+char_buffer_m = 16.0
+
+[animation]
+tray_open_ms = 320
+tray_close_snap_ms = 125
+tray_settle_pulse_ms = 170
+underline_spring_stiffness = 80.0
+barry_follow_delay_s = 3.0
+window_transition_ms = 120

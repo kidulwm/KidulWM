@@ -8,6 +8,8 @@ const InputManager = @import("input.zig").InputManager;
 const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
 const style = @import("core/style.zig");
+const theme_mod = @import("core/theme.zig");
+const Theme = theme_mod.Theme;
 const slidedeck = @import("core/slidedeck.zig");
 const animation = @import("core/animation.zig");
 const chrome_renderer = @import("render/chrome.zig");
@@ -129,6 +131,7 @@ pub const Server = struct {
 
     state: State,
     theme: style.Style,
+    theme_runtime: Theme,
     deck_split: slidedeck.Split,
     deck_orientation: slidedeck.Orientation,
     windows: wl.list.Head(Window, .link),
@@ -187,7 +190,48 @@ pub const Server = struct {
             .set_theme => |p| {
                 std.log.info("theme update: {s} = {s}", .{ p.key, p.value });
                 self.applyTheme(p.key, p.value);
+                // Mirror per-key changes into the runtime theme container so
+                // TrayCard and other future widgets see them too.
+                self.theme_runtime.style = self.theme;
+                self.theme_runtime.bumpGeneration();
                 return .{ .ok = true, .message = "theme updated" };
+            },
+            .reload_theme => {
+                self.theme_runtime.reload(self.allocator) catch |err| {
+                    std.log.err("theme reload failed: {}", .{err});
+                    return .{ .ok = false, .message = "reload failed" };
+                };
+                self.theme = self.theme_runtime.style;
+                applyTitleBarEnvironment(self.theme.show_title_bars);
+                self.background.color = self.theme.color_background.toF32();
+                if (self.background.image_scene_buffer == null) {
+                    if (self.background.rect) |rect| {
+                        rect.setColor(&self.background.color);
+                    }
+                }
+                self.chrome_style_generation +%= 1;
+                self.requestLayout();
+                return .{ .ok = true, .message = "theme reloaded" };
+            },
+            .tray_toggle => {
+                self.tray.toggle();
+                return .{ .ok = true };
+            },
+            .tray_select_next => {
+                self.tray.selectNext();
+                return .{ .ok = true };
+            },
+            .tray_select_prev => {
+                self.tray.selectPrev();
+                return .{ .ok = true };
+            },
+            .tray_activate => {
+                self.tray.activateSelected();
+                return .{ .ok = true };
+            },
+            .tray_toggle_card => {
+                self.tray.toggleCard();
+                return .{ .ok = true };
             },
             else => return self.handleStateRequest(req),
         }
@@ -245,7 +289,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .quit => {},
+            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };
@@ -329,6 +373,7 @@ pub const Server = struct {
             .ipc_running = std.atomic.Value(bool).init(false),
             .state = .{},
             .theme = style.default(),
+            .theme_runtime = Theme.initDefaults(),
             .deck_split = .{
                 .left_peek = style.layout.horizontal_split.left_peek,
                 .focus = style.layout.horizontal_split.focus,
@@ -361,7 +406,6 @@ pub const Server = struct {
 
         server.outputs.init();
 
-        applyTitleBarEnvironment(server.theme.show_title_bars);
 
         const overlay_tree = try server.scene.tree.createSceneTree();
         server.overlay_tree = overlay_tree;
@@ -1108,7 +1152,19 @@ pub const Server = struct {
                     return false;
                 }
             }.f,
-            .theme = &self.theme,
+            .focused_window_box = struct {
+                fn f(ctx: *anyopaque) ?wlr.Box {
+                    const s: *Server = @ptrCast(@alignCast(ctx));
+                    const w = s.focused_window orelse return null;
+                    return .{
+                        .x = @intFromFloat(@round(w.animation.cur_x)),
+                        .y = @intFromFloat(@round(w.animation.cur_y)),
+                        .width = @intFromFloat(@round(w.animation.cur_w)),
+                        .height = @intFromFloat(@round(w.animation.cur_h)),
+                    };
+                }
+            }.f,
+            .theme = &self.theme_runtime,
         };
     }
 
@@ -1241,7 +1297,6 @@ pub const Server = struct {
                 std.log.warn("unknown show_title_bars '{s}', expected true/false", .{value});
                 return;
             }
-            applyTitleBarEnvironment(self.theme.show_title_bars);
             self.requestLayout();
             return;
         } else {

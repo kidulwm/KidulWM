@@ -15,6 +15,12 @@ pub const RequestTag = enum {
     split_bottom,
     set_theme,
     subscribe,
+    reload_theme,
+    tray_toggle,
+    tray_select_next,
+    tray_select_prev,
+    tray_activate,
+    tray_toggle_card,
     quit,
 };
 
@@ -45,6 +51,12 @@ pub const Request = union(RequestTag) {
     subscribe: struct {
         events: []const u8,
     },
+    reload_theme: void,
+    tray_toggle: void,
+    tray_select_next: void,
+    tray_select_prev: void,
+    tray_activate: void,
+    tray_toggle_card: void,
     quit: void,
 };
 

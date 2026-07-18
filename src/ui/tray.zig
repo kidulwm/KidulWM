@@ -2,6 +2,7 @@ const std = @import("std");
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const c = @import("../dm/c.zig").c;
+const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
 
@@ -84,12 +85,14 @@ pub const TrayHost = struct {
     cycle_animation: *const fn (ctx: *anyopaque) void,
     request_frame: *const fn (ctx: *anyopaque) void,
     is_transition_active: *const fn (ctx: *anyopaque) bool,
-    theme: *const style.Style,
+    focused_window_box: *const fn (ctx: *anyopaque) ?wlr.Box,
+    theme: *const theme_mod.Theme,
 };
 
 const Action = union(enum) {
     toggle_tray,
     cycle_animation,
+    card_clock,
     spawn: []const u8,
     settings_page: []const u8,
     none,
@@ -175,6 +178,19 @@ pub const Tray = struct {
     // Lazy Barry mirror state.
     barry_follow_deadline_us: u64 = 0,
 
+    // Focused-slide card (clock/calendar/etc).
+    card_open: bool = false,
+    card_open_amount: f32 = 0.0,
+    card_open_amount_vel: f32 = 0.0,
+    card_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    card_tree: ?*wlr.SceneTree = null,
+    card_scene_buffer: ?*wlr.SceneBuffer = null,
+    card_buffer: ?*wlr.Buffer = null,
+    card_last_w: i32 = 0,
+    card_last_h: i32 = 0,
+    card_last_open: f32 = -1.0,
+    card_last_generation: u32 = 0,
+
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
     items: []TrayItem,
@@ -199,15 +215,16 @@ pub const Tray = struct {
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
-        const items = try allocator.alloc(TrayItem, 4);
+        const items = try allocator.alloc(TrayItem, 5);
         items[0] = .{ .id = "term", .label = "Terminal", .action = .{ .spawn = "" } };
         items[1] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "" } };
         items[2] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "" } };
         items[3] = .{ .id = "motion", .label = "Motion", .action = .cycle_animation };
+        items[4] = .{ .id = "clock", .label = "Clock", .action = .card_clock };
 
         var manual_order: std.ArrayList(usize) = .empty;
         errdefer manual_order.deinit(allocator);
-        try manual_order.appendSlice(allocator, &[_]usize{ 0, 1, 2, 3 });
+        try manual_order.appendSlice(allocator, &[_]usize{ 0, 1, 2, 3, 4 });
 
         const barry_lay = try loadPngFromBytes(lay_png);
         errdefer c.cairo_surface_destroy(barry_lay);
@@ -222,12 +239,15 @@ pub const Tray = struct {
         const barry_puppy_stand = try loadPngFromBytes(puppy_stand_png);
         errdefer c.cairo_surface_destroy(barry_puppy_stand);
 
+        const card_tree = root.createSceneTree() catch null;
+
         return .{
             .allocator = allocator,
             .host = host,
             .root = root,
             .outputs = .empty,
             .barry_pets = .empty,
+            .card_tree = card_tree,
             .items = items,
             .manual_order = manual_order,
             .icon_cache = std.StringHashMap(*c.cairo_surface_t).init(allocator),
@@ -256,6 +276,9 @@ pub const Tray = struct {
         c.cairo_surface_destroy(self.barry_puppy_lay);
         c.cairo_surface_destroy(self.barry_puppy_sit);
         c.cairo_surface_destroy(self.barry_puppy_stand);
+        if (self.card_scene_buffer) |sb| sb.node.destroy();
+        if (self.card_buffer) |buf| wlr.Buffer.drop(buf);
+        if (self.card_tree) |tree| tree.node.destroy();
         self.manual_order.deinit(self.allocator);
         self.allocator.free(self.items);
     }
@@ -357,6 +380,12 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn toggleCard(self: *Self) void {
+        self.card_open = !self.card_open;
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     pub fn selectNext(self: *Self) void {
         self.keepOpen();
         if (!self.isOpen() or self.items.len == 0) {
@@ -407,6 +436,7 @@ pub const Tray = struct {
         switch (it.action) {
             .cycle_animation => self.host.cycle_animation(self.host.ctx),
             .toggle_tray => self.toggle(),
+            .card_clock => self.toggleCard(),
             .spawn => {},
             .settings_page => {},
             .none => {},
@@ -679,6 +709,8 @@ pub const Tray = struct {
             po.last_order_mode = self.order_mode;
             self.updatePerOutput(po, needs_redraw);
         }
+
+        self.updateCard();
 
         for (self.barry_pets.items, 0..) |*pet, i| {
             pet.info = self.host.output_info(self.host.ctx, i);
@@ -1021,7 +1053,7 @@ pub const Tray = struct {
         c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.09, 0.09, 0.10, 0.85 * alpha);
         c.cairo_pattern_add_color_stop_rgba(glass, 0.5, 0.06, 0.06, 0.07, 0.82 * alpha);
         if (focused) {
-            const c4 = self.host.theme.tray_text_focused_color.toF64();
+            const c4 = self.host.theme.style.tray_text_focused_color.toF64();
             c.cairo_pattern_add_color_stop_rgba(glass, 0.5, c4[0], c4[1], c4[2], 0.22 * alpha);
         }
         c.cairo_pattern_add_color_stop_rgba(glass, 1.0, 0.04, 0.04, 0.05, 0.78 * alpha);
@@ -1030,14 +1062,14 @@ pub const Tray = struct {
         c.cairo_pattern_destroy(glass);
 
         // Gold rim.
-        const rim4 = self.host.theme.color_gold.toF64();
+        const rim4 = self.host.theme.style.color_gold.toF64();
         c.cairo_set_source_rgba(cr, rim4[0], rim4[1], rim4[2], 0.45 * alpha);
         c.cairo_set_line_width(cr, 1.0 * s);
         c.cairo_stroke(cr);
 
         // Render label.
         const label_c: [*c]const u8 = @ptrCast(it.label);
-        const font_size = self.host.theme.tray_font_size * s;
+        const font_size = self.host.theme.style.tray_font_size * s;
         c.cairo_select_font_face(cr, "Fantasque Sans Mono", c.CAIRO_FONT_SLANT_NORMAL, if (focused) c.CAIRO_FONT_WEIGHT_BOLD else c.CAIRO_FONT_WEIGHT_NORMAL);
         c.cairo_set_font_size(cr, font_size);
 
@@ -1051,7 +1083,7 @@ pub const Tray = struct {
             c.cairo_text_extents(cr, label_c, &extents);
         }
 
-        const text_color = if (focused) self.host.theme.tray_text_focused_color else self.host.theme.tray_text_color;
+        const text_color = if (focused) self.host.theme.style.tray_text_focused_color else self.host.theme.style.tray_text_color;
         const c4 = text_color.toF64();
         c.cairo_set_source_rgba(cr, c4[0], c4[1], c4[2], alpha);
         const shadow_offset: f64 = 1.0 * s;
@@ -1091,7 +1123,7 @@ pub const Tray = struct {
 
     fn createGradient(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64) *c.cairo_pattern_t {
         const grad = c.cairo_pattern_create_linear(x, y, x, y + h).?;
-        const gold = self.host.theme.tray_text_focused_color.toF64();
+        const gold = self.host.theme.style.tray_text_focused_color.toF64();
         // Top of underline matches the muted goldish focus highlight of the button.
         c.cairo_pattern_add_color_stop_rgba(grad, 0.0, gold[0], gold[1], gold[2], 0.70);
         c.cairo_pattern_add_color_stop_rgba(grad, 0.45, gold[0], gold[1], gold[2], 0.35);
@@ -1250,4 +1282,399 @@ pub const Tray = struct {
         return true;
     }
 
+
+
+    fn updateCard(self: *Self) void {
+        const now_us = animation.nowUs();
+        const prev = self.last_update_us;
+        const dt = if (prev == 0) 0.0 else @as(f64, @floatFromInt(now_us - prev)) / 1_000_000.0;
+
+        const desired: f32 = if (self.card_open) 1.0 else 0.0;
+        const closing = desired < self.card_open_amount;
+        const spring = if (closing)
+            animation.Spring{ .stiffness = 8.0, .damping = 0.92, .epsilon = 0.001 }
+        else
+            animation.Spring{ .stiffness = 60.0, .damping = 0.95, .epsilon = 0.001 };
+        const step = spring.step(self.card_open_amount, self.card_open_amount_vel, desired, dt);
+        self.card_open_amount = @floatCast(step.value);
+        self.card_open_amount_vel = @floatCast(step.velocity);
+
+        if (self.card_open_amount < 0.005 and !self.card_open) {
+            if (self.card_tree) |tree| tree.node.setEnabled(false);
+            return;
+        }
+
+        const box = self.host.focused_window_box(self.host.ctx) orelse {
+            if (self.card_tree) |tree| tree.node.setEnabled(false);
+            return;
+        };
+        self.card_box = box;
+
+        var w = box.width;
+        var h = box.height;
+        if (w <= 260 or h <= 260) {
+            w = @min(w, 320);
+            h = @min(h, 240);
+        } else {
+            w -= 160;
+            h -= 160;
+        }
+        if (w <= 0 or h <= 0) {
+            if (self.card_tree) |tree| tree.node.setEnabled(false);
+            return;
+        }
+        const card_x = box.x + @divTrunc(box.width - w, 2);
+        const card_y = box.y + @divTrunc(box.height - h, 2);
+
+        const needs_redraw = self.card_last_w != w or
+            self.card_last_h != h or
+            @abs(self.card_last_open - self.card_open_amount) > 0.0001 or
+            self.card_last_generation != self.host.theme.generation or
+            !step.settled;
+
+        if (self.card_tree) |tree| {
+            tree.node.setEnabled(true);
+            tree.node.raiseToTop();
+            tree.node.setPosition(card_x, card_y);
+        }
+
+        if (needs_redraw) {
+            self.card_last_w = w;
+            self.card_last_h = h;
+            self.card_last_open = self.card_open_amount;
+            self.card_last_generation = self.host.theme.generation;
+            self.renderCardBuffer(w, h);
+        }
+    }
+
+    fn renderCardBuffer(self: *Self, w_i: i32, h_i: i32) void {
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const w = w_i;
+        const h = h_i;
+
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: card buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, w, h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for card", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        self.drawClockCalendarCard(cr, @floatFromInt(w), @floatFromInt(h));
+
+        const buffer = DataBuffer.create(temp, w, h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create card buffer: {}", .{err});
+            return;
+        };
+        if (self.card_buffer) |old| wlr.Buffer.drop(old);
+        self.card_buffer = buffer;
+        if (self.card_scene_buffer) |old| old.node.destroy();
+        const tree = self.card_tree orelse return;
+        self.card_scene_buffer = tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create card scene buffer: {}", .{err});
+            return;
+        };
+        if (self.card_scene_buffer) |sb| sb.node.raiseToTop();
+    }
+
+        const CalendarCell = struct {
+            day: i32,
+            col: i32,
+            row: i32,
+            in_month: bool,
+            is_today: bool,
+        };
+
+        /// Build a 7×6 grid anchored to the current month. Returns the current
+        /// month’s days plus leading/trailing days so the grid never has holes.
+        fn calendarCells(cells: []CalendarCell, year: i32, month: i32, today_mday: i32) void {
+            const dim = daysInMonth(month, year);
+            var probe: c.struct_tm = std.mem.zeroes(c.struct_tm);
+            probe.tm_year = year - 1900;
+            probe.tm_mon = month - 1;
+            probe.tm_mday = 1;
+            probe.tm_hour = 12;
+            probe.tm_min = 0;
+            probe.tm_sec = 0;
+            probe.tm_isdst = -1;
+            const first_t: c.time_t = c.mktime(&probe);
+            var first_local: c.struct_tm = undefined;
+            const first_tm = c.localtime_r(&first_t, &first_local);
+            const start_wday = @as(i32, @intCast(first_tm.*.tm_wday));
+
+            // Pad with previous month when the month does not start on Sunday.
+            var prev_year = year;
+            var prev_month = month - 1;
+            if (prev_month < 1) {
+                prev_month = 12;
+                prev_year -= 1;
+            }
+            const prev_dim = daysInMonth(prev_month, prev_year);
+            var i: usize = 0;
+            const leading = start_wday;
+            var col: i32 = 0;
+            while (col < leading) : (col += 1) {
+                cells[i] = .{
+                    .day = prev_dim - leading + 1 + col,
+                    .col = col,
+                    .row = 0,
+                    .in_month = false,
+                    .is_today = false,
+                };
+                i += 1;
+            }
+
+            var day: i32 = 1;
+            while (day <= dim) : (day += 1) {
+                const cell_index = start_wday + day - 1;
+                cells[i] = .{
+                    .day = day,
+                    .col = @mod(cell_index, 7),
+                    .row = @divTrunc(cell_index, 7),
+                    .in_month = true,
+                    .is_today = day == today_mday,
+                };
+                i += 1;
+            }
+
+            // Fill remainder with next month to complete 6 rows.
+            var next_year = year;
+            var next_month = month + 1;
+            if (next_month > 12) {
+                next_month = 1;
+                next_year += 1;
+            }
+            day = 1;
+            while (i < cells.len) : (i += 1) {
+                const cell_index = start_wday + dim + day - 1;
+                cells[i] = .{
+                    .day = day,
+                    .col = @mod(cell_index, 7),
+                    .row = @divTrunc(cell_index, 7),
+                    .in_month = false,
+                    .is_today = false,
+                };
+                day += 1;
+            }
+        }
+
+        fn drawClockCalendarCard(self: *const Self, cr: *c.cairo_t, w: f64, h: f64) void {
+            const tstyle = self.host.theme.style;
+            const bg = tstyle.tray_bg_color;
+            const gold = tstyle.color_gold;
+            const text = tstyle.tray_text_focused_color;
+            const muted = tstyle.color_text_muted;
+            const card_font = "Fantasque Sans Mono";
+
+            // Respect theme font sizes, scaled slightly down to fit glass card.
+            const time_font_size = tstyle.font_size_l * 1.2;
+            const date_font_size = tstyle.font_size_m;
+            const day_font_size = tstyle.font_size_s;
+
+            // Clear; draw glass rounded body with gold rim, then crop all content inside.
+            c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+            c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+            c.cairo_paint(cr);
+            c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+            const radius: f64 = @min(14.0, @min(w, h) * 0.05);
+            cairoRoundedRect(cr, 0.0, 0.0, w, h, radius);
+
+            // Body fill.
+            const bg4 = bg.toF64();
+            c.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], bg4[3]);
+            c.cairo_fill_preserve(cr);
+
+            // Gold rim.
+            const gold4 = gold.toF64();
+            c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
+            c.cairo_set_line_width(cr, 2.0);
+            c.cairo_stroke(cr);
+
+            // Clip to rounded interior so nothing spills past the rim.
+            cairoRoundedRect(cr, 1.0, 1.0, w - 2.0, h - 2.0, radius - 1.0);
+            c.cairo_clip(cr);
+
+            const pad_x: f64 = 30.0;
+            const pad_y: f64 = 22.0;
+            const content_w = w - 2.0 * pad_x;
+            const content_h = h - 2.0 * pad_y;
+
+            var now: c.time_t = c.time(null);
+            var local: c.struct_tm = undefined;
+            const tm = c.localtime_r(&now, &local);
+            const year = @as(i32, @intCast(tm.*.tm_year)) + 1900;
+            const month = @as(i32, @intCast(tm.*.tm_mon)) + 1;
+            const today_mday = @as(i32, @intCast(tm.*.tm_mday));
+
+            // ---- Time: HH:MM ----
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+            c.cairo_set_font_size(cr, time_font_size);
+            const text_color = text.toF64();
+            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+
+            var time_buf: [16:0]u8 = undefined;
+            {
+                @memset(&time_buf, 0);
+                const hour = @rem(@as(i32, @intCast(tm.*.tm_hour)), 24);
+                const minute = @as(i32, @intCast(tm.*.tm_min));
+                time_buf[0] = @intCast('0' + @divFloor(hour, 10));
+                time_buf[1] = @intCast('0' + @mod(hour, 10));
+                time_buf[2] = ':';
+                time_buf[3] = @intCast('0' + @divFloor(minute, 10));
+                time_buf[4] = @intCast('0' + @mod(minute, 10));
+                time_buf[5] = 0;
+            }
+            const time_str: [*:0]const u8 = @ptrCast(&time_buf);
+
+            var time_ext: c.cairo_text_extents_t = undefined;
+            var date_ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, time_str, &time_ext);
+            const time_x = pad_x + (content_w - time_ext.width) * 0.5;
+            var time_y = pad_y + time_font_size * 0.9;
+            if (content_w > time_ext.width + 10.0) {
+                time_y = pad_y + time_font_size;
+            }
+            c.cairo_move_to(cr, time_x, time_y);
+            c.cairo_show_text(cr, time_str);
+
+            // ---- Date / weekday line ----
+            const date_color = muted.toF64();
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+            c.cairo_set_font_size(cr, date_font_size);
+            c.cairo_set_source_rgba(cr, date_color[0], date_color[1], date_color[2], date_color[3]);
+
+            var date_buf: [64:0]u8 = undefined;
+            const date_str = std.fmt.bufPrintZ(&date_buf, "{s}, {s} {d}", .{
+                weekdayName(tm.*.tm_wday),
+                monthName(tm.*.tm_mon),
+                today_mday,
+            }) catch return;
+            c.cairo_text_extents(cr, date_str.ptr, &date_ext);
+            const date_w = date_ext.width;
+            const date_y = time_y + time_font_size * 0.4 + date_font_size;
+            c.cairo_move_to(cr, pad_x + (content_w - date_w) * 0.5, date_y);
+            c.cairo_show_text(cr, date_str.ptr);
+
+            // ---- Calendar grid ----
+            const header = &[_][]const u8{ "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
+            const rows: i32 = 6;
+            const header_margin: f64 = day_font_size * 0.4;
+            const grid_top = date_y + date_font_size * 0.8;
+            const usable_h = content_h - (grid_top - pad_y);
+            const cell_w = content_w / 7.0;
+            const cell_h = if (usable_h > 0.0) @max(day_font_size * 1.4, usable_h / @as(f64, @floatFromInt(rows + 1))) else day_font_size * 1.4;
+
+            c.cairo_set_font_size(cr, day_font_size);
+            var day_ext: c.cairo_text_extents_t = undefined;
+
+            // Weekday header row in muted gold to match theme.
+            c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.85);
+            for (header, 0..) |txt, ci| {
+                c.cairo_text_extents(cr, txt.ptr, &day_ext);
+                const hx = pad_x + @as(f64, @floatFromInt(ci)) * cell_w + (cell_w - day_ext.width) * 0.5;
+                const hy = grid_top + day_font_size;
+                c.cairo_move_to(cr, hx, hy);
+                c.cairo_show_text(cr, txt.ptr);
+            }
+
+            var cells: [42]CalendarCell = undefined;
+            calendarCells(&cells, year, month, today_mday);
+
+            const grid_origin_y = grid_top + day_font_size + header_margin;
+            for (cells) |cell| {
+                const cx = pad_x + @as(f64, @floatFromInt(cell.col)) * cell_w;
+                const cy = grid_origin_y + @as(f64, @floatFromInt(cell.row)) * cell_h;
+
+                // Today gets a gold-tinted rounded cell behind the number.
+                if (cell.is_today) {
+                    const pad = cell_w * 0.1;
+                    cairoRoundedRect(cr, cx + pad, cy - day_font_size * 0.8, cell_w - 2.0 * pad, day_font_size * 1.5, day_font_size * 0.35);
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.22);
+                    c.cairo_fill(cr);
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.55);
+                    c.cairo_set_line_width(cr, 1.0);
+                    c.cairo_stroke(cr);
+                }
+
+                var day_buf: [4:0]u8 = undefined;
+                const day_str = std.fmt.bufPrintZ(&day_buf, "{d}", .{cell.day}) catch continue;
+                c.cairo_text_extents(cr, day_str.ptr, &day_ext);
+
+                if (cell.in_month) {
+                    if (cell.is_today) {
+                        c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
+                    } else {
+                        c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+                    }
+                } else {
+                    c.cairo_set_source_rgba(cr, date_color[0], date_color[1], date_color[2], date_color[3] * 0.5);
+                }
+                const tx = cx + (cell_w - day_ext.width) * 0.5;
+                const ty = cy;
+                c.cairo_move_to(cr, tx, ty);
+                c.cairo_show_text(cr, day_str.ptr);
+            }
+        }
+
+        fn weekdayName(wday: c_int) []const u8 {
+            return switch (wday) {
+                0 => "Sunday",
+                1 => "Monday",
+                2 => "Tuesday",
+                3 => "Wednesday",
+                4 => "Thursday",
+                5 => "Friday",
+                6 => "Saturday",
+                else => "",
+            };
+        }
+
+        fn monthName(mon: c_int) []const u8 {
+            return switch (mon) {
+                0 => "January",
+                1 => "February",
+                2 => "March",
+                3 => "April",
+                4 => "May",
+                5 => "June",
+                6 => "July",
+                7 => "August",
+                8 => "September",
+                9 => "October",
+                10 => "November",
+                11 => "December",
+                else => "",
+            };
+        }
+
+    fn daysInMonth(month: i32, year: i32) i32 {
+        return switch (month) {
+            1, 3, 5, 7, 8, 10, 12 => 31,
+            4, 6, 9, 11 => 30,
+            2 => if ((@mod(year, 4) == 0 and @mod(year, 100) != 0) or @mod(year, 400) == 0) 29 else 28,
+            else => 0,
+        };
+    }
+
+    fn cairoRoundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
+        const radius = @min(r, w / 2.0);
+        const radius_h = @min(radius, h / 2.0);
+        c.cairo_new_sub_path(cr);
+        c.cairo_arc(cr, x + w - radius_h, y + radius_h, radius_h, -std.math.pi / 2.0, 0.0);
+        c.cairo_arc(cr, x + w - radius_h, y + h - radius_h, radius_h, 0.0, std.math.pi / 2.0);
+        c.cairo_arc(cr, x + radius_h, y + h - radius_h, radius_h, std.math.pi / 2.0, std.math.pi);
+        c.cairo_arc(cr, x + radius_h, y + radius_h, radius_h, std.math.pi, 3.0 * std.math.pi / 2.0);
+        c.cairo_close_path(cr);
+    }
 };

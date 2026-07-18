@@ -33,6 +33,11 @@ pub const Style = struct {
     tray_bg_color: Color = Color.fromHex(0x0a0a0b),
     tray_icon_size: f32 = 24.0,
     tray_icon_gap: f32 = 8.0,
+    color_text_muted: Color = Color.fromHex(0x6a6354),
+
+    font_size_s: f32 = 13.0,
+    font_size_m: f32 = 16.0,
+    font_size_l: f32 = 22.0,
 
     show_title_bars: bool = false,
 
@@ -66,14 +71,68 @@ pub const Style = struct {
         }
 
         pub fn fromString(s: []const u8) !Color {
-            if (s.len == 0) return error.InvalidColor;
-            const hex = if (s[0] == '#') s[1..] else s;
+            return parseColorString(s);
+        }
+
+        pub fn parseColorString(s: []const u8) !Color {
+            const t = std.mem.trim(u8, s, " \t\r\n");
+            if (t.len == 0) return error.InvalidColor;
+            if (std.mem.startsWith(u8, t, "rgba(")) return parseRgba(t);
+            if (std.mem.startsWith(u8, t, "rgb(")) return parseRgb(t);
+            const hex = if (t[0] == '#') t[1..] else t;
             if (hex.len != 6 and hex.len != 8) return error.InvalidColor;
             const r = try std.fmt.parseInt(u8, hex[0..2], 16);
             const g = try std.fmt.parseInt(u8, hex[2..4], 16);
             const b = try std.fmt.parseInt(u8, hex[4..6], 16);
             const a: u8 = if (hex.len == 8) try std.fmt.parseInt(u8, hex[6..8], 16) else 0xFF;
             return .{ .r = r, .g = g, .b = b, .a = a };
+        }
+
+        fn parseRgba(s: []const u8) !Color {
+            var inner = s[5..];
+            if (inner.len > 0 and inner[inner.len - 1] == ')') inner = inner[0 .. inner.len - 1];
+            var parts: [4]f32 = undefined;
+            var i: usize = 0;
+            var it = std.mem.splitScalar(u8, inner, ',');
+            while (it.next()) |part| : (i += 1) {
+                if (i >= 4) return error.InvalidColor;
+                parts[i] = std.fmt.parseFloat(f32, std.mem.trim(u8, part, " \t")) catch return error.InvalidColor;
+            }
+            if (i != 4) return error.InvalidColor;
+            return .{
+                .r = floatComponent(parts[0]),
+                .g = floatComponent(parts[1]),
+                .b = floatComponent(parts[2]),
+                .a = floatAlpha(parts[3]),
+            };
+        }
+
+        fn parseRgb(s: []const u8) !Color {
+            var inner = s[4..];
+            if (inner.len > 0 and inner[inner.len - 1] == ')') inner = inner[0 .. inner.len - 1];
+            var parts: [3]f32 = undefined;
+            var i: usize = 0;
+            var it = std.mem.splitScalar(u8, inner, ',');
+            while (it.next()) |part| : (i += 1) {
+                if (i >= 3) return error.InvalidColor;
+                parts[i] = std.fmt.parseFloat(f32, std.mem.trim(u8, part, " \t")) catch return error.InvalidColor;
+            }
+            if (i != 3) return error.InvalidColor;
+            return .{
+                .r = floatComponent(parts[0]),
+                .g = floatComponent(parts[1]),
+                .b = floatComponent(parts[2]),
+                .a = 255,
+            };
+        }
+
+        fn floatComponent(v: f32) u8 {
+            const scaled = if (v <= 1.0) v * 255.0 else v;
+            return @intCast(std.math.clamp(@as(u32, @intFromFloat(scaled)), 0, 255));
+        }
+
+        fn floatAlpha(v: f32) u8 {
+            return @intCast(std.math.clamp(@as(u32, @intFromFloat(v * 255.0)), 0, 255));
         }
 
         pub fn toF32(self: Color) [4]f32 {
