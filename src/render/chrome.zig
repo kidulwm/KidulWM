@@ -43,10 +43,25 @@ fn squareRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64) void {
     c.cairo_rectangle(cr, x, y, w, h);
 }
 
+fn chamferRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, d: f64) void {
+    const depth = @min(d, w / 2.0, h / 2.0);
+    c.cairo_new_sub_path(cr);
+    c.cairo_move_to(cr, x + depth, y);
+    c.cairo_line_to(cr, x + w - depth, y);
+    c.cairo_line_to(cr, x + w, y + depth);
+    c.cairo_line_to(cr, x + w, y + h - depth);
+    c.cairo_line_to(cr, x + w - depth, y + h);
+    c.cairo_line_to(cr, x + depth, y + h);
+    c.cairo_line_to(cr, x, y + h - depth);
+    c.cairo_line_to(cr, x, y + depth);
+    c.cairo_close_path(cr);
+}
+
 fn windowPath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, style: Style) void {
     switch (style.corner_style) {
-        .classic => roundedRect(cr, x, y, w, h, style.corner_depth),
-        .none => squareRect(cr, x, y, w, h),
+        .round => roundedRect(cr, x, y, w, h, style.corner_depth),
+        .chamfer => chamferRect(cr, x, y, w, h, style.corner_depth),
+        .square => squareRect(cr, x, y, w, h),
     }
 }
 
@@ -85,7 +100,7 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     if (is_peek) {
         // Peek: full wrapper fill with black glass, then a hard 2 px border
         // on top. The overlay tree guarantees this is above the focused window.
-        scaled_style.corner_style = .none;
+        scaled_style.corner_style = .square;
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.85);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
         c.cairo_rectangle(cr, 0.0, 0.0, w, h);
@@ -131,7 +146,7 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
         c.cairo_fill(cr);
         c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_WINDING);
 
-        const clear_w = if (scaled_style.corner_style == .none)
+        const clear_w = if (scaled_style.corner_style == .square)
             border + 1.0
         else
             @min(w / 2.0, depth + border + 1.0);

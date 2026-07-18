@@ -24,6 +24,7 @@ pub const Theme = struct {
     tray_bottom_margin: i32 = 10,
     tray_hmargin: i32 = 8,
     barry_button_height: i32 = 84,
+    corner_style: []const u8 = "round",
 
     // Animation state scalars exposed to any module that needs them.
     tray_open_s: f64 = 0.320,
@@ -107,6 +108,15 @@ pub const Theme = struct {
         self.style.font_size_l = @floatFromInt(cfg.typography.font_size_l);
         self.style.tray_font_size = self.style.font_size_m;
 
+        // Corner style propagates to both Theme (string) and Style (enum).
+        if (std.mem.eql(u8, cfg.spacing.corner_style, "round")) {
+            self.style.corner_style = .round;
+        } else if (std.mem.eql(u8, cfg.spacing.corner_style, "chamfer")) {
+            self.style.corner_style = .chamfer;
+        } else if (std.mem.eql(u8, cfg.spacing.corner_style, "square")) {
+            self.style.corner_style = .square;
+        }
+
         // Spacing is consumed by tray.zig via the Theme struct helpers below.
         self.button_height = cfg.spacing.button_height;
         self.button_gap = cfg.spacing.button_gap;
@@ -117,6 +127,7 @@ pub const Theme = struct {
         self.tray_bottom_margin = cfg.spacing.tray_bottom_margin;
         self.tray_hmargin = cfg.spacing.tray_hmargin;
         self.barry_button_height = cfg.spacing.barry_button_height;
+        self.corner_style = cfg.spacing.corner_style;
 
         // Animation timers are seconds/float.
         self.tray_open_s = @as(f64, @floatFromInt(cfg.animation.tray_open_ms)) / 1000.0;
@@ -220,6 +231,7 @@ const TypeTokens = struct {
 };
 
 const SpacingTokens = struct {
+    corner_style: []const u8 = "round",
     button_height: i32 = 44,
     button_gap: i32 = 8,
     corner_radius: i32 = 8,

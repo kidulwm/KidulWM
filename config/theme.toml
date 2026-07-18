@@ -39,6 +39,7 @@ font_size_l = 22
 button_height = 44
 button_gap = 8
 corner_radius = 8
+corner_style = "round"
 icon_size = 24
 icon_gap = 8
 tray_top_margin = 48

@@ -1277,12 +1277,14 @@ pub const Server = struct {
             self.theme.gap = gap;
             self.state.gap = gap;
         } else if (std.mem.eql(u8, key, "corner_style")) {
-            if (std.mem.eql(u8, value, "classic")) {
-                self.theme.corner_style = .classic;
-            } else if (std.mem.eql(u8, value, "none")) {
-                self.theme.corner_style = .none;
+            if (std.mem.eql(u8, value, "round")) {
+                self.theme.corner_style = .round;
+            } else if (std.mem.eql(u8, value, "chamfer")) {
+                self.theme.corner_style = .chamfer;
+            } else if (std.mem.eql(u8, value, "square")) {
+                self.theme.corner_style = .square;
             } else {
-                std.log.warn("unknown corner_style '{s}', expected classic/none", .{value});
+                std.log.warn("unknown corner_style '{s}', expected round/chamfer/square", .{value});
                 return;
             }
             self.chrome_style_generation +%= 1;

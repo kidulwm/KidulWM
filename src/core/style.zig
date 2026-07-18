@@ -6,7 +6,7 @@ const std = @import("std");
 pub const Style = struct {
     gap: u32 = 8,
     border_width: f32 = 2.0,
-    corner_style: CornerStyle = .none,
+    corner_style: CornerStyle = .round,
     corner_depth: f32 = 16.0,
 
     color_background: Color = Color.fromHex(0x222425),
@@ -42,8 +42,9 @@ pub const Style = struct {
     show_title_bars: bool = false,
 
     pub const CornerStyle = enum {
-        classic,
-        none,
+        round,
+        chamfer,
+        square,
     };
 
     pub const Color = packed struct {
