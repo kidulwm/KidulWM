@@ -205,6 +205,8 @@ pub const Tray = struct {
     card_focused_month: i32 = 0,
     card_focused_day: i32 = 0,
     card_focused_generation: u32 = 0,
+    card_hover_row: ?i32 = null,
+    card_hover_col: ?i32 = null,
 
     // Top-right peek widget (clock/date).
     widgets: std.ArrayList(PerOutputWidget),
@@ -1307,6 +1309,29 @@ pub const Tray = struct {
         const out_count = self.host.output_count(self.host.ctx);
         var inside_any = false;
         var new_hover: ?usize = null;
+
+        // Track calendar card hover.
+        if (self.card_open and self.card_box.width > 0 and self.card_box.height > 0) {
+            const cbx = @as(f64, @floatFromInt(self.card_box.x));
+            const cby = @as(f64, @floatFromInt(self.card_box.y));
+            const cbw = @as(f64, @floatFromInt(self.card_box.width));
+            const cbh = @as(f64, @floatFromInt(self.card_box.height));
+            if (px >= cbx and px < cbx + cbw and py >= cby and py < cby + cbh) {
+                if (self.handleCardDateHover(px - cbx, py - cby)) {
+                    self.requestUpdate();
+                }
+            } else {
+                if (self.card_hover_row != null or self.card_hover_col != null) {
+                    self.card_hover_row = null;
+                    self.card_hover_col = null;
+                    self.requestUpdate();
+                }
+            }
+        } else if (self.card_hover_row != null or self.card_hover_col != null) {
+            self.card_hover_row = null;
+            self.card_hover_col = null;
+        }
+
         for (0..out_count) |i| {
             const info = self.host.output_info(self.host.ctx, i);
             if (i < self.outputs.items.len) self.outputs.items[i].info = info;
@@ -1450,7 +1475,7 @@ pub const Tray = struct {
         if (col < 0 or col >= 7 or row < 0 or row >= 6) return false;
 
         var cells: [42]CalendarCell = undefined;
-        calendarCells(&cells, self.card_year, self.card_month, self.card_focused_day);
+        calendarCells(&cells, self.card_year, self.card_month, self.card_focused_day, self.card_focused_year, self.card_focused_month, self.card_focused_day);
         const cell_index = @as(usize, @intCast(row)) * 7 + @as(usize, @intCast(col));
         if (cell_index >= cells.len) return false;
         const cell = cells[cell_index];
@@ -1481,8 +1506,22 @@ pub const Tray = struct {
         return true;
     }
 
-
-
+    fn handleCardDateHover(self: *Self, local_px: f64, local_py: f64) bool {
+        const pad_x: f64 = 30.0;
+        const pad_y: f64 = 22.0;
+        const day_font_size: f64 = @as(f64, self.host.theme.style.font_size_s);
+        const cell_h: f64 = day_font_size * 1.15;
+        const cell_w: f64 = (@as(f64, @floatFromInt(self.card_box.width)) - 2.0 * pad_x) / 7.0;
+        const grid_origin_y: f64 = @as(f64, @floatFromInt(self.card_box.height)) - pad_y - 6.0 * cell_h;
+        const col: i32 = @intFromFloat(@floor((local_px - pad_x) / cell_w));
+        const row: i32 = @intFromFloat(@floor((local_py - grid_origin_y) / cell_h));
+        const new_col = if (col >= 0 and col < 7) col else null;
+        const new_row = if (row >= 0 and row < 6) row else null;
+        const changed = (new_col != self.card_hover_col) or (new_row != self.card_hover_row);
+        self.card_hover_col = new_col;
+        self.card_hover_row = new_row;
+        return changed;
+    }
 
     fn drawWidget(self: *Self, widget: *PerOutputWidget) void {
         const box = self.host.right_peek_box(self.host.ctx, widgetIndex(self, widget)) orelse return;
@@ -1778,6 +1817,7 @@ pub const Tray = struct {
             row: i32,
             in_month: bool,
             is_today: bool,
+            is_focused: bool,
         };
 
         fn card_focused_day_wday(self: *const Self) i32 {
@@ -1797,7 +1837,7 @@ pub const Tray = struct {
 
         /// Build a 7×6 grid anchored to the current month. Returns the current
         /// month’s days plus leading/trailing days so the grid never has holes.
-        fn calendarCells(cells: []CalendarCell, year: i32, month: i32, today_mday: i32) void {
+        fn calendarCells(cells: []CalendarCell, year: i32, month: i32, today_mday: i32, focused_year: i32, focused_month: i32, focused_day: i32) void {
             const dim = daysInMonth(month, year);
             var probe: c.struct_tm = std.mem.zeroes(c.struct_tm);
             probe.tm_year = year - 1900;
@@ -1830,6 +1870,7 @@ pub const Tray = struct {
                     .row = 0,
                     .in_month = false,
                     .is_today = false,
+                    .is_focused = false,
                 };
                 i += 1;
             }
@@ -1843,6 +1884,7 @@ pub const Tray = struct {
                     .row = @divTrunc(cell_index, 7),
                     .in_month = true,
                     .is_today = day == today_mday,
+                    .is_focused = (day == focused_day and month == focused_month and year == focused_year),
                 };
                 i += 1;
             }
@@ -1863,6 +1905,7 @@ pub const Tray = struct {
                     .row = @divTrunc(cell_index, 7),
                     .in_month = false,
                     .is_today = false,
+                    .is_focused = false,
                 };
                 day += 1;
             }
@@ -1994,8 +2037,10 @@ pub const Tray = struct {
                 c.cairo_show_text(cr, txt.ptr);
             }
 
+            const hover_row = self.card_hover_row;
+            const hover_col = self.card_hover_col;
             var cells: [42]CalendarCell = undefined;
-            calendarCells(&cells, year, month, today_mday);
+            calendarCells(&cells, year, month, today_mday, self.card_focused_year, self.card_focused_month, self.card_focused_day);
             for (cells) |cell| {
                 const cx = pad_x + @as(f64, @floatFromInt(cell.col)) * cell_w;
                 const cy = grid_origin_y + @as(f64, @floatFromInt(cell.row)) * cell_h + cell_h * 0.45;
@@ -2015,12 +2060,61 @@ pub const Tray = struct {
                     c.cairo_stroke(cr);
                 }
 
-                // Today gets a gold-tinted background.
-                if (cell.is_today) {
-                    panelOutline(tstyle, cr, cell_rect_x + 2.0, cell_rect_y + 2.0, cell_rect_w - 4.0, cell_rect_h - 4.0, 4.0);
-                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.22);
+                // Focused day: exact Bob button glass shading, slightly exaggerated.
+                if (cell.is_focused) {
+                    const fx = cell_rect_x + 1.0;
+                    const fy = cell_rect_y + 1.0;
+                    const fw = cell_rect_w - 2.0;
+                    const fh = cell_rect_h - 2.0;
+                    panelOutline(tstyle, cr, fx, fy, fw, fh, 4.0);
+
+                    const cell_glass = c.cairo_pattern_create_linear(fx, fy, fx, fy + fh).?;
+                    c.cairo_pattern_add_color_stop_rgba(cell_glass, 0.0, 0.04, 0.04, 0.05, 0.80);
+                    c.cairo_pattern_add_color_stop_rgba(cell_glass, 0.5, 0.07, 0.07, 0.08, 0.84);
+                    c.cairo_pattern_add_color_stop_rgba(cell_glass, 1.0, 0.11, 0.11, 0.12, 0.88);
+                    c.cairo_set_source(cr, cell_glass);
                     c.cairo_fill_preserve(cr);
-                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.65);
+                    c.cairo_pattern_destroy(cell_glass);
+
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.45);
+                    c.cairo_set_line_width(cr, 1.0);
+                    c.cairo_stroke(cr);
+                }
+
+                // Today gets a dim gold-tinted glass background, unless focused.
+                if (cell.is_today and !cell.is_focused) {
+                    const fx = cell_rect_x + 2.0;
+                    const fy = cell_rect_y + 2.0;
+                    const fw = cell_rect_w - 4.0;
+                    const fh = cell_rect_h - 4.0;
+                    panelOutline(tstyle, cr, fx, fy, fw, fh, 4.0);
+                    const grad = c.cairo_pattern_create_linear(fx, fy, fx, fy + fh).?;
+                    c.cairo_pattern_add_color_stop_rgba(grad, 0.0, gold4[0], gold4[1], gold4[2], 0.12);
+                    c.cairo_pattern_add_color_stop_rgba(grad, 1.0, gold4[0], gold4[1], gold4[2], 0.05);
+                    c.cairo_set_source(cr, grad);
+                    c.cairo_fill_preserve(cr);
+                    c.cairo_pattern_destroy(grad);
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.45);
+                    c.cairo_set_line_width(cr, 1.0);
+                    c.cairo_stroke(cr);
+                }
+
+                // Hover: very subtle dark glass lift (only when not focused).
+                const hover_this = hover_col == cell.col and hover_row == cell.row and !cell.is_focused;
+                if (hover_this) {
+                    const hx0 = cell_rect_x + 1.0;
+                    const hy0 = cell_rect_y + 1.0;
+                    const hw = cell_rect_w - 2.0;
+                    const hh = cell_rect_h - 2.0;
+                    panelOutline(tstyle, cr, hx0, hy0, hw, hh, 4.0);
+                    const lift = c.cairo_pattern_create_linear(hx0, hy0, hx0, hy0 + hh).?;
+                    c.cairo_pattern_add_color_stop_rgba(lift, 0.0, 0.11, 0.11, 0.12, 0.75);
+                    c.cairo_pattern_add_color_stop_rgba(lift, 0.5, 0.07, 0.07, 0.08, 0.72);
+                    c.cairo_pattern_add_color_stop_rgba(lift, 1.0, 0.04, 0.04, 0.05, 0.70);
+                    c.cairo_set_source(cr, lift);
+                    c.cairo_fill_preserve(cr);
+                    c.cairo_pattern_destroy(lift);
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.25);
                     c.cairo_set_line_width(cr, 1.0);
                     c.cairo_stroke(cr);
                 }
