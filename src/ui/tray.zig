@@ -1538,7 +1538,6 @@ pub const Tray = struct {
             const time_str: [*:0]const u8 = @ptrCast(&time_buf);
 
             var time_ext: c.cairo_text_extents_t = undefined;
-            var date_ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, time_str, &time_ext);
             const time_x = pad_x + (content_w - time_ext.width) * 0.5;
             var time_y = pad_y + time_font_size * 0.9;
@@ -1548,61 +1547,132 @@ pub const Tray = struct {
             c.cairo_move_to(cr, time_x, time_y);
             c.cairo_show_text(cr, time_str);
 
-            // ---- Date / weekday line ----
+            // ---- Cinematic stacked date block ----
             const date_color = muted.toF64();
-            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
-            c.cairo_set_font_size(cr, date_font_size);
-            c.cairo_set_source_rgba(cr, date_color[0], date_color[1], date_color[2], date_color[3]);
+            const weekday_name = weekdayName(tm.*.tm_wday);
+            const month_name = monthName(tm.*.tm_mon);
 
-            var date_buf: [64:0]u8 = undefined;
-            const date_str = std.fmt.bufPrintZ(&date_buf, "{s}, {s} {d}", .{
-                weekdayName(tm.*.tm_wday),
-                monthName(tm.*.tm_mon),
-                today_mday,
-            }) catch return;
-            c.cairo_text_extents(cr, date_str.ptr, &date_ext);
-            const date_w = date_ext.width;
-            const date_y = time_y + time_font_size * 0.4 + date_font_size;
-            c.cairo_move_to(cr, pad_x + (content_w - date_w) * 0.5, date_y);
-            c.cairo_show_text(cr, date_str.ptr);
+            var cursor_y = time_y + time_font_size * 0.6;
+
+            // 1) Weekday
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+            c.cairo_set_font_size(cr, date_font_size * 1.25);
+            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+            var tmp_ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, weekday_name.ptr, &tmp_ext);
+            cursor_y += date_font_size * 1.0;
+            c.cairo_move_to(cr, pad_x + (content_w - tmp_ext.width) * 0.5, cursor_y);
+            c.cairo_show_text(cr, weekday_name.ptr);
+
+            // 2) "the 12th of" — outer words dimmed/small, day number prominent
+            const outer_font_size = date_font_size * 0.65;
+            const num_font_size = date_font_size * 1.05;
+            const inner_y = cursor_y + date_font_size * 1.15;
+
+            const the_str = "the";
+            var num_buf: [12:0]u8 = undefined;
+            const suffix = ordinalSuffix(today_mday);
+            const num_str = std.fmt.bufPrintZ(&num_buf, "{d}{s}", .{ today_mday, suffix }) catch return;
+            const of_str = "of";
+
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+            c.cairo_set_font_size(cr, outer_font_size);
+            c.cairo_set_source_rgba(cr, date_color[0], date_color[1], date_color[2], date_color[3]);
+            c.cairo_text_extents(cr, the_str, &tmp_ext);
+            const the_w = tmp_ext.width;
+            c.cairo_text_extents(cr, of_str, &tmp_ext);
+            const of_w = tmp_ext.width;
+
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+            c.cairo_set_font_size(cr, num_font_size);
+            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+            c.cairo_text_extents(cr, num_str, &tmp_ext);
+            const num_w = tmp_ext.width;
+            const total_mid_w = the_w + 4.0 + num_w + 4.0 + of_w;
+            const mid_x = pad_x + (content_w - total_mid_w) * 0.5;
+
+            // draw "the"
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+            c.cairo_set_font_size(cr, outer_font_size);
+            c.cairo_set_source_rgba(cr, date_color[0], date_color[1], date_color[2], date_color[3]);
+            c.cairo_move_to(cr, mid_x, inner_y);
+            c.cairo_show_text(cr, the_str);
+
+            // draw day number
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+            c.cairo_set_font_size(cr, num_font_size);
+            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+            c.cairo_move_to(cr, mid_x + the_w + 4.0, inner_y);
+            c.cairo_show_text(cr, num_str);
+
+            // draw "of"
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+            c.cairo_set_font_size(cr, outer_font_size);
+            c.cairo_set_source_rgba(cr, date_color[0], date_color[1], date_color[2], date_color[3]);
+            c.cairo_move_to(cr, mid_x + the_w + 4.0 + num_w + 4.0, inner_y);
+            c.cairo_show_text(cr, of_str);
+
+            // 3) Month
+            cursor_y = inner_y + date_font_size * 0.9;
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+            c.cairo_set_font_size(cr, date_font_size * 1.25);
+            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+            c.cairo_text_extents(cr, month_name.ptr, &tmp_ext);
+            c.cairo_move_to(cr, pad_x + (content_w - tmp_ext.width) * 0.5, cursor_y);
+            c.cairo_show_text(cr, month_name.ptr);
 
             // ---- Calendar grid ----
             const header = &[_][]const u8{ "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
             const rows: i32 = 6;
-            const header_margin: f64 = day_font_size * 0.4;
-            const grid_top = date_y + date_font_size * 0.8;
+            // extra gap between weekday letters and first row of numbers
+            const header_margin: f64 = day_font_size * 1.0;
+            const grid_top = cursor_y + date_font_size * 0.7;
             const usable_h = content_h - (grid_top - pad_y);
             const cell_w = content_w / 7.0;
-            const cell_h = if (usable_h > 0.0) @max(day_font_size * 1.4, usable_h / @as(f64, @floatFromInt(rows + 1))) else day_font_size * 1.4;
+            const cell_h = if (usable_h > 0.0) @max(day_font_size * 1.7, usable_h / @as(f64, @floatFromInt(rows + 1))) else day_font_size * 1.7;
 
             c.cairo_set_font_size(cr, day_font_size);
             var day_ext: c.cairo_text_extents_t = undefined;
 
-            // Weekday header row in muted gold to match theme.
+            // Weekday header row in muted gold.
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
             c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.85);
+            const header_baseline = grid_top + day_font_size;
             for (header, 0..) |txt, ci| {
                 c.cairo_text_extents(cr, txt.ptr, &day_ext);
                 const hx = pad_x + @as(f64, @floatFromInt(ci)) * cell_w + (cell_w - day_ext.width) * 0.5;
-                const hy = grid_top + day_font_size;
-                c.cairo_move_to(cr, hx, hy);
+                c.cairo_move_to(cr, hx, header_baseline);
                 c.cairo_show_text(cr, txt.ptr);
             }
 
             var cells: [42]CalendarCell = undefined;
             calendarCells(&cells, year, month, today_mday);
 
-            const grid_origin_y = grid_top + day_font_size + header_margin;
+            const grid_origin_y = header_baseline + header_margin;
             for (cells) |cell| {
                 const cx = pad_x + @as(f64, @floatFromInt(cell.col)) * cell_w;
-                const cy = grid_origin_y + @as(f64, @floatFromInt(cell.row)) * cell_h;
+                const cy = grid_origin_y + @as(f64, @floatFromInt(cell.row)) * cell_h + cell_h * 0.55;
 
-                // Today gets a gold-tinted rounded cell behind the number.
+                const cell_pad: f64 = 1.5;
+                const cell_rect_x = cx + cell_pad;
+                const cell_rect_y = cy - cell_h * 0.45;
+                const cell_rect_w = cell_w - 2.0 * cell_pad;
+                const cell_rect_h = cell_h * 0.9;
+
+                if (cell.in_month) {
+                    // subtle glass cell border
+                    cairoRoundedRect(cr, cell_rect_x, cell_rect_y, cell_rect_w, cell_rect_h, 4.0);
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.35);
+                    c.cairo_set_line_width(cr, 1.0);
+                    c.cairo_stroke(cr);
+                }
+
+                // Today gets a gold-tinted background.
                 if (cell.is_today) {
-                    const pad = cell_w * 0.1;
-                    cairoRoundedRect(cr, cx + pad, cy - day_font_size * 0.8, cell_w - 2.0 * pad, day_font_size * 1.5, day_font_size * 0.35);
+                    cairoRoundedRect(cr, cell_rect_x + 2.0, cell_rect_y + 2.0, cell_rect_w - 4.0, cell_rect_h - 4.0, 4.0);
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.22);
-                    c.cairo_fill(cr);
-                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.55);
+                    c.cairo_fill_preserve(cr);
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.65);
                     c.cairo_set_line_width(cr, 1.0);
                     c.cairo_stroke(cr);
                 }
@@ -1611,6 +1681,7 @@ pub const Tray = struct {
                 const day_str = std.fmt.bufPrintZ(&day_buf, "{d}", .{cell.day}) catch continue;
                 c.cairo_text_extents(cr, day_str.ptr, &day_ext);
 
+                c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, if (cell.is_today) c.CAIRO_FONT_WEIGHT_BOLD else c.CAIRO_FONT_WEIGHT_NORMAL);
                 if (cell.in_month) {
                     if (cell.is_today) {
                         c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
@@ -1625,6 +1696,18 @@ pub const Tray = struct {
                 c.cairo_move_to(cr, tx, ty);
                 c.cairo_show_text(cr, day_str.ptr);
             }
+        }
+
+
+        fn ordinalSuffix(n: i32) []const u8 {
+            const m = @mod(n, 100);
+            if (m >= 11 and m <= 13) return "th";
+            return switch (@mod(n, 10)) {
+                1 => "st",
+                2 => "nd",
+                3 => "rd",
+                else => "th",
+            };
         }
 
         fn weekdayName(wday: c_int) []const u8 {
