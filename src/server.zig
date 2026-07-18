@@ -406,6 +406,15 @@ pub const Server = struct {
 
         server.outputs.init();
 
+        // Load the runtime theme once at startup.  If no theme file exists we
+        // keep the built-in defaults; if one exists but is malformed we warn
+        // and continue with defaults.
+        server.theme_runtime.reload(allocator) catch |err| {
+            std.log.warn("KidulWM: failed to load theme at startup ({}), using defaults", .{err});
+        };
+        server.theme = server.theme_runtime.style;
+        applyTitleBarEnvironment(server.theme.show_title_bars);
+        server.background.color = server.theme.color_background.toF32();
 
         const overlay_tree = try server.scene.tree.createSceneTree();
         server.overlay_tree = overlay_tree;

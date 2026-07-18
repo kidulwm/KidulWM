@@ -7,12 +7,12 @@ Auto-regenerate friendly. Manually update only the **Current focus** and **Runti
 | Item | Value |
 |---|---|
 | Branch | `corner-bg-fix` |
-| Head | `cfc4c58` |
+| Head | `6763441` |
 | Last stable tag | `greatest-yet` (`75872af`) |
-| Work VM | `bob-is-a-douche` |
-| SSH port | `2228` |
+| Work VM | `cachyos-kidulwm-cardtest` |
+| SSH port | `2225` |
 | Active skills | `kidulwm-v2` (sub-skills: chrome, layout, debug-vm, input, wayland) |
-| Legacy fallback | `kidulwm-development` (untouched) |
+| Legacy fallback | `kidulWM-development` (untouched) |
 
 ## Quick links
 
@@ -25,8 +25,8 @@ Auto-regenerate friendly. Manually update only the **Current focus** and **Runti
 
 ## Current focus
 
-- Tray: optional PNG icons, dynamic "All The Things" / "Hide" toggle.
-- Peek chrome stable; granular skill split landed.
+- Peek chrome: theme-aware border width / corner style. Background is clipped strictly inside border.
+- Chamfer pivot: `corner_style = "chamfer"` in `config/theme.toml` should now work for peeks with no code changes.
 
 ## How to resume
 
