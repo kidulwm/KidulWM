@@ -81,6 +81,7 @@ pub const TrayHost = struct {
     ctx: *anyopaque,
     output_count: *const fn (ctx: *anyopaque) usize,
     output_info: *const fn (ctx: *anyopaque, index: usize) OutputInfo,
+    right_peek_box: *const fn (ctx: *anyopaque, output_index: usize) ?wlr.Box,
     get_animation_kind: *const fn (ctx: *anyopaque) animation.AnimationKind,
     cycle_animation: *const fn (ctx: *anyopaque) void,
     request_frame: *const fn (ctx: *anyopaque) void,
@@ -116,6 +117,18 @@ const PerOutput = struct {
     last_selected: usize = 9999,
     last_hover: ?usize = null,
     last_order_mode: OrderMode = .preset,
+};
+
+const PerOutputWidget = struct {
+    output_index: usize,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_corner_style: style.Style.CornerStyle = .round,
+    last_time_minute: i32 = -1,
 };
 
 const BarryPet = struct {
@@ -183,6 +196,11 @@ pub const Tray = struct {
     card_open_amount: f32 = 0.0,
     card_open_amount_vel: f32 = 0.0,
     card_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    card_year: i32 = 0,
+    card_month: i32 = 0,
+
+    // Top-right peek widget (clock/date).
+    widgets: std.ArrayList(PerOutputWidget),
     card_tree: ?*wlr.SceneTree = null,
     card_scene_buffer: ?*wlr.SceneBuffer = null,
     card_buffer: ?*wlr.Buffer = null,
@@ -240,6 +258,9 @@ pub const Tray = struct {
         errdefer c.cairo_surface_destroy(barry_puppy_stand);
 
         const card_tree = root.createSceneTree() catch null;
+        var now: c.time_t = c.time(null);
+        var local_tmp: c.struct_tm = undefined;
+        const local_now = c.localtime_r(&now, &local_tmp).*;
 
         return .{
             .allocator = allocator,
@@ -247,7 +268,10 @@ pub const Tray = struct {
             .root = root,
             .outputs = .empty,
             .barry_pets = .empty,
+            .widgets = .empty,
             .card_tree = card_tree,
+            .card_year = @as(i32, @intCast(local_now.tm_year)) + 1900,
+            .card_month = @as(i32, @intCast(local_now.tm_mon)) + 1,
             .items = items,
             .manual_order = manual_order,
             .icon_cache = std.StringHashMap(*c.cairo_surface_t).init(allocator),
@@ -263,8 +287,10 @@ pub const Tray = struct {
     pub fn deinit(self: *Self) void {
         for (self.outputs.items) |*po| self.destroyPerOutput(po);
         for (self.barry_pets.items) |*pet| self.destroyPet(pet);
+        for (self.widgets.items) |*w| self.destroyWidget(w);
         self.outputs.deinit(self.allocator);
         self.barry_pets.deinit(self.allocator);
+        self.widgets.deinit(self.allocator);
         var it = self.icon_cache.iterator();
         while (it.next()) |entry| {
             c.cairo_surface_destroy(entry.value_ptr.*);
@@ -346,6 +372,14 @@ pub const Tray = struct {
         pet.tree.node.destroy();
         pet.scene_buffer = null;
         pet.buffer = null;
+    }
+
+    fn destroyWidget(_: *Self, widget: *PerOutputWidget) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
     }
 
     fn destroyPerOutput(_: *Self, po: *PerOutput) void {
