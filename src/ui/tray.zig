@@ -120,15 +120,19 @@ const PerOutput = struct {
 };
 
 const PerOutputWidget = struct {
-    output_index: usize,
+    output_ctx: *anyopaque,
     tree: *wlr.SceneTree,
     scene_buffer: ?*wlr.SceneBuffer,
     buffer: ?*wlr.Buffer,
     info: OutputInfo,
     last_w: i32 = 0,
     last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    last_scale: f32 = 0.0,
     last_corner_style: style.Style.CornerStyle = .round,
     last_time_minute: i32 = -1,
+    last_theme_generation: u32 = 0,
 };
 
 const BarryPet = struct {
@@ -208,6 +212,9 @@ pub const Tray = struct {
     card_last_h: i32 = 0,
     card_last_open: f32 = -1.0,
     card_last_generation: u32 = 0,
+
+    // Last clickable bounding box of the clock/date peek widget (scene coords).
+    widget_click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
 
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
@@ -333,6 +340,21 @@ pub const Tray = struct {
             pet_tree.node.destroy();
             return;
         };
+        const widget_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create clock widget scene tree: {}", .{err});
+            return;
+        };
+        const widget = PerOutputWidget{
+            .output_ctx = output_ctx,
+            .tree = widget_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.widgets.append(self.allocator, widget) catch |err| {
+            std.log.err("KidulWM: failed to append clock widget: {}", .{err});
+            widget_tree.node.destroy();
+        };
         const pet = BarryPet{
             .output_ctx = output_ctx,
             .tree = pet_tree,
@@ -354,6 +376,13 @@ pub const Tray = struct {
             if (po.output_ctx == output_ctx) {
                 self.destroyPerOutput(po);
                 _ = self.outputs.orderedRemove(i);
+                break;
+            }
+        }
+        for (self.widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyWidget(w);
+                _ = self.widgets.orderedRemove(i);
                 break;
             }
         }
@@ -745,6 +774,11 @@ pub const Tray = struct {
         }
 
         self.updateCard();
+
+        for (self.widgets.items) |*widget| {
+            widget.info = self.host.output_info(self.host.ctx, widgetIndex(self, widget));
+            self.drawWidget(widget);
+        }
 
         for (self.barry_pets.items, 0..) |*pet, i| {
             pet.info = self.host.output_info(self.host.ctx, i);
@@ -1278,6 +1312,11 @@ pub const Tray = struct {
     }
 
     pub fn handlePointerClick(self: *Self, px: f64, py: f64) bool {
+        if (self.pointInsideWidget(px, py)) {
+            self.toggleCard();
+            return true;
+        }
+
         const out_count = self.host.output_count(self.host.ctx);
         var inside = false;
         var output_index: usize = 0;
@@ -1329,6 +1368,205 @@ pub const Tray = struct {
         return true;
     }
 
+
+
+    fn drawWidget(self: *Self, widget: *PerOutputWidget) void {
+        const box = self.host.right_peek_box(self.host.ctx, widgetIndex(self, widget)) orelse return;
+        if (box.width <= 0 or box.height <= 0) return;
+
+        var now_time: c.time_t = c.time(null);
+        var local: c.struct_tm = undefined;
+        const tm = c.localtime_r(&now_time, &local);
+        const current_minute = @as(i32, @intCast(tm.*.tm_min)) + @as(i32, @intCast(tm.*.tm_hour)) * 60;
+        const tstyle = self.host.theme.style;
+        const theme_gen = self.host.theme.generation;
+
+        const vmargin = @max(8, @min(14, @divTrunc(box.height, 14)));
+        const peek_hmargin = @max(8, @min(14, @divTrunc(box.width, 10)));
+        const pill_h = @max(34, @min(56, @divTrunc(box.height, 5)));
+        const pill_w = @max(120, box.width - 2 * peek_hmargin);
+        const pill_x = box.x + @divTrunc(box.width - pill_w, 2);
+        const pill_y = box.y + vmargin;
+        const scale = widget.info.scale;
+
+        const needs_redraw = widget.scene_buffer == null or
+            widget.last_w != pill_w or
+            widget.last_h != pill_h or
+            widget.last_x != pill_x or
+            widget.last_y != pill_y or
+            widget.last_scale != scale or
+            widget.last_corner_style != tstyle.corner_style or
+            widget.last_time_minute != current_minute or
+            widget.last_theme_generation != theme_gen;
+
+        // Recompute click box every frame so pointer checks stay accurate.
+        self.widget_click_box = .{
+            .x = pill_x,
+            .y = pill_y,
+            .width = pill_w,
+            .height = pill_h,
+        };
+
+        if (!needs_redraw) {
+            widget.tree.node.setPosition(pill_x, pill_y);
+            widget.tree.node.raiseToTop();
+            return;
+        }
+
+        widget.last_w = pill_w;
+        widget.last_h = pill_h;
+        widget.last_x = pill_x;
+        widget.last_y = pill_y;
+        widget.last_scale = scale;
+        widget.last_corner_style = tstyle.corner_style;
+        widget.last_time_minute = current_minute;
+        widget.last_theme_generation = theme_gen;
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: clock widget buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for clock widget", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        const s: f64 = @floatCast(scale);
+        const w_d: f64 = @floatFromInt(dev_w);
+        const h_d: f64 = @floatFromInt(dev_h);
+        const depth: f64 = @min(14.0 * s, @min(w_d, h_d) * 0.25);
+
+        c.cairo_save(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        // Body path via theme-aware panelOutline.
+        panelOutline(tstyle, cr, 0.0, 0.0, w_d, h_d, depth);
+
+        // Glass fill.
+        const bg = tstyle.tray_bg_color.toF64();
+        c.cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], bg[3]);
+        c.cairo_fill_preserve(cr);
+
+        // Gold rim.
+        const rim = tstyle.color_gold;
+        const rim4 = rim.toF64();
+        c.cairo_set_source_rgba(cr, rim4[0], rim4[1], rim4[2], 0.85);
+        c.cairo_set_line_width(cr, 1.5 * s);
+        c.cairo_stroke(cr);
+
+        // Time in 12-hour form + lowercase am/pm.
+        var hour12 = @mod(@as(i32, @intCast(tm.*.tm_hour)), 12);
+        if (hour12 == 0) hour12 = 12;
+        const minute = @as(i32, @intCast(tm.*.tm_min));
+        const is_pm = @as(i32, @intCast(tm.*.tm_hour)) >= 12;
+        var time_buf: [16:0]u8 = undefined;
+        @memset(&time_buf, 0);
+        const time_str = std.fmt.bufPrintZ(&time_buf, "{d}:{d:0>2}{s}", .{
+            hour12,
+            minute,
+            if (is_pm) "pm" else "am",
+        }) catch "12:00am";
+
+        // Date e.g. "Saturday, the 18th of July"
+        const weekday_name = weekdayName(tm.*.tm_wday);
+        const month_name = monthName(tm.*.tm_mon);
+        const day = @as(i32, @intCast(tm.*.tm_mday));
+        var date_buf: [64:0]u8 = undefined;
+        @memset(&date_buf, 0);
+        const date_str = std.fmt.bufPrintZ(&date_buf, "{s}, the {d}{s} of {s}", .{
+            weekday_name,
+            day,
+            ordinalSuffix(day),
+            month_name,
+        }) catch "Saturday, the 18th of July";
+
+        const font_face = "Fantasque Sans Mono";
+        const time_font_size = tstyle.font_size_m * 0.9 * s;
+        const date_font_size = tstyle.font_size_s * 0.78 * s;
+        const text_color = tstyle.tray_text_focused_color.toF64();
+        const text_color_dim = tstyle.tray_text_color.toF64();
+
+        c.cairo_select_font_face(cr, font_face, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+        c.cairo_set_font_size(cr, time_font_size);
+        c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+
+        var ext: c.cairo_text_extents_t = undefined;
+        c.cairo_text_extents(cr, time_str, &ext);
+        const time_x = (w_d - ext.width) * 0.5;
+        const time_y = (h_d + ext.height) * 0.5 - date_font_size * 0.3;
+
+        // Underlay behind time to keep it legible over busy wallpapers.
+        c.cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], 0.55);
+        c.cairo_move_to(cr, time_x - 4.0 * s, time_y + 2.0 * s);
+        c.cairo_show_text(cr, time_str);
+
+        c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+        c.cairo_move_to(cr, time_x, time_y);
+        c.cairo_show_text(cr, time_str);
+
+        // Date line centered below time.
+        c.cairo_select_font_face(cr, font_face, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+        c.cairo_set_font_size(cr, date_font_size);
+        c.cairo_set_source_rgba(cr, text_color_dim[0], text_color_dim[1], text_color_dim[2], 0.92);
+        var date_ext: c.cairo_text_extents_t = undefined;
+        c.cairo_text_extents(cr, date_str, &date_ext);
+        const date_x = (w_d - date_ext.width) * 0.5;
+        const date_y = time_y + date_font_size * 1.15;
+        c.cairo_move_to(cr, date_x, date_y);
+        c.cairo_show_text(cr, date_str);
+
+        c.cairo_restore(cr);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create clock widget buffer: {}", .{err});
+            return;
+        };
+        if (widget.buffer) |old| wlr.Buffer.drop(old);
+        widget.buffer = buffer;
+        if (widget.scene_buffer) |old| old.node.destroy();
+        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create clock widget scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            widget.buffer = null;
+            return;
+        };
+        sb.setDestSize(pill_w, pill_h);
+        widget.scene_buffer = sb;
+        widget.tree.node.setPosition(pill_x, pill_y);
+        widget.tree.node.raiseToTop();
+    }
+
+
+    fn widgetIndex(self: *const Self, widget: *PerOutputWidget) usize {
+        for (self.widgets.items, 0..) |*w, i| {
+            if (w == widget) return i;
+        }
+        return 0;
+    }
+
+    fn pointInsideWidget(self: *const Self, px: f64, py: f64) bool {
+        const b = self.widget_click_box;
+        if (b.width <= 0 or b.height <= 0) return false;
+        return px >= @as(f64, @floatFromInt(b.x)) and
+            px < @as(f64, @floatFromInt(b.x + b.width)) and
+            py >= @as(f64, @floatFromInt(b.y)) and
+            py < @as(f64, @floatFromInt(b.y + b.height));
+    }
 
 
     fn updateCard(self: *Self) void {
