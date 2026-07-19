@@ -1063,7 +1063,7 @@ pub const Tray = struct {
         const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
         if (img_w <= 0.0 or img_h <= 0.0) return;
 
-        const margin: f64 = 6.0 * s;
+        const margin: f64 = 18.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
         // Wide wordmark: fit to available width, then clamp height if needed.
