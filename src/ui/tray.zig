@@ -1069,7 +1069,7 @@ pub const Tray = struct {
         // Wide wordmark: fit to available width, then clamp height if needed.
         const scale = @min(avail_w / img_w, avail_h / img_h);
         const draw_x = x + (w - img_w * scale) / 2.0;
-        const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 9.0) * s;
+        const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 13.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
         const draw_y = y + h + pet_bottom_pad - bottom_above_border - img_h * scale;
 
