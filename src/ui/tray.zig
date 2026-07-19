@@ -1597,96 +1597,109 @@ pub const Tray = struct {
         const card_font = "Fantasque Sans Mono";
         const muted_color = tstyle.color_text_muted.toF64();
         const w_d: f64 = @floatFromInt(dev_w);
-        const h_d: f64 = @floatFromInt(dev_h);
 
-        // 12-hour time with lowercase am/pm, full width.
-        var hour12 = @mod(@as(i32, @intCast(tm.*.tm_hour)), 12);
-        if (hour12 == 0) hour12 = 12;
+        // 12-hour time with smaller am/pm suffix, packed near the top of the peek.
+        const hour12 = @mod(@as(i32, @intCast(tm.*.tm_hour)), 12);
+        const fixed_hour = if (hour12 == 0) 12 else hour12;
         const minute = @as(i32, @intCast(tm.*.tm_min));
-        const is_pm = @as(i32, @intCast(tm.*.tm_hour)) >= 12;
-        var time_buf: [16:0]u8 = undefined;
-        @memset(&time_buf, 0);
-        const time_str = std.fmt.bufPrintZ(&time_buf, "{d}:{d}{s}{s}", .{
-            hour12,
+
+        var num_buf: [16:0]u8 = undefined;
+        @memset(&num_buf, 0);
+        const num_str = std.fmt.bufPrintZ(&num_buf, "{d}:{d}{s}", .{
+            fixed_hour,
             minute,
             if (minute < 10) "0" else "",
-            if (is_pm) "pm" else "am",
-        }) catch "12:00am";
+        }) catch "12:00";
 
-        var ext: c.cairo_text_extents_t = undefined;
-        var time_font_size: f64 = @as(f64, tstyle.font_size_m) * 1.65 * scale;
+        const suffix_str = if (@as(i32, @intCast(tm.*.tm_hour)) >= 12) "pm" else "am";
+
+        const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 1.65 * scale;
+        const suffix_ratio = 0.5;
+
+        var saved_font_matrix: c.cairo_matrix_t = undefined;
+
         c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
-        c.cairo_set_font_size(cr, time_font_size);
-        c.cairo_text_extents(cr, time_str, &ext);
-        if (ext.width > w_d - 4.0 and time_font_size > 6.0) {
-            time_font_size = @as(f64, (w_d - 4.0)) / ext.width * time_font_size;
-            c.cairo_set_font_size(cr, time_font_size);
-            c.cairo_text_extents(cr, time_str, &ext);
-        }
-        // Compress the clock digits horizontally so they sit closer together.
-        var font_matrix: c.cairo_matrix_t = undefined;
-        c.cairo_get_font_matrix(cr, &font_matrix);
-        const saved_xx = font_matrix.xx;
-        font_matrix.xx = saved_xx * 0.75;
-        c.cairo_set_font_matrix(cr, &font_matrix);
-        c.cairo_text_extents(cr, time_str, &ext);
-        const time_x = (w_d - ext.width) * 0.5;
-        const time_y = h_d * 0.085 + ext.height * 0.5;
-        c.cairo_set_source_rgba(cr, 0.78, 0.78, 0.78, 0.95);
-        c.cairo_move_to(cr, time_x, time_y);
-        c.cairo_show_text(cr, time_str);
-        font_matrix.xx = saved_xx;
-        c.cairo_set_font_matrix(cr, &font_matrix);
 
-        // 2-line date stacked below the time.
+        var num_ext: c.cairo_text_extents_t = undefined;
+        var current_size = big_font_size;
+        c.cairo_set_font_size(cr, current_size);
+        c.cairo_get_font_matrix(cr, &saved_font_matrix);
+        var fm = saved_font_matrix;
+        fm.xx = saved_font_matrix.xx * 0.75;
+        c.cairo_set_font_matrix(cr, &fm);
+        c.cairo_text_extents(cr, num_str, &num_ext);
+        while (num_ext.width > w_d - 4.0 and current_size > 6.0) {
+            current_size *= 0.92;
+            c.cairo_set_font_size(cr, current_size);
+            c.cairo_get_font_matrix(cr, &fm);
+            fm.xx = fm.xx * 0.75;
+            c.cairo_set_font_matrix(cr, &fm);
+            c.cairo_text_extents(cr, num_str, &num_ext);
+        }
+
+        var suffix_ext: c.cairo_text_extents_t = undefined;
+        c.cairo_set_font_size(cr, current_size * suffix_ratio);
+        c.cairo_get_font_matrix(cr, &fm);
+        fm.xx = fm.xx * 0.75;
+        c.cairo_set_font_matrix(cr, &fm);
+        c.cairo_text_extents(cr, suffix_str, &suffix_ext);
+
+        const top_pad: f64 = 6.0 * scale;
+        const time_gap: f64 = 2.0 * scale;
+        const num_baseline_y = num_ext.height + top_pad;
+        const total_time_w = num_ext.width + time_gap + suffix_ext.width;
+        const time_x = (w_d - total_time_w) * 0.5;
+
+        c.cairo_set_source_rgba(cr, 0.78, 0.78, 0.78, 0.95);
+        c.cairo_move_to(cr, time_x, num_baseline_y);
+        c.cairo_show_text(cr, num_str);
+
+        const num_visual_center = num_baseline_y + num_ext.y_bearing + num_ext.height * 0.5;
+        const suffix_baseline_y = num_visual_center - (suffix_ext.y_bearing + suffix_ext.height * 0.5);
+        c.cairo_move_to(cr, time_x + num_ext.width + time_gap, suffix_baseline_y);
+        c.cairo_show_text(cr, suffix_str);
+
+        // Restore normal (non-squished) font matrix for the date lines.
+        c.cairo_set_font_matrix(cr, &saved_font_matrix);
+
+        // 3-line date block below the time, each line centered.
         const weekday_name = weekdayName(tm.*.tm_wday);
-        const month_name = monthName(tm.*.tm_mon);
         const day = @as(i32, @intCast(tm.*.tm_mday));
+        const month_name = monthName(tm.*.tm_mon);
         var day_buf: [32:0]u8 = undefined;
         @memset(&day_buf, 0);
-        const day_str = std.fmt.bufPrintZ(&day_buf, "{d}{s} {s}", .{ day, ordinalSuffix(day), month_name }) catch "1st January";
+        const day_str = std.fmt.bufPrintZ(&day_buf, "{d}{s}", .{ day, ordinalSuffix(day) }) catch "1st";
 
         const date_font_size: f64 = @as(f64, tstyle.font_size_s) * 1.3 * scale;
-        const line_gap = date_font_size * 1.2;
-        const block_top = time_y + date_font_size * 1.7;
+        const line_gap = date_font_size * 1.25;
+        const date_block_top = num_baseline_y + line_gap;
 
-        // Weekday
-        fit_and_draw(
-            cr,
-            card_font,
-            date_font_size,
+        const date_lines = [_][]const u8{ weekday_name, day_str, month_name };
+        const date_weights = [_]c.cairo_font_weight_t{
             c.CAIRO_FONT_WEIGHT_BOLD,
-            weekday_name,
-            muted_color[0],
-            muted_color[1],
-            muted_color[2],
-            0.95,
-            w_d,
-            4.0 * scale,
-        );
-        var ext2: c.cairo_text_extents_t = undefined;
-        c.cairo_text_extents(cr, @ptrCast(weekday_name.ptr), &ext2);
-        c.cairo_move_to(cr, (w_d - ext2.width) * 0.5, block_top);
-        c.cairo_show_text(cr, @ptrCast(weekday_name.ptr));
-
-        // "18th July"
-        fit_and_draw(
-            cr,
-            card_font,
-            date_font_size,
             c.CAIRO_FONT_WEIGHT_NORMAL,
-            day_str,
-            muted_color[0],
-            muted_color[1],
-            muted_color[2],
-            0.95,
-            w_d,
-            4.0 * scale,
-        );
-        c.cairo_text_extents(cr, day_str, &ext2);
-        c.cairo_move_to(cr, (w_d - ext2.width) * 0.5, block_top + line_gap);
-        c.cairo_show_text(cr, day_str);
-
+            c.CAIRO_FONT_WEIGHT_NORMAL,
+        };
+        for (date_lines, date_weights, 0..) |line_txt, weight, i| {
+            fit_and_draw(
+                cr,
+                card_font,
+                date_font_size,
+                weight,
+                line_txt,
+                muted_color[0],
+                muted_color[1],
+                muted_color[2],
+                0.95,
+                w_d,
+                4.0 * scale,
+            );
+            var ext2: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, @ptrCast(line_txt.ptr), &ext2);
+            const y = date_block_top + @as(f64, @floatFromInt(i)) * line_gap;
+            c.cairo_move_to(cr, (w_d - ext2.width) * 0.5, y);
+            c.cairo_show_text(cr, @ptrCast(line_txt.ptr));
+        }
         c.cairo_restore(cr);
 
         const DataBuffer = @import("../render/buffer.zig").DataBuffer;
