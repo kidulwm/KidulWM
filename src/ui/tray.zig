@@ -1073,7 +1073,7 @@ pub const Tray = struct {
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
         const scale = @min(avail_w / img_w, avail_h / img_h);
-        const left_nudge: f64 = 10.0 * s;
+        const left_nudge: f64 = 20.0 * s;
         const draw_x = x + (w - img_w * scale) / 2.0 - left_nudge;
         const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 13.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
@@ -1623,11 +1623,20 @@ pub const Tray = struct {
             c.cairo_set_font_size(cr, time_font_size);
             c.cairo_text_extents(cr, time_str, &ext);
         }
+        // Compress the clock digits horizontally so they sit closer together.
+        var font_matrix: c.cairo_matrix_t = undefined;
+        c.cairo_get_font_matrix(cr, &font_matrix);
+        const saved_xx = font_matrix.xx;
+        font_matrix.xx = saved_xx * 0.75;
+        c.cairo_set_font_matrix(cr, &font_matrix);
+        c.cairo_text_extents(cr, time_str, &ext);
         const time_x = (w_d - ext.width) * 0.5;
         const time_y = h_d * 0.085 + ext.height * 0.5;
         c.cairo_set_source_rgba(cr, 0.78, 0.78, 0.78, 0.95);
         c.cairo_move_to(cr, time_x, time_y);
         c.cairo_show_text(cr, time_str);
+        font_matrix.xx = saved_xx;
+        c.cairo_set_font_matrix(cr, &font_matrix);
 
         // 2-line date stacked below the time.
         const weekday_name = weekdayName(tm.*.tm_wday);
