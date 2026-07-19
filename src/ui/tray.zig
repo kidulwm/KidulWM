@@ -1613,7 +1613,7 @@ pub const Tray = struct {
 
         const suffix_str = if (@as(i32, @intCast(tm.*.tm_hour)) >= 12) "pm" else "am";
 
-        const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 1.65 * scale;
+        const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 3.3 * scale;
         const suffix_ratio = 0.5;
 
         var saved_font_matrix: c.cairo_matrix_t = undefined;
