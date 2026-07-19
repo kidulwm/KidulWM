@@ -6,6 +6,11 @@ const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
 
+// Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
+const bob_logo_png = @embedFile("assets/bob/logo.png");
+const bob_text_png = @embedFile("assets/bob/text.png");
+
+// Archived Barry pose assets (tag tray-logo-animation-backup).
 const lay_png = @embedFile("assets/barry/lay.png");
 const sit_png = @embedFile("assets/barry/sit.png");
 const stand_png = @embedFile("assets/barry/stand.png");
@@ -232,6 +237,9 @@ pub const Tray = struct {
     barry_puppy_lay: *c.cairo_surface_t,
     barry_puppy_sit: *c.cairo_surface_t,
     barry_puppy_stand: *c.cairo_surface_t,
+    // Simplified static logos (pose animation archived under tag tray-logo-animation-backup).
+    bob_logo: *c.cairo_surface_t,
+    bob_text: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
     const barry_button_height: i32 = 84;
@@ -268,6 +276,11 @@ pub const Tray = struct {
         const barry_puppy_stand = try loadPngFromBytes(puppy_stand_png);
         errdefer c.cairo_surface_destroy(barry_puppy_stand);
 
+        const bob_logo = try loadPngFromBytes(bob_logo_png);
+        errdefer c.cairo_surface_destroy(bob_logo);
+        const bob_text = try loadPngFromBytes(bob_text_png);
+        errdefer c.cairo_surface_destroy(bob_text);
+
         const card_tree = root.createSceneTree() catch null;
         var now: c.time_t = c.time(null);
         var local_tmp: c.struct_tm = undefined;
@@ -295,6 +308,8 @@ pub const Tray = struct {
             .barry_puppy_lay = barry_puppy_lay,
             .barry_puppy_sit = barry_puppy_sit,
             .barry_puppy_stand = barry_puppy_stand,
+            .bob_logo = bob_logo,
+            .bob_text = bob_text,
         };
     }
 
@@ -316,6 +331,8 @@ pub const Tray = struct {
         c.cairo_surface_destroy(self.barry_puppy_lay);
         c.cairo_surface_destroy(self.barry_puppy_sit);
         c.cairo_surface_destroy(self.barry_puppy_stand);
+        c.cairo_surface_destroy(self.bob_logo);
+        c.cairo_surface_destroy(self.bob_text);
         if (self.card_scene_buffer) |sb| sb.node.destroy();
         if (self.card_buffer) |buf| wlr.Buffer.drop(buf);
         if (self.card_tree) |tree| tree.node.destroy();
@@ -1016,89 +1033,50 @@ pub const Tray = struct {
         c.cairo_restore(cr);
     }
     fn drawBarry(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const surfs = [_]*c.cairo_surface_t{ self.barry_lay, self.barry_sit, self.barry_stand };
-        const t: f64 = @as(f64, std.math.clamp(self.bob_state_t, 0.0, 2.0));
-        const idx0: usize = @intFromFloat(@floor(t));
-        const idx1: usize = @min(idx0 + 1, 2);
-        const blend: f64 = t - @floor(t);
-
-        // Movement-driven breath + bob for Bob.
-        const breath: f64 = 1.0 + self.bob_breath_amp * @sin(self.barry_breath_t * 2.0);
-        const bob: f64 = self.bob_bob_amp * s * @sin(self.barry_breath_t * 2.0);
+        const surf = self.bob_logo;
+        const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
+        const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
+        if (img_w <= 0.0 or img_h <= 0.0) return;
 
         const margin: f64 = 4.0 * s;
         const avail_w = w - 2.0 * margin;
+        const scale = @min(avail_w / img_w, h * 0.90 / img_h);
+        const draw_x = x + (w - img_w * scale) / 2.0;
+        const draw_y = y + (h - img_h * scale) / 2.0;
 
-        for ([_]usize{ idx0, idx1 }) |idx| {
-            if (idx > 2) continue;
-            const alpha: f64 = if (idx == idx0) (1.0 - blend) else if (idx == idx1) blend else 0.0;
-            if (alpha < 0.001) continue;
-            const surf = surfs[idx];
-            const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
-            const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
-            if (img_w <= 0.0 or img_h <= 0.0) continue;
-
-            // Scale so the icon occupies ~90 % of the button height.
-            const scale = @min(avail_w / img_w, h * 0.90 / img_h) * breath;
-            const draw_x = x + (w - img_w * scale) / 2.0;
-            const draw_y = y + (h - img_h * scale) / 2.0 + bob;
-
-            c.cairo_save(cr);
-            c.cairo_translate(cr, draw_x, draw_y);
-            c.cairo_scale(cr, scale, scale);
-            c.cairo_set_source_surface(cr, surf, 0, 0);
-            c.cairo_paint_with_alpha(cr, alpha);
-            c.cairo_restore(cr);
-        }
+        c.cairo_save(cr);
+        c.cairo_translate(cr, draw_x, draw_y);
+        c.cairo_scale(cr, scale, scale);
+        c.cairo_set_source_surface(cr, surf, 0, 0);
+        c.cairo_paint(cr);
+        c.cairo_restore(cr);
     }
 
 
     fn drawPetButton(self: *Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const margin: f64 = @as(f64, hmargin) * s;
-        const rx: f64 = h / 3.0;
-        const loz_w: f64 = w - 2.0 * margin;
-        const loz_x: f64 = x + margin;
-
-        c.cairo_save(cr);
-        roundedRect(cr, loz_x, y, loz_w, h, rx);
-        c.cairo_clip(cr);
-        self.drawPet(cr, loz_x, y, loz_w, h, s);
-        c.cairo_restore(cr);
+        _ = hmargin; // no lozenge margin needed; logo spans button bounds
+        self.drawPet(cr, x, y, w, h, s);
     }
     fn drawPet(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const surfs = [_]*c.cairo_surface_t{ self.barry_puppy_lay, self.barry_puppy_sit, self.barry_puppy_stand };
-        const t: f64 = @as(f64, std.math.clamp(self.barry_state_t, 0.0, 2.0));
-        const idx0: usize = @intFromFloat(@floor(t));
-        const idx1: usize = @min(idx0 + 1, 2);
-        const blend: f64 = t - @floor(t);
+        const surf = self.bob_text;
+        const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
+        const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
+        if (img_w <= 0.0 or img_h <= 0.0) return;
 
-        const breath: f64 = 1.0 + 0.03 * @sin(self.barry_breath_t * 2.0);
-        const bob: f64 = 1.5 * s * @sin(self.barry_breath_t * 2.0);
-
-        const margin: f64 = 4.0 * s;
+        const margin: f64 = 6.0 * s;
         const avail_w = w - 2.0 * margin;
+        const avail_h = h - 2.0 * margin;
+        // Wide wordmark: fit to available width, then clamp height if needed.
+        const scale = @min(avail_w / img_w, avail_h / img_h);
+        const draw_x = x + (w - img_w * scale) / 2.0;
+        const draw_y = y + (h - img_h * scale) / 2.0;
 
-        for ([_]usize{ idx0, idx1 }) |idx| {
-            if (idx > 2) continue;
-            const alpha: f64 = if (idx == idx0) (1.0 - blend) else if (idx == idx1) blend else 0.0;
-            if (alpha < 0.001) continue;
-            const surf = surfs[idx];
-            const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
-            const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
-            if (img_w <= 0.0 or img_h <= 0.0) continue;
-
-            // Scale so the icon occupies ~90 % of the button height.
-            const scale = @min(avail_w / img_w, h * 0.90 / img_h) * breath;
-            const draw_x = x + (w - img_w * scale) / 2.0;
-            const draw_y = y + (h - img_h * scale) / 2.0 + bob;
-
-            c.cairo_save(cr);
-            c.cairo_translate(cr, draw_x, draw_y);
-            c.cairo_scale(cr, scale, scale);
-            c.cairo_set_source_surface(cr, surf, 0, 0);
-            c.cairo_paint_with_alpha(cr, alpha);
-            c.cairo_restore(cr);
-        }
+        c.cairo_save(cr);
+        c.cairo_translate(cr, draw_x, draw_y);
+        c.cairo_scale(cr, scale, scale);
+        c.cairo_set_source_surface(cr, surf, 0, 0);
+        c.cairo_paint(cr);
+        c.cairo_restore(cr);
     }
 
 
