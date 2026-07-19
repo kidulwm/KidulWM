@@ -28,6 +28,11 @@ purple = "#a259ff"
 turquoise = "#00ffc8"
 blue = "#5E81AC"
 electric = "#00f0ff"
+weather_moon = "#696555"
+weather_temp = "#b8b09b"
+weather_minmax = "#948e7b"
+weather_icon = "#948e7b"
+weather_anim = "#b8b09b"
 
 [typography]
 font_mono = "Fantasque Sans Mono"
@@ -48,6 +53,7 @@ tray_bottom_margin = 10
 tray_hmargin = 8
 barry_button_height = 84
 char_buffer_m = 16.0
+weather_widget_min_width = 72
 
 [animation]
 tray_open_ms = 320
@@ -56,3 +62,4 @@ tray_settle_pulse_ms = 170
 underline_spring_stiffness = 80.0
 barry_follow_delay_s = 3.0
 window_transition_ms = 120
+weather_peek_anim_duration_ms = 3000

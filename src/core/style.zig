@@ -39,6 +39,17 @@ pub const Style = struct {
     font_size_m: f32 = 16.0,
     font_size_l: f32 = 22.0,
 
+    // Weather widget tokens.
+    weather_moon_color: Color = Color.fromHex(0x696555),
+    weather_temp_color: Color = Color.fromHex(0xb8b09b),
+    weather_minmax_color: Color = Color.fromHex(0x948e7b),
+    weather_icon_color: Color = Color.fromHex(0x948e7b),
+    weather_anim_color: Color = Color.fromHex(0xb8b09b),
+    weather_widget_min_width: f32 = 72.0,
+    weather_peek_anim_budget_ms: u32 = 3000,
+    weather_idle_break_ms: u32 = 600000,
+    weather_active_interval_ms: u32 = 900000,
+
     show_title_bars: bool = false,
 
     pub const CornerStyle = enum {

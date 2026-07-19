@@ -102,6 +102,15 @@ pub const Theme = struct {
         self.style.color_text_muted = parseColor(cfg.colors.text_muted) orelse self.style.color_text_muted;
         self.style.peek_glass_border_color = self.style.color_border;
 
+        // Weather tokens.
+        self.style.weather_moon_color = parseColor(cfg.colors.weather_moon) orelse self.style.weather_moon_color;
+        self.style.weather_temp_color = parseColor(cfg.colors.weather_temp) orelse self.style.weather_temp_color;
+        self.style.weather_minmax_color = parseColor(cfg.colors.weather_minmax) orelse self.style.weather_minmax_color;
+        self.style.weather_icon_color = parseColor(cfg.colors.weather_icon) orelse self.style.weather_icon_color;
+        self.style.weather_anim_color = parseColor(cfg.colors.weather_anim) orelse self.style.weather_anim_color;
+        self.style.weather_widget_min_width = @floatFromInt(cfg.spacing.weather_widget_min_width);
+        self.style.weather_peek_anim_budget_ms = cfg.animation.weather_peek_anim_duration_ms;
+
         // Typography / geometry.
         self.style.font_size_s = @floatFromInt(cfg.typography.font_size_s);
         self.style.font_size_m = @floatFromInt(cfg.typography.font_size_m);
@@ -224,6 +233,11 @@ const ColorTokens = struct {
     turquoise: []const u8 = "#00ffc8",
     blue: []const u8 = "#5E81AC",
     electric: []const u8 = "#00f0ff",
+    weather_moon: []const u8 = "#696555",
+    weather_temp: []const u8 = "#b8b09b",
+    weather_minmax: []const u8 = "#948e7b",
+    weather_icon: []const u8 = "#948e7b",
+    weather_anim: []const u8 = "#b8b09b",
 };
 
 const TypeTokens = struct {
@@ -246,6 +260,7 @@ const SpacingTokens = struct {
     tray_hmargin: i32 = 8,
     barry_button_height: i32 = 84,
     char_buffer_m: f64 = 16.0,
+    weather_widget_min_width: i32 = 72,
 };
 
 const AnimationTokens = struct {
@@ -255,6 +270,7 @@ const AnimationTokens = struct {
     underline_spring_stiffness: f64 = 80.0,
     barry_follow_delay_s: f64 = 3.0,
     window_transition_ms: i32 = 120,
+    weather_peek_anim_duration_ms: u32 = 3000,
 };
 
 fn parseColor(s: []const u8) ?Style.Color {

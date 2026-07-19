@@ -51,6 +51,24 @@ pub fn build(b: *std.Build) void {
     wlroots.resolved_target = target;
     wlroots.linkSystemLibrary("wlroots-0.20", .{});
 
+    const weather_mod = b.createModule(.{
+        .root_source_file = b.path("src/ui/weather.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    weather_mod.addImport("wayland", wayland);
+    weather_mod.addImport("wlroots", wlroots);
+    weather_mod.addImport("core", b.createModule(.{ .root_source_file = b.path("src/core/style.zig") }));
+
+    const moon_mod = b.createModule(.{
+        .root_source_file = b.path("src/util/moon.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    moon_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
+
     const root_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -63,6 +81,8 @@ pub fn build(b: *std.Build) void {
     root_mod.addImport("xkbcommon", xkbcommon);
     root_mod.addImport("pixman", pixman);
     root_mod.addImport("toml", toml);
+    root_mod.addImport("weather", weather_mod);
+    root_mod.addImport("moon", moon_mod);
 
     root_mod.linkSystemLibrary("wayland-server", .{});
     root_mod.linkSystemLibrary("wlroots-0.20", .{});
