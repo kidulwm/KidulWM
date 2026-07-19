@@ -176,7 +176,7 @@ pub const layout = struct {
     };
 
     /// Default three-column split (5% peek / 90% focus / 5% peek).
-    pub const default_split: SplitPreset = .{ .left_peek = 0.05, .focus = 0.90, .right_peek = 0.05 };
+    pub const default_split: SplitPreset = .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 };
 
     /// Three-column horizontal arrangement (5% peek / 90% focus / 5% peek).
     pub const horizontal_split: SplitPreset = .{ .left_peek = 0.05, .focus = 0.90, .right_peek = 0.05 };
