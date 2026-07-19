@@ -9,6 +9,7 @@ const animation = @import("../core/animation.zig");
 // Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
 const bob_logo_png = @embedFile("assets/bob/logo.png");
 const bob_text_png = @embedFile("assets/bob/text.png");
+const bob_text_mask_png = @embedFile("assets/bob/text_mask.png");
 
 // Archived Barry pose assets (tag tray-logo-animation-backup).
 const lay_png = @embedFile("assets/barry/lay.png");
@@ -240,6 +241,7 @@ pub const Tray = struct {
     // Simplified static logos (pose animation archived under tag tray-logo-animation-backup).
     bob_logo: *c.cairo_surface_t,
     bob_text: *c.cairo_surface_t,
+    bob_text_mask: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
     const barry_button_height: i32 = 84;
@@ -280,6 +282,8 @@ pub const Tray = struct {
         errdefer c.cairo_surface_destroy(bob_logo);
         const bob_text = try loadPngFromBytes(bob_text_png);
         errdefer c.cairo_surface_destroy(bob_text);
+        const bob_text_mask = try loadPngFromBytes(bob_text_mask_png);
+        errdefer c.cairo_surface_destroy(bob_text_mask);
 
         const card_tree = root.createSceneTree() catch null;
         var now: c.time_t = c.time(null);
@@ -310,6 +314,7 @@ pub const Tray = struct {
             .barry_puppy_stand = barry_puppy_stand,
             .bob_logo = bob_logo,
             .bob_text = bob_text,
+            .bob_text_mask = bob_text_mask,
         };
     }
 
@@ -333,6 +338,7 @@ pub const Tray = struct {
         c.cairo_surface_destroy(self.barry_puppy_stand);
         c.cairo_surface_destroy(self.bob_logo);
         c.cairo_surface_destroy(self.bob_text);
+        c.cairo_surface_destroy(self.bob_text_mask);
         if (self.card_scene_buffer) |sb| sb.node.destroy();
         if (self.card_buffer) |buf| wlr.Buffer.drop(buf);
         if (self.card_tree) |tree| tree.node.destroy();
@@ -1058,7 +1064,7 @@ pub const Tray = struct {
         self.drawPet(cr, x, y, w, h, s);
     }
     fn drawPet(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const surf = self.bob_text;
+        const surf = self.bob_text_mask;
         const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
         const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
         if (img_w <= 0.0 or img_h <= 0.0) return;
@@ -1066,7 +1072,6 @@ pub const Tray = struct {
         const margin: f64 = 4.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
-        // Wide wordmark: fit to available width, then clamp height if needed.
         const scale = @min(avail_w / img_w, avail_h / img_h);
         const left_nudge: f64 = 10.0 * s;
         const draw_x = x + (w - img_w * scale) / 2.0 - left_nudge;
@@ -1077,8 +1082,16 @@ pub const Tray = struct {
         c.cairo_save(cr);
         c.cairo_translate(cr, draw_x, draw_y);
         c.cairo_scale(cr, scale, scale);
-        c.cairo_set_source_surface(cr, surf, 0, 0);
-        c.cairo_paint(cr);
+
+        const grad = c.cairo_pattern_create_linear(0.0, 0.0, 0.0, img_h);
+        defer c.cairo_pattern_destroy(grad);
+        const c1 = self.host.theme.style.color_border_focused.toF64();
+        const c2 = self.host.theme.style.color_border.toF64();
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, c1[0], c1[1], c1[2], c1[3]);
+        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, c2[0], c2[1], c2[2], c2[3]);
+
+        c.cairo_set_source(cr, grad);
+        c.cairo_mask_surface(cr, surf, 0.0, 0.0);
         c.cairo_restore(cr);
     }
 
