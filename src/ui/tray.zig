@@ -1645,10 +1645,14 @@ pub const Tray = struct {
         c.cairo_text_extents(cr, suffix_str, &suffix_ext);
 
         const top_pad: f64 = 6.0 * scale;
-        const time_gap: f64 = 2.0 * scale;
+        const time_gap: f64 = 0.5 * scale;
+        const edge_buf: f64 = 4.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
         const total_time_w = num_ext.width + time_gap + suffix_ext.width;
-        const time_x = (w_d - total_time_w) * 0.5;
+
+        // Place numbers near the left edge with a safe margin, then suffix right next to them.
+        const max_block_x = w_d - total_time_w - edge_buf;
+        const time_x = @min(edge_buf, @max(max_block_x - edge_buf * 2.0, 0.0));
 
         c.cairo_set_source_rgba(cr, 0.78, 0.78, 0.78, 0.95);
         c.cairo_move_to(cr, time_x, num_baseline_y);
@@ -1656,8 +1660,20 @@ pub const Tray = struct {
 
         const num_visual_center = num_baseline_y + num_ext.y_bearing + num_ext.height * 0.5;
         const suffix_baseline_y = num_visual_center - (suffix_ext.y_bearing + suffix_ext.height * 0.5);
-        c.cairo_move_to(cr, time_x + num_ext.width + time_gap, suffix_baseline_y);
+        const suffix_x = time_x + num_ext.width + time_gap;
+        c.cairo_move_to(cr, suffix_x, suffix_baseline_y);
         c.cairo_show_text(cr, suffix_str);
+
+        // Optional: clamp the suffix to the right edge buffer so it never drifts off-screen.
+        if (suffix_x + suffix_ext.width > w_d - edge_buf) {
+            const clamped_suffix_x = w_d - suffix_ext.width - edge_buf;
+            // If we have to clamp suffix, move the whole block left the same amount.
+            const shift = clamped_suffix_x - suffix_x;
+            c.cairo_move_to(cr, time_x + shift, num_baseline_y);
+            c.cairo_show_text(cr, num_str);
+            c.cairo_move_to(cr, clamped_suffix_x, suffix_baseline_y);
+            c.cairo_show_text(cr, suffix_str);
+        }
 
         // Restore normal (non-squished) font matrix for the date lines.
         c.cairo_set_font_matrix(cr, &saved_font_matrix);
