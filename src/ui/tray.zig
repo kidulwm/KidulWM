@@ -1645,10 +1645,12 @@ pub const Tray = struct {
         c.cairo_text_extents(cr, suffix_str, &suffix_ext);
 
         const top_pad: f64 = 6.0 * scale;
-        const time_gap: f64 = 2.0 * scale;
+        const time_gap: f64 = 0.5 * scale;
+        const edge_buf: f64 = 4.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
         const total_time_w = num_ext.width + time_gap + suffix_ext.width;
-        const time_x = (w_d - total_time_w) * 0.5;
+        const centered_x = (w_d - total_time_w) * 0.5;
+        const time_x = @max(edge_buf, @min(centered_x, w_d - total_time_w - edge_buf));
 
         c.cairo_set_source_rgba(cr, 0.78, 0.78, 0.78, 0.95);
         c.cairo_move_to(cr, time_x, num_baseline_y);
