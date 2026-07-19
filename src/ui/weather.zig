@@ -92,20 +92,20 @@ pub const WeatherWidget = struct {
 
         const moon_r: f64 = @min(w_d, h_d) / 6.0 * 0.92;
         const moon_cx = w_d * 0.5;
-        const moon_cy = moon_r + 8.0 * scale;
+        const moon_cy = moon_r + 26.0 * scale;
 
         const phase = moon.phaseForUnixSeconds(@intCast(c_std.time(null)));
         moon.renderMoon(cr, moon_cx, moon_cy, moon_r, phase, gold, bg);
 
         const state_ = self.state();
 
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_BOLD);
+        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
 
         var current_buf: [16:0]u8 = undefined;
         @memset(&current_buf, 0);
         const current_str = std.fmt.bufPrintZ(&current_buf, "{d:.0}°", .{state_.current_temp}) catch "--°";
 
-        const big_font_base: f64 = @as(f64, style_.font_size_m) * 2.4 * scale;
+        const big_font_base: f64 = @as(f64, style_.font_size_m) * 1.75 * scale;
         var current_size = big_font_base;
         c_cairo.cairo_set_font_size(cr, current_size);
 
