@@ -1063,13 +1063,15 @@ pub const Tray = struct {
         const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
         if (img_w <= 0.0 or img_h <= 0.0) return;
 
-        const margin: f64 = 26.0 * s;
+        const margin: f64 = 28.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
         // Wide wordmark: fit to available width, then clamp height if needed.
         const scale = @min(avail_w / img_w, avail_h / img_h);
         const draw_x = x + (w - img_w * scale) / 2.0;
-        const draw_y = y + h - img_h * scale - margin;
+        const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 4.0) * s;
+        const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
+        const draw_y = y + h + pet_bottom_pad - bottom_above_border - img_h * scale;
 
         c.cairo_save(cr);
         c.cairo_translate(cr, draw_x, draw_y);
