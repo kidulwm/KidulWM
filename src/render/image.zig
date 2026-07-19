@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("../dm/c.zig").c;
+const c = @import("dm").c;
 
 /// Image utilities for loading client assets (wallpapers, etc.) into buffers
 /// that can be consumed by the wlr scene graph.

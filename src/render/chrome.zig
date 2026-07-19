@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("../dm/c.zig").c;
+const c = @import("dm").c;
 const Style = @import("../core/style.zig").Style;
 const Color = Style.Color;
 

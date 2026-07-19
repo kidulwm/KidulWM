@@ -1,10 +1,11 @@
 const std = @import("std");
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
-const c = @import("../dm/c.zig").c;
+const c = @import("dm").c;
 const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
+const WeatherWidget = @import("./weather.zig").WeatherWidget;
 
 // Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
 const bob_logo_png = @embedFile("assets/bob/logo.png");
@@ -88,6 +89,7 @@ pub const TrayHost = struct {
     output_count: *const fn (ctx: *anyopaque) usize,
     output_info: *const fn (ctx: *anyopaque, index: usize) OutputInfo,
     right_peek_box: *const fn (ctx: *anyopaque, output_index: usize) ?wlr.Box,
+    left_peek_box: *const fn (ctx: *anyopaque, output_index: usize) ?wlr.Box,
     get_animation_kind: *const fn (ctx: *anyopaque) animation.AnimationKind,
     cycle_animation: *const fn (ctx: *anyopaque) void,
     request_frame: *const fn (ctx: *anyopaque) void,
@@ -137,6 +139,22 @@ const PerOutputWidget = struct {
     last_scale: f32 = 0.0,
     last_corner_style: style.Style.CornerStyle = .round,
     last_time_minute: i32 = -1,
+    last_theme_generation: u32 = 0,
+};
+
+
+const PerOutputWeather = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    last_scale: f32 = 0.0,
+    last_minute: i32 = -1,
     last_theme_generation: u32 = 0,
 };
 
@@ -216,6 +234,9 @@ pub const Tray = struct {
 
     // Top-right peek widget (clock/date).
     widgets: std.ArrayList(PerOutputWidget),
+    // Top-left peek widget (weather).
+    weather_widgets: std.ArrayList(PerOutputWeather),
+    weather: WeatherWidget,
     card_tree: ?*wlr.SceneTree = null,
     card_scene_buffer: ?*wlr.SceneBuffer = null,
     card_buffer: ?*wlr.Buffer = null,
@@ -297,6 +318,8 @@ pub const Tray = struct {
             .outputs = .empty,
             .barry_pets = .empty,
             .widgets = .empty,
+            .weather_widgets = .empty,
+            .weather = WeatherWidget.init(allocator),
             .card_tree = card_tree,
             .card_year = @as(i32, @intCast(local_now.tm_year)) + 1900,
             .card_month = @as(i32, @intCast(local_now.tm_mon)) + 1,
@@ -322,9 +345,12 @@ pub const Tray = struct {
         for (self.outputs.items) |*po| self.destroyPerOutput(po);
         for (self.barry_pets.items) |*pet| self.destroyPet(pet);
         for (self.widgets.items) |*w| self.destroyWidget(w);
+        for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
+        self.weather.deinit();
         self.outputs.deinit(self.allocator);
         self.barry_pets.deinit(self.allocator);
         self.widgets.deinit(self.allocator);
+        self.weather_widgets.deinit(self.allocator);
         var it = self.icon_cache.iterator();
         while (it.next()) |entry| {
             c.cairo_surface_destroy(entry.value_ptr.*);
@@ -385,6 +411,22 @@ pub const Tray = struct {
             std.log.err("KidulWM: failed to append clock widget: {}", .{err});
             widget_tree.node.destroy();
         };
+
+        const weather_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create weather widget scene tree: {}", .{err});
+            return;
+        };
+        const weather_widget = PerOutputWeather{
+            .output_ctx = output_ctx,
+            .tree = weather_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.weather_widgets.append(self.allocator, weather_widget) catch |err| {
+            std.log.err("KidulWM: failed to append weather widget: {}", .{err});
+            weather_tree.node.destroy();
+        };
         const pet = BarryPet{
             .output_ctx = output_ctx,
             .tree = pet_tree,
@@ -416,6 +458,13 @@ pub const Tray = struct {
                 break;
             }
         }
+        for (self.weather_widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyWeatherWidget(w);
+                _ = self.weather_widgets.orderedRemove(i);
+                break;
+            }
+        }
         for (self.barry_pets.items, 0..) |*pet, i| {
             if (pet.output_ctx == output_ctx) {
                 self.destroyPet(pet);
@@ -434,6 +483,15 @@ pub const Tray = struct {
     }
 
     fn destroyWidget(_: *Self, widget: *PerOutputWidget) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
+    }
+
+
+    fn destroyWeatherWidget(_: *Self, widget: *PerOutputWeather) void {
         if (widget.scene_buffer) |sb| sb.node.destroy();
         if (widget.buffer) |buf| wlr.Buffer.drop(buf);
         widget.tree.node.destroy();
@@ -807,6 +865,13 @@ pub const Tray = struct {
         for (self.widgets.items) |*widget| {
             widget.info = self.host.output_info(self.host.ctx, widgetIndex(self, widget));
             self.drawWidget(widget);
+        }
+
+        // Update weather cache and draw left-peek widget.
+        self.weather.update();
+        for (self.weather_widgets.items) |*weather_widget| {
+            weather_widget.info = self.host.output_info(self.host.ctx, weatherWidgetIndex(self, weather_widget));
+            self.drawWeatherWidget(weather_widget);
         }
 
         for (self.barry_pets.items, 0..) |*pet, i| {
@@ -1241,6 +1306,13 @@ pub const Tray = struct {
 
     fn widgetIndex(self: *const Self, widget: *PerOutputWidget) usize {
         for (self.widgets.items, 0..) |*w, i| {
+            if (w == widget) return i;
+        }
+        return 0;
+    }
+
+    fn weatherWidgetIndex(self: *const Self, widget: *PerOutputWeather) usize {
+        for (self.weather_widgets.items, 0..) |*w, i| {
             if (w == widget) return i;
         }
         return 0;
@@ -1712,6 +1784,104 @@ pub const Tray = struct {
         if (widget.scene_buffer) |old| old.node.destroy();
         const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
             std.log.err("KidulWM: failed to create clock widget scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            widget.buffer = null;
+            return;
+        };
+        sb.setDestSize(pill_w, pill_h);
+        widget.scene_buffer = sb;
+        widget.tree.node.setPosition(pill_x, pill_y);
+        widget.tree.node.raiseToTop();
+    }
+
+
+    fn drawWeatherWidget(self: *Self, widget: *PerOutputWeather) void {
+        const box = self.host.left_peek_box(self.host.ctx, weatherWidgetIndex(self, widget)) orelse return;
+        if (box.width <= 0 or box.height <= 0) return;
+
+        var now_time: c.time_t = c.time(null);
+        var local: c.struct_tm = undefined;
+        const tm = c.localtime_r(&now_time, &local);
+        const current_minute = @as(i32, @intCast(tm.*.tm_min)) + @as(i32, @intCast(tm.*.tm_hour)) * 60;
+        const style_ = self.host.theme.style;
+        const theme_gen = self.host.theme.generation;
+        const scale = widget.info.scale;
+
+        const peek_hmargin = 2;
+        const peek_vmargin = 4;
+        const pill_w: i32 = @max(20, box.width - 2 * peek_hmargin);
+        const pill_x = box.x + peek_hmargin;
+        const pill_h: i32 = @max(40, box.height - 2 * peek_vmargin);
+        const pill_y = box.y + peek_vmargin;
+
+        const redraw = widget.scene_buffer == null or
+            widget.last_w != pill_w or
+            widget.last_h != pill_h or
+            widget.last_x != pill_x or
+            widget.last_y != pill_y or
+            widget.last_scale != scale or
+            widget.last_minute != current_minute or
+            widget.last_theme_generation != theme_gen;
+
+        if (!redraw) {
+            widget.tree.node.setPosition(pill_x, pill_y);
+            widget.tree.node.raiseToTop();
+            return;
+        }
+
+        widget.last_w = pill_w;
+        widget.last_h = pill_h;
+        widget.last_x = pill_x;
+        widget.last_y = pill_y;
+        widget.last_scale = scale;
+        widget.last_minute = current_minute;
+        widget.last_theme_generation = theme_gen;
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: weather widget buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for weather widget", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        c.cairo_save(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        self.weather.renderPeek(cr, .{
+            .x = pill_x,
+            .y = pill_y,
+            .width = dev_w,
+            .height = dev_h,
+        }, style_, scale);
+
+        c.cairo_restore(cr);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create weather widget buffer: {}", .{err});
+            return;
+        };
+        if (widget.buffer) |old| wlr.Buffer.drop(old);
+        widget.buffer = buffer;
+        if (widget.scene_buffer) |old| old.node.destroy();
+        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create weather widget scene buffer: {}", .{err});
             wlr.Buffer.drop(buffer);
             widget.buffer = null;
             return;

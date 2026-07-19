@@ -191,8 +191,8 @@
 5. In fullscreen, disable/raise-behind the widget scene tree.
 
 **Verification:**
-- Build, deploy, open tray.
-- Moon + temps render in left peek.
+- Build, deploy to a disposable VM (NEVER touch cachyos-kidulwm on port 2222).
+- Moon + temps render in left peek; text readable at current minimum peek width.
 - Click opens weather card placeholder.
 - Commit.
 

@@ -83,6 +83,7 @@ pub fn build(b: *std.Build) void {
     root_mod.addImport("toml", toml);
     root_mod.addImport("weather", weather_mod);
     root_mod.addImport("moon", moon_mod);
+    root_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
 
     root_mod.linkSystemLibrary("wayland-server", .{});
     root_mod.linkSystemLibrary("wlroots-0.20", .{});

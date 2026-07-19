@@ -1160,6 +1160,37 @@ pub const Server = struct {
                     return null;
                 }
             }.f,
+
+            .left_peek_box = struct {
+                fn f(ctx: *anyopaque, output_index: usize) ?wlr.Box {
+                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
+                    var it = s.outputs.iterator(.forward);
+                    var i: usize = 0;
+                    while (it.next()) |output| : (i += 1) {
+                        if (i != output_index) continue;
+                        var layout_box: wlr.Box = undefined;
+                        s.output_layout.getBox(output.wlr_output, &layout_box);
+                        const split = output.deck.split;
+                        const w: f32 = @floatFromInt(layout_box.width);
+                        const h: f32 = @floatFromInt(layout_box.height);
+                        return switch (output.deck.orientation) {
+                            .horizontal => .{
+                                .x = layout_box.x,
+                                .y = layout_box.y,
+                                .width = @intFromFloat(w * split.left_peek),
+                                .height = layout_box.height,
+                            },
+                            .vertical => .{
+                                .x = layout_box.x,
+                                .y = layout_box.y,
+                                .width = layout_box.width,
+                                .height = @intFromFloat(h * split.left_peek),
+                            },
+                        };
+                    }
+                    return null;
+                }
+            }.f,
             .get_animation_kind = struct {
                 fn f(ctx: *anyopaque) animation.AnimationKind {
                     const s = @as(*Server, @ptrCast(@alignCast(ctx)));
