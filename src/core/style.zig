@@ -175,12 +175,11 @@ pub const layout = struct {
         right_peek: f32,
     };
 
-    /// Legacy default used by State and Split.default().  focus + 2*peek > 1.0,
-    /// so Split.verify() normalises it to actual screen proportions.
-    pub const default_split: SplitPreset = .{ .left_peek = 0.08, .focus = 0.94, .right_peek = 0.08 };
+    /// Default three-column split (5% peek / 90% focus / 5% peek).
+    pub const default_split: SplitPreset = .{ .left_peek = 0.05, .focus = 0.90, .right_peek = 0.05 };
 
-    /// Three-column horizontal arrangement (8% peek / 84% focus / 8% peek).
-    pub const horizontal_split: SplitPreset = .{ .left_peek = 0.08, .focus = 0.84, .right_peek = 0.08 };
+    /// Three-column horizontal arrangement (5% peek / 90% focus / 5% peek).
+    pub const horizontal_split: SplitPreset = .{ .left_peek = 0.05, .focus = 0.90, .right_peek = 0.05 };
 
     /// Vertical top/bottom arrangements.
     pub const vertical_top_split: SplitPreset = .{ .left_peek = 0.0, .focus = 0.5, .right_peek = 0.5 };
