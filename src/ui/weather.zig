@@ -94,8 +94,8 @@ pub const WeatherWidget = struct {
         const scale_f: f64 = @as(f64, scale);
 
         // Moon phase stays at the very top, separate from the weather icon.
-        const margin: f64 = 6.0 * scale_f;
-        const moon_r = @max(4.0 * scale_f, @min(w_d * 0.32, 9.0 * scale_f, (h_d - margin * 2.0) * 0.12));
+        const margin: f64 = 14.0 * scale_f;
+        const moon_r = @max(5.0 * scale_f, @min(w_d * 0.36, 11.0 * scale_f, (h_d - margin * 2.0) * 0.14));
         const moon_cx = w_d * 0.5;
         const moon_cy = margin + moon_r;
         const phase = moon.phaseForUnixSeconds(@intCast(c_std.time(null)));
