@@ -1613,8 +1613,8 @@ pub const Tray = struct {
 
         const suffix_str = if (@as(i32, @intCast(tm.*.tm_hour)) >= 12) "pm" else "am";
 
-        const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 3.3 * scale;
-        const suffix_ratio = 0.5;
+        const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 2.9 * scale;
+        const suffix_ratio = 0.45;
 
         var saved_font_matrix: c.cairo_matrix_t = undefined;
 
@@ -1645,7 +1645,7 @@ pub const Tray = struct {
         c.cairo_text_extents(cr, suffix_str, &suffix_ext);
 
         const top_pad: f64 = 6.0 * scale;
-        const time_gap: f64 = 2.0 * scale;
+        const time_gap: f64 = -35.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
         const total_time_w = num_ext.width + time_gap + suffix_ext.width;
         const time_x = (w_d - total_time_w) * 0.5;
