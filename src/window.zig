@@ -354,11 +354,6 @@ pub const Window = struct {
         const surface = self.toplevel.base.surface;
         if (!surface.mapped) return;
 
-        // Reset the destination size to the natural buffer size so a window
-        // that was previously focused (and scaled) returns to full resolution
-        // when it becomes a peek.
-        self.setSurfaceDestSize(@intCast(surface.current.width), @intCast(surface.current.height));
-
         const geom = self.toplevel.base.geometry;
         const target_w: i32 = @intFromFloat(self.animation.target_w);
 
