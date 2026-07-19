@@ -13,6 +13,7 @@ class Current:
     weather_code: int = 0
     wind_speed: float = 0.0
     wind_dir: int = 0
+    is_day: int = 0
 
 
 @dataclass

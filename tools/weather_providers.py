@@ -49,7 +49,7 @@ class OpenMeteoProvider(Provider):
             {
                 "latitude": lat,
                 "longitude": lon,
-                "current": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m",
+                "current": "is_day,temperature_2m,weather_code,wind_speed_10m,wind_direction_10m",
                 "hourly": "temperature_2m,weather_code,wind_speed_10m,wind_direction_10m",
                 "daily": "temperature_2m_min,temperature_2m_max,sunrise,sunset",
                 "timezone": "auto",
@@ -73,6 +73,7 @@ class OpenMeteoProvider(Provider):
                 weather_code=int(current.get("weather_code", 0)),
                 wind_speed=float(current.get("wind_speed_10m", 0.0)),
                 wind_dir=int(current.get("wind_direction_10m", 0)),
+                is_day=int(current.get("is_day", 0)),
             ),
         )
 
