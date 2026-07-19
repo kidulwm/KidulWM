@@ -1672,7 +1672,7 @@ pub const Tray = struct {
 
         const date_font_size: f64 = @as(f64, tstyle.font_size_s) * 1.3 * scale;
         const line_gap = date_font_size * 1.25;
-        const date_block_top = num_baseline_y + line_gap * 2.0;
+        const date_block_top = num_baseline_y + line_gap * 1.5;
 
         const date_lines = [_][]const u8{ weekday_name, day_str, month_name };
         const date_weights = [_]c.cairo_font_weight_t{
