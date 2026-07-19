@@ -218,8 +218,9 @@ pub const Tray = struct {
     // Lazy Barry mirror state.
     barry_follow_deadline_us: u64 = 0,
 
-    // Focused-slide card (clock/calendar/etc).
-    card_open: bool = false,
+    // Focused-slide card (clock/calendar/weather).
+    calendar_card_open: bool = false,
+    weather_card_open: bool = false,
     card_open_amount: f32 = 0.0,
     card_open_amount_vel: f32 = 0.0,
     card_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
@@ -244,9 +245,12 @@ pub const Tray = struct {
     card_last_h: i32 = 0,
     card_last_open: f32 = -1.0,
     card_last_generation: u32 = 0,
+    card_last_mode: CardMode = .calendar,
 
     // Last clickable bounding box of the clock/date peek widget (scene coords).
     widget_click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    // Last clickable bounding box of the left-peek weather widget (scene coords).
+    weather_click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
 
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
@@ -532,9 +536,23 @@ pub const Tray = struct {
     }
 
     pub fn toggleCard(self: *Self) void {
-        self.card_open = !self.card_open;
+        self.calendar_card_open = !self.calendar_card_open;
+        if (self.calendar_card_open) self.weather_card_open = false;
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
+    }
+
+    pub fn toggleWeatherCard(self: *Self) void {
+        const now_open = !self.weather_card_open;
+        self.weather_card_open = now_open;
+        self.calendar_card_open = false;
+        self.weather.toggleCard();
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
+    fn anyCardOpen(self: *const Self) bool {
+        return self.calendar_card_open or self.weather_card_open;
     }
 
     pub fn selectNext(self: *Self) void {
@@ -1327,6 +1345,15 @@ pub const Tray = struct {
             py < @as(f64, @floatFromInt(b.y + b.height));
     }
 
+    fn pointInsideWeatherWidget(self: *const Self, px: f64, py: f64) bool {
+        const b = self.weather_click_box;
+        if (b.width <= 0 or b.height <= 0) return false;
+        return px >= @as(f64, @floatFromInt(b.x)) and
+            px < @as(f64, @floatFromInt(b.x + b.width)) and
+            py >= @as(f64, @floatFromInt(b.y)) and
+            py < @as(f64, @floatFromInt(b.y + b.height));
+    }
+
 
     fn fit_and_draw(
         cr: *c.cairo_t,
@@ -1377,7 +1404,7 @@ pub const Tray = struct {
         var new_hover: ?usize = null;
 
         // Track calendar card hover.
-        if (self.card_open and self.card_box.width > 0 and self.card_box.height > 0) {
+        if (self.calendar_card_open and self.card_box.width > 0 and self.card_box.height > 0) {
             const cbx = @as(f64, @floatFromInt(self.card_box.x));
             const cby = @as(f64, @floatFromInt(self.card_box.y));
             const cbw = @as(f64, @floatFromInt(self.card_box.width));
@@ -1456,7 +1483,11 @@ pub const Tray = struct {
             _ = self.handleCardDateClick(px, py);
             return true;
         }
-        if (self.card_open and self.handleCardDateClick(px, py)) return true;
+        if (self.pointInsideWeatherWidget(px, py)) {
+            self.toggleWeatherCard();
+            return true;
+        }
+        if (self.calendar_card_open and self.handleCardDateClick(px, py)) return true;
 
         const out_count = self.host.output_count(self.host.ctx);
         var inside = false;
@@ -1510,7 +1541,7 @@ pub const Tray = struct {
     }
 
     fn handleCardDateClick(self: *Self, px: f64, py: f64) bool {
-        if (!self.card_open) return false;
+        if (!self.calendar_card_open) return false;
         const box = self.card_box;
         if (box.width <= 0 or box.height <= 0) return false;
         if (px < @as(f64, @floatFromInt(box.x)) or px >= @as(f64, @floatFromInt(box.x + box.width)) or
@@ -1608,6 +1639,7 @@ pub const Tray = struct {
         const pill_x = box.x + peek_hmargin;
         const pill_h: i32 = @max(40, box.height - 2 * peek_vmargin);
         const pill_y = box.y + peek_vmargin;
+        self.weather_click_box = .{ .x = pill_x, .y = pill_y, .width = pill_w, .height = pill_h };
 
         const needs_redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -1796,8 +1828,14 @@ pub const Tray = struct {
 
 
     fn drawWeatherWidget(self: *Self, widget: *PerOutputWeather) void {
-        const box = self.host.left_peek_box(self.host.ctx, weatherWidgetIndex(self, widget)) orelse return;
-        if (box.width <= 0 or box.height <= 0) return;
+        const box = self.host.left_peek_box(self.host.ctx, weatherWidgetIndex(self, widget)) orelse {
+            self.weather_click_box = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
+            return;
+        };
+        if (box.width <= 0 or box.height <= 0) {
+            self.weather_click_box = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
+            return;
+        }
 
         var now_time: c.time_t = c.time(null);
         var local: c.struct_tm = undefined;
@@ -1897,7 +1935,7 @@ pub const Tray = struct {
         const prev = self.last_update_us;
         const dt = if (prev == 0) 0.0 else @as(f64, @floatFromInt(now_us - prev)) / 1_000_000.0;
 
-        const desired: f32 = if (self.card_open) 1.0 else 0.0;
+        const desired: f32 = if (self.anyCardOpen()) 1.0 else 0.0;
         const closing = desired < self.card_open_amount;
         const spring = if (closing)
             animation.Spring{ .stiffness = 8.0, .damping = 0.92, .epsilon = 0.001 }
@@ -1907,7 +1945,7 @@ pub const Tray = struct {
         self.card_open_amount = @floatCast(step.value);
         self.card_open_amount_vel = @floatCast(step.velocity);
 
-        if (self.card_open_amount < 0.005 and !self.card_open) {
+        if (self.card_open_amount < 0.005 and !self.anyCardOpen()) {
             if (self.card_tree) |tree| tree.node.setEnabled(false);
             return;
         }
@@ -1934,11 +1972,12 @@ pub const Tray = struct {
         const card_x = box.x + @divTrunc(box.width - w, 2);
         const card_y = box.y + @divTrunc(box.height - h, 2);
 
+        const current_mode = self.activeCardMode();
         const needs_redraw = self.card_last_w != w or
             self.card_last_h != h or
             @abs(self.card_last_open - self.card_open_amount) > 0.0001 or
             self.card_last_generation != self.host.theme.generation or
-            self.card_focused_generation != self.host.theme.generation + 1 or
+            self.card_last_mode != current_mode or
             !step.settled;
 
         if (self.card_tree) |tree| {
@@ -1952,50 +1991,65 @@ pub const Tray = struct {
             self.card_last_h = h;
             self.card_last_open = self.card_open_amount;
             self.card_last_generation = self.host.theme.generation;
-            self.card_focused_generation = self.host.theme.generation + 1;
-            self.renderCardBuffer(w, h);
+            self.card_last_mode = current_mode;
+            const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);
+            if (stride <= 0) return;
+            const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(h));
+            const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+                std.log.err("KidulWM: card buffer alloc failed: {}", .{err});
+                return;
+            };
+            defer self.allocator.free(temp);
+            @memset(temp, 0);
+            const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, w, h, stride);
+            defer c.cairo_surface_destroy(surface);
+            const cr = c.cairo_create(surface) orelse {
+                std.log.err("KidulWM: failed to create cairo context for card", .{});
+                return;
+            };
+            defer c.cairo_destroy(cr);
+            switch (current_mode) {
+                .calendar => self.drawClockCalendarCard(cr, @floatFromInt(w), @floatFromInt(h)),
+                .weather => self.weather.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
+            }
+            const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+            const buffer = DataBuffer.create(temp, w, h, @intCast(stride)) catch |err| {
+                std.log.err("KidulWM: failed to create card buffer: {}", .{err});
+                return;
+            };
+            if (self.card_buffer) |old| wlr.Buffer.drop(old);
+            self.card_buffer = buffer;
+            if (self.card_scene_buffer) |old| old.node.destroy();
+            const tree = self.card_tree orelse return;
+            self.card_scene_buffer = tree.createSceneBuffer(buffer) catch |err| {
+                std.log.err("KidulWM: failed to create card scene buffer: {}", .{err});
+                return;
+            };
+            if (self.card_scene_buffer) |sb| sb.node.raiseToTop();
         }
     }
 
-    fn renderCardBuffer(self: *Self, w_i: i32, h_i: i32) void {
-        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
-        const w = w_i;
-        const h = h_i;
+    const CardMode = enum { calendar, weather };
 
-        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);
-        if (stride <= 0) return;
-        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(h));
-        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
-            std.log.err("KidulWM: card buffer alloc failed: {}", .{err});
-            return;
-        };
-        defer self.allocator.free(temp);
-        @memset(temp, 0);
-
-        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, w, h, stride);
-        defer c.cairo_surface_destroy(surface);
-        const cr = c.cairo_create(surface) orelse {
-            std.log.err("KidulWM: failed to create cairo context for card", .{});
-            return;
-        };
-        defer c.cairo_destroy(cr);
-
-        self.drawClockCalendarCard(cr, @floatFromInt(w), @floatFromInt(h));
-
-        const buffer = DataBuffer.create(temp, w, h, @intCast(stride)) catch |err| {
-            std.log.err("KidulWM: failed to create card buffer: {}", .{err});
-            return;
-        };
-        if (self.card_buffer) |old| wlr.Buffer.drop(old);
-        self.card_buffer = buffer;
-        if (self.card_scene_buffer) |old| old.node.destroy();
-        const tree = self.card_tree orelse return;
-        self.card_scene_buffer = tree.createSceneBuffer(buffer) catch |err| {
-            std.log.err("KidulWM: failed to create card scene buffer: {}", .{err});
-            return;
-        };
-        if (self.card_scene_buffer) |sb| sb.node.raiseToTop();
+    fn activeCardMode(self: *const Self) CardMode {
+        if (self.weather_card_open) return .weather;
+        return .calendar;
     }
+
+    fn outputScaleForCard(self: *const Self) f32 {
+        const out_count = self.host.output_count(self.host.ctx);
+        if (out_count == 0) return 1.0;
+        const info = self.host.output_info(self.host.ctx, 0);
+        return info.scale;
+    }
+
+    fn renderCardBuffer(self: *Self, w_i: i32, h_i: i32) void {
+        _ = self;
+        _ = w_i;
+        _ = h_i;
+        // Merged into updateCard to avoid an extra allocation and to support mode switching.
+    }
+
 
         const CalendarCell = struct {
             day: i32,
