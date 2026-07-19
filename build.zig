@@ -118,6 +118,20 @@ pub fn build(b: *std.Build) void {
     const control_exe = b.addExecutable(.{ .name = "kidulwm-control", .root_module = control_mod });
     b.installArtifact(control_exe);
 
+    const moon_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/test_moon.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    moon_test_mod.addImport("moon", moon_mod);
+    moon_test_mod.linkSystemLibrary("cairo", .{});
+    const moon_test_exe = b.addExecutable(.{ .name = "moon-test", .root_module = moon_test_mod });
+    const moon_test_run = b.addRunArtifact(moon_test_exe);
+    moon_test_run.step.dependOn(b.getInstallStep());
+    const moon_test_step = b.step("moon-test", "Render moon test strip to /tmp/moon_test.png");
+    moon_test_step.dependOn(&moon_test_run.step);
+
     b.installFile("config/keybinds.conf", "share/kidulwm/keybinds.conf");
 
     const run_cmd = b.addRunArtifact(exe);

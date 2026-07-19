@@ -9,6 +9,7 @@ const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 pub const WeatherWidget = struct {
     allocator: std.mem.Allocator,
     card_open: bool = false,
+    last_draw_minute: i32 = -1,
 
     pub const WeatherState = struct {
         current_temp: f64 = 0,
@@ -45,14 +46,10 @@ pub const WeatherWidget = struct {
         _ = box;
     }
 
-    pub fn renderPeek(self: *const WeatherWidget, cr: *c.cairo_t, box: wlr.Box, theme: *const theme_mod.Theme, now_s: i64) void {
+    pub fn renderMoonTest(self: *const WeatherWidget, path: []const u8, theme: *const theme_mod.Theme) !void {
         _ = self;
-        const phase = moon.phaseForUnixSeconds(now_s);
-        const cx: f64 = @floatFromInt(box.x + @divTrunc(box.width, 2));
-        const cy: f64 = @floatFromInt(box.y + @divTrunc(box.height, 4));
-        const r: f64 = @floatFromInt(@min(box.width, box.height) / 5);
         const outline = theme.style.color_border_focused.toF64();
         const shadow = theme.style.color_background.toF64();
-        moon.renderMoon(cr, cx, cy, r, phase, outline, shadow);
+        try moon.renderMoonTestStrip(path, outline, shadow);
     }
 };

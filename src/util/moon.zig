@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("../dm/c.zig").c;
+const c = @import("dm").c;
 
 /// Moon phase descriptor.
 pub const Phase = struct {
@@ -11,7 +11,7 @@ pub const Phase = struct {
     name: []const u8,
 };
 
-/// Reference new moon: 2000-01-06 18:14 UTC (known new moon).
+/// Reference new moon: 2000-01-06 18:14 UTC.
 const ref_new_moon_j2000: f64 = 2451549.2596;
 const synodic_month: f64 = 29.53058867;
 
@@ -28,8 +28,6 @@ pub fn phaseForUnixSeconds(utc_s: i64) Phase {
     const age = (cycles - std.math.floor(cycles)) * synodic_month;
     const frac = age / synodic_month;
 
-    // Illumination follows 0.5 * (1 - cos(2*pi*frac)) for waxing,
-    // but matches visual fraction of lit disk.
     const angle = frac * 2.0 * std.math.pi;
     const illumination = 0.5 * (1.0 - std.math.cos(angle));
 
@@ -54,52 +52,93 @@ fn phaseName(frac: f64) []const u8 {
 }
 
 /// Render a moon into a Cairo context.
-/// phase_frac is 0..1 (0 = new, 0.5 = full).
-/// Color should be the border/focus color for the outline and lit part.
 pub fn renderMoon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, phase: Phase, outline_color: [4]f64, shadow_color: [4]f64) void {
     const frac = phase.age / synodic_month;
-    const lit_right = frac < 0.5;
 
-    // Clip to the moon disk.
+    // Background disc (shadow color, full moon circle).
     c.cairo_save(cr);
-    c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
-    c.cairo_clip(cr);
-
-    // Fill the dark side.
     c.cairo_set_source_rgba(cr, shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3]);
-    c.cairo_paint(cr);
+    c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
+    c.cairo_fill(cr);
 
-    // Draw lit side: we model the terminator as an ellipse whose x-radius
-    // varies from -r to +r.  At new moon it's -r (all dark), full moon +r
-    // (all lit), quarters 0 (half lit).
-    const t = if (frac <= 0.5) 1.0 - 4.0 * frac else 4.0 * (frac - 0.5) - 1.0;
-    const rx = t * r;
-
+    // Lit region.
     c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
-    c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
-    c.cairo_fill(cr);
 
-    // Carve out the dark half-ellipse with shadow color.
-    c.cairo_set_source_rgba(cr, shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3]);
-    c.cairo_save(cr);
-    c.cairo_translate(cr, cx, cy);
-    // For first half, shadow is right for waxing crescent etc; the math below
-    // carves the appropriate ellipse half.
-    if (lit_right) {
-        c.cairo_scale(cr, rx, r);
-        c.cairo_arc(cr, (if (rx >= 0) @as(f64, 1.0) else @as(f64, -1.0)), 0, 1, 0, 2 * std.math.pi);
+    if (phase.illumination < 0.01) {
+        // New moon: entirely shadow.
+    } else if (phase.illumination > 0.99) {
+        // Full moon: entirely lit.
+        c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
+        c.cairo_fill(cr);
     } else {
-        c.cairo_scale(cr, -rx, r);
-        c.cairo_arc(cr, (if (-rx >= 0) @as(f64, 1.0) else @as(f64, -1.0)), 0, 1, 0, 2 * std.math.pi);
+        // Correct geometric construction:
+        // Phase angle 0..2pi; x = r*cos(angle). abs(x) is the terminator ellipse radius.
+        // The inner ellipse is offset by -x from the disk center.
+        const angle = frac * 2.0 * std.math.pi;
+        const x = r * std.math.cos(angle);
+        const h = @abs(x);
+        const inner_cx = cx - x;
+
+        if (frac < 0.5) {
+            // Waxing: lit right half + inner ellipse closed counter-clockwise.
+            c.cairo_arc(cr, cx, cy, r, -std.math.pi / 2.0, std.math.pi / 2.0);
+            if (h > 0.001) {
+                c.cairo_arc(cr, inner_cx, cy, h, std.math.pi / 2.0, -std.math.pi / 2.0);
+            } else {
+                c.cairo_line_to(cr, cx, cy - r);
+            }
+            c.cairo_fill(cr);
+        } else {
+            // Waning: lit left half + inner ellipse closed clockwise.
+            c.cairo_arc(cr, cx, cy, r, std.math.pi / 2.0, 1.5 * std.math.pi);
+            if (h > 0.001) {
+                c.cairo_arc(cr, inner_cx, cy, h, -std.math.pi / 2.0, std.math.pi / 2.0);
+            } else {
+                c.cairo_line_to(cr, cx, cy + r);
+            }
+            c.cairo_fill(cr);
+        }
     }
-    c.cairo_fill(cr);
-    c.cairo_restore(cr);
 
-    c.cairo_restore(cr);
-
-    // Outline.
     c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
     c.cairo_set_line_width(cr, 1.5);
     c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
     c.cairo_stroke(cr);
+    c.cairo_restore(cr);
+}
+
+pub fn renderMoonForBox(cr: *c.cairo_t, box: anytype, top_padding: i32, phase: Phase, outline_color: [4]f64, shadow_color: [4]f64) void {
+    const box_w: f64 = @floatFromInt(box.width);
+    const cx = box.x + box.width / 2;
+    const cy = box.y + top_padding + @divTrunc(box.height - top_padding, 4);
+    const r: f64 = @min(box_w / 2.8, @as(f64, @floatFromInt(@divTrunc(box.height - top_padding, 5))));
+    renderMoon(cr, @floatFromInt(cx), @floatFromInt(cy), r, phase, outline_color, shadow_color);
+}
+
+/// Write a 5-phase moon test strip to the provided PNG path using Cairo.
+pub fn renderMoonTestStrip(path: []const u8, outline_color: [4]f64, shadow_color: [4]f64) !void {
+    const w = 900;
+    const h = 140;
+    const surface = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, w, h) orelse return error.CairoSurfaceFailed;
+    defer c.cairo_surface_destroy(surface);
+    const cr = c.cairo_create(surface) orelse return error.CairoCreateFailed;
+    defer c.cairo_destroy(cr);
+
+    c.cairo_set_source_rgba(cr, 0.13, 0.14, 0.15, 1.0);
+    c.cairo_paint(cr);
+
+    const phases = [_]f64{ 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875 };
+    const step: f64 = @as(f64, w) / phases.len;
+    for (phases, 0..) |frac, i| {
+        const px = step * @as(f64, @floatFromInt(i)) + step / 2.0;
+        const py = @as(f64, h) / 2.0;
+        const r = 48.0;
+        const age = frac * synodic_month;
+        const illum = 0.5 * (1.0 - std.math.cos(frac * 2.0 * std.math.pi));
+        const ph: Phase = .{ .illumination = illum, .age = age, .name = phaseName(frac) };
+        renderMoon(cr, px, py, r, ph, outline_color, shadow_color);
+
+    }
+
+    _ = c.cairo_surface_write_to_png(surface, path.ptr);
 }
