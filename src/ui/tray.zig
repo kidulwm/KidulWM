@@ -1645,7 +1645,7 @@ pub const Tray = struct {
         c.cairo_text_extents(cr, suffix_str, &suffix_ext);
 
         const top_pad: f64 = 6.0 * scale;
-        const time_gap: f64 = -35.0 * scale;
+        const time_gap: f64 = -37.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
         const total_time_w = num_ext.width + time_gap + suffix_ext.width;
         const time_x = (w_d - total_time_w) * 0.5;
