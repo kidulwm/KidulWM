@@ -6,6 +6,7 @@ const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
 const WeatherWidget = @import("./weather.zig").WeatherWidget;
+const card_frame = @import("card_frame.zig");
 
 // Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
 const bob_logo_png = @embedFile("assets/bob/logo.png");
@@ -241,6 +242,10 @@ pub const Tray = struct {
     card_tree: ?*wlr.SceneTree = null,
     card_scene_buffer: ?*wlr.SceneBuffer = null,
     card_buffer: ?*wlr.Buffer = null,
+    card_shadow_tree: ?*wlr.SceneTree = null,
+    card_shadow_scene_buffer: ?*wlr.SceneBuffer = null,
+    card_shadow_buffer: ?*wlr.Buffer = null,
+    card_shadow_last_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
     card_last_w: i32 = 0,
     card_last_h: i32 = 0,
     card_last_open: f32 = -1.0,
@@ -311,6 +316,7 @@ pub const Tray = struct {
         const bob_text_mask = try loadPngFromBytes(bob_text_mask_png);
         errdefer c.cairo_surface_destroy(bob_text_mask);
 
+        const card_shadow_tree = root.createSceneTree() catch null;
         const card_tree = root.createSceneTree() catch null;
         var now: c.time_t = c.time(null);
         var local_tmp: c.struct_tm = undefined;
@@ -325,6 +331,7 @@ pub const Tray = struct {
             .widgets = .empty,
             .weather_widgets = .empty,
             .weather = WeatherWidget.init(allocator),
+            .card_shadow_tree = card_shadow_tree,
             .card_tree = card_tree,
             .card_year = @as(i32, @intCast(local_now.tm_year)) + 1900,
             .card_month = @as(i32, @intCast(local_now.tm_mon)) + 1,
@@ -370,6 +377,9 @@ pub const Tray = struct {
         c.cairo_surface_destroy(self.bob_logo);
         c.cairo_surface_destroy(self.bob_text);
         c.cairo_surface_destroy(self.bob_text_mask);
+        if (self.card_shadow_scene_buffer) |sb| sb.node.destroy();
+        if (self.card_shadow_buffer) |buf| wlr.Buffer.drop(buf);
+        if (self.card_shadow_tree) |tree| tree.node.destroy();
         if (self.card_scene_buffer) |sb| sb.node.destroy();
         if (self.card_buffer) |buf| wlr.Buffer.drop(buf);
         if (self.card_tree) |tree| tree.node.destroy();
@@ -1542,14 +1552,25 @@ pub const Tray = struct {
             self.toggleWeatherCard();
             return true;
         }
-        // Click inside the currently open card: dispatch to card and keep it open.
+        // Click inside the currently open card:
+        // - Calendar: keep open only if a day cell was actually hit.
+        // - Weather: no interactive hit regions yet, so any click inside closes it.
+        // - Otherwise treat the click as "dismiss the overlay".
         if (self.anyCardOpen() and self.card_box.width > 0 and self.card_box.height > 0) {
             const cbx = @as(f64, @floatFromInt(self.card_box.x));
             const cby = @as(f64, @floatFromInt(self.card_box.y));
             const cbw = @as(f64, @floatFromInt(self.card_box.width));
             const cbh = @as(f64, @floatFromInt(self.card_box.height));
             if (px >= cbx and px < cbx + cbw and py >= cby and py < cby + cbh) {
-                if (self.calendar_card_open) return self.handleCardDateClick(px, py);
+                if (self.calendar_card_open) {
+                    if (self.handleCardDateClick(px, py)) {
+                        return true;
+                    }
+                    self.closeAllCards();
+                    return true;
+                }
+                // weather card (no interactive regions yet)
+                self.closeAllCards();
                 return true;
             }
             need_close_card = true;
@@ -2013,6 +2034,7 @@ pub const Tray = struct {
         const more = self.card_anim.step(dt);
         if (self.card_anim.value < 0.005 and !self.anyCardOpen()) {
             if (self.card_tree) |tree| tree.node.setEnabled(false);
+            if (self.card_shadow_tree) |shadow_tree| shadow_tree.node.setEnabled(false);
             return;
         }
 
@@ -2049,17 +2071,29 @@ pub const Tray = struct {
         const card_y = box.y + @divTrunc(box.height - h, 2);
 
         const current_mode = self.card_mode;
-        const needs_redraw = self.card_last_w != w or
-            self.card_last_h != h or
-            @abs(self.card_last_open - self.card_anim.value) > 0.0001 or
+        const shadow_needs_redraw = self.card_shadow_last_box.x != box.x or
+            self.card_shadow_last_box.y != box.y or
+            self.card_shadow_last_box.width != box.width or
+            self.card_shadow_last_box.height != box.height or
             self.card_last_generation != self.host.theme.generation or
-            self.card_last_mode != current_mode or
+            @abs(self.card_last_open - self.card_anim.value) > 0.0001 or
             more;
+        const needs_redraw = shadow_needs_redraw or
+            self.card_last_w != w or
+            self.card_last_h != h or
+            self.card_last_mode != current_mode;
 
         const closing = self.card_anim.isClosing();
         const slide_t: f32 = if (closing) (1.0 - self.card_anim.value) else 0.0;
         const slide_x: i32 = @intFromFloat(@round(@as(f64, @floatCast(slide_t * self.card_close_dx))));
         const slide_y: i32 = @intFromFloat(@round(@as(f64, @floatCast(slide_t * self.card_close_dy))));
+
+        if (self.card_shadow_tree) |shadow_tree| {
+            shadow_tree.node.setPosition(box.x + slide_x, box.y + slide_y);
+            if (self.anyCardOpen()) {
+                shadow_tree.node.setEnabled(true);
+            }
+        }
 
         if (self.card_tree) |tree| {
             tree.node.setPosition(card_x + slide_x, card_y + slide_y);
@@ -2108,6 +2142,42 @@ pub const Tray = struct {
                 std.log.err("KidulWM: failed to create card scene buffer: {}", .{err});
                 return;
             };
+
+            // Render shadow on focused slide behind the card.
+            self.card_shadow_last_box = box;
+            if (self.card_shadow_scene_buffer) |old| old.node.destroy();
+            if (self.card_shadow_buffer) |old| wlr.Buffer.drop(old);
+            const box_w = box.width;
+            const box_h = box.height;
+            const shadow_stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, box_w);
+            if (shadow_stride <= 0) return;
+            const shadow_buf_size = @as(usize, @intCast(shadow_stride)) * @as(usize, @intCast(box_h));
+            const shadow_temp = self.allocator.alloc(u8, shadow_buf_size) catch |err| {
+                std.log.err("KidulWM: card shadow buffer alloc failed: {}", .{err});
+                return;
+            };
+            defer self.allocator.free(shadow_temp);
+            @memset(shadow_temp, 0);
+            const shadow_surface = c.cairo_image_surface_create_for_data(shadow_temp.ptr, c.CAIRO_FORMAT_ARGB32, box_w, box_h, shadow_stride);
+            defer c.cairo_surface_destroy(shadow_surface);
+            const shadow_cr = c.cairo_create(shadow_surface) orelse {
+                std.log.err("KidulWM: failed to create shadow cairo", .{});
+                return;
+            };
+            defer c.cairo_destroy(shadow_cr);
+            card_frame.drawCardShadow(shadow_cr, self.host.theme.style, @floatFromInt(box_w), @floatFromInt(box_h), @floatFromInt(w), @floatFromInt(h));
+            const shadow_buffer = DataBuffer.create(shadow_temp, box_w, box_h, @intCast(shadow_stride)) catch |err| {
+                std.log.err("KidulWM: failed to create card shadow buffer: {}", .{err});
+                return;
+            };
+            self.card_shadow_buffer = shadow_buffer;
+            const shadow_tree = self.card_shadow_tree orelse return;
+            self.card_shadow_scene_buffer = shadow_tree.createSceneBuffer(shadow_buffer) catch |err| {
+                std.log.err("KidulWM: failed to create card shadow scene buffer: {}", .{err});
+                wlr.Buffer.drop(shadow_buffer);
+                self.card_shadow_buffer = null;
+                return;
+            };
         }
         if (self.card_scene_buffer) |sb| {
             sb.node.raiseToTop();
@@ -2116,6 +2186,9 @@ pub const Tray = struct {
             else
                 1.0;
             sb.setOpacity(alpha);
+            if (self.card_shadow_scene_buffer) |ssb| {
+                ssb.setOpacity(alpha);
+            }
         }
     }
 
@@ -2273,7 +2346,6 @@ pub const Tray = struct {
             c.cairo_paint(cr);
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-            const card_frame = @import("card_frame.zig");
             card_frame.drawBlackGlassFrame(cr, tstyle, w, h);
 
             const gold4 = gold.toF64();

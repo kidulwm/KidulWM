@@ -12,6 +12,7 @@ pub const Style = struct {
     color_background: Color = Color.fromHex(0x222425),
     color_border: Color = Color.fromHex(0x4d4a40),
     color_border_focused: Color = Color.fromHex(0x696555),
+    color_card_border: Color = Color.fromHex(0x3b382f),
     color_electric: Color = Color.fromHex(0x00f0ff),
     color_purple: Color = Color.fromHex(0xa259ff),
     color_turquoise: Color = Color.fromHex(0x00ffc8),
