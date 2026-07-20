@@ -233,6 +233,10 @@ pub const Server = struct {
                 self.tray.toggleCard();
                 return .{ .ok = true };
             },
+            .weather_toggle_card => {
+                self.tray.toggleWeatherCard();
+                return .{ .ok = true };
+            },
             else => return self.handleStateRequest(req),
         }
         return self.handleStateRequest(req);
@@ -289,7 +293,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .quit => {},
+            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };

@@ -136,6 +136,7 @@ const PerOutputWidget = struct {
     last_h: i32 = 0,
     last_x: i32 = 0,
     last_y: i32 = 0,
+    click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
     last_scale: f32 = 0.0,
     last_corner_style: style.Style.CornerStyle = .round,
     last_time_minute: i32 = -1,
@@ -153,6 +154,7 @@ const PerOutputWeather = struct {
     last_h: i32 = 0,
     last_x: i32 = 0,
     last_y: i32 = 0,
+    click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
     last_scale: f32 = 0.0,
     last_minute: i32 = -1,
     last_theme_generation: u32 = 0,
@@ -181,8 +183,7 @@ pub const Tray = struct {
     open: bool = false,
     pinned: bool = false,
     hovered: bool = false,
-    open_amount: f32 = 0.0,
-    open_amount_vel: f32 = 0.0,
+    tray_anim: animation.AnimatedFloat = .{ .preset = &animation.presets.tray },
     selected_index: usize = 0,
     hover_index: ?usize = null,
     scroll_offset: f32 = 0.0,
@@ -221,8 +222,7 @@ pub const Tray = struct {
     // Focused-slide card (clock/calendar/weather).
     calendar_card_open: bool = false,
     weather_card_open: bool = false,
-    card_open_amount: f32 = 0.0,
-    card_open_amount_vel: f32 = 0.0,
+    card_anim: animation.AnimatedFloat = .{ .preset = &animation.presets.card },
     card_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
     card_year: i32 = 0,
     card_month: i32 = 0,
@@ -246,11 +246,11 @@ pub const Tray = struct {
     card_last_open: f32 = -1.0,
     card_last_generation: u32 = 0,
     card_last_mode: CardMode = .calendar,
+    card_mode: CardMode = .calendar,
+    card_close_dx: f32 = -1.0,
+    card_close_dy: f32 = -1.0,
 
-    // Last clickable bounding box of the clock/date peek widget (scene coords).
-    widget_click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
-    // Last clickable bounding box of the left-peek weather widget (scene coords).
-    weather_click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    // Click hit tests now use per-output widget/pet last_* geometry.
 
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
@@ -273,6 +273,7 @@ pub const Tray = struct {
     const button_gap: i32 = 8;
     const hmargin: i32 = 8;
     const bottom_margin: i32 = 10;
+    const widget_hit_overhang: i32 = 12;
     const top_margin: i32 = 48;
     const max_stack_items_visible: usize = 12;
     const min_panel_w: i32 = 120;
@@ -535,18 +536,41 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn closeAllCards(self: *Self) void {
+        if (!self.calendar_card_open and !self.weather_card_open) return;
+        self.calendar_card_open = false;
+        self.weather_card_open = false;
+        self.weather.card.open = false;
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     pub fn toggleCard(self: *Self) void {
+        if (self.weather_card_open) {
+            self.weather_card_open = false;
+            self.weather.card.open = false;
+        }
         self.calendar_card_open = !self.calendar_card_open;
-        if (self.calendar_card_open) self.weather_card_open = false;
+        if (self.calendar_card_open) {
+            self.card_mode = .calendar;
+            self.setCardCloseDirection(.calendar);
+        }
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
     }
 
     pub fn toggleWeatherCard(self: *Self) void {
-        const now_open = !self.weather_card_open;
-        self.weather_card_open = now_open;
-        self.calendar_card_open = false;
-        self.weather.toggleCard();
+        if (self.calendar_card_open) {
+            self.calendar_card_open = false;
+        }
+        self.weather_card_open = !self.weather_card_open;
+        if (self.weather_card_open) {
+            self.weather.card.open = true;
+            self.card_mode = .weather;
+            self.setCardCloseDirection(.weather);
+        } else {
+            self.weather.card.open = false;
+        }
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
     }
@@ -612,7 +636,7 @@ pub const Tray = struct {
     }
 
     pub fn isOpen(self: *const Self) bool {
-        return self.open or self.open_amount > 0.005;
+        return self.open or self.tray_anim.value > 0.005;
     }
 
     pub fn scroll(self: *Self, delta: f32) void {
@@ -731,16 +755,9 @@ pub const Tray = struct {
 
         const dt = if (prev == 0) 0.0 else @as(f64, @floatFromInt(now_us - prev)) / 1_000_000.0;
 
-        // Snap open quickly, ease closed slowly.
-        const desired: f32 = if (self.open or self.pinned or self.hovered) 1.0 else 0.0;
-        const closing = desired < self.open_amount;
-        const open_spring = if (closing)
-            animation.Spring{ .stiffness = 6.0, .damping = 0.94, .epsilon = 0.001 }
-        else
-            animation.Spring{ .stiffness = 80.0, .damping = 0.95, .epsilon = 0.001 };
-        const open_step = open_spring.step(self.open_amount, self.open_amount_vel, desired, dt);
-        self.open_amount = @floatCast(open_step.value);
-        self.open_amount_vel = @floatCast(open_step.velocity);
+        // Use the shared tray preset: snap open quickly, ease closed slowly.
+        self.tray_anim.setTarget(if (self.open or self.pinned or self.hovered) 1.0 else 0.0);
+        _ = self.tray_anim.step(dt);
 
         // Selection underline position spring.
         const target_underline: f32 = self.underlineTarget();
@@ -782,7 +799,8 @@ pub const Tray = struct {
             }
 
             // Bob animates during tray/underline/state movement; short settle pulse after.
-            const bob_moving = !open_step.settled or !bob_state_step.settled or !us_step.settled;
+            const tray_moving = !self.tray_anim.isSettled();
+            const bob_moving = tray_moving or !bob_state_step.settled or !us_step.settled;
             if (bob_moving) {
                 self.barry_breath_t += dt * 1.5;
                 self.bob_breath_amp = @min(0.04, self.bob_breath_amp + dt * 0.4);
@@ -852,7 +870,7 @@ pub const Tray = struct {
         }
 
         var needs_redraw = prev == 0 or
-            (self.open_amount > 0.001 and self.open_amount < 0.999) or
+            (self.tray_anim.value > 0.001 and self.tray_anim.value < 0.999) or
             !bob_settled or
             !barry_settled or
             !us_step.settled;
@@ -862,7 +880,7 @@ pub const Tray = struct {
             const w = self.panelWidth(po.info);
             const h = self.panelHeightFor(po.info);
             if (po.last_w != w or po.last_h != h or
-                @abs(po.last_open_amount - self.open_amount) > 0.0001 or
+                @abs(po.last_open_amount - self.tray_anim.value) > 0.0001 or
                 po.last_selected != self.selected_index or
                 po.last_hover != self.hover_index or
                 po.last_order_mode != self.order_mode)
@@ -871,7 +889,7 @@ pub const Tray = struct {
             }
             po.last_w = w;
             po.last_h = h;
-            po.last_open_amount = self.open_amount;
+            po.last_open_amount = self.tray_anim.value;
             po.last_selected = self.selected_index;
             po.last_hover = self.hover_index;
             po.last_order_mode = self.order_mode;
@@ -936,7 +954,7 @@ pub const Tray = struct {
             info.height - top_margin - bottom_margin - barry_button_height,
             @as(i32, @intCast(visible_items)) * item_size - button_gap + stack_buffer,
         );
-        const actual_stack_h: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(max_stack_h)) * self.open_amount));
+        const actual_stack_h: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(max_stack_h)) * self.tray_anim.value));
         return barry_button_height + bottom_margin + actual_stack_h;
     }
 
@@ -1062,7 +1080,7 @@ pub const Tray = struct {
         self.drawBarryButton(cr, 0.0, by, bw, bh, scale_d);
 
         // Stack below Barry with stagger.
-        if (self.open_amount > 0.001 and self.items.len > 0) {
+        if (self.tray_anim.value > 0.001 and self.items.len > 0) {
             const gap: f64 = @as(f64, button_gap) * scale_d;
             const item_h: f64 = @as(f64, button_height) * scale_d;
             const item_size = item_h + gap;
@@ -1076,7 +1094,7 @@ pub const Tray = struct {
                 const top = stack_origin + @as(f64, @floatFromInt(idx)) * item_size - scroll_px;
                 if (top + item_h < stack_origin or top >= @as(f64, dev_h)) continue;
 
-                const stagger_t = std.math.clamp(self.open_amount - @as(f32, @floatFromInt(stack_index)) * stagger_delay, 0.0, 1.0);
+                const stagger_t = std.math.clamp(self.tray_anim.value - @as(f32, @floatFromInt(stack_index)) * stagger_delay, 0.0, 1.0);
                 const local_top = top - item_size * @as(f64, 1.0 - @as(f64, @floatCast(easeOutCubic(stagger_t))));
                 const alpha: f64 = @floatCast(stagger_t);
                 const focused = self.selected_index == stack_index + 1;
@@ -1337,21 +1355,44 @@ pub const Tray = struct {
     }
 
     fn pointInsideWidget(self: *const Self, px: f64, py: f64) bool {
-        const b = self.widget_click_box;
-        if (b.width <= 0 or b.height <= 0) return false;
-        return px >= @as(f64, @floatFromInt(b.x)) and
-            px < @as(f64, @floatFromInt(b.x + b.width)) and
-            py >= @as(f64, @floatFromInt(b.y)) and
-            py < @as(f64, @floatFromInt(b.y + b.height));
+        for (self.widgets.items) |w| {
+            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+            const b = w.click_box;
+            const oh: i32 = widget_hit_overhang;
+            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
+                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
+                py >= @as(f64, @floatFromInt(b.y - oh)) and
+                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh))) return true;
+        }
+        return false;
     }
 
     fn pointInsideWeatherWidget(self: *const Self, px: f64, py: f64) bool {
-        const b = self.weather_click_box;
-        if (b.width <= 0 or b.height <= 0) return false;
-        return px >= @as(f64, @floatFromInt(b.x)) and
-            px < @as(f64, @floatFromInt(b.x + b.width)) and
-            py >= @as(f64, @floatFromInt(b.y)) and
-            py < @as(f64, @floatFromInt(b.y + b.height));
+        for (self.weather_widgets.items) |w| {
+            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+            const b = w.click_box;
+            const oh: i32 = widget_hit_overhang;
+            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
+                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
+                py >= @as(f64, @floatFromInt(b.y - oh)) and
+                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh))) return true;
+        }
+        return false;
+    }
+
+    fn pointInsidePet(self: *const Self, px: f64, py: f64) bool {
+        for (self.barry_pets.items) |pet| {
+            const pw = pet.last_w;
+            const ph = pet.last_h;
+            if (pw <= 0 or ph <= 0) continue;
+            const px_ = pet.info.x;
+            const py_ = pet.info.y + pet.info.height - ph;
+            if (px >= @as(f64, @floatFromInt(px_)) and
+                px < @as(f64, @floatFromInt(px_ + pw)) and
+                py >= @as(f64, @floatFromInt(py_)) and
+                py < @as(f64, @floatFromInt(py_ + ph))) return true;
+        }
+        return false;
     }
 
 
@@ -1400,8 +1441,6 @@ pub const Tray = struct {
 
     pub fn handlePointerMove(self: *Self, px: f64, py: f64) bool {
         const out_count = self.host.output_count(self.host.ctx);
-        var inside_any = false;
-        var new_hover: ?usize = null;
 
         // Track calendar card hover.
         if (self.calendar_card_open and self.card_box.width > 0 and self.card_box.height > 0) {
@@ -1425,34 +1464,41 @@ pub const Tray = struct {
             self.card_hover_col = null;
         }
 
-        for (0..out_count) |i| {
-            const info = self.host.output_info(self.host.ctx, i);
-            if (i < self.outputs.items.len) self.outputs.items[i].info = info;
-            if (!self.pointInside(info, px, py)) continue;
-            inside_any = true;
+        // Tray hover: only the bottom-left pet logo opens the tray from a closed
+        // state, but while the tray is open the whole panel keeps it open.
+        const inside_pet = self.pointInsidePet(px, py);
+        var inside_panel = inside_pet;
+        var new_hover: ?usize = null;
+        if (!inside_panel and (self.open or self.pinned or self.tray_anim.value > 0.01)) {
+            for (0..out_count) |i| {
+                const info = self.host.output_info(self.host.ctx, i);
+                if (i < self.outputs.items.len) self.outputs.items[i].info = info;
+                if (!self.pointInside(info, px, py)) continue;
+                inside_panel = true;
 
-            const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
-            const local_y = py - @as(f64, @floatFromInt(info.y + top_margin));
-            const by: f64 = bottom_margin;
-            const bh: f64 = barry_button_height;
-            const gap: f64 = button_gap;
-            const item_h: f64 = button_height;
-            const stack_origin: f64 = by + bh + gap;
-            const scroll_px: f64 = self.scroll_offset;
+                const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
+                const local_y = py - @as(f64, @floatFromInt(info.y + top_margin));
+                const by: f64 = bottom_margin;
+                const bh: f64 = barry_button_height;
+                const gap: f64 = button_gap;
+                const item_h: f64 = button_height;
+                const stack_origin: f64 = by + bh + gap;
+                const scroll_px: f64 = self.scroll_offset;
 
-            if (local_y >= by and local_y < by + bh) {
-                new_hover = 0;
-            } else if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
-                const dist = local_y - stack_origin + scroll_px;
-                const idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
-                if (idx <= self.items.len) new_hover = idx;
+                if (local_y >= by and local_y < by + bh) {
+                    new_hover = 0;
+                } else if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
+                    const dist = local_y - stack_origin + scroll_px;
+                    const idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
+                    if (idx <= self.items.len) new_hover = idx;
+                }
             }
         }
 
-        self.hovered = inside_any;
+        self.hovered = inside_panel;
         if (new_hover) |hi| self.hover_index = hi;
 
-        if (inside_any and !self.open and !self.pinned) {
+        if (inside_pet and !self.open and !self.pinned) {
             self.open = true;
             self.keepOpen();
             self.selected_index = 1;
@@ -1460,13 +1506,14 @@ pub const Tray = struct {
             self.setBarryState(.sitting);
             self.requestUpdate();
             self.host.request_frame(self.host.ctx);
-        } else if (!inside_any and self.open and !self.pinned) {
+        } else if (!inside_panel and self.open and !self.pinned) {
             if (animation.nowUs() >= self.close_after_us) {
                 self.open = false;
                 self.close_after_us = 0;
                 self.hover_index = null;
                 self.selected_index = 0;
                 self.setBarryState(.laying);
+                self.closeAllCards();
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
             } else {
@@ -1474,33 +1521,65 @@ pub const Tray = struct {
                 self.host.request_frame(self.host.ctx);
             }
         }
-        return inside_any;
+        return inside_pet or inside_panel;
     }
 
     pub fn handlePointerClick(self: *Self, px: f64, py: f64) bool {
+        
+        // Close any open card if the click misses the widgets/cards below,
+        // but let the weather and clock widgets still respond.
+        var need_close_card = false;
+
+        // Click on the clock/date peek widget toggles the calendar card.
         if (self.pointInsideWidget(px, py)) {
+            if (self.weather_card_open) self.closeAllCards();
             self.toggleCard();
-            _ = self.handleCardDateClick(px, py);
             return true;
         }
+        // Click on the weather peek widget toggles the weather card.
         if (self.pointInsideWeatherWidget(px, py)) {
+            if (self.calendar_card_open) self.closeAllCards();
             self.toggleWeatherCard();
             return true;
         }
-        if (self.calendar_card_open and self.handleCardDateClick(px, py)) return true;
+        // Click inside the currently open card: dispatch to card and keep it open.
+        if (self.anyCardOpen() and self.card_box.width > 0 and self.card_box.height > 0) {
+            const cbx = @as(f64, @floatFromInt(self.card_box.x));
+            const cby = @as(f64, @floatFromInt(self.card_box.y));
+            const cbw = @as(f64, @floatFromInt(self.card_box.width));
+            const cbh = @as(f64, @floatFromInt(self.card_box.height));
+            if (px >= cbx and px < cbx + cbw and py >= cby and py < cby + cbh) {
+                if (self.calendar_card_open) return self.handleCardDateClick(px, py);
+                return true;
+            }
+            need_close_card = true;
+        }
+        if (need_close_card) {
+            self.closeAllCards();
+            return true;
+        }
+
+        // Bottom-left pet/logo button toggles the tray. This is the ONLY spot
+        // that opens the tray, so it can never overlap the weather widget.
+        if (self.pointInsidePet(px, py)) {
+            self.toggle();
+            return true;
+        }
 
         const out_count = self.host.output_count(self.host.ctx);
-        var inside = false;
+        var inside_panel = false;
         var output_index: usize = 0;
         for (0..out_count) |i| {
             const info = self.host.output_info(self.host.ctx, i);
             if (i < self.outputs.items.len) self.outputs.items[i].info = info;
             if (self.pointInside(info, px, py)) {
-                inside = true;
+                inside_panel = true;
                 output_index = i;
             }
         }
-        if (!inside) {
+
+        // Outside the open tray: close it if pinned/open.
+        if (!inside_panel) {
             if (self.pinned) {
                 self.pinned = false;
                 self.open = false;
@@ -1508,12 +1587,15 @@ pub const Tray = struct {
                 self.hover_index = null;
                 self.selected_index = 0;
                 self.setBarryState(.laying);
+                self.closeAllCards();
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
             }
             return self.pinned;
         }
 
+        // Inside the open tray: click a stack item to activate, otherwise consume
+        // the click but do not toggle the tray.
         const info = self.host.output_info(self.host.ctx, output_index);
         const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
         const local_y = py - @as(f64, @floatFromInt(info.y + top_margin));
@@ -1524,19 +1606,17 @@ pub const Tray = struct {
         const stack_origin: f64 = by + bh + gap;
         const scroll_px: f64 = self.scroll_offset;
 
-        var idx: usize = 0;
         if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
             const dist = local_y - stack_origin + scroll_px;
             const stack_idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
-            if (stack_idx <= self.items.len) idx = stack_idx;
+            if (stack_idx <= self.items.len) {
+                self.selected_index = stack_idx;
+                self.hover_index = stack_idx;
+                self.activateSelected();
+                return true;
+            }
         }
-        self.selected_index = idx;
-        self.hover_index = idx;
-        if (idx == 0) {
-            self.toggle();
-        } else {
-            self.activateSelected();
-        }
+
         return true;
     }
 
@@ -1632,14 +1712,14 @@ pub const Tray = struct {
         const theme_gen = self.host.theme.generation;
         const scale = widget.info.scale;
 
-        // Full peek width minus 2 px each side. Push widget up to leave empty peek space above for future title.
+        // Content-sized widget, horizontally centered, vertically pinned to top of peek.
         const peek_hmargin = 2;
         const peek_vmargin = 2;
-        const pill_w: i32 = @max(20, box.width - 2 * peek_hmargin);
-        const pill_x = box.x + peek_hmargin;
-        const pill_h: i32 = @max(40, box.height - 2 * peek_vmargin);
+        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
+        const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
+        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
+        const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
         const pill_y = box.y + peek_vmargin;
-        self.weather_click_box = .{ .x = pill_x, .y = pill_y, .width = pill_w, .height = pill_h };
 
         const needs_redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -1649,13 +1729,6 @@ pub const Tray = struct {
             widget.last_scale != scale or
             widget.last_time_minute != current_minute or
             widget.last_theme_generation != theme_gen;
-
-        self.widget_click_box = .{
-            .x = pill_x,
-            .y = pill_y,
-            .width = pill_w,
-            .height = pill_h,
-        };
 
         if (!needs_redraw) {
             widget.tree.node.setPosition(pill_x, pill_y);
@@ -1667,6 +1740,7 @@ pub const Tray = struct {
         widget.last_h = pill_h;
         widget.last_x = pill_x;
         widget.last_y = pill_y;
+        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
         widget.last_scale = scale;
         widget.last_time_minute = current_minute;
         widget.last_theme_generation = theme_gen;
@@ -1829,11 +1903,9 @@ pub const Tray = struct {
 
     fn drawWeatherWidget(self: *Self, widget: *PerOutputWeather) void {
         const box = self.host.left_peek_box(self.host.ctx, weatherWidgetIndex(self, widget)) orelse {
-            self.weather_click_box = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
             return;
         };
         if (box.width <= 0 or box.height <= 0) {
-            self.weather_click_box = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
             return;
         }
 
@@ -1847,9 +1919,10 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 4;
-        const pill_w: i32 = @max(20, box.width - 2 * peek_hmargin);
-        const pill_x = box.x + peek_hmargin;
-        const pill_h: i32 = @max(40, box.height - 2 * peek_vmargin);
+        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
+        const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
+        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
+        const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
         const pill_y = box.y + peek_vmargin;
 
         const redraw = widget.scene_buffer == null or
@@ -1871,6 +1944,7 @@ pub const Tray = struct {
         widget.last_h = pill_h;
         widget.last_x = pill_x;
         widget.last_y = pill_y;
+        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
         widget.last_scale = scale;
         widget.last_minute = current_minute;
         widget.last_theme_generation = theme_gen;
@@ -1935,24 +2009,26 @@ pub const Tray = struct {
         const prev = self.last_update_us;
         const dt = if (prev == 0) 0.0 else @as(f64, @floatFromInt(now_us - prev)) / 1_000_000.0;
 
-        const desired: f32 = if (self.anyCardOpen()) 1.0 else 0.0;
-        const closing = desired < self.card_open_amount;
-        const spring = if (closing)
-            animation.Spring{ .stiffness = 8.0, .damping = 0.92, .epsilon = 0.001 }
-        else
-            animation.Spring{ .stiffness = 60.0, .damping = 0.95, .epsilon = 0.001 };
-        const step = spring.step(self.card_open_amount, self.card_open_amount_vel, desired, dt);
-        self.card_open_amount = @floatCast(step.value);
-        self.card_open_amount_vel = @floatCast(step.velocity);
-
-        if (self.card_open_amount < 0.005 and !self.anyCardOpen()) {
+        self.card_anim.setTarget(if (self.anyCardOpen()) 1.0 else 0.0);
+        const more = self.card_anim.step(dt);
+        if (self.card_anim.value < 0.005 and !self.anyCardOpen()) {
             if (self.card_tree) |tree| tree.node.setEnabled(false);
             return;
         }
 
-        const box = self.host.focused_window_box(self.host.ctx) orelse {
-            if (self.card_tree) |tree| tree.node.setEnabled(false);
-            return;
+        const box = self.host.focused_window_box(self.host.ctx) orelse blk: {
+            const out_count = self.host.output_count(self.host.ctx);
+            if (out_count == 0) {
+                if (self.card_tree) |tree| tree.node.setEnabled(false);
+                return;
+            }
+            const info = self.host.output_info(self.host.ctx, 0);
+            break :blk wlr.Box{
+                .x = info.x + 80,
+                .y = info.y + 80,
+                .width = @max(320, info.width - 160),
+                .height = @max(220, info.height - 160),
+            };
         };
         self.card_box = box;
 
@@ -1972,24 +2048,31 @@ pub const Tray = struct {
         const card_x = box.x + @divTrunc(box.width - w, 2);
         const card_y = box.y + @divTrunc(box.height - h, 2);
 
-        const current_mode = self.activeCardMode();
+        const current_mode = self.card_mode;
         const needs_redraw = self.card_last_w != w or
             self.card_last_h != h or
-            @abs(self.card_last_open - self.card_open_amount) > 0.0001 or
+            @abs(self.card_last_open - self.card_anim.value) > 0.0001 or
             self.card_last_generation != self.host.theme.generation or
             self.card_last_mode != current_mode or
-            !step.settled;
+            more;
+
+        const closing = self.card_anim.isClosing();
+        const slide_t: f32 = if (closing) (1.0 - self.card_anim.value) else 0.0;
+        const slide_x: i32 = @intFromFloat(@round(@as(f64, @floatCast(slide_t * self.card_close_dx))));
+        const slide_y: i32 = @intFromFloat(@round(@as(f64, @floatCast(slide_t * self.card_close_dy))));
 
         if (self.card_tree) |tree| {
-            tree.node.setEnabled(true);
-            tree.node.raiseToTop();
-            tree.node.setPosition(card_x, card_y);
+            tree.node.setPosition(card_x + slide_x, card_y + slide_y);
+            if (self.anyCardOpen()) {
+                tree.node.setEnabled(true);
+                tree.node.raiseToTop();
+            }
         }
 
         if (needs_redraw) {
             self.card_last_w = w;
             self.card_last_h = h;
-            self.card_last_open = self.card_open_amount;
+            self.card_last_open = self.card_anim.value;
             self.card_last_generation = self.host.theme.generation;
             self.card_last_mode = current_mode;
             const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);
@@ -2025,7 +2108,14 @@ pub const Tray = struct {
                 std.log.err("KidulWM: failed to create card scene buffer: {}", .{err});
                 return;
             };
-            if (self.card_scene_buffer) |sb| sb.node.raiseToTop();
+        }
+        if (self.card_scene_buffer) |sb| {
+            sb.node.raiseToTop();
+            const alpha = if (self.card_anim.isClosing() and self.card_anim.preset.fade_close)
+                @max(0.0, @min(1.0, self.card_anim.value))
+            else
+                1.0;
+            sb.setOpacity(alpha);
         }
     }
 
@@ -2034,6 +2124,19 @@ pub const Tray = struct {
     fn activeCardMode(self: *const Self) CardMode {
         if (self.weather_card_open) return .weather;
         return .calendar;
+    }
+
+    fn setCardCloseDirection(self: *Self, mode: CardMode) void {
+        const mag: f32 = self.card_anim.preset.slide_close_px;
+        if (mode == .weather) {
+            // Weather widget lives at the top-left; close back toward it.
+            self.card_close_dx = -mag;
+            self.card_close_dy = -mag;
+        } else {
+            // Calendar widget lives at the top-right; close back toward it.
+            self.card_close_dx = mag;
+            self.card_close_dy = -mag;
+        }
     }
 
     fn outputScaleForCard(self: *const Self) f32 {
@@ -2153,39 +2256,27 @@ pub const Tray = struct {
 
         fn drawClockCalendarCard(self: *const Self, cr: *c.cairo_t, w: f64, h: f64) void {
             const tstyle = self.host.theme.style;
-            const bg = tstyle.tray_bg_color;
-            const gold = tstyle.color_gold;
-            const text = tstyle.tray_text_focused_color;
             const muted = tstyle.color_text_muted;
             const card_font = "Fantasque Sans Mono";
+            // Match the weather card's accent: darker, softer gold used for all
+            // panels, text, and rims. Consolidated here so every card looks
+            // identical.
+            const gold = tstyle.color_border_focused;
 
             // Respect theme font sizes, scaled slightly down to fit glass card.
             const date_font_size = tstyle.font_size_m;
             const day_font_size = tstyle.font_size_s;
 
-            // Clear; draw glass rounded body with gold rim, then crop all content inside.
+            // Clear; draw 3D black-glass frame, then crop all content inside.
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
             c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
             c.cairo_paint(cr);
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-            const corner_depth: f64 = @min(14.0, @min(w, h) * 0.05);
-            panelOutline(tstyle, cr, 0.0, 0.0, w, h, corner_depth);
+            const card_frame = @import("card_frame.zig");
+            card_frame.drawBlackGlassFrame(cr, tstyle, w, h);
 
-            // Body fill.
-            const bg4 = bg.toF64();
-            c.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], bg4[3]);
-            c.cairo_fill_preserve(cr);
-
-            // Gold rim.
             const gold4 = gold.toF64();
-            c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
-            c.cairo_set_line_width(cr, 2.0);
-            c.cairo_stroke(cr);
-
-            // Clip to interior so nothing spills past the rim.
-            panelOutline(tstyle, cr, 1.0, 1.0, w - 2.0, h - 2.0, corner_depth - 1.0);
-            c.cairo_clip(cr);
 
             const pad_x: f64 = 30.0;
             const pad_y: f64 = 22.0;
@@ -2200,7 +2291,6 @@ pub const Tray = struct {
             const today_mday = @as(i32, @intCast(tm.*.tm_mday));
 
             // ---- Top month/year or selected-date pill ----
-            const text_color = text.toF64();
 
             var date_buf: [128:0]u8 = undefined;
             @memset(&date_buf, 0);
@@ -2223,29 +2313,17 @@ pub const Tray = struct {
 
             const pill_depth: f64 = @min(10.0, @min(date_pill_w, date_pill_h) * 0.25);
 
-            // Shadow.
-            panelOutline(tstyle, cr, date_pill_x + 2.0, date_pill_y + 3.0, date_pill_w, date_pill_h, pill_depth);
-            c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
-            c.cairo_fill(cr);
-
-            // Tray-style gradient glass body.
+            // Weather-card-style pill: dark gold tint with soft rim.
             panelOutline(tstyle, cr, date_pill_x, date_pill_y, date_pill_w, date_pill_h, pill_depth);
-            const glass = c.cairo_pattern_create_linear(date_pill_x, date_pill_y, date_pill_x, date_pill_y + date_pill_h).?;
-            c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.09, 0.09, 0.10, 0.85);
-            c.cairo_pattern_add_color_stop_rgba(glass, 0.5, 0.06, 0.06, 0.07, 0.82);
-            c.cairo_pattern_add_color_stop_rgba(glass, 1.0, 0.04, 0.04, 0.05, 0.78);
-            c.cairo_set_source(cr, glass);
+            c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.12);
             c.cairo_fill_preserve(cr);
-            c.cairo_pattern_destroy(glass);
-
-            // 1px gold rim matching tray buttons.
             c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.45);
             c.cairo_set_line_width(cr, 1.0);
             c.cairo_stroke(cr);
 
             const date_text_x = date_pill_x + (date_pill_w - date_ext.width) * 0.5;
             const date_text_y = date_pill_y + (date_pill_h + date_ext.height) * 0.5 - 2.0;
-            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
+            c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
             c.cairo_move_to(cr, date_text_x, date_text_y);
             c.cairo_show_text(cr, date_label);
 
@@ -2267,9 +2345,9 @@ pub const Tray = struct {
             c.cairo_set_font_size(cr, header_text_size);
             var day_ext: c.cairo_text_extents_t = undefined;
 
-            // Weekday header row in muted gold.
+            // Weekday header row in weather-card gold.
             c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
-            c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.85);
+            c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
             for (header, 0..) |txt, ci| {
                 c.cairo_text_extents(cr, txt.ptr, &day_ext);
                 const hx = pad_x + @as(f64, @floatFromInt(ci)) * cell_w + (cell_w - day_ext.width) * 0.5;
@@ -2293,53 +2371,40 @@ pub const Tray = struct {
                 const cell_rect_h = cell_h - 2.0 * gap;
 
                 if (cell.in_month) {
-                    // subtle glass cell border
+                    // Day rim only; no background shade on plain days.
                     panelOutline(tstyle, cr, cell_rect_x, cell_rect_y, cell_rect_w, cell_rect_h, 4.0);
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.35);
                     c.cairo_set_line_width(cr, 1.0);
                     c.cairo_stroke(cr);
                 }
 
-                // Focused day: exact Bob button glass shading, slightly exaggerated.
+                // Focused day: weather-card panel emphasis.
                 if (cell.is_focused) {
                     const fx = cell_rect_x + 1.0;
                     const fy = cell_rect_y + 1.0;
                     const fw = cell_rect_w - 2.0;
                     const fh = cell_rect_h - 2.0;
                     panelOutline(tstyle, cr, fx, fy, fw, fh, 4.0);
-
-                    const cell_glass = c.cairo_pattern_create_linear(fx, fy, fx, fy + fh).?;
-                    c.cairo_pattern_add_color_stop_rgba(cell_glass, 0.0, 0.04, 0.04, 0.05, 0.80);
-                    c.cairo_pattern_add_color_stop_rgba(cell_glass, 0.5, 0.07, 0.07, 0.08, 0.84);
-                    c.cairo_pattern_add_color_stop_rgba(cell_glass, 1.0, 0.11, 0.11, 0.12, 0.88);
-                    c.cairo_set_source(cr, cell_glass);
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.15);
                     c.cairo_fill_preserve(cr);
-                    c.cairo_pattern_destroy(cell_glass);
-
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.45);
                     c.cairo_set_line_width(cr, 1.0);
                     c.cairo_stroke(cr);
                 }
 
-                // Today gets a dim gold-tinted glass background, unless focused.
+                // Today gets a thin rim mark; no panel fill.
                 if (cell.is_today and !cell.is_focused) {
                     const fx = cell_rect_x + 2.0;
                     const fy = cell_rect_y + 2.0;
                     const fw = cell_rect_w - 4.0;
                     const fh = cell_rect_h - 4.0;
                     panelOutline(tstyle, cr, fx, fy, fw, fh, 4.0);
-                    const grad = c.cairo_pattern_create_linear(fx, fy, fx, fy + fh).?;
-                    c.cairo_pattern_add_color_stop_rgba(grad, 0.0, gold4[0], gold4[1], gold4[2], 0.12);
-                    c.cairo_pattern_add_color_stop_rgba(grad, 1.0, gold4[0], gold4[1], gold4[2], 0.05);
-                    c.cairo_set_source(cr, grad);
-                    c.cairo_fill_preserve(cr);
-                    c.cairo_pattern_destroy(grad);
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.45);
                     c.cairo_set_line_width(cr, 1.0);
                     c.cairo_stroke(cr);
                 }
 
-                // Hover: very subtle dark glass lift (only when not focused).
+                // Hover: thin rim only, no fill.
                 const hover_this = hover_col == cell.col and hover_row == cell.row and !cell.is_focused;
                 if (hover_this) {
                     const hx0 = cell_rect_x + 1.0;
@@ -2347,13 +2412,6 @@ pub const Tray = struct {
                     const hw = cell_rect_w - 2.0;
                     const hh = cell_rect_h - 2.0;
                     panelOutline(tstyle, cr, hx0, hy0, hw, hh, 4.0);
-                    const lift = c.cairo_pattern_create_linear(hx0, hy0, hx0, hy0 + hh).?;
-                    c.cairo_pattern_add_color_stop_rgba(lift, 0.0, 0.11, 0.11, 0.12, 0.75);
-                    c.cairo_pattern_add_color_stop_rgba(lift, 0.5, 0.07, 0.07, 0.08, 0.72);
-                    c.cairo_pattern_add_color_stop_rgba(lift, 1.0, 0.04, 0.04, 0.05, 0.70);
-                    c.cairo_set_source(cr, lift);
-                    c.cairo_fill_preserve(cr);
-                    c.cairo_pattern_destroy(lift);
                     c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.25);
                     c.cairo_set_line_width(cr, 1.0);
                     c.cairo_stroke(cr);
@@ -2366,11 +2424,8 @@ pub const Tray = struct {
                 c.cairo_set_font_size(cr, day_font_size * 1.15);
                 c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, if (cell.is_today) c.CAIRO_FONT_WEIGHT_BOLD else c.CAIRO_FONT_WEIGHT_NORMAL);
                 if (cell.in_month) {
-                    if (cell.is_today) {
-                        c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
-                    } else {
-                        c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
-                    }
+                    // All in-month days share the weather-card gold body color.
+                    c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], gold4[3]);
                 } else {
                     c.cairo_set_source_rgba(cr, date_color[0], date_color[1], date_color[2], date_color[3] * 0.5);
                 }

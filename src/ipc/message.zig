@@ -21,6 +21,7 @@ pub const RequestTag = enum {
     tray_select_prev,
     tray_activate,
     tray_toggle_card,
+    weather_toggle_card,
     quit,
 };
 
@@ -57,6 +58,7 @@ pub const Request = union(RequestTag) {
     tray_select_prev: void,
     tray_activate: void,
     tray_toggle_card: void,
+    weather_toggle_card: void,
     quit: void,
 };
 

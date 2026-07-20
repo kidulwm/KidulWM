@@ -48,6 +48,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
         if (std.mem.eql(u8, cmd, "tray_select_prev")) break :blk .{ .tray_select_prev = {} };
         if (std.mem.eql(u8, cmd, "tray_activate")) break :blk .{ .tray_activate = {} };
         if (std.mem.eql(u8, cmd, "tray_toggle_card")) break :blk .{ .tray_toggle_card = {} };
+        if (std.mem.eql(u8, cmd, "weather_toggle_card")) break :blk .{ .weather_toggle_card = {} };
         if (std.mem.eql(u8, cmd, "set_theme")) {
             const key = it.next() orelse {
                 std.log.err("set_theme requires a key argument", .{});

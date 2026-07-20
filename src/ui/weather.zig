@@ -216,18 +216,8 @@ pub const WeatherWidget = struct {
         c_cairo.cairo_paint(cr);
         c_cairo.cairo_set_operator(cr, c_cairo.CAIRO_OPERATOR_OVER);
 
-        const corner_depth: f64 = @min(14.0, @min(w_d, h_d) * 0.05);
-        roundedRect(cr, 0.0, 0.0, w_d, h_d, corner_depth);
-
-        c_cairo.cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], bg[3]);
-        c_cairo.cairo_fill_preserve(cr);
-
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_set_line_width(cr, 2.0);
-        c_cairo.cairo_stroke(cr);
-
-        roundedRect(cr, 1.0, 1.0, w_d - 2.0, h_d - 2.0, corner_depth - 1.0);
-        c_cairo.cairo_clip(cr);
+        const card_frame = @import("card_frame.zig");
+        card_frame.drawBlackGlassFrame(cr, style_, w_d, h_d);
 
         c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
 

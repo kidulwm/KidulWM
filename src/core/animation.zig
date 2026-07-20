@@ -29,6 +29,118 @@ pub const Spring = struct {
     }
 };
 
+/// Shared animation presets. One row per "class" of motion.
+/// Changing a preset here changes every UI element that uses that class.
+/// Fields are split into open vs close so each direction can snap or ease
+/// independently.
+pub const Preset = struct {
+    stiffness_open: f64,
+    damping_open: f64,
+    stiffness_close: f64,
+    damping_close: f64,
+    epsilon: f64 = 0.001,
+    /// Close only: fade opacity while going away.
+    fade_close: bool = false,
+    /// Close only: slide offset in output pixels. Negative = up/left, positive = down/right.
+    /// For cards this is multiplied by a per-mode direction vector.
+    slide_close_px: f32 = 0,
+    /// If true, opening skips the spring and snaps to target in one frame.
+    snap_open: bool = false,
+    /// True for popups/cards that should stop rendering near 0.
+    disable_when_closed: bool = false,
+
+    pub fn spring(self: *const Preset, closing: bool) Spring {
+        if (closing) {
+            return .{ .stiffness = self.stiffness_close, .damping = self.damping_close, .epsilon = self.epsilon };
+        }
+        return .{ .stiffness = self.stiffness_open, .damping = self.damping_open, .epsilon = self.epsilon };
+    }
+};
+
+pub const presets = struct {
+    /// Tray: snap open, fade+slide closed.
+    pub const tray = Preset{
+        .stiffness_open = 600.0,
+        .damping_open = 0.99,
+        .stiffness_close = 18.0,
+        .damping_close = 0.95,
+        .epsilon = 0.001,
+        .fade_close = true,
+        .slide_close_px = 0,
+        .disable_when_closed = false,
+        .snap_open = true,
+    };
+    /// Cards: snap open, fade+slide closed toward source widget.
+    pub const card = Preset{
+        .stiffness_open = 600.0,
+        .damping_open = 0.99,
+        .stiffness_close = 18.0,
+        .damping_close = 0.95,
+        .epsilon = 0.001,
+        .fade_close = true,
+        .slide_close_px = 60,
+        .disable_when_closed = true,
+        .snap_open = true,
+    };
+    /// Small peek widgets (weather icon, date peek).
+    pub const peek = Preset{
+        .stiffness_open = 60.0,
+        .damping_open = 0.95,
+        .stiffness_close = 8.0,
+        .damping_close = 0.92,
+        .epsilon = 0.001,
+        .fade_close = true,
+        .slide_close_px = 0,
+        .disable_when_closed = false,
+    };
+};
+
+/// Per-instance animated scalar. Holds runtime value/velocity and points back
+/// to a shared preset.
+pub const AnimatedFloat = struct {
+    value: f32 = 0,
+    velocity: f32 = 0,
+    desired: f32 = 0,
+    preset: *const Preset = &presets.tray,
+    last_settled: bool = true,
+
+    pub fn setTarget(self: *AnimatedFloat, target: f32) void {
+        self.desired = target;
+    }
+
+    pub fn toggle(self: *AnimatedFloat) void {
+        self.desired = if (self.desired >= 0.5) 0.0 else 1.0;
+    }
+
+    pub fn step(self: *AnimatedFloat, dt_s: f64) bool {
+        if (dt_s <= 0.0) return !self.isSettled();
+        const closing = self.desired < self.value;
+        if (!closing and self.preset.snap_open) {
+            self.value = self.desired;
+            self.velocity = 0.0;
+            self.last_settled = true;
+            return false;
+        }
+        const result = self.preset.spring(closing).step(self.value, self.velocity, self.desired, dt_s);
+        self.value = @floatCast(result.value);
+        self.velocity = @floatCast(result.velocity);
+        self.last_settled = result.settled;
+        return !result.settled;
+    }
+
+    pub fn isSettled(self: *const AnimatedFloat) bool {
+        return self.last_settled and @abs(self.desired - self.value) < self.preset.epsilon;
+    }
+
+    pub fn isOpen(self: *const AnimatedFloat) bool {
+        return self.value >= 0.01;
+    }
+
+    pub fn isClosing(self: *const AnimatedFloat) bool {
+        return self.desired < self.value;
+    }
+};
+
 /// Animation state for a single window.
 pub const AnimationKind = enum {
     snap,
