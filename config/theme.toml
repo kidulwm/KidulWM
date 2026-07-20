@@ -23,6 +23,7 @@ rim_light = "rgba(255, 255, 255, 0.08)"
 border = "#4d4a40"
 border_focused = "#696555"
 card_border = "#3b382f"
+card_mat = "#0a0a0b"
 urgent = "#BF616A"
 info = "#88C0D0"
 purple = "#a259ff"
@@ -55,6 +56,9 @@ tray_hmargin = 8
 barry_button_height = 84
 char_buffer_m = 16.0
 weather_widget_min_width = 72
+card_mat_style = "black_glass_halo"
+card_mat_depth = 14
+card_mat_border_width = 2
 
 [animation]
 tray_open_ms = 320

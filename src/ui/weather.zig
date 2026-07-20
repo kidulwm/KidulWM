@@ -217,7 +217,7 @@ pub const WeatherWidget = struct {
         c_cairo.cairo_set_operator(cr, c_cairo.CAIRO_OPERATOR_OVER);
 
         const card_frame = @import("card_frame.zig");
-        card_frame.drawBlackGlassFrame(cr, style_, w_d, h_d);
+        card_frame.Registry.default.drawNamed(cr, style_, w_d, h_d);
 
         c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
 

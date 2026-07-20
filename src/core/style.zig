@@ -8,11 +8,15 @@ pub const Style = struct {
     border_width: f32 = 2.0,
     corner_style: CornerStyle = .round,
     corner_depth: f32 = 16.0,
+    card_mat_depth: f32 = 14.0,
+    card_mat_border_width: f32 = 2.0,
 
     color_background: Color = Color.fromHex(0x222425),
     color_border: Color = Color.fromHex(0x4d4a40),
     color_border_focused: Color = Color.fromHex(0x696555),
     color_card_border: Color = Color.fromHex(0x3b382f),
+    color_card_mat: Color = Color.fromHex(0x0a0a0b),
+    card_mat_style: CardMatStyle = .black_glass_halo,
     color_electric: Color = Color.fromHex(0x00f0ff),
     color_purple: Color = Color.fromHex(0xa259ff),
     color_turquoise: Color = Color.fromHex(0x00ffc8),
@@ -57,6 +61,23 @@ pub const Style = struct {
         round,
         chamfer,
         square,
+    };
+
+    pub const CardMatStyle = enum {
+        cinematic_shadow,
+        gallery_mat,
+        deep_float,
+        paper_edge,
+        black_glass_halo,
+
+        pub fn fromString(s: []const u8) ?CardMatStyle {
+            if (std.mem.eql(u8, s, "cinematic_shadow")) return .cinematic_shadow;
+            if (std.mem.eql(u8, s, "gallery_mat")) return .gallery_mat;
+            if (std.mem.eql(u8, s, "deep_float")) return .deep_float;
+            if (std.mem.eql(u8, s, "paper_edge")) return .paper_edge;
+            if (std.mem.eql(u8, s, "black_glass_halo")) return .black_glass_halo;
+            return null;
+        }
     };
 
     pub const Color = packed struct {
@@ -190,7 +211,7 @@ pub const layout = struct {
     /// Default three-column split (5% peek / 90% focus / 5% peek).
     pub const default_split: SplitPreset = .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 };
 
-    /// Three-column horizontal arrangement (5% peek / 90% focus / 5% peek).
+    /// Three-column horizontal arrangement (5% peek / 90% / 5% peek).
     pub const horizontal_split: SplitPreset = .{ .left_peek = 0.05, .focus = 0.90, .right_peek = 0.05 };
 
     /// Vertical top/bottom arrangements.

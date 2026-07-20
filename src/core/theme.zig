@@ -94,6 +94,10 @@ pub const Theme = struct {
         self.style.color_border = parseColor(cfg.colors.border) orelse self.style.color_border;
         self.style.color_border_focused = parseColor(cfg.colors.border_focused) orelse self.style.color_border_focused;
         self.style.color_card_border = parseColor(cfg.colors.card_border) orelse self.style.color_card_border;
+        self.style.color_card_mat = parseColor(cfg.colors.card_mat) orelse self.style.color_card_mat;
+        if (Style.CardMatStyle.fromString(cfg.spacing.card_mat_style)) |mat| {
+            self.style.card_mat_style = mat;
+        }
         self.style.color_electric = parseColor(cfg.colors.electric) orelse self.style.color_electric;
         self.style.color_purple = parseColor(cfg.colors.purple) orelse self.style.color_purple;
         self.style.color_turquoise = parseColor(cfg.colors.turquoise) orelse self.style.color_turquoise;
@@ -129,6 +133,10 @@ pub const Theme = struct {
         } else if (std.mem.eql(u8, cfg.spacing.corner_style, "square")) {
             self.style.corner_style = .square;
         }
+
+        // Card mat geometry.
+        self.style.card_mat_depth = @floatFromInt(cfg.spacing.card_mat_depth);
+        self.style.card_mat_border_width = @floatFromInt(cfg.spacing.card_mat_border_width);
 
         // Spacing is consumed by tray.zig via the Theme struct helpers below.
         self.button_height = cfg.spacing.button_height;
@@ -229,6 +237,7 @@ const ColorTokens = struct {
     border: []const u8 = "#4d4a40",
     border_focused: []const u8 = "#696555",
     card_border: []const u8 = "#3b382f",
+    card_mat: []const u8 = "#0a0a0b",
     urgent: []const u8 = "#BF616A",
     info: []const u8 = "#88C0D0",
     purple: []const u8 = "#a259ff",
@@ -255,6 +264,9 @@ const SpacingTokens = struct {
     button_height: i32 = 44,
     button_gap: i32 = 8,
     corner_radius: i32 = 8,
+    card_mat_style: []const u8 = "black_glass_halo",
+    card_mat_depth: i32 = 14,
+    card_mat_border_width: i32 = 2,
     icon_size: i32 = 24,
     icon_gap: i32 = 8,
     tray_top_margin: i32 = 48,
