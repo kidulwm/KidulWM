@@ -1577,8 +1577,22 @@ pub const Tray = struct {
         };
         if (self.media.search_focused) {
             switch (sym) {
-                .Left => { self.media.moveSearchCaret(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .Right => { self.media.moveSearchCaret(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Left => {
+                    if (self.media.search_len > 0 and self.media.search_caret > 0) {
+                        self.media.moveSearchCaret(-1);
+                    } else {
+                        self.media.focusControl(.category);
+                    }
+                    self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+                },
+                .Right => {
+                    if (self.media.search_caret < self.media.search_len) {
+                        self.media.moveSearchCaret(1);
+                    } else {
+                        self.media.focusSlider();
+                    }
+                    self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+                },
                 .Home => { self.media.search_caret = 0; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 .End => { self.media.search_caret = self.media.search_len; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 .BackSpace => { self.media.backspaceSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
@@ -1593,7 +1607,12 @@ pub const Tray = struct {
                 .Escape => { self.media.cancelSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 .Tab => { self.media.focusSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 .Up => { self.media.focusControl(.category); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .Down => { self.media.focusSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Down => {
+                    self.media.focusControl(.result);
+                    self.media.selected_result = self.media.grid_cols / 2;
+                    self.media.adjustScrollToSelection();
+                    self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+                },
                 else => {
                     if (printable) {
                         const v = @intFromEnum(sym);
