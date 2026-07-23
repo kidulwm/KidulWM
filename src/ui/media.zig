@@ -361,13 +361,33 @@ pub const MediaWidget = struct {
     pub fn adjustScrollToSelection(self: *MediaWidget) void {
         const cols: usize = self.grid_cols;
         const selected_row = self.selected_result / cols;
+        const visible_rows = self.visible_result_count / cols;
         if (selected_row < self.list_scroll_offset) {
             self.list_scroll_offset = selected_row;
-        } else if (selected_row >= self.list_scroll_offset + self.visible_result_count / cols) {
-            var off = selected_row + 1 - self.visible_result_count / cols;
+        } else if (visible_rows > 0 and selected_row >= self.list_scroll_offset + visible_rows) {
+            var off = selected_row + 1 - visible_rows;
             if (off > self.max_scroll_offset) off = self.max_scroll_offset;
             self.list_scroll_offset = off;
         }
+    }
+
+    pub fn jumpToLetter(self: *MediaWidget, letter: u8) void {
+        const library = getLibrary(self.category);
+        if (library.len == 0) return;
+        const needle = std.ascii.toLower(letter);
+        var idx: usize = 0;
+        // Binary-ish scan to first title starting with letter.
+        for (library, 0..) |entry, i| {
+            const title = std.mem.sliceTo(entry.title, 0);
+            if (title.len == 0) continue;
+            const first = std.ascii.toLower(title[0]);
+            if (first >= needle) {
+                idx = i;
+                break;
+            }
+        }
+        self.selected_result = idx;
+        self.adjustScrollToSelection();
     }
 
     pub fn focusSearch(self: *MediaWidget) void {
@@ -793,6 +813,10 @@ pub const MediaWidget = struct {
         scroll_y: i32 = 0,
         scroll_w: i32 = 0,
         scroll_h: i32 = 0,
+        letters_x: i32 = 0,
+        letters_y: i32 = 0,
+        letters_w: i32 = 0,
+        letters_h: i32 = 0,
         cols: i32 = 2,
         tile_w: i32 = 0,
         tile_h: i32 = 0,
@@ -1195,6 +1219,34 @@ pub const MediaWidget = struct {
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
+
+        // ---- A-Z alphabet quick-jump strip ----
+        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const alpha_font = @as(f64, style_.font_size_s) * 0.78 * scale_f;
+        const strip_x = w_d - pad_x - scroller_track + 4.0 * scale_f;
+        const strip_w = scroller_track - scroller_w - 8.0 * scale_f;
+        const strip_y = list_y;
+        const strip_h = list_h;
+
+        if (out_click) |click| {
+            click.letters_x = @intFromFloat(strip_x);
+            click.letters_y = @intFromFloat(strip_y);
+            click.letters_w = @intFromFloat(strip_w);
+            click.letters_h = @intFromFloat(strip_h);
+        }
+
+        c.cairo_set_font_size(cr, alpha_font);
+        const step_h = strip_h / @as(f64, @floatFromInt(letters.len));
+        for (letters, 0..) |ch, i| {
+            const ly = strip_y + @as(f64, @floatFromInt(i)) * step_h + step_h * 0.5 + alpha_font * 0.35;
+            const lbuf = [1:0]u8{ch};
+            var lex: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, &lbuf, &lex);
+            const lx = strip_x + (strip_w - lex.width) * 0.5;
+            c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.60);
+            c.cairo_move_to(cr, lx, ly);
+            c.cairo_show_text(cr, &lbuf);
+        }
     }
 
     fn drawEllipsizedText(_: *MediaWidget, cr: *c.cairo_t, text: []const u8, x: f64, y: f64, max_w: f64) void {

@@ -1542,6 +1542,23 @@ pub const Tray = struct {
             return true;
         }
 
+        // Alphabet quick-jump strip.
+        if (click.letters_w > 0 and click.letters_h > 0 and
+            lx >= @as(f64, @floatFromInt(click.letters_x)) and
+            ly >= @as(f64, @floatFromInt(click.letters_y)) and
+            lx <= @as(f64, @floatFromInt(click.letters_x + click.letters_w)) and
+            ly <= @as(f64, @floatFromInt(click.letters_y + click.letters_h))) {
+            const letters: []const u8 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const rel_y = ly - @as(f64, @floatFromInt(click.letters_y));
+            const ratio = @max(0.0, @min(1.0, rel_y / @as(f64, @floatFromInt(click.letters_h))));
+            const idx = @min(letters.len - 1, @as(usize, @intFromFloat(@floor(ratio * @as(f64, @floatFromInt(letters.len))))));
+            self.media.jumpToLetter(letters[idx]);
+            self.media.focusControl(.result);
+            self.requestUpdate();
+            self.host.request_frame(self.host.ctx);
+            return true;
+        }
+
         return false;
     }
 
@@ -1668,7 +1685,6 @@ pub const Tray = struct {
             .Escape => { self.closeAllCards(); return true; },
             else => {
                 if (printable) {
-                    self.media.focusSearch();
                     const v = @intFromEnum(sym);
                     var ch: u8 = 0;
                     if (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z)) {
@@ -1683,7 +1699,12 @@ pub const Tray = struct {
                         ch = '.';
                     }
                     if (ch != 0) {
-                        self.media.appendSearch(ch);
+                        if (focused == .search) {
+                            self.media.appendSearch(ch);
+                        } else {
+                            self.media.focusControl(.result);
+                            self.media.jumpToLetter(if (ch >= 'a' and ch <= 'z') std.ascii.toUpper(ch) else ch);
+                        }
                         self.requestUpdate();
                         self.host.request_frame(self.host.ctx);
                         return true;
