@@ -1952,6 +1952,9 @@ pub const Tray = struct {
                 self.closeAllCards();
                 return true;
             }
+            // Click inside a media card that misses every interactive region is ignored,
+            // so the card stays open for hover inspection.
+            if (self.media_card_open) return true;
             need_close_card = true;
         }
         if (need_close_card) {
