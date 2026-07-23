@@ -1260,11 +1260,11 @@ pub const MediaWidget = struct {
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
 
-        // ---- A-Z alphabet quick-jump strip (hover reveals all) ----
+        // ---- A-Z 5-letter scrolling selector (hover reveals) ----
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        const alpha_font = @as(f64, style_.font_size_s) * 0.78 * scale_f;
+        const alpha_font_base = @as(f64, style_.font_size_s) * scale_f;
         const strip_x = w_d - pad_x + 4.0 * scale_f;
-        const strip_w = 18.0 * scale_f;
+        const strip_w = 24.0 * scale_f;
         const strip_y = list_y;
         const strip_h = list_h;
 
@@ -1276,35 +1276,56 @@ pub const MediaWidget = struct {
         }
 
         const show_all = self.slider_hover;
-        const current_letter_idx = if (show_all) self.currentSliderLetterIndex() else 0;
-        c.cairo_set_font_size(cr, if (show_all) alpha_font * 1.35 else alpha_font);
-        const step_h = strip_h / @as(f64, @floatFromInt(letters.len));
-        const sparse_step: usize = 4; // show every 4th letter by default
-        for (letters, 0..) |ch, i| {
-            const is_sparse = !show_all and (i % sparse_step == 0);
-            const is_current = show_all and i == current_letter_idx;
-            if (!show_all and !is_sparse and !is_current) continue;
+        const center_idx = self.currentSliderLetterIndex();
 
-            const ly = strip_y + @as(f64, @floatFromInt(i)) * step_h + step_h * 0.5 + alpha_font * 0.35;
-            const lbuf = [1:0]u8{ch};
-            var lex: c.cairo_text_extents_t = undefined;
-            c.cairo_text_extents(cr, &lbuf, &lex);
-            const lx = strip_x + (strip_w - lex.width) * 0.5;
+        // 5-letter window: clamp so it always fits and the current letter moves
+        // from top to center over the first few letters, stays centered through
+        // the middle, then slides to the bottom for the last few.
+        const window_size: usize = 5;
+        const half_window = window_size / 2;
+        var window_start: usize = if (center_idx <= half_window) 0 else center_idx - half_window;
+        if (center_idx + half_window >= letters.len) {
+            window_start = letters.len - window_size;
+        }
 
-            if (is_current) {
-                // Highlight current letter in the slider
-                const pad = 2.0 * scale_f;
-                c.cairo_new_path(cr);
-                c.cairo_rectangle(cr, lx - pad, ly - alpha_font - pad, lex.width + pad * 2.0, alpha_font + pad * 2.0);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35);
-                c.cairo_fill(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
-            } else {
-                c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], if (show_all) 0.70 else 0.60);
+        const slot_h = strip_h / @as(f64, @floatFromInt(window_size));
+        const current_slot: usize = if (center_idx <= half_window) center_idx else if (center_idx + half_window >= letters.len) window_size - (letters.len - center_idx) else half_window;
+        const knob_y = strip_y + @as(f64, @floatFromInt(current_slot)) * slot_h + slot_h * 0.5;
+        const alpha_knob_r = @max(4.0 * scale_f, slot_h * 0.35);
+
+        if (show_all) {
+            // Draw centered 5-letter list
+            for (letters, 0..) |ch, i| {
+                const slot_i = @as(i32, @intCast(i)) - @as(i32, @intCast(window_start));
+                if (slot_i < 0 or slot_i >= window_size) continue;
+
+                const slot = center_idx == i;
+                const alpha_font = if (slot) alpha_font_base * 1.6 else alpha_font_base * 0.85;
+                c.cairo_set_font_size(cr, alpha_font);
+                const ly = strip_y + @as(f64, @floatFromInt(slot_i)) * slot_h + slot_h * 0.5 + alpha_font * 0.35;
+                const lbuf = [1:0]u8{ch};
+                var lex: c.cairo_text_extents_t = undefined;
+                c.cairo_text_extents(cr, &lbuf, &lex);
+                const lx = strip_x + (strip_w - lex.width) * 0.5;
+
+                if (slot) {
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
+                } else {
+                    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.60);
+                }
+
+                c.cairo_move_to(cr, lx, ly);
+                c.cairo_show_text(cr, &lbuf);
             }
 
-            c.cairo_move_to(cr, lx, ly);
-            c.cairo_show_text(cr, &lbuf);
+            // Highlight ring around the active slot
+            c.cairo_new_path(cr);
+            c.cairo_arc(cr, strip_x + strip_w * 0.5, knob_y, alpha_knob_r, 0, 2.0 * std.math.pi);
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
+            c.cairo_fill_preserve(cr);
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.9);
+            c.cairo_set_line_width(cr, 1.5);
+            c.cairo_stroke(cr);
         }
     }
 
