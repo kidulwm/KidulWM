@@ -1562,7 +1562,24 @@ pub const Tray = struct {
         return false;
     }
 
+    pub fn handleCalendarCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
+        if (!self.calendar_card_open) return false;
+        switch (sym) {
+            .Escape, .Return, .KP_Enter, .space => { self.closeAllCards(); return true; },
+            else => return true,
+        }
+    }
+
+    pub fn handleWeatherCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
+        if (!self.weather_card_open) return false;
+        switch (sym) {
+            .Escape, .Return, .KP_Enter, .space => { self.closeAllCards(); return true; },
+            else => return true,
+        }
+    }
+
     pub fn handleMediaCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
+        std.log.info("KidulWM media key sym={} focus={s}", .{@intFromEnum(sym), @tagName(self.media.focus)});
         if (!self.media_card_open) return false;
         const xkb = @import("xkbcommon");
         const focused = self.media.focus;

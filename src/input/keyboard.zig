@@ -86,8 +86,15 @@ const KeyboardDevice = struct {
                 if (handleAction(server, a)) return;
             }
         }
-        // Media card consumes non-mod4 navigation/typing keys while open.
-        if (server.tray.handleMediaCardKey(sym)) return;
+        // Cards consume arrow/navigation/typing before clients while open.
+        if (server.tray.calendar_card_open or server.tray.weather_card_open or server.tray.media_card_open) {
+            if (server.tray.handleMediaCardKey(sym)) return;
+            if (server.tray.handleCalendarCardKey(sym)) return;
+            if (server.tray.handleWeatherCardKey(sym)) return;
+            // With a card open and no card handler consumed it, do not pass to clients;
+            // this keeps arrow keys from moving a focused window while navigating the card.
+            return;
+        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 
