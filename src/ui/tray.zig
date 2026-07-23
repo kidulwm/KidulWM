@@ -649,6 +649,7 @@ pub const Tray = struct {
         if (self.media_card_open) {
             self.card_mode = .media;
             self.setCardCloseDirection(.media);
+            self.media.focusSearch();
         }
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
@@ -1472,26 +1473,27 @@ pub const Tray = struct {
         if (lx < 0 or ly < 0 or lx > @as(f64, @floatFromInt(w)) or ly > @as(f64, @floatFromInt(h))) return false;
 
         const click = self.media_card_click;
-        // Transport buttons.
-        for (0..3) |i| {
-            const bx = @as(f64, @floatFromInt(click.btn_x[i]));
-            const by = @as(f64, @floatFromInt(click.btn_y));
-            const br = @as(f64, @floatFromInt(click.btn_r));
-            const dx = lx - bx;
-            const dy = ly - by;
-            if (dx * dx + dy * dy <= br * br) {
-                switch (i) {
-                    0 => self.media.prev(),
-                    1 => self.media.playPause(),
-                    2 => self.media.next(),
-                    else => {},
+
+        // Category pills.
+        if (ly >= @as(f64, @floatFromInt(click.cat_y)) and
+            ly <= @as(f64, @floatFromInt(click.cat_y + click.cat_h))) {
+            for (0..3) |i| {
+                if (lx >= @as(f64, @floatFromInt(click.cat_x[i])) and
+                    lx <= @as(f64, @floatFromInt(click.cat_x[i] + click.cat_w[i]))) {
+                    self.media.category = switch (i) {
+                        0 => .movies,
+                        1 => .music,
+                        2 => .pictures,
+                        else => .music,
+                    };
+                    self.media.focusControl(.category);
+                    self.requestUpdate();
+                    self.host.request_frame(self.host.ctx);
+                    return true;
                 }
-                self.media.focusControl(if (i == 0) .prev else if (i == 1) .play else .next);
-                self.requestUpdate();
-                self.host.request_frame(self.host.ctx);
-                return true;
             }
         }
+
         // Search bar.
         if (lx >= @as(f64, @floatFromInt(click.search_x)) and
             ly >= @as(f64, @floatFromInt(click.search_y)) and
@@ -1502,6 +1504,44 @@ pub const Tray = struct {
             self.host.request_frame(self.host.ctx);
             return true;
         }
+
+        // Result list tiles.
+        if (lx >= @as(f64, @floatFromInt(click.list_x)) and
+            ly >= @as(f64, @floatFromInt(click.list_y)) and
+            lx <= @as(f64, @floatFromInt(click.list_x + click.list_w)) and
+            ly <= @as(f64, @floatFromInt(click.list_y + click.list_h))) {
+            if (click.tile_w > 0 and click.tile_h > 0 and click.cols > 0) {
+                const local_x = lx - @as(f64, @floatFromInt(click.list_x));
+                const local_y = ly - @as(f64, @floatFromInt(click.list_y));
+                const gap = @as(f64, @floatFromInt(click.tile_gap));
+                const col = @as(usize, @intFromFloat(@floor(local_x / (@as(f64, @floatFromInt(click.tile_w)) + gap))));
+                const row = @as(usize, @intFromFloat(@floor(local_y / (@as(f64, @floatFromInt(click.tile_h)) + gap))));
+                const cols = @as(usize, @intCast(click.cols));
+                const idx = (click.scroll_offset_at_render + row) * cols + col;
+                self.media.focusSearch();
+                self.media.selected_result = idx;
+                self.requestUpdate();
+                self.host.request_frame(self.host.ctx);
+                return true;
+            }
+        }
+
+        // Vertical scroller channel, locked to right edge without overlapping grid.
+        const scroll_left = @as(f64, @floatFromInt(click.scroll_x));
+        const scroll_right = scroll_left + @as(f64, @floatFromInt(click.scroll_w));
+        if (lx >= scroll_left - @as(f64, @floatFromInt(click.scroll_w)) * 2.0 and lx <= scroll_right and
+            ly >= @as(f64, @floatFromInt(click.scroll_y)) and
+            ly <= @as(f64, @floatFromInt(click.scroll_y + click.scroll_h))) {
+            const track_len = @as(f64, @floatFromInt(click.scroll_h - click.scroll_w));
+            const rel_y = ly - @as(f64, @floatFromInt(click.scroll_y)) - @as(f64, @floatFromInt(click.scroll_w)) * 0.5;
+            const ratio = @max(0.0, @min(1.0, rel_y / track_len));
+            const max_off = self.media.max_scroll_offset;
+            self.media.list_scroll_offset = @intFromFloat(@round(ratio * @as(f64, @floatFromInt(max_off))));
+            self.requestUpdate();
+            self.host.request_frame(self.host.ctx);
+            return true;
+        }
+
         return false;
     }
 
@@ -1510,7 +1550,7 @@ pub const Tray = struct {
         const xkb = @import("xkbcommon");
         const focused = self.media.focus;
 
-        // Printable keys feed the search box when focused.
+        // Printable keys feed the search box when focused or auto-focus search.
         const printable = blk: {
             const v = @intFromEnum(sym);
             break :blk (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z)) or
@@ -1534,7 +1574,9 @@ pub const Tray = struct {
                     return true;
                 },
                 .Escape => { self.media.cancelSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .Tab => { self.media.focusControl(.play); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Tab => { self.media.focusSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Up => { self.media.focusControl(.category); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Down => { self.media.focusSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 else => {
                     if (printable) {
                         const v = @intFromEnum(sym);
@@ -1562,24 +1604,92 @@ pub const Tray = struct {
             return false;
         }
 
-        // Transport-focused navigation.
+        // Category / result navigation.
         switch (sym) {
-            .Left => { self.media.moveFocus(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Right => { self.media.moveFocus(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Down, .Tab => { self.media.focusControl(.search); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Left => {
+                switch (focused) {
+                    .category => self.media.moveCategory(-1),
+                    .search => self.media.moveSearchCaret(-1),
+                    .result => self.media.moveResultSelection(-1),
+                }
+                self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+            },
+            .Right => {
+                switch (focused) {
+                    .category => self.media.moveCategory(1),
+                    .search => self.media.moveSearchCaret(1),
+                    .result => self.media.moveResultSelection(1),
+                }
+                self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+            },
+            .Up => {
+                switch (focused) {
+                    .category => {},
+                    .search => self.media.focusControl(.category),
+                    .result => self.media.moveResultVertical(-1),
+                }
+                self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+            },
+            .Down => {
+                switch (focused) {
+                    .category => self.media.focusControl(.search),
+                    .search => {
+                        self.media.focusControl(.result);
+                        self.media.selected_result = self.media.grid_cols / 2;
+                        self.media.adjustScrollToSelection();
+                    },
+                    .result => self.media.moveResultVertical(1),
+                }
+                self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+            },
+            .Tab => {
+                switch (focused) {
+                    .category => self.media.focusControl(.search),
+                    .search => self.media.focusControl(.result),
+                    .result => self.media.focusControl(.category),
+                }
+                self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
+            },
+            .Page_Up => { self.media.pageList(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Page_Down => { self.media.pageList(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
             .space, .Return, .KP_Enter => {
                 switch (focused) {
-                    .prev => self.media.prev(),
-                    .play => self.media.playPause(),
-                    .next => self.media.next(),
-                    .search => self.media.focusSearch(),
+                    .category => {},
+                    .search => {},
+                    .result => {
+                        const path = self.media.selectedResultPath();
+                        if (path.len > 0) self.media.play(path);
+                    },
                 }
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
                 return true;
             },
             .Escape => { self.closeAllCards(); return true; },
-            else => {},
+            else => {
+                if (printable) {
+                    self.media.focusSearch();
+                    const v = @intFromEnum(sym);
+                    var ch: u8 = 0;
+                    if (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z)) {
+                        ch = @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.a))) + 'a';
+                    } else if (v >= @intFromEnum(xkb.Keysym.@"0") and v <= @intFromEnum(xkb.Keysym.@"9")) {
+                        ch = @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.@"0"))) + '0';
+                    } else if (v == @intFromEnum(xkb.Keysym.space)) {
+                        ch = ' ';
+                    } else if (v == @intFromEnum(xkb.Keysym.minus)) {
+                        ch = '-';
+                    } else if (v == @intFromEnum(xkb.Keysym.period)) {
+                        ch = '.';
+                    }
+                    if (ch != 0) {
+                        self.media.appendSearch(ch);
+                        self.requestUpdate();
+                        self.host.request_frame(self.host.ctx);
+                        return true;
+                    }
+                }
+            },
         }
         return false;
     }
