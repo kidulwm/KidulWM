@@ -237,6 +237,30 @@ pub const Server = struct {
                 self.tray.toggleWeatherCard();
                 return .{ .ok = true };
             },
+            .media_card_toggle => {
+                self.tray.toggleMediaCard();
+                return .{ .ok = true };
+            },
+            .media_play => |p| {
+                self.tray.media.play(p.path);
+                return .{ .ok = true, .message = "media play requested" };
+            },
+            .media_toggle => {
+                self.tray.media.playPause();
+                return .{ .ok = true };
+            },
+            .media_next => {
+                self.tray.media.next();
+                return .{ .ok = true };
+            },
+            .media_prev => {
+                self.tray.media.prev();
+                return .{ .ok = true };
+            },
+            .media_seek => |p| {
+                self.tray.media.seek(p.seconds);
+                return .{ .ok = true };
+            },
             else => return self.handleStateRequest(req),
         }
         return self.handleStateRequest(req);
@@ -293,7 +317,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .quit => {},
+            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };

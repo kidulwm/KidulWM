@@ -49,6 +49,28 @@ pub fn main(init: std.process.Init.Minimal) !void {
         if (std.mem.eql(u8, cmd, "tray_activate")) break :blk .{ .tray_activate = {} };
         if (std.mem.eql(u8, cmd, "tray_toggle_card")) break :blk .{ .tray_toggle_card = {} };
         if (std.mem.eql(u8, cmd, "weather_toggle_card")) break :blk .{ .weather_toggle_card = {} };
+        if (std.mem.eql(u8, cmd, "media_card_toggle")) break :blk .{ .media_card_toggle = {} };
+        if (std.mem.eql(u8, cmd, "media_play")) {
+            const path = it.next() orelse {
+                std.log.err("media_play requires a path argument", .{});
+                return error.MissingArgument;
+            };
+            break :blk .{ .media_play = .{ .path = path } };
+        }
+        if (std.mem.eql(u8, cmd, "media_toggle")) break :blk .{ .media_toggle = {} };
+        if (std.mem.eql(u8, cmd, "media_next")) break :blk .{ .media_next = {} };
+        if (std.mem.eql(u8, cmd, "media_prev")) break :blk .{ .media_prev = {} };
+        if (std.mem.eql(u8, cmd, "media_seek")) {
+            const seconds_str = it.next() orelse {
+                std.log.err("media_seek requires a seconds argument", .{});
+                return error.MissingArgument;
+            };
+            const seconds = std.fmt.parseFloat(f64, seconds_str) catch {
+                std.log.err("media_seek requires a numeric seconds argument", .{});
+                return error.InvalidArgument;
+            };
+            break :blk .{ .media_seek = .{ .seconds = seconds } };
+        }
         if (std.mem.eql(u8, cmd, "set_theme")) {
             const key = it.next() orelse {
                 std.log.err("set_theme requires a key argument", .{});

@@ -9,6 +9,7 @@ pub const Action = union(enum) {
     tray_select_next,
     tray_select_prev,
     tray_activate,
+    media_card_toggle,
     next_animation,
     none,
 };
@@ -31,6 +32,7 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.a, .action = .next_animation }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Up, .action = .tray_select_prev }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Down, .action = .tray_select_next }) catch {};
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.m, .action = .media_card_toggle }) catch {};
     return list;
 }
 
@@ -235,6 +237,7 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "tray_select_next")) return .tray_select_next;
         if (std.mem.eql(u8, str, "tray_select_prev")) return .tray_select_prev;
         if (std.mem.eql(u8, str, "tray_activate")) return .tray_activate;
+        if (std.mem.eql(u8, str, "media_card_toggle")) return .media_card_toggle;
         if (std.mem.eql(u8, str, "next_animation")) return .next_animation;
         if (std.mem.eql(u8, str, "open_slide")) {
             const cmd = allocator.dupe(u8, "/usr/bin/ghostty") catch return null;

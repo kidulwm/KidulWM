@@ -351,46 +351,7 @@ pub fn drawCardShadow(
     card_w: f64,
     card_h: f64,
 ) void {
-    _ = tstyle;
-
-    const card_x = (box_w - card_w) * 0.5;
-    const card_y = (box_h - card_h) * 0.5;
-
-    // Light from top-left: the bottom/right gaps catch the most shadow,
-    // the top/left gaps catch less. The sides actually meet at the corners
-    // because the vertical and horizontal strips overlap, naturally darkening
-    // the far (bottom-right) corner and lightening the near (top-left) one.
-    const top_alpha: f64 = 0.38;
-    const left_alpha: f64 = 0.38;
-    const bottom_alpha: f64 = 0.82;
-    const right_alpha: f64 = 0.82;
-
-    const Strip = struct {
-        x: f64,
-        y: f64,
-        w: f64,
-        h: f64,
-        x0: f64,
-        y0: f64,
-        x1: f64,
-        y1: f64,
-        inner_a: f64,
-    };
-    const strips = [_]Strip{
-        .{ .x = 0.0, .y = 0.0, .w = card_x, .h = box_h, .x0 = 0.0,  .y0 = 0.0, .x1 = card_x, .y1 = 0.0,           .inner_a = left_alpha },
-        .{ .x = card_x + card_w, .y = 0.0, .w = box_w - (card_x + card_w), .h = box_h, .x0 = card_x + card_w, .y0 = 0.0, .x1 = box_w, .y1 = 0.0, .inner_a = right_alpha },
-        .{ .x = 0.0, .y = 0.0, .w = box_w, .h = card_y, .x0 = 0.0, .y0 = 0.0, .x1 = 0.0, .y1 = card_y,           .inner_a = top_alpha },
-        .{ .x = 0.0, .y = card_y + card_h, .w = box_w, .h = box_h - (card_y + card_h), .x0 = 0.0, .y0 = card_y + card_h, .x1 = 0.0, .y1 = box_h, .inner_a = bottom_alpha },
-    };
-    for (strips) |s| {
-        if (s.w <= 0.0 or s.h <= 0.0) continue;
-        c.cairo_rectangle(cr, s.x, s.y, s.w, s.h);
-        const grad = c.cairo_pattern_create_linear(s.x0, s.y0, s.x1, s.y1).?;
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.00, 0.0, 0.0, 0.0, 0.00);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.55, 0.0, 0.0, 0.0, s.inner_a * 0.85);
-        c.cairo_pattern_add_color_stop_rgba(grad, 1.00, 0.0, 0.0, 0.0, s.inner_a);
-        c.cairo_set_source(cr, grad);
-        c.cairo_fill(cr);
-        c.cairo_pattern_destroy(grad);
-    }
+    // Disabled: the shadow around cards has been turned off.
+    _ = cr; _ = tstyle; _ = box_w; _ = box_h; _ = card_w; _ = card_h;
 }
+

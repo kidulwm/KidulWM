@@ -6,6 +6,7 @@ const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
 const WeatherWidget = @import("./weather.zig").WeatherWidget;
+const MediaWidget = @import("./media.zig").MediaWidget;
 const card_frame = @import("card_frame.zig");
 
 // Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
@@ -161,6 +162,23 @@ const PerOutputWeather = struct {
     last_theme_generation: u32 = 0,
 };
 
+
+const PerOutputMedia = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    last_scale: f32 = 0.0,
+    last_title_hash: u64 = 0,
+    last_theme_generation: u32 = 0,
+};
+
 const BarryPet = struct {
     output_ctx: *anyopaque,
     tree: *wlr.SceneTree,
@@ -238,7 +256,11 @@ pub const Tray = struct {
     widgets: std.ArrayList(PerOutputWidget),
     // Top-left peek widget (weather).
     weather_widgets: std.ArrayList(PerOutputWeather),
+    media_widgets: std.ArrayList(PerOutputMedia),
     weather: WeatherWidget,
+    media: MediaWidget,
+    media_card_open: bool = false,
+    media_card_click: MediaWidget.CardClick = .{},
     card_tree: ?*wlr.SceneTree = null,
     card_scene_buffer: ?*wlr.SceneBuffer = null,
     card_buffer: ?*wlr.Buffer = null,
@@ -330,7 +352,9 @@ pub const Tray = struct {
             .barry_pets = .empty,
             .widgets = .empty,
             .weather_widgets = .empty,
+            .media_widgets = .empty,
             .weather = WeatherWidget.init(allocator),
+            .media = MediaWidget.init(allocator),
             .card_shadow_tree = card_shadow_tree,
             .card_tree = card_tree,
             .card_year = @as(i32, @intCast(local_now.tm_year)) + 1900,
@@ -358,11 +382,14 @@ pub const Tray = struct {
         for (self.barry_pets.items) |*pet| self.destroyPet(pet);
         for (self.widgets.items) |*w| self.destroyWidget(w);
         for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
+        for (self.media_widgets.items) |*w| self.destroyMediaWidget(w);
         self.weather.deinit();
+        self.media.deinit();
         self.outputs.deinit(self.allocator);
         self.barry_pets.deinit(self.allocator);
         self.widgets.deinit(self.allocator);
         self.weather_widgets.deinit(self.allocator);
+        self.media_widgets.deinit(self.allocator);
         var it = self.icon_cache.iterator();
         while (it.next()) |entry| {
             c.cairo_surface_destroy(entry.value_ptr.*);
@@ -442,6 +469,21 @@ pub const Tray = struct {
             std.log.err("KidulWM: failed to append weather widget: {}", .{err});
             weather_tree.node.destroy();
         };
+        const media_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create media widget scene tree: {}", .{err});
+            return;
+        };
+        const media_widget = PerOutputMedia{
+            .output_ctx = output_ctx,
+            .tree = media_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.media_widgets.append(self.allocator, media_widget) catch |err| {
+            std.log.err("KidulWM: failed to append media widget: {}", .{err});
+            media_tree.node.destroy();
+        };
         const pet = BarryPet{
             .output_ctx = output_ctx,
             .tree = pet_tree,
@@ -477,6 +519,13 @@ pub const Tray = struct {
             if (w.output_ctx == output_ctx) {
                 self.destroyWeatherWidget(w);
                 _ = self.weather_widgets.orderedRemove(i);
+                break;
+            }
+        }
+        for (self.media_widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyMediaWidget(w);
+                _ = self.media_widgets.orderedRemove(i);
                 break;
             }
         }
@@ -547,10 +596,12 @@ pub const Tray = struct {
     }
 
     pub fn closeAllCards(self: *Self) void {
-        if (!self.calendar_card_open and !self.weather_card_open) return;
+        if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open) return;
         self.calendar_card_open = false;
         self.weather_card_open = false;
+        self.media_card_open = false;
         self.weather.card.open = false;
+        self.media.setCardOpen(false);
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
     }
@@ -585,8 +636,26 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn toggleMediaCard(self: *Self) void {
+        if (self.calendar_card_open) {
+            self.calendar_card_open = false;
+        }
+        if (self.weather_card_open) {
+            self.weather_card_open = false;
+            self.weather.card.open = false;
+        }
+        self.media_card_open = !self.media_card_open;
+        self.media.setCardOpen(self.media_card_open);
+        if (self.media_card_open) {
+            self.card_mode = .media;
+            self.setCardCloseDirection(.media);
+        }
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     fn anyCardOpen(self: *const Self) bool {
-        return self.calendar_card_open or self.weather_card_open;
+        return self.calendar_card_open or self.weather_card_open or self.media_card_open;
     }
 
     pub fn selectNext(self: *Self) void {
@@ -918,6 +987,16 @@ pub const Tray = struct {
         for (self.weather_widgets.items) |*weather_widget| {
             weather_widget.info = self.host.output_info(self.host.ctx, weatherWidgetIndex(self, weather_widget));
             self.drawWeatherWidget(weather_widget);
+        }
+
+        // Update media backend and draw bottom-right peek widget.
+        self.media.update();
+        for (self.media_widgets.items) |*media_widget| {
+            media_widget.info = self.host.output_info(self.host.ctx, mediaWidgetIndex(self, media_widget));
+            self.drawMediaWidget(media_widget);
+        }
+        if (self.media_card_open or self.media.cached.playing) {
+            needs_redraw = true;
         }
 
         for (self.barry_pets.items, 0..) |*pet, i| {
@@ -1364,6 +1443,147 @@ pub const Tray = struct {
         return 0;
     }
 
+    fn mediaWidgetIndex(self: *const Self, widget: *PerOutputMedia) usize {
+        for (self.media_widgets.items, 0..) |*w, i| {
+            if (w == widget) return i;
+        }
+        return 0;
+    }
+
+    fn destroyMediaWidget(_: *Self, widget: *PerOutputMedia) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
+    }
+
+
+    fn handleMediaCardClick(self: *Self, px: f64, py: f64) bool {
+        if (!self.media_card_open) return false;
+        const box = self.card_box;
+        const w = self.card_last_w;
+        const h = self.card_last_h;
+        if (w <= 0 or h <= 0) return false;
+        const card_x = @as(f64, @floatFromInt(box.x + @divTrunc(box.width - w, 2)));
+        const card_y = @as(f64, @floatFromInt(box.y + @divTrunc(box.height - h, 2)));
+        const lx = px - card_x;
+        const ly = py - card_y;
+        if (lx < 0 or ly < 0 or lx > @as(f64, @floatFromInt(w)) or ly > @as(f64, @floatFromInt(h))) return false;
+
+        const click = self.media_card_click;
+        // Transport buttons.
+        for (0..3) |i| {
+            const bx = @as(f64, @floatFromInt(click.btn_x[i]));
+            const by = @as(f64, @floatFromInt(click.btn_y));
+            const br = @as(f64, @floatFromInt(click.btn_r));
+            const dx = lx - bx;
+            const dy = ly - by;
+            if (dx * dx + dy * dy <= br * br) {
+                switch (i) {
+                    0 => self.media.prev(),
+                    1 => self.media.playPause(),
+                    2 => self.media.next(),
+                    else => {},
+                }
+                self.media.focusControl(if (i == 0) .prev else if (i == 1) .play else .next);
+                self.requestUpdate();
+                self.host.request_frame(self.host.ctx);
+                return true;
+            }
+        }
+        // Search bar.
+        if (lx >= @as(f64, @floatFromInt(click.search_x)) and
+            ly >= @as(f64, @floatFromInt(click.search_y)) and
+            lx <= @as(f64, @floatFromInt(click.search_x + click.search_w)) and
+            ly <= @as(f64, @floatFromInt(click.search_y + click.search_h))) {
+            self.media.focusSearch();
+            self.requestUpdate();
+            self.host.request_frame(self.host.ctx);
+            return true;
+        }
+        return false;
+    }
+
+    pub fn handleMediaCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
+        if (!self.media_card_open) return false;
+        const xkb = @import("xkbcommon");
+        const focused = self.media.focus;
+
+        // Printable keys feed the search box when focused.
+        const printable = blk: {
+            const v = @intFromEnum(sym);
+            break :blk (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z)) or
+                (v >= @intFromEnum(xkb.Keysym.@"0") and v <= @intFromEnum(xkb.Keysym.@"9")) or
+                v == @intFromEnum(xkb.Keysym.space) or v == @intFromEnum(xkb.Keysym.minus) or
+                v == @intFromEnum(xkb.Keysym.period);
+        };
+        if (self.media.search_focused) {
+            switch (sym) {
+                .Left => { self.media.moveSearchCaret(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Right => { self.media.moveSearchCaret(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Home => { self.media.search_caret = 0; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .End => { self.media.search_caret = self.media.search_len; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .BackSpace => { self.media.backspaceSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Delete => { self.media.deleteSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Return, .KP_Enter => {
+                    const text = self.media.acceptSearch();
+                    std.log.info("KidulWM: media search accepted: {s}", .{text});
+                    self.requestUpdate();
+                    self.host.request_frame(self.host.ctx);
+                    return true;
+                },
+                .Escape => { self.media.cancelSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Tab => { self.media.focusControl(.play); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                else => {
+                    if (printable) {
+                        const v = @intFromEnum(sym);
+                        var ch: u8 = 0;
+                        if (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z)) {
+                            ch = @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.a))) + 'a';
+                        } else if (v >= @intFromEnum(xkb.Keysym.@"0") and v <= @intFromEnum(xkb.Keysym.@"9")) {
+                            ch = @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.@"0"))) + '0';
+                        } else if (v == @intFromEnum(xkb.Keysym.space)) {
+                            ch = ' ';
+                        } else if (v == @intFromEnum(xkb.Keysym.minus)) {
+                            ch = '-';
+                        } else if (v == @intFromEnum(xkb.Keysym.period)) {
+                            ch = '.';
+                        }
+                        if (ch != 0) {
+                            self.media.appendSearch(ch);
+                            self.requestUpdate();
+                            self.host.request_frame(self.host.ctx);
+                            return true;
+                        }
+                    }
+                },
+            }
+            return false;
+        }
+
+        // Transport-focused navigation.
+        switch (sym) {
+            .Left => { self.media.moveFocus(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Right => { self.media.moveFocus(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Down, .Tab => { self.media.focusControl(.search); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .space, .Return, .KP_Enter => {
+                switch (focused) {
+                    .prev => self.media.prev(),
+                    .play => self.media.playPause(),
+                    .next => self.media.next(),
+                    .search => self.media.focusSearch(),
+                }
+                self.requestUpdate();
+                self.host.request_frame(self.host.ctx);
+                return true;
+            },
+            .Escape => { self.closeAllCards(); return true; },
+            else => {},
+        }
+        return false;
+    }
+
     fn pointInsideWidget(self: *const Self, px: f64, py: f64) bool {
         for (self.widgets.items) |w| {
             if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
@@ -1379,6 +1599,19 @@ pub const Tray = struct {
 
     fn pointInsideWeatherWidget(self: *const Self, px: f64, py: f64) bool {
         for (self.weather_widgets.items) |w| {
+            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+            const b = w.click_box;
+            const oh: i32 = widget_hit_overhang;
+            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
+                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
+                py >= @as(f64, @floatFromInt(b.y - oh)) and
+                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh))) return true;
+        }
+        return false;
+    }
+
+    fn pointInsideMediaWidget(self: *const Self, px: f64, py: f64) bool {
+        for (self.media_widgets.items) |w| {
             if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
             const b = w.click_box;
             const oh: i32 = widget_hit_overhang;
@@ -1548,13 +1781,19 @@ pub const Tray = struct {
         }
         // Click on the weather peek widget toggles the weather card.
         if (self.pointInsideWeatherWidget(px, py)) {
-            if (self.calendar_card_open) self.closeAllCards();
+            if (self.calendar_card_open or self.media_card_open) self.closeAllCards();
             self.toggleWeatherCard();
+            return true;
+        }
+        // Click on the media peek widget toggles the media card.
+        if (self.pointInsideMediaWidget(px, py)) {
+            if (self.calendar_card_open or self.weather_card_open) self.closeAllCards();
+            self.toggleMediaCard();
             return true;
         }
         // Click inside the currently open card:
         // - Calendar: keep open only if a day cell was actually hit.
-        // - Weather: no interactive hit regions yet, so any click inside closes it.
+        // - Weather/Media: no interactive hit regions yet, so any click inside closes it.
         // - Otherwise treat the click as "dismiss the overlay".
         if (self.anyCardOpen() and self.card_box.width > 0 and self.card_box.height > 0) {
             const cbx = @as(f64, @floatFromInt(self.card_box.x));
@@ -1567,6 +1806,9 @@ pub const Tray = struct {
                         return true;
                     }
                     self.closeAllCards();
+                    return true;
+                }
+                if (self.media_card_open and self.handleMediaCardClick(px, py)) {
                     return true;
                 }
                 // weather card (no interactive regions yet)
@@ -2009,6 +2251,107 @@ pub const Tray = struct {
         widget.tree.node.raiseToTop();
     }
 
+    fn drawMediaWidget(self: *Self, widget: *PerOutputMedia) void {
+        const box = self.host.right_peek_box(self.host.ctx, mediaWidgetIndex(self, widget)) orelse {
+            return;
+        };
+        if (box.width <= 0 or box.height <= 0) {
+            return;
+        }
+
+        const style_ = self.host.theme.style;
+        const theme_gen = self.host.theme.generation;
+        const scale = widget.info.scale;
+
+        const peek_hmargin = 2;
+        const peek_vmargin = 4;
+        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
+        const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
+        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
+        const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
+        const pill_y = box.y + box.height - pill_h - peek_vmargin;
+
+        const title = std.mem.sliceTo(&self.media.cached.title, 0);
+        const title_hash: u64 = std.hash.Crc32.hash(title);
+        const redraw = widget.scene_buffer == null or
+            widget.last_w != pill_w or
+            widget.last_h != pill_h or
+            widget.last_x != pill_x or
+            widget.last_y != pill_y or
+            widget.last_scale != scale or
+            widget.last_title_hash != title_hash or
+            widget.last_theme_generation != theme_gen;
+
+        if (!redraw) {
+            widget.tree.node.setPosition(pill_x, pill_y);
+            widget.tree.node.raiseToTop();
+            return;
+        }
+
+        widget.last_w = pill_w;
+        widget.last_h = pill_h;
+        widget.last_x = pill_x;
+        widget.last_y = pill_y;
+        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
+        widget.last_scale = scale;
+        widget.last_title_hash = title_hash;
+        widget.last_theme_generation = theme_gen;
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: media widget buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for media widget", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        c.cairo_save(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        self.media.renderPeek(cr, .{
+            .x = pill_x,
+            .y = pill_y,
+            .width = dev_w,
+            .height = dev_h,
+        }, style_, scale);
+
+        c.cairo_restore(cr);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create media widget buffer: {}", .{err});
+            return;
+        };
+        if (widget.buffer) |old| wlr.Buffer.drop(old);
+        widget.buffer = buffer;
+        if (widget.scene_buffer) |old| old.node.destroy();
+        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create media widget scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            widget.buffer = null;
+            return;
+        };
+        sb.setDestSize(pill_w, pill_h);
+        widget.scene_buffer = sb;
+        widget.tree.node.setPosition(pill_x, pill_y);
+        widget.tree.node.raiseToTop();
+    }
+
     fn updateCard(self: *Self) void {
         const now_us = animation.nowUs();
         const prev = self.last_update_us;
@@ -2112,6 +2455,12 @@ pub const Tray = struct {
             switch (current_mode) {
                 .calendar => self.drawClockCalendarCard(cr, @floatFromInt(w), @floatFromInt(h)),
                 .weather => self.weather.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
+                .media => blk: {
+                    var click: MediaWidget.CardClick = .{};
+                    self.media.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self), &click);
+                    self.media_card_click = click;
+                    break :blk;
+                },
             }
             const DataBuffer = @import("../render/buffer.zig").DataBuffer;
             const buffer = DataBuffer.create(temp, w, h, @intCast(stride)) catch |err| {
@@ -2176,23 +2525,32 @@ pub const Tray = struct {
         }
     }
 
-    const CardMode = enum { calendar, weather };
+    const CardMode = enum { calendar, weather, media };
 
     fn activeCardMode(self: *const Self) CardMode {
         if (self.weather_card_open) return .weather;
+        if (self.media_card_open) return .media;
         return .calendar;
     }
 
     fn setCardCloseDirection(self: *Self, mode: CardMode) void {
         const mag: f32 = self.card_anim.preset.slide_close_px;
-        if (mode == .weather) {
-            // Weather widget lives at the top-left; close back toward it.
-            self.card_close_dx = -mag;
-            self.card_close_dy = -mag;
-        } else {
-            // Calendar widget lives at the top-right; close back toward it.
-            self.card_close_dx = mag;
-            self.card_close_dy = -mag;
+        switch (mode) {
+            .weather => {
+                // Weather widget lives at the top-left; close back toward it.
+                self.card_close_dx = -mag;
+                self.card_close_dy = -mag;
+            },
+            .media => {
+                // Media widget lives at the bottom-right; close back toward it.
+                self.card_close_dx = mag;
+                self.card_close_dy = mag;
+            },
+            .calendar => {
+                // Calendar widget lives at the top-right; close back toward it.
+                self.card_close_dx = mag;
+                self.card_close_dy = -mag;
+            },
         }
     }
 

@@ -86,6 +86,8 @@ const KeyboardDevice = struct {
                 if (handleAction(server, a)) return;
             }
         }
+        // Media card consumes non-mod4 navigation/typing keys while open.
+        if (server.tray.handleMediaCardKey(sym)) return;
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 
@@ -117,6 +119,10 @@ const KeyboardDevice = struct {
             },
             .tray_activate => {
                 if (server.tray.isOpen()) server.tray.activateSelected() else server.tray.toggle();
+                return true;
+            },
+            .media_card_toggle => {
+                server.tray.toggleMediaCard();
                 return true;
             },
             .next_animation => {

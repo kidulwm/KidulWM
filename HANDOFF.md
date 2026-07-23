@@ -6,13 +6,12 @@ Auto-regenerate friendly. Manually update only the **Current focus** and **Runti
 
 | Item | Value |
 |---|---|
-| Branch | `corner-bg-fix` |
-| Head | `6763441` |
+| Branch | `clean-corners-02251c9` |
+| Head | `02251c9` |
 | Last stable tag | `greatest-yet` (`75872af`) |
-| Work VM | `cachyos-kidulwm-cardtest` |
-| SSH port | `2225` |
+| Work VM | `fresh-one` |
+| SSH port | `2260` |
 | Active skills | `kidulwm-v2` (sub-skills: chrome, layout, debug-vm, input, wayland) |
-| Legacy fallback | `kidulWM-development` (untouched) |
 
 ## Quick links
 
@@ -22,21 +21,28 @@ Auto-regenerate friendly. Manually update only the **Current focus** and **Runti
 - `docs/sessions/` — per-session distilled summaries.
 - `docs/log/` — per-feature/milestone notes.
 - `KNOWN_CMDS.md` — command reference.
+- `docs/log/2026-07-22-media-player-constraints.md` — media widget size/position rules.
 
 ## Current focus
 
-- Peek chrome: theme-aware border width / corner style. Background is clipped strictly inside border.
-- Chamfer pivot: `corner_style = "chamfer"` in `config/theme.toml` should now work for peeks with no code changes.
+- Media widget: bottom-right peek + card with mpv IPC backend.
+- Music card renders prev/play/next controls and "now playing" label under the slider.
+- mpv installed on `fresh-one`; FLAC playback confirmed.
+- Next: dual-purpose search/now-playing line, keyboard-navigable finder overlay, tabs for video/slideshow, spectrum-driven double-helix, mpv attribution.
 
 ## How to resume
 
 1. `cd /home/dad/dev/KidulWM`
 2. `git status`
 3. `zig build`
-4. For VM deploy, see `kidulwm-debug-vm` skill or `KNOWN_CMDS.md`.
+4. Deploy to `fresh-one`:
+   - `scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm zig-out/bin/kidulwm zig-out/bin/kidulwm-control kidul@127.0.0.1:/tmp/`
+   - `ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1`
+   - `sudo systemctl stop kidulwm && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm`
 
 ## Recent log entries
 
+- `docs/log/2026-07-22-media-player-constraints.md`
 - `docs/log/2026-07-15-peek-glass-final.md`
 - `docs/log/2026-07-15-skill-split.md`
 - `docs/log/2026-07-15-dynamic-handoff.md`
