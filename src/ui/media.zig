@@ -32,7 +32,7 @@ pub const MediaCard = struct {
     }
 };
 
-pub const MediaCategory = enum { movies, music, pictures };
+pub const MediaCategory = enum { movies, music, tv, pictures, shop };
 
 pub const ControlFocus = enum { category, search, result, slider };
 
@@ -70,11 +70,13 @@ fn fileExtensionIndex(name: []const u8, category: MediaCategory) bool {
                    std.mem.eql(u8, ext_l, ".avi") or
                    std.mem.eql(u8, ext_l, ".mov") or
                    std.mem.eql(u8, ext_l, ".webm"),
+        .tv => std.mem.eql(u8, ext_l, ".m3u") or std.mem.eql(u8, ext_l, ".m3u8"),
         .pictures => std.mem.eql(u8, ext_l, ".jpg") or
                      std.mem.eql(u8, ext_l, ".jpeg") or
                      std.mem.eql(u8, ext_l, ".png") or
                      std.mem.eql(u8, ext_l, ".webp") or
                      std.mem.eql(u8, ext_l, ".gif"),
+        .shop => false,
     };
 }
 
@@ -106,12 +108,16 @@ fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
     const roots = switch (category) {
         .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/sda_backup/Jelly/Music" },
         .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies" },
+        .tv => &[_][]const u8{},
         .pictures => &[_][]const u8{ "/home/kidul/Pictures", "/home/kidul/Images" },
+        .shop => &[_][]const u8{},
     };
     const exts = switch (category) {
         .music => &[_][]const u8{ ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav" },
         .movies => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm" },
+        .tv => &[_][]const u8{ ".m3u", ".m3u8" },
         .pictures => &[_][]const u8{ ".jpg", ".jpeg", ".png", ".webp", ".gif" },
+        .shop => &[_][]const u8{},
     };
 
     var count: usize = 0;
@@ -133,6 +139,7 @@ fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
     return count;
 }
 fn fillSamples(category: MediaCategory, entries: []LibraryEntry) usize {
+    if (category == .tv or category == .shop) return 0;
     const titles = switch (category) {
         .music => &[_][]const u8{
             "Midnight City", "The Night We Met", "Weightless", "Clair de Lune", "Experience",
@@ -152,6 +159,7 @@ fn fillSamples(category: MediaCategory, entries: []LibraryEntry) usize {
             "Beach Day", "Mountain Hike", "Brunch", "Graduation", "Pool Party",
             "Road Trip", "Camping", "New Puppy", "Garden", "Selfie",
         },
+        .tv, .shop => &[_][]const u8{},
     };
     const artists = switch (category) {
         .music => &[_][]const u8{
@@ -172,6 +180,7 @@ fn fillSamples(category: MediaCategory, entries: []LibraryEntry) usize {
             "Album", "Album", "Album", "Album", "Album",
             "Album", "Album", "Album", "Album", "Album",
         },
+        .tv, .shop => &[_][]const u8{},
     };
     const count = @min(titles.len, entries.len);
     for (0..count) |i| {
@@ -196,7 +205,9 @@ fn categoryLabel(cat: MediaCategory) [:0]const u8 {
     return switch (cat) {
         .movies => "Movies",
         .music => "Music",
-        .pictures => "MyPics",
+        .tv => "TV",
+        .pictures => "Pics",
+        .shop => "Shop",
     };
 }
 
@@ -226,12 +237,18 @@ fn getLibrary(category: MediaCategory) []const LibraryEntry {
             }
             return g_movies[0..g_movies_count];
         },
+        .tv => {
+            return &[_]LibraryEntry{};
+        },
         .pictures => {
             if (!g_pictures_ready) {
                 g_pictures_count = scanCategory(.pictures, &g_pictures);
                 g_pictures_ready = true;
             }
             return g_pictures[0..g_pictures_count];
+        },
+        .shop => {
+            return &[_]LibraryEntry{};
         },
     }
 }
@@ -244,7 +261,9 @@ fn mediaCategoryFromIndex(i: usize) MediaCategory {
     return switch (i) {
         0 => .movies,
         1 => .music,
-        2 => .pictures,
+        2 => .tv,
+        3 => .pictures,
+        4 => .shop,
         else => .music,
     };
 }
@@ -272,6 +291,8 @@ pub const MediaWidget = struct {
     grid_cols: usize = 5,
 
     state_generation: u32 = 0,
+    slider_reveal: f64 = 0.0,
+    slider_reveal_target: f64 = 0.0,
 
     selected_result: usize = 0,
     visible_result_count: usize = 0,
@@ -324,6 +345,7 @@ pub const MediaWidget = struct {
     pub fn focusControl(self: *MediaWidget, ctl: ControlFocus) void {
         self.focus = ctl;
         self.search_focused = ctl == .search;
+        self.slider_reveal_target = if (ctl == .slider) 1.0 else 0.0;
         if (ctl != .slider) self.slider_hover = false;
         if (self.search_focused) {
             self.search_caret = self.search_len;
@@ -336,13 +358,23 @@ pub const MediaWidget = struct {
         self.slider_hover = true;
     }
 
+    pub fn stepSliderReveal(self: *MediaWidget, dt: f64) void {
+        const prev_reveal = self.slider_reveal;
+        if (self.slider_reveal < self.slider_reveal_target) {
+            self.slider_reveal = @min(self.slider_reveal_target, self.slider_reveal + dt * 10.0);
+        } else if (self.slider_reveal > self.slider_reveal_target) {
+            self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * 10.0);
+        }
+        if (self.slider_reveal != prev_reveal) self.bumpGeneration();
+    }
+
     fn bumpGeneration(self: *MediaWidget) void {
         self.state_generation +%= 1;
     }
 
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
         const idx: i32 = @intCast(categoryIndex(self.category));
-        const new_idx = @mod(idx + delta, 3);
+        const new_idx = @mod(idx + delta, 5);
         self.category = mediaCategoryFromIndex(@intCast(new_idx));
         self.selected_result = 0;
         self.list_scroll_offset = 0;
@@ -454,6 +486,33 @@ pub const MediaWidget = struct {
         const first = std.ascii.toUpper(title[0]);
         if (first >= 'A' and first <= 'Z') return @intCast(first - 'A');
         return 0;
+    }
+
+    pub fn resultGridGeometry(self: *const MediaWidget) struct { cols: usize, total_rows: usize, selected_row: usize, selected_col: usize } {
+        const cols = self.grid_cols;
+        const library = getLibrary(self.category);
+        const total_rows = if (library.len == 0) 0 else (library.len + cols - 1) / cols;
+        const selected_row = self.selected_result / cols;
+        const selected_col = self.selected_result % cols;
+        return .{ .cols = cols, .total_rows = total_rows, .selected_row = selected_row, .selected_col = selected_col };
+    }
+
+    pub fn atResultTopRow(self: *const MediaWidget) bool {
+        const g = self.resultGridGeometry();
+        return g.total_rows == 0 or g.selected_row == 0;
+    }
+
+    pub fn isResultLastColumn(self: *const MediaWidget) bool {
+        const g = self.resultGridGeometry();
+        if (g.total_rows == 0) return false;
+        const library = getLibrary(self.category);
+        const row = g.selected_row;
+        const row_items = if (row == g.total_rows - 1)
+            library.len - row * g.cols
+        else
+            g.cols;
+        if (row_items == 0) return false;
+        return g.selected_col == row_items - 1;
     }
 
     pub fn focusSearch(self: *MediaWidget) void {
@@ -874,8 +933,8 @@ pub const MediaWidget = struct {
         search_h: i32 = 0,
         cat_y: i32 = 0,
         cat_h: i32 = 0,
-        cat_x: [3]i32 = .{ 0, 0, 0 },
-        cat_w: [3]i32 = .{ 0, 0, 0 },
+        cat_x: [5]i32 = .{ 0, 0, 0, 0, 0 },
+        cat_w: [5]i32 = .{ 0, 0, 0, 0, 0 },
         list_x: i32 = 0,
         list_y: i32 = 0,
         list_w: i32 = 0,
@@ -1029,11 +1088,64 @@ pub const MediaWidget = struct {
         const pad_y: f64 = 14.0 * scale_f;
         const content_w = w_d - 2.0 * pad_x;
 
+        // ---- Category pills ----
+        const pill_h = @max(28.0 * scale_f, 24.0 * scale_f);
+        const pill_gap = 12.0 * scale_f;
+        const pill_w = (content_w - 4.0 * pill_gap) / 5.0;
+        const cat_y = pad_y;
+        const total_pill_w = pill_w * 5.0 + pill_gap * 4.0;
+        const pill_start_x = pad_x + (content_w - total_pill_w) * 0.5;
+        const search_y = cat_y + pill_h + 12.0 * scale_f;
+        const pill_r = 6.0 * scale_f;
+
+        const cats = [_]MediaCategory{ .movies, .music, .tv, .pictures, .shop };
+        for (cats, 0..) |cat, i| {
+            const px = pill_start_x + @as(f64, @floatFromInt(i)) * (pill_w + pill_gap);
+            const is_selected = self.category == cat;
+            const is_focused = self.focus == .category and is_selected;
+
+            if (out_click) |click| {
+                click.cat_y = @intFromFloat(cat_y);
+                click.cat_h = @intFromFloat(pill_h);
+                click.cat_x[i] = @intFromFloat(px);
+                click.cat_w[i] = @intFromFloat(pill_w);
+            }
+
+            roundedRect(cr, px, cat_y, pill_w, pill_h, pill_r);
+            if (is_focused) {
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.18);
+                c.cairo_fill_preserve(cr);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
+                c.cairo_set_line_width(cr, 2.0);
+                c.cairo_stroke(cr);
+            } else if (is_selected) {
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.10);
+                c.cairo_fill_preserve(cr);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.65);
+                c.cairo_set_line_width(cr, 1.0);
+                c.cairo_stroke(cr);
+            } else {
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.04);
+                c.cairo_fill_preserve(cr);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.22);
+                c.cairo_set_line_width(cr, 1.0);
+                c.cairo_stroke(cr);
+            }
+
+            const label = categoryLabel(cat);
+            const pill_font = @as(f64, style_.font_size_s) * scale_f;
+            c.cairo_set_font_size(cr, pill_font);
+            var ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, label.ptr, &ext);
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], if (is_selected) 0.95 else 0.60);
+            c.cairo_move_to(cr, px + (pill_w - ext.width) * 0.5, cat_y + pill_h * 0.5 + pill_font * 0.30);
+            c.cairo_show_text(cr, label.ptr);
+        }
+
         // ---- Search bar (shortened) ----
         const search_h = @max(34.0 * scale_f, 28.0 * scale_f);
-        const search_y = pad_y;
-        const search_w = content_w * 0.65;
-        const search_x = pad_x + (content_w - search_w) * 0.5;
+        const search_w = pill_w * 3.0 + pill_gap * 2.0;
+        const search_x = pill_start_x + pill_w + pill_gap;
         const search_r = 6.0 * scale_f;
 
         if (out_click) |click| {
@@ -1101,69 +1213,20 @@ pub const MediaWidget = struct {
             self.show_caret = true;
         }
 
-        // ---- Category pills ----
-        const pill_h = @max(28.0 * scale_f, 24.0 * scale_f);
-        const pill_gap = 12.0 * scale_f;
-        const pill_w = (content_w - 2.0 * pill_gap) / 3.0;
-        const cat_y = search_y + search_h + 12.0 * scale_f;
-        const total_pill_w = pill_w * 3.0 + pill_gap * 2.0;
-        const pill_start_x = pad_x + (content_w - total_pill_w) * 0.5;
-        const pill_r = 6.0 * scale_f;
-
-        const cats = [_]MediaCategory{ .movies, .music, .pictures };
-        for (cats, 0..) |cat, i| {
-            const px = pill_start_x + @as(f64, @floatFromInt(i)) * (pill_w + pill_gap);
-            const is_selected = self.category == cat;
-            const is_focused = self.focus == .category and is_selected;
-
-            if (out_click) |click| {
-                click.cat_y = @intFromFloat(cat_y);
-                click.cat_h = @intFromFloat(pill_h);
-                click.cat_x[i] = @intFromFloat(px);
-                click.cat_w[i] = @intFromFloat(pill_w);
-            }
-
-            roundedRect(cr, px, cat_y, pill_w, pill_h, pill_r);
-            if (is_focused) {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.18);
-                c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
-                c.cairo_set_line_width(cr, 2.0);
-                c.cairo_stroke(cr);
-            } else if (is_selected) {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.10);
-                c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.65);
-                c.cairo_set_line_width(cr, 1.0);
-                c.cairo_stroke(cr);
-            } else {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.04);
-                c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.22);
-                c.cairo_set_line_width(cr, 1.0);
-                c.cairo_stroke(cr);
-            }
-
-            const label = categoryLabel(cat);
-            c.cairo_set_font_size(cr, @as(f64, style_.font_size_s) * scale_f);
-            var ext: c.cairo_text_extents_t = undefined;
-            c.cairo_text_extents(cr, label.ptr, &ext);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], if (is_selected) 0.95 else 0.60);
-            c.cairo_move_to(cr, px + (pill_w - ext.width) * 0.5, cat_y + pill_h * 0.5 + search_font * 0.30);
-            c.cairo_show_text(cr, label.ptr);
-        }
-
         // ---- Result grid + scroller ----
-        const cat_bottom = cat_y + pill_h + 10.0 * scale_f;
+        const list_y = search_y + search_h + 10.0 * scale_f;
         const bar_w: f64 = 5.0 * scale_f;
         const scroller_track: f64 = 30.0 * scale_f; // fixed right-side channel for the scroller and letters
-        const grid_gap: f64 = 34.0 * scale_f; // matches inter-tile gap
-        const border_inset: f64 = 10.0 * scale_f;
-        const list_x = pad_x + grid_gap - border_inset;
-        const list_w = content_w - grid_gap + border_inset - scroller_track;
-        const list_y = cat_bottom;
+        const cols = self.grid_cols;
+        const base_gap: f64 = pad_x; // edge gap matches content margin
+        const min_gap: f64 = 6.0 * scale_f;
+        const tile_gap: f64 = @max(min_gap, base_gap - (scroller_track * self.slider_reveal) / @as(f64, @floatFromInt(cols + 1)));
+        const tile_w = (content_w - @as(f64, @floatFromInt(cols + 1)) * base_gap) / @as(f64, @floatFromInt(cols));
+        const list_x = pad_x + tile_gap;
+        const list_w = content_w - 2.0 * tile_gap;
         const list_h = h_d - list_y - pad_y;
-        const channel_x = w_d - pad_x - scroller_track;
+        const channel_x_open = w_d - pad_x - scroller_track;
+        const channel_x = channel_x_open + (1.0 - self.slider_reveal) * (scroller_track + pad_x);
         const channel_cx = channel_x + scroller_track * 0.5;
 
         if (out_click) |click| {
@@ -1180,9 +1243,7 @@ pub const MediaWidget = struct {
             click.letters_w = click.scroll_w;
         }
 
-        const cols = self.grid_cols;
-        const tile_gap: f64 = grid_gap;
-        const tile_w = (list_w - @as(f64, @floatFromInt(cols - 1)) * tile_gap) / @as(f64, @floatFromInt(cols));
+
         const label_h = 34.0 * scale_f;
         
         
@@ -1194,6 +1255,31 @@ pub const MediaWidget = struct {
         const rows_visible: usize = if (row_h <= 0.0 or list_h <= 0.0) 0 else @max(2, @as(usize, @intFromFloat(@floor(list_h / row_h))));
         const library = getLibrary(self.category);
         const total_rows = (library.len + cols - 1) / cols;
+        if (library.len == 0) {
+            const msg = switch (self.category) {
+                .tv => "Live TV — Coming Soon",
+                .shop => "Artist Shop — Coming Soon",
+                else => "No items found",
+            };
+            c.cairo_set_font_size(cr, label_font * 1.3);
+            var ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, msg.ptr, &ext);
+            const mx = list_x + (list_w - ext.width) * 0.5;
+            const my = list_y + list_h * 0.5;
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.65);
+            c.cairo_move_to(cr, mx, my);
+            c.cairo_show_text(cr, msg.ptr);
+            c.cairo_set_font_size(cr, label_font);
+            const sub = switch (self.category) {
+                .tv => "Tuner + aerial support on the way",
+                .shop => "Buy & sell media directly in your player",
+                else => "",
+            };
+            c.cairo_text_extents(cr, sub.ptr, &ext);
+            c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.55);
+            c.cairo_move_to(cr, list_x + (list_w - ext.width) * 0.5, my + label_font * 1.6);
+            c.cairo_show_text(cr, sub.ptr);
+        }
         self.visible_result_count = rows_visible * cols;
         self.max_scroll_offset = if (total_rows > rows_visible) total_rows - rows_visible else 0;
         if (self.list_scroll_offset > self.max_scroll_offset) self.list_scroll_offset = self.max_scroll_offset;
@@ -1217,8 +1303,8 @@ pub const MediaWidget = struct {
             const first_idx = grid_row * cols;
             const last_idx = @min(first_idx + cols, library.len);
             const tiles_in_row = last_idx - first_idx;
-            const row_content_w = @as(f64, @floatFromInt(tiles_in_row)) * tile_w + @as(f64, @floatFromInt(tiles_in_row - 1)) * tile_gap;
-            const row_start_x = list_x + (list_w - row_content_w) * 0.5;
+            _ = tiles_in_row;
+            const row_start_x = list_x;
             var col_i: usize = 0;
             while (col_i < cols) : (col_i += 1) {
                 const idx = grid_row * cols + col_i;
@@ -1313,8 +1399,8 @@ pub const MediaWidget = struct {
         // ---- A-Z 5-letter scrolling selector on the vertical slider ----
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const alpha_font_base = @as(f64, style_.font_size_s) * scale_f;
-        const strip_x = channel_x + 2.0 * scale_f;
         const strip_w = scroller_track - 4.0 * scale_f;
+        const strip_x = channel_cx - strip_w * 0.5;
         const strip_y = list_y;
         const strip_h = list_h;
 

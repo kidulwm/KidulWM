@@ -836,6 +836,8 @@ pub const Tray = struct {
 
         const dt = if (prev == 0) 0.0 else @as(f64, @floatFromInt(now_us - prev)) / 1_000_000.0;
 
+        self.media.stepSliderReveal(dt);
+
         // Use the shared tray preset: snap open quickly, ease closed slowly.
         self.tray_anim.setTarget(if (self.open or self.pinned or self.hovered) 1.0 else 0.0);
         _ = self.tray_anim.step(dt);
@@ -1478,13 +1480,15 @@ pub const Tray = struct {
         // Category pills.
         if (ly >= @as(f64, @floatFromInt(click.cat_y)) and
             ly <= @as(f64, @floatFromInt(click.cat_y + click.cat_h))) {
-            for (0..3) |i| {
+            for (0..5) |i| {
                 if (lx >= @as(f64, @floatFromInt(click.cat_x[i])) and
                     lx <= @as(f64, @floatFromInt(click.cat_x[i] + click.cat_w[i]))) {
                     self.media.category = switch (i) {
                         0 => .movies,
                         1 => .music,
-                        2 => .pictures,
+                        2 => .tv,
+                        3 => .pictures,
+                        4 => .shop,
                         else => .music,
                     };
                     self.media.focusControl(.category);
@@ -1665,7 +1669,7 @@ pub const Tray = struct {
                     .category => self.media.moveCategory(-1),
                     .search => self.media.moveSearchCaret(-1),
                     .result => self.media.moveResultSelection(-1),
-                    .slider => self.media.focusControl(.category),
+                    .slider => self.media.focusControl(.result),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
@@ -1673,7 +1677,13 @@ pub const Tray = struct {
                 switch (focused) {
                     .category => self.media.moveCategory(1),
                     .search => self.media.moveSearchCaret(1),
-                    .result => self.media.moveResultSelection(1),
+                    .result => {
+                        if (self.media.isResultLastColumn()) {
+                            self.media.focusSlider();
+                        } else {
+                            self.media.moveResultSelection(1);
+                        }
+                    },
                     .slider => {},
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
@@ -1682,7 +1692,13 @@ pub const Tray = struct {
                 switch (focused) {
                     .category => {},
                     .search => self.media.focusControl(.category),
-                    .result => self.media.moveResultVertical(-1),
+                    .result => {
+                        if (self.media.atResultTopRow()) {
+                            self.media.focusControl(.search);
+                        } else {
+                            self.media.moveResultVertical(-1);
+                        }
+                    },
                     .slider => self.media.moveSliderVertical(-1),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
