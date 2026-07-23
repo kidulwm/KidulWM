@@ -1579,7 +1579,7 @@ pub const Tray = struct {
     }
 
     pub fn handleMediaCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
-        std.log.info("KidulWM media key sym={} focus={s}", .{@intFromEnum(sym), @tagName(self.media.focus)});
+        _ = @import("std");
         if (!self.media_card_open) return false;
         const xkb = @import("xkbcommon");
         const focused = self.media.focus;

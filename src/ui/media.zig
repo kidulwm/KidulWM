@@ -104,9 +104,9 @@ fn execFind(command: [*:0]const u8, entries: []LibraryEntry) usize {
 
 fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
     const roots = switch (category) {
-        .music => &[_][]const u8{ "$HOME/Music", "/mnt/sda_backup/Jelly/Music" },
-        .movies => &[_][]const u8{ "$HOME/Movies", "$HOME/Videos", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies" },
-        .pictures => &[_][]const u8{ "$HOME/Pictures", "$HOME/Images" },
+        .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/sda_backup/Jelly/Music" },
+        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies" },
+        .pictures => &[_][]const u8{ "/home/kidul/Pictures", "/home/kidul/Images" },
     };
     const exts = switch (category) {
         .music => &[_][]const u8{ ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav" },
@@ -294,6 +294,7 @@ pub const MediaWidget = struct {
         if (self.card.open) {
             self.focus = .search;
             self.search_focused = true;
+            self.slider_hover = false;
             self.selected_result = 0;
             self.list_scroll_offset = 0;
             self.clearSearch();
@@ -305,6 +306,7 @@ pub const MediaWidget = struct {
         if (open) {
             self.focus = .search;
             self.search_focused = true;
+            self.slider_hover = false;
             self.selected_result = 0;
             self.list_scroll_offset = 0;
             self.clearSearch();
@@ -318,6 +320,7 @@ pub const MediaWidget = struct {
     pub fn focusControl(self: *MediaWidget, ctl: ControlFocus) void {
         self.focus = ctl;
         self.search_focused = ctl == .search;
+        if (ctl != .slider) self.slider_hover = false;
         if (self.search_focused) {
             self.search_caret = self.search_len;
         }
@@ -342,6 +345,7 @@ pub const MediaWidget = struct {
         var idx: i32 = @intCast(self.selected_result);
         idx = @mod(idx + delta, @as(i32, @intCast(library.len)));
         self.selected_result = @intCast(idx);
+        std.log.info("KidulWM media move horizontal: selected={} len={}", .{self.selected_result, library.len});
         self.adjustScrollToSelection();
     }
 
@@ -351,10 +355,25 @@ pub const MediaWidget = struct {
         if (library.len == 0) return;
         const total_rows: i32 = @intCast((library.len + @as(usize, @intCast(cols)) - 1) / @as(usize, @intCast(cols)));
         var row: i32 = @intCast(self.selected_result / @as(usize, @intCast(cols)));
-        const col: i32 = @intCast(self.selected_result % @as(usize, @intCast(cols)));
-        row = @mod(row + rows, total_rows);
-        const new_idx = row * cols + col;
-        self.selected_result = @intCast(@mod(new_idx, @as(i32, @intCast(library.len))));
+        var col: i32 = @intCast(self.selected_result % @as(usize, @intCast(cols)));
+        const new_row_uncapped: i32 = row + rows;
+        if (new_row_uncapped < 0) {
+            // Wrapping up from top row: land on same column, last row (clamp to last item if row is partial).
+            row = total_rows - 1;
+            const last_row_items: i32 = @intCast(library.len - @as(usize, @intCast(row)) * @as(usize, @intCast(cols)));
+            if (col >= last_row_items) col = last_row_items - 1;
+        } else if (new_row_uncapped >= total_rows) {
+            // Wrapping down from bottom row: land on same column, first row.
+            row = 0;
+        } else {
+            row = new_row_uncapped;
+            const row_items: i32 = if (row == total_rows - 1)
+                @intCast(library.len - @as(usize, @intCast(row)) * @as(usize, @intCast(cols)))
+            else
+                cols;
+            if (col >= row_items) col = row_items - 1;
+        }
+        self.selected_result = @intCast(row * cols + col);
         self.adjustScrollToSelection();
     }
 
@@ -1119,25 +1138,29 @@ pub const MediaWidget = struct {
 
         // ---- Result grid + scroller ----
         const cat_bottom = cat_y + pill_h + 10.0 * scale_f;
-        const scroller_w: f64 = 6.0 * scale_f;
-        const scroller_track: f64 = 26.0 * scale_f; // fixed right-side channel for the scroller
+        const bar_w: f64 = 5.0 * scale_f;
+        const scroller_track: f64 = 30.0 * scale_f; // fixed right-side channel for the scroller and letters
         const grid_gap: f64 = 34.0 * scale_f; // matches inter-tile gap
         const border_inset: f64 = 10.0 * scale_f;
         const list_x = pad_x + grid_gap - border_inset;
-        const list_w = content_w - grid_gap + border_inset - scroller_track - scroller_w;
+        const list_w = content_w - grid_gap + border_inset - scroller_track;
         const list_y = cat_bottom;
         const list_h = h_d - list_y - pad_y;
+        const channel_x = w_d - pad_x - scroller_track;
+        const channel_cx = channel_x + scroller_track * 0.5;
 
         if (out_click) |click| {
             click.list_x = @intFromFloat(list_x);
             click.list_y = @intFromFloat(list_y);
             click.list_w = @intFromFloat(list_w);
             click.list_h = @intFromFloat(list_h);
-            click.scroll_x = @intFromFloat(w_d - pad_x - scroller_w);
+            click.scroll_x = @intFromFloat(channel_x);
             click.scroll_y = @intFromFloat(list_y);
-            click.scroll_w = @intFromFloat(scroller_w);
+            click.scroll_w = @intFromFloat(scroller_track);
             click.scroll_h = @intFromFloat(list_h);
             click.scroll_offset_at_render = self.list_scroll_offset;
+            click.letters_x = click.scroll_x;
+            click.letters_w = click.scroll_w;
         }
 
         const cols = self.grid_cols;
@@ -1192,6 +1215,17 @@ pub const MediaWidget = struct {
                     focus_drawn = true;
                 }
 
+                if (self.focus == .result and self.selected_result == idx) {
+                    const sel_pad = 4.0 * scale_f;
+                    c.cairo_new_path(cr);
+                    roundedRect(cr, tx - sel_pad, ty - sel_pad, tile_w + 2.0 * sel_pad, tile_h + 2.0 * sel_pad, 10.0 * scale_f);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35);
+                    c.cairo_fill_preserve(cr);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
+                    c.cairo_set_line_width(cr, 3.0);
+                    c.cairo_stroke(cr);
+                }
+
                 renderTileArt(cr, tx, ty, tile_w, art_h, entry, border);
 
                 c.cairo_set_font_size(cr, label_font);
@@ -1236,11 +1270,10 @@ pub const MediaWidget = struct {
         }
 
         // ---- Vertical slider scroller (weather-card style) ----
-        const track_x = w_d - pad_x - scroller_w;
         const track_h = list_h;
-        const track_r = scroller_w * 0.5;
+        const track_r = bar_w * 0.5;
 
-        roundedRect(cr, track_x, list_y, scroller_w, track_h, track_r);
+        roundedRect(cr, channel_cx - bar_w * 0.5, list_y, bar_w, track_h, track_r);
         c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.12);
         c.cairo_fill_preserve(cr);
         c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35);
@@ -1248,10 +1281,10 @@ pub const MediaWidget = struct {
         c.cairo_stroke(cr);
 
         const ratio = if (self.max_scroll_offset == 0) 0.0 else @as(f64, @floatFromInt(self.list_scroll_offset)) / @as(f64, @floatFromInt(self.max_scroll_offset));
-        const knob_r = @max(scroller_w * 1.5, 10.0 * scale_f);
-        const usable_h = track_h - scroller_w;
-        const knob_cx = track_x + scroller_w * 0.5;
-        const knob_cy = list_y + scroller_w * 0.5 + usable_h * ratio;
+        const knob_r = @max(bar_w * 1.5, 10.0 * scale_f);
+        const usable_h = track_h - bar_w;
+        const knob_cx = channel_cx;
+        const knob_cy = list_y + bar_w * 0.5 + usable_h * ratio;
         c.cairo_new_path(cr);
         c.cairo_arc(cr, knob_cx, knob_cy, knob_r, 0, 2.0 * std.math.pi);
         c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.9);
@@ -1263,19 +1296,17 @@ pub const MediaWidget = struct {
         // ---- A-Z 5-letter scrolling selector on the vertical slider ----
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const alpha_font_base = @as(f64, style_.font_size_s) * scale_f;
-        const strip_x = track_x - 4.0 * scale_f;
+        const strip_x = channel_x + 2.0 * scale_f;
         const strip_w = scroller_track - 4.0 * scale_f;
         const strip_y = list_y;
         const strip_h = list_h;
 
         if (out_click) |click| {
-            click.letters_x = @intFromFloat(strip_x);
             click.letters_y = @intFromFloat(strip_y);
-            click.letters_w = @intFromFloat(strip_w);
             click.letters_h = @intFromFloat(strip_h);
         }
 
-        const show_all = self.slider_hover;
+        const show_all = self.slider_hover or self.focus == .slider;
         const center_idx = self.currentSliderLetterIndex();
 
         const window_size: usize = 5;
