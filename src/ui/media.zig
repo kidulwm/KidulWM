@@ -34,7 +34,7 @@ pub const MediaCard = struct {
 
 pub const MediaCategory = enum { movies, music, pictures };
 
-pub const ControlFocus = enum { category, search, result };
+pub const ControlFocus = enum { category, search, result, slider };
 
 const LibraryEntry = struct {
     title: [:0]u8,
@@ -275,6 +275,7 @@ pub const MediaWidget = struct {
     visible_result_count: usize = 0,
     list_scroll_offset: usize = 0,
     max_scroll_offset: usize = 0,
+    slider_hover: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) MediaWidget {
         const ipc = "/run/user/1000/kidulwm-mpv.sock";
@@ -291,20 +292,22 @@ pub const MediaWidget = struct {
     pub fn toggleCard(self: *MediaWidget) void {
         self.card.toggle();
         if (self.card.open) {
-            self.focus = .category;
-            self.search_focused = false;
+            self.focus = .search;
+            self.search_focused = true;
             self.selected_result = 0;
             self.list_scroll_offset = 0;
+            self.clearSearch();
         }
     }
 
     pub fn setCardOpen(self: *MediaWidget, open: bool) void {
         self.card.open = open;
         if (open) {
-            self.focus = .category;
-            self.search_focused = false;
+            self.focus = .search;
+            self.search_focused = true;
             self.selected_result = 0;
             self.list_scroll_offset = 0;
+            self.clearSearch();
         }
     }
 
@@ -318,6 +321,11 @@ pub const MediaWidget = struct {
         if (self.search_focused) {
             self.search_caret = self.search_len;
         }
+    }
+
+    pub fn focusSlider(self: *MediaWidget) void {
+        self.focusControl(.slider);
+        self.slider_hover = true;
     }
 
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
@@ -388,6 +396,33 @@ pub const MediaWidget = struct {
         }
         self.selected_result = idx;
         self.adjustScrollToSelection();
+    }
+
+    pub fn jumpToSliderPosition(self: *MediaWidget, ratio: f64) void {
+        const library = getLibrary(self.category);
+        if (library.len == 0) return;
+        const clamped = @max(0.0, @min(1.0, ratio));
+        const letters: []const u8 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const idx = @min(letters.len - 1, @as(usize, @intFromFloat(@floor(clamped * @as(f64, @floatFromInt(letters.len))))));
+        self.jumpToLetter(letters[idx]);
+    }
+
+    pub fn moveSliderVertical(self: *MediaWidget, letters_delta: i32) void {
+        const letters: []const u8 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const letter_idx: i32 = @intCast(self.currentSliderLetterIndex());
+        const new_letter_idx = @mod(letter_idx + letters_delta, @as(i32, @intCast(letters.len)));
+        self.jumpToLetter(letters[@intCast(new_letter_idx)]);
+    }
+
+    pub fn currentSliderLetterIndex(self: *const MediaWidget) usize {
+        const library = getLibrary(self.category);
+        if (library.len == 0) return 0;
+        if (self.selected_result >= library.len) return 0;
+        const title = std.mem.sliceTo(library[self.selected_result].title, 0);
+        if (title.len == 0) return 0;
+        const first = std.ascii.toUpper(title[0]);
+        if (first >= 'A' and first <= 'Z') return @intCast(first - 'A');
+        return 0;
     }
 
     pub fn focusSearch(self: *MediaWidget) void {
@@ -1220,7 +1255,7 @@ pub const MediaWidget = struct {
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
 
-        // ---- A-Z alphabet quick-jump strip ----
+        // ---- A-Z alphabet quick-jump strip (hover reveals all) ----
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const alpha_font = @as(f64, style_.font_size_s) * 0.78 * scale_f;
         const strip_x = w_d - pad_x - scroller_track + 4.0 * scale_f;
@@ -1235,15 +1270,34 @@ pub const MediaWidget = struct {
             click.letters_h = @intFromFloat(strip_h);
         }
 
+        const show_all = self.slider_hover;
+        const current_letter_idx = if (show_all) self.currentSliderLetterIndex() else 0;
         c.cairo_set_font_size(cr, alpha_font);
         const step_h = strip_h / @as(f64, @floatFromInt(letters.len));
+        const sparse_step: usize = 4; // show every 4th letter by default
         for (letters, 0..) |ch, i| {
+            const is_sparse = !show_all and (i % sparse_step == 0);
+            const is_current = show_all and i == current_letter_idx;
+            if (!show_all and !is_sparse and !is_current) continue;
+
             const ly = strip_y + @as(f64, @floatFromInt(i)) * step_h + step_h * 0.5 + alpha_font * 0.35;
             const lbuf = [1:0]u8{ch};
             var lex: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, &lbuf, &lex);
             const lx = strip_x + (strip_w - lex.width) * 0.5;
-            c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.60);
+
+            if (is_current) {
+                // Highlight current letter in the slider
+                const pad = 2.0 * scale_f;
+                c.cairo_new_path(cr);
+                c.cairo_rectangle(cr, lx - pad, ly - alpha_font - pad, lex.width + pad * 2.0, alpha_font + pad * 2.0);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35);
+                c.cairo_fill(cr);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
+            } else {
+                c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], if (show_all) 0.70 else 0.60);
+            }
+
             c.cairo_move_to(cr, lx, ly);
             c.cairo_show_text(cr, &lbuf);
         }

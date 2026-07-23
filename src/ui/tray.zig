@@ -1543,17 +1543,17 @@ pub const Tray = struct {
         }
 
         // Alphabet quick-jump strip.
-        if (click.letters_w > 0 and click.letters_h > 0 and
+        const in_letters = click.letters_w > 0 and click.letters_h > 0 and
             lx >= @as(f64, @floatFromInt(click.letters_x)) and
             ly >= @as(f64, @floatFromInt(click.letters_y)) and
             lx <= @as(f64, @floatFromInt(click.letters_x + click.letters_w)) and
-            ly <= @as(f64, @floatFromInt(click.letters_y + click.letters_h))) {
-            const letters: []const u8 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            ly <= @as(f64, @floatFromInt(click.letters_y + click.letters_h));
+        self.media.slider_hover = in_letters;
+        if (in_letters) {
             const rel_y = ly - @as(f64, @floatFromInt(click.letters_y));
             const ratio = @max(0.0, @min(1.0, rel_y / @as(f64, @floatFromInt(click.letters_h))));
-            const idx = @min(letters.len - 1, @as(usize, @intFromFloat(@floor(ratio * @as(f64, @floatFromInt(letters.len))))));
-            self.media.jumpToLetter(letters[idx]);
-            self.media.focusControl(.result);
+            self.media.jumpToSliderPosition(ratio);
+            self.media.focusSlider();
             self.requestUpdate();
             self.host.request_frame(self.host.ctx);
             return true;
@@ -1628,6 +1628,7 @@ pub const Tray = struct {
                     .category => self.media.moveCategory(-1),
                     .search => self.media.moveSearchCaret(-1),
                     .result => self.media.moveResultSelection(-1),
+                    .slider => self.media.focusControl(.category),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
@@ -1636,6 +1637,7 @@ pub const Tray = struct {
                     .category => self.media.moveCategory(1),
                     .search => self.media.moveSearchCaret(1),
                     .result => self.media.moveResultSelection(1),
+                    .slider => {},
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
@@ -1644,6 +1646,7 @@ pub const Tray = struct {
                     .category => {},
                     .search => self.media.focusControl(.category),
                     .result => self.media.moveResultVertical(-1),
+                    .slider => self.media.moveSliderVertical(-1),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
@@ -1656,6 +1659,7 @@ pub const Tray = struct {
                         self.media.adjustScrollToSelection();
                     },
                     .result => self.media.moveResultVertical(1),
+                    .slider => self.media.moveSliderVertical(1),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
@@ -1664,6 +1668,7 @@ pub const Tray = struct {
                     .category => self.media.focusControl(.search),
                     .search => self.media.focusControl(.result),
                     .result => self.media.focusControl(.category),
+                    .slider => self.media.focusControl(.category),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
@@ -1677,6 +1682,7 @@ pub const Tray = struct {
                         const path = self.media.selectedResultPath();
                         if (path.len > 0) self.media.play(path);
                     },
+                    .slider => {},
                 }
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
