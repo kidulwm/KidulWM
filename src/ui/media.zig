@@ -1260,11 +1260,11 @@ pub const MediaWidget = struct {
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
 
-        // ---- A-Z 5-letter scrolling selector (hover reveals) ----
+        // ---- A-Z 5-letter scrolling selector on the vertical slider ----
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const alpha_font_base = @as(f64, style_.font_size_s) * scale_f;
-        const strip_x = w_d - pad_x - 10.0 * scale_f;
-        const strip_w = 20.0 * scale_f;
+        const strip_x = track_x - 4.0 * scale_f;
+        const strip_w = scroller_track - 4.0 * scale_f;
         const strip_y = list_y;
         const strip_h = list_h;
 
@@ -1278,9 +1278,6 @@ pub const MediaWidget = struct {
         const show_all = self.slider_hover;
         const center_idx = self.currentSliderLetterIndex();
 
-        // 5-letter window: clamp so it always fits and the current letter moves
-        // from top to center over the first few letters, stays centered through
-        // the middle, then slides to the bottom for the last few.
         const window_size: usize = 5;
         const half_window = window_size / 2;
         var window_start: usize = if (center_idx <= half_window) 0 else center_idx - half_window;
@@ -1290,42 +1287,45 @@ pub const MediaWidget = struct {
 
         const slot_h = strip_h / @as(f64, @floatFromInt(window_size));
         const current_slot: usize = if (center_idx <= half_window) center_idx else if (center_idx + half_window >= letters.len) window_size - (letters.len - center_idx) else half_window;
-        const knob_y = strip_y + @as(f64, @floatFromInt(current_slot)) * slot_h + slot_h * 0.5;
-        const alpha_knob_r = @max(3.0 * scale_f, slot_h * 0.28);
+        _ = current_slot;
+
+        // Keep the highlight small enough to fit inside the strip without overflowing the card.
+        const highlight_r = @min(@as(f64, 8.0) * scale_f, strip_w * 0.36);
 
         if (show_all) {
-            // Draw centered 5-letter list
             for (letters, 0..) |ch, i| {
                 const slot_i = @as(i32, @intCast(i)) - @as(i32, @intCast(window_start));
                 if (slot_i < 0 or slot_i >= window_size) continue;
 
-                const slot = center_idx == i;
-                const alpha_font = if (slot) alpha_font_base * 1.6 else alpha_font_base * 0.85;
-                c.cairo_set_font_size(cr, alpha_font);
-                const ly = strip_y + @as(f64, @floatFromInt(slot_i)) * slot_h + slot_h * 0.5 + alpha_font * 0.35;
+                const distance: usize = if (i > center_idx) i - center_idx else center_idx - i;
+                const multiplier: f64 = if (distance == 0) 1.7 else if (distance == 1) 1.25 else 0.88;
+                const alpha_font = alpha_font_base * multiplier;
+
+                const slot_y = strip_y + @as(f64, @floatFromInt(slot_i)) * slot_h + slot_h * 0.5 + alpha_font * 0.35;
+                const cx = strip_x + strip_w * 0.5;
+
                 const lbuf = [1:0]u8{ch};
+                c.cairo_set_font_size(cr, alpha_font);
                 var lex: c.cairo_text_extents_t = undefined;
                 c.cairo_text_extents(cr, &lbuf, &lex);
-                const lx = strip_x + (strip_w - lex.width) * 0.5;
+                const lx = cx - lex.width * 0.5;
 
-                if (slot) {
+                if (distance == 0) {
+                    c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.5);
+                    c.cairo_new_path(cr);
+                    c.cairo_arc(cr, cx, slot_y - alpha_font * 0.25, highlight_r, 0, 2.0 * std.math.pi);
+                    c.cairo_fill_preserve(cr);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.9);
+                    c.cairo_set_line_width(cr, 1.0);
+                    c.cairo_stroke(cr);
                     c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
                 } else {
-                    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.60);
+                    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.65);
                 }
 
-                c.cairo_move_to(cr, lx, ly);
+                c.cairo_move_to(cr, lx, slot_y);
                 c.cairo_show_text(cr, &lbuf);
             }
-
-            // Highlight ring around the active slot
-            c.cairo_new_path(cr);
-            c.cairo_arc(cr, strip_x + strip_w * 0.5, knob_y, alpha_knob_r, 0, 2.0 * std.math.pi);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
-            c.cairo_fill_preserve(cr);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.9);
-            c.cairo_set_line_width(cr, 1.5);
-            c.cairo_stroke(cr);
         }
     }
 
