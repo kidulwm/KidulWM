@@ -1263,8 +1263,8 @@ pub const MediaWidget = struct {
         // ---- A-Z 5-letter scrolling selector (hover reveals) ----
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const alpha_font_base = @as(f64, style_.font_size_s) * scale_f;
-        const strip_x = w_d - pad_x + 4.0 * scale_f;
-        const strip_w = 24.0 * scale_f;
+        const strip_x = w_d - pad_x - 10.0 * scale_f;
+        const strip_w = 20.0 * scale_f;
         const strip_y = list_y;
         const strip_h = list_h;
 
@@ -1291,7 +1291,7 @@ pub const MediaWidget = struct {
         const slot_h = strip_h / @as(f64, @floatFromInt(window_size));
         const current_slot: usize = if (center_idx <= half_window) center_idx else if (center_idx + half_window >= letters.len) window_size - (letters.len - center_idx) else half_window;
         const knob_y = strip_y + @as(f64, @floatFromInt(current_slot)) * slot_h + slot_h * 0.5;
-        const alpha_knob_r = @max(4.0 * scale_f, slot_h * 0.35);
+        const alpha_knob_r = @max(3.0 * scale_f, slot_h * 0.28);
 
         if (show_all) {
             // Draw centered 5-letter list
