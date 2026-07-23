@@ -271,6 +271,8 @@ pub const MediaWidget = struct {
     show_caret: bool = true,
     grid_cols: usize = 5,
 
+    state_generation: u32 = 0,
+
     selected_result: usize = 0,
     visible_result_count: usize = 0,
     list_scroll_offset: usize = 0,
@@ -299,6 +301,7 @@ pub const MediaWidget = struct {
             self.list_scroll_offset = 0;
             self.clearSearch();
         }
+        self.bumpGeneration();
     }
 
     pub fn setCardOpen(self: *MediaWidget, open: bool) void {
@@ -311,6 +314,7 @@ pub const MediaWidget = struct {
             self.list_scroll_offset = 0;
             self.clearSearch();
         }
+        self.bumpGeneration();
     }
 
     pub fn isCardOpen(self: *const MediaWidget) bool {
@@ -324,11 +328,16 @@ pub const MediaWidget = struct {
         if (self.search_focused) {
             self.search_caret = self.search_len;
         }
+        self.bumpGeneration();
     }
 
     pub fn focusSlider(self: *MediaWidget) void {
         self.focusControl(.slider);
         self.slider_hover = true;
+    }
+
+    fn bumpGeneration(self: *MediaWidget) void {
+        self.state_generation +%= 1;
     }
 
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
@@ -337,6 +346,7 @@ pub const MediaWidget = struct {
         self.category = mediaCategoryFromIndex(@intCast(new_idx));
         self.selected_result = 0;
         self.list_scroll_offset = 0;
+        self.bumpGeneration();
     }
 
     pub fn moveResultSelection(self: *MediaWidget, delta: i32) void {
@@ -383,6 +393,7 @@ pub const MediaWidget = struct {
         off += rows_per_page * pages;
         off = @max(0, @min(off, @as(i32, @intCast(self.max_scroll_offset))));
         self.list_scroll_offset = @intCast(off);
+        self.bumpGeneration();
     }
 
     pub fn adjustScrollToSelection(self: *MediaWidget) void {
@@ -396,6 +407,7 @@ pub const MediaWidget = struct {
             if (off > self.max_scroll_offset) off = self.max_scroll_offset;
             self.list_scroll_offset = off;
         }
+        self.bumpGeneration();
     }
 
     pub fn jumpToLetter(self: *MediaWidget, letter: u8) void {
@@ -452,10 +464,12 @@ pub const MediaWidget = struct {
         @memset(&self.search_buf, 0);
         self.search_len = 0;
         self.search_caret = 0;
+        self.bumpGeneration();
     }
 
     pub fn appendSearch(self: *MediaWidget, ch: u8) void {
         if (self.search_len >= self.search_buf.len - 1) return;
+        self.bumpGeneration();
         if (self.search_caret < self.search_len) {
             var i: usize = self.search_len;
             while (i > self.search_caret) : (i -= 1) {
@@ -470,6 +484,7 @@ pub const MediaWidget = struct {
 
     pub fn backspaceSearch(self: *MediaWidget) void {
         if (self.search_caret == 0) return;
+        self.bumpGeneration();
         var i = self.search_caret - 1;
         while (i < self.search_len - 1) : (i += 1) {
             self.search_buf[i] = self.search_buf[i + 1];
@@ -481,6 +496,7 @@ pub const MediaWidget = struct {
 
     pub fn deleteSearch(self: *MediaWidget) void {
         if (self.search_caret >= self.search_len) return;
+        self.bumpGeneration();
         var i = self.search_caret;
         while (i < self.search_len - 1) : (i += 1) {
             self.search_buf[i] = self.search_buf[i + 1];
@@ -492,6 +508,7 @@ pub const MediaWidget = struct {
     pub fn moveSearchCaret(self: *MediaWidget, delta: i32) void {
         const new = @as(i32, @intCast(self.search_caret)) + delta;
         self.search_caret = @intCast(@max(0, @min(new, @as(i32, @intCast(self.search_len)))));
+        self.bumpGeneration();
     }
 
     pub fn searchText(self: *const MediaWidget) []const u8 {
