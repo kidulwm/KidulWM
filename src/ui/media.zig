@@ -1174,12 +1174,17 @@ pub const MediaWidget = struct {
         while (row_i < rows_visible and self.list_scroll_offset + row_i < total_rows) : (row_i += 1) {
             const grid_row = self.list_scroll_offset + row_i;
             const ty = list_y + @as(f64, @floatFromInt(row_i)) * row_h;
+            const first_idx = grid_row * cols;
+            const last_idx = @min(first_idx + cols, library.len);
+            const tiles_in_row = last_idx - first_idx;
+            const row_content_w = @as(f64, @floatFromInt(tiles_in_row)) * tile_w + @as(f64, @floatFromInt(tiles_in_row - 1)) * tile_gap;
+            const row_start_x = list_x + (list_w - row_content_w) * 0.5;
             var col_i: usize = 0;
             while (col_i < cols) : (col_i += 1) {
                 const idx = grid_row * cols + col_i;
                 if (idx >= library.len) break;
                 const entry = library[idx];
-                const tx = list_x + @as(f64, @floatFromInt(col_i)) * (tile_w + tile_gap);
+                const tx = row_start_x + @as(f64, @floatFromInt(col_i)) * (tile_w + tile_gap);
 
                 if (self.focus == .result and self.selected_result == idx) {
                     focus_tx = tx;
@@ -1258,8 +1263,8 @@ pub const MediaWidget = struct {
         // ---- A-Z alphabet quick-jump strip (hover reveals all) ----
         const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const alpha_font = @as(f64, style_.font_size_s) * 0.78 * scale_f;
-        const strip_x = w_d - pad_x - scroller_track + 4.0 * scale_f;
-        const strip_w = scroller_track - scroller_w - 8.0 * scale_f;
+        const strip_x = w_d - pad_x + 4.0 * scale_f;
+        const strip_w = 18.0 * scale_f;
         const strip_y = list_y;
         const strip_h = list_h;
 
@@ -1272,7 +1277,7 @@ pub const MediaWidget = struct {
 
         const show_all = self.slider_hover;
         const current_letter_idx = if (show_all) self.currentSliderLetterIndex() else 0;
-        c.cairo_set_font_size(cr, alpha_font);
+        c.cairo_set_font_size(cr, if (show_all) alpha_font * 1.35 else alpha_font);
         const step_h = strip_h / @as(f64, @floatFromInt(letters.len));
         const sparse_step: usize = 4; // show every 4th letter by default
         for (letters, 0..) |ch, i| {
