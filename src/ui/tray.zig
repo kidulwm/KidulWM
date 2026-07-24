@@ -1478,24 +1478,16 @@ pub const Tray = struct {
         const click = self.media_card_click;
 
         // Category pills.
-        if (ly >= @as(f64, @floatFromInt(click.cat_y)) and
-            ly <= @as(f64, @floatFromInt(click.cat_y + click.cat_h))) {
-            for (0..5) |i| {
-                if (lx >= @as(f64, @floatFromInt(click.cat_x[i])) and
-                    lx <= @as(f64, @floatFromInt(click.cat_x[i] + click.cat_w[i]))) {
-                    self.media.category = switch (i) {
-                        0 => .movies,
-                        1 => .music,
-                        2 => .tv,
-                        3 => .pictures,
-                        4 => .shop,
-                        else => .music,
-                    };
-                    self.media.focusControl(.category);
-                    self.requestUpdate();
-                    self.host.request_frame(self.host.ctx);
-                    return true;
-                }
+        for (0..5) |i| {
+            if (ly >= @as(f64, @floatFromInt(click.cat_y[i])) and
+                ly <= @as(f64, @floatFromInt(click.cat_y[i] + click.cat_h[i])) and
+                lx >= @as(f64, @floatFromInt(click.cat_x[i])) and
+                lx <= @as(f64, @floatFromInt(click.cat_x[i] + click.cat_w[i]))) {
+                self.media.category = click.cat_for_index[i];
+                self.media.focusControl(.category);
+                self.requestUpdate();
+                self.host.request_frame(self.host.ctx);
+                return true;
             }
         }
 

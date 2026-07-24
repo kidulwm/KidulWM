@@ -253,17 +253,23 @@ fn getLibrary(category: MediaCategory) []const LibraryEntry {
     }
 }
 
-fn categoryIndex(cat: MediaCategory) usize {
-    return @intFromEnum(cat);
+fn displayIndex(cat: MediaCategory) usize {
+    return switch (cat) {
+        .shop => 0,
+        .movies => 1,
+        .music => 2,
+        .pictures => 3,
+        .tv => 4,
+    };
 }
 
 fn mediaCategoryFromIndex(i: usize) MediaCategory {
     return switch (i) {
-        0 => .movies,
-        1 => .music,
-        2 => .tv,
+        0 => .shop,
+        1 => .movies,
+        2 => .music,
         3 => .pictures,
-        4 => .shop,
+        4 => .tv,
         else => .music,
     };
 }
@@ -373,7 +379,7 @@ pub const MediaWidget = struct {
     }
 
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
-        const idx: i32 = @intCast(categoryIndex(self.category));
+        const idx: i32 = @intCast(displayIndex(self.category));
         const new_idx = @mod(idx + delta, 5);
         self.category = mediaCategoryFromIndex(@intCast(new_idx));
         self.selected_result = 0;
@@ -931,8 +937,9 @@ pub const MediaWidget = struct {
         search_y: i32 = 0,
         search_w: i32 = 0,
         search_h: i32 = 0,
-        cat_y: i32 = 0,
-        cat_h: i32 = 0,
+        cat_y: [5]i32 = .{ 0, 0, 0, 0, 0 },
+        cat_h: [5]i32 = .{ 0, 0, 0, 0, 0 },
+        cat_for_index: [5]MediaCategory = .{ .music, .music, .music, .music, .music },
         cat_x: [5]i32 = .{ 0, 0, 0, 0, 0 },
         cat_w: [5]i32 = .{ 0, 0, 0, 0, 0 },
         list_x: i32 = 0,
@@ -1098,20 +1105,30 @@ pub const MediaWidget = struct {
         const search_y = cat_y + pill_h + 12.0 * scale_f;
         const pill_r = 6.0 * scale_f;
 
-        const cats = [_]MediaCategory{ .movies, .music, .tv, .pictures, .shop };
-        for (cats, 0..) |cat, i| {
+        const active_display = displayIndex(self.category);
+        for (0..5) |i| {
+            const offset: i32 = @as(i32, @intCast(i)) - 2;
+            const idx_i32 = @mod(@as(i32, @intCast(active_display)) + offset, 5);
+            const idx: usize = @intCast(idx_i32);
+            const cat = mediaCategoryFromIndex(idx);
             const px = pill_start_x + @as(f64, @floatFromInt(i)) * (pill_w + pill_gap);
             const is_selected = self.category == cat;
             const is_focused = self.focus == .category and is_selected;
+            const dist = @abs(offset);
+            const dimmer = @as(f64, @floatFromInt(dist));
+            const py = cat_y + dimmer * 1.0 * scale_f;
+            const this_h = pill_h - dimmer * 2.0 * scale_f;
+            const alpha = 0.95 - dimmer * 0.12;
 
             if (out_click) |click| {
-                click.cat_y = @intFromFloat(cat_y);
-                click.cat_h = @intFromFloat(pill_h);
+                click.cat_for_index[i] = cat;
+                click.cat_y[i] = @intFromFloat(py);
+                click.cat_h[i] = @intFromFloat(this_h);
                 click.cat_x[i] = @intFromFloat(px);
                 click.cat_w[i] = @intFromFloat(pill_w);
             }
 
-            roundedRect(cr, px, cat_y, pill_w, pill_h, pill_r);
+            roundedRect(cr, px, py, pill_w, this_h, pill_r);
             if (is_focused) {
                 c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.18);
                 c.cairo_fill_preserve(cr);
@@ -1137,8 +1154,8 @@ pub const MediaWidget = struct {
             c.cairo_set_font_size(cr, pill_font);
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, label.ptr, &ext);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], if (is_selected) 0.95 else 0.60);
-            c.cairo_move_to(cr, px + (pill_w - ext.width) * 0.5, cat_y + pill_h * 0.5 + pill_font * 0.30);
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], if (is_selected) alpha else alpha * 0.65);
+            c.cairo_move_to(cr, px + (pill_w - ext.width) * 0.5, py + this_h * 0.5 + pill_font * 0.30);
             c.cairo_show_text(cr, label.ptr);
         }
 
