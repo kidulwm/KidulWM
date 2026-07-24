@@ -367,9 +367,9 @@ pub const MediaWidget = struct {
     pub fn stepSliderReveal(self: *MediaWidget, dt: f64) void {
         const prev_reveal = self.slider_reveal;
         if (self.slider_reveal < self.slider_reveal_target) {
-            self.slider_reveal = @min(self.slider_reveal_target, self.slider_reveal + dt * 16.0);
+            self.slider_reveal = @min(self.slider_reveal_target, self.slider_reveal + dt * 24.0);
         } else if (self.slider_reveal > self.slider_reveal_target) {
-            self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * 16.0);
+            self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * 24.0);
         }
         if (self.slider_reveal != prev_reveal) self.bumpGeneration();
     }
@@ -1096,13 +1096,15 @@ pub const MediaWidget = struct {
         const content_w = w_d - 2.0 * pad_x;
 
         // ---- Category pills ----
-        const pill_h = @max(28.0 * scale_f, 24.0 * scale_f);
+        const search_h = @max(34.0 * scale_f, 28.0 * scale_f);
+        const pill_h_max = search_h;
+        const pill_h_min = @max(26.0 * scale_f, 22.0 * scale_f);
         const pill_gap = 12.0 * scale_f;
         const pill_w = (content_w - 4.0 * pill_gap) / 5.0;
         const cat_y = pad_y;
         const total_pill_w = pill_w * 5.0 + pill_gap * 4.0;
         const pill_start_x = pad_x + (content_w - total_pill_w) * 0.5;
-        const search_y = cat_y + pill_h + 12.0 * scale_f;
+        const search_y = cat_y + pill_h_max + 10.0 * scale_f;
         const pill_r = 6.0 * scale_f;
 
         const active_display = displayIndex(self.category);
@@ -1116,9 +1118,9 @@ pub const MediaWidget = struct {
             const is_focused = self.focus == .category and is_selected;
             const dist = @abs(offset);
             const dimmer = @as(f64, @floatFromInt(dist));
-            const py = cat_y + dimmer * 1.0 * scale_f;
-            const this_h = pill_h - dimmer * 2.0 * scale_f;
-            const alpha = 0.95 - dimmer * 0.12;
+            const this_h = if (is_selected) pill_h_max else pill_h_min - @min(dimmer * 3.0 * scale_f, pill_h_min - 22.0 * scale_f);
+            const py = cat_y + (pill_h_max - this_h) * 0.5;
+            const alpha = 0.95 - @as(f64, @floatFromInt(dist)) * 0.06;
 
             if (out_click) |click| {
                 click.cat_for_index[i] = cat;
@@ -1130,21 +1132,23 @@ pub const MediaWidget = struct {
 
             roundedRect(cr, px, py, pill_w, this_h, pill_r);
             if (is_focused) {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.18);
+                // bright focused border
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.14);
                 c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
-                c.cairo_set_line_width(cr, 2.0);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.85);
+                c.cairo_set_line_width(cr, 2.5);
                 c.cairo_stroke(cr);
             } else if (is_selected) {
+                // dimmer unfocused selected border
                 c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.10);
                 c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.65);
-                c.cairo_set_line_width(cr, 1.0);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.45);
+                c.cairo_set_line_width(cr, 2.0);
                 c.cairo_stroke(cr);
             } else {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.04);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.06);
                 c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.22);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.40);
                 c.cairo_set_line_width(cr, 1.0);
                 c.cairo_stroke(cr);
             }
@@ -1154,13 +1158,12 @@ pub const MediaWidget = struct {
             c.cairo_set_font_size(cr, pill_font);
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, label.ptr, &ext);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], if (is_selected) alpha else alpha * 0.65);
+            c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, if (is_selected) 1.0 else alpha);
             c.cairo_move_to(cr, px + (pill_w - ext.width) * 0.5, py + this_h * 0.5 + pill_font * 0.30);
             c.cairo_show_text(cr, label.ptr);
         }
 
         // ---- Search bar (shortened) ----
-        const search_h = @max(34.0 * scale_f, 28.0 * scale_f);
         const search_w = pill_w * 3.0 + pill_gap * 2.0;
         const search_x = pill_start_x + pill_w + pill_gap;
         const search_r = 6.0 * scale_f;
