@@ -1676,6 +1676,7 @@ pub const Tray = struct {
             .Left => {
                 switch (focused) {
                     .category => self.media.moveCategory(-1),
+                    .subcategory => self.media.moveSubcategory(-1),
                     .search => self.media.moveSearchCaret(-1),
                     .result => self.media.moveResultSelection(-1),
                     .slider => self.media.focusControl(.result),
@@ -1685,6 +1686,7 @@ pub const Tray = struct {
             .Right => {
                 switch (focused) {
                     .category => self.media.moveCategory(1),
+                    .subcategory => self.media.moveSubcategory(1),
                     .search => self.media.moveSearchCaret(1),
                     .result => {
                         if (self.media.isResultLastColumn()) {
@@ -1700,6 +1702,7 @@ pub const Tray = struct {
             .Up => {
                 switch (focused) {
                     .category => {},
+                    .subcategory => self.media.closeSubcategory(),
                     .search => self.media.focusControl(.category),
                     .result => {
                         if (self.media.atResultTopRow()) {
@@ -1714,7 +1717,14 @@ pub const Tray = struct {
             },
             .Down => {
                 switch (focused) {
-                    .category => self.media.focusControl(.search),
+                    .category => {
+                        if (self.media.subcategory_open) {
+                            self.media.focusControl(.subcategory);
+                        } else {
+                            self.media.focusControl(.search);
+                        }
+                    },
+                    .subcategory => self.media.focusControl(.search),
                     .search => {
                         if (self.media.hasResults()) {
                             self.media.focusControl(.result);
@@ -1732,6 +1742,7 @@ pub const Tray = struct {
             .Tab => {
                 switch (focused) {
                     .category => self.media.focusControl(.search),
+                    .subcategory => self.media.focusControl(.search),
                     .search => {
                         if (self.media.hasResults()) {
                             self.media.focusControl(.result);
@@ -1748,7 +1759,12 @@ pub const Tray = struct {
             .Page_Down => { self.media.pageList(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
             .space, .Return, .KP_Enter => {
                 switch (focused) {
-                    .category => {},
+                    .category => {
+                        if (self.media.canOpenSubcategory()) {
+                            self.media.openSubcategory();
+                        }
+                    },
+                    .subcategory => self.media.closeSubcategory(),
                     .search => {},
                     .result => {
                         const path = self.media.selectedResultPath();

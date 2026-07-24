@@ -34,7 +34,7 @@ pub const MediaCard = struct {
 
 pub const MediaCategory = enum { movies, music, tv, pictures, shop };
 
-pub const ControlFocus = enum { category, search, result, slider };
+pub const ControlFocus = enum { category, subcategory, search, result, slider };
 
 const LibraryEntry = struct {
     title: [:0]u8,
@@ -288,6 +288,9 @@ pub const MediaWidget = struct {
 
     focus: ControlFocus = .category,
     category: MediaCategory = .music,
+    subcategory_open: bool = false,
+    subcategory_index: usize = 0,
+    subcategory_for: MediaCategory = .music,
     search_buf: [128:0]u8 = std.mem.zeroes([128:0]u8),
     search_len: usize = 0,
     search_focused: bool = false,
@@ -390,6 +393,48 @@ pub const MediaWidget = struct {
         self.state_generation +%= 1;
     }
 
+    pub fn subcategoryNames(self: *const MediaWidget, cat: MediaCategory) []const []const u8 {
+        _ = self;
+        return switch (cat) {
+            .movies => &[_][]const u8{ "Action", "Comedy", "Drama", "Horror", "Sci-Fi" },
+            .music => &[_][]const u8{ "Rock", "Pop", "Jazz", "Classical", "Electronic" },
+            .tv => &[_][]const u8{ "Series", "Live", "Docs", "Kids", "Sport" },
+            .pictures => &[_][]const u8{ "Photos", "Wallpapers", "Screenshots", "Art" },
+            .shop => &[_][]const u8{},
+        };
+    }
+
+    pub fn canOpenSubcategory(self: *const MediaWidget) bool {
+        return self.subcategoryNames(self.category).len > 0 and !self.subcategory_open;
+    }
+
+    pub fn openSubcategory(self: *MediaWidget) void {
+        const names = self.subcategoryNames(self.category);
+        if (names.len == 0) return;
+        self.subcategory_for = self.category;
+        self.subcategory_open = true;
+        self.subcategory_index = 0;
+        self.focus = .subcategory;
+        self.bumpGeneration();
+    }
+
+    pub fn closeSubcategory(self: *MediaWidget) void {
+        self.subcategory_open = false;
+        self.subcategory_index = 0;
+        self.focus = .category;
+        self.bumpGeneration();
+    }
+
+    pub fn moveSubcategory(self: *MediaWidget, delta: i32) void {
+        const names = self.subcategoryNames(self.category);
+        if (names.len == 0) return;
+        var idx: i32 = @intCast(self.subcategory_index);
+        idx += delta;
+        idx = @max(0, @min(idx, @as(i32, @intCast(names.len - 1))));
+        self.subcategory_index = @intCast(idx);
+        self.bumpGeneration();
+    }
+
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
         const idx: i32 = @intCast(displayIndex(self.category));
         const raw = idx + delta;
@@ -399,6 +444,8 @@ pub const MediaWidget = struct {
 
     pub fn setCategory(self: *MediaWidget, cat: MediaCategory) void {
         self.category = cat;
+        self.subcategory_open = false;
+        self.subcategory_index = 0;
         self.search_len = 0;
         self.search_caret = 0;
         self.selected_result = 0;
@@ -984,6 +1031,10 @@ pub const MediaWidget = struct {
         letters_y: i32 = 0,
         letters_w: i32 = 0,
         letters_h: i32 = 0,
+        sub_x: [5]i32 = .{ 0, 0, 0, 0, 0 },
+        sub_y: i32 = 0,
+        sub_w: [5]i32 = .{ 0, 0, 0, 0, 0 },
+        sub_h: i32 = 0,
         cols: i32 = 2,
         tile_w: i32 = 0,
         tile_h: i32 = 0,
@@ -1159,7 +1210,10 @@ pub const MediaWidget = struct {
         const cat_y = pad_y;
         const total_pill_w = pill_w * 5.0 + pill_gap * 4.0;
         const pill_start_x = pad_x + (content_w - total_pill_w) * 0.5;
-        const search_y = cat_y + pill_h_max + 10.0 * scale_f;
+        const search_y = if (self.subcategory_open)
+            cat_y + pill_h_max + 16.0 * scale_f + @max(24.0 * scale_f, pill_h_min * 0.8)
+        else
+            cat_y + pill_h_max + 10.0 * scale_f;
         const pill_r = 6.0 * scale_f;
 
         const active_display = displayIndex(self.category);
@@ -1296,6 +1350,48 @@ pub const MediaWidget = struct {
             }
         } else {
             self.show_caret = true;
+        }
+
+        // ---- Subcategory pills (optional pop-out row) ----
+        if (self.subcategory_open) {
+            const sub_h = @max(24.0 * scale_f, pill_h_min * 0.8);
+            const sub_gap = 8.0 * scale_f;
+            const sub_names = self.subcategoryNames(self.category);
+            const sub_total_w = @as(f64, @floatFromInt(sub_names.len)) * pill_w + @as(f64, @floatFromInt(sub_names.len - 1)) * sub_gap;
+            const sub_start_x = pad_x + (content_w - sub_total_w) * 0.5;
+            const sub_y = cat_y + pill_h_max + 8.0 * scale_f;
+            for (sub_names, 0..) |name, si| {
+                const sx = sub_start_x + @as(f64, @floatFromInt(si)) * (pill_w + sub_gap);
+                const is_sub_focused = self.focus == .subcategory and si == self.subcategory_index;
+                if (out_click) |click| {
+                    click.sub_x[si] = @intFromFloat(sx);
+                    click.sub_y = @intFromFloat(sub_y);
+                    click.sub_w[si] = @intFromFloat(pill_w);
+                    click.sub_h = @intFromFloat(sub_h);
+                }
+                roundedRect(cr, sx, sub_y, pill_w, sub_h, pill_r);
+                if (is_sub_focused) {
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.14);
+                    c.cairo_fill_preserve(cr);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.85);
+                    c.cairo_set_line_width(cr, 2.0);
+                    c.cairo_stroke(cr);
+                } else {
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.08);
+                    c.cairo_fill_preserve(cr);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.40);
+                    c.cairo_set_line_width(cr, 1.0);
+                    c.cairo_stroke(cr);
+                }
+                c.cairo_set_font_size(cr, 11.0 * scale_f);
+                var text_ext: c.cairo_text_extents_t = undefined;
+                c.cairo_text_extents(cr, name.ptr, &text_ext);
+                const tx = sx + (pill_w - text_ext.width) * 0.5;
+                const ty = sub_y + (sub_h + text_ext.height) * 0.5 - 2.0 * scale_f;
+                c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, if (is_sub_focused) 1.0 else 0.75);
+                c.cairo_move_to(cr, tx, ty);
+                c.cairo_show_text(cr, name.ptr);
+            }
         }
 
         // ---- Result grid + scroller ----
