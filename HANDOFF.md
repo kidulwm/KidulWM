@@ -91,3 +91,14 @@ Updated 2026-07-24. Source of truth for resuming current work.
 - All visual state must be clearly visible against the dark-glass card.
 - "Bobs Candy Shading" recipe is saved in the `kidulwm-ui` skill.
 - Deployed binary path on live VM is `/usr/bin/kidulwm`.
+
+## Kidul Browser side quest (2026-07-24)
+
+- Project name: `kidul-browser` (renamed from `dotrix-browser`).
+- Location: `/home/dad/dev/kidul-browser`.
+- `zig build` passes; `--headless` smoke test passes.
+- Wayland/Cairo renderer draws the start screen correctly to the internal buffer.
+- Niri window rule added so the browser opens as a floating 1024x768 top-centered card.
+- Remaining presentation bug: Niri/`grim` still show a black window even though the internal Cairo buffer is correct. Work in progress.
+- Allocator mismatch in `src/Wayland.zig` key handling was fixed while responding to typing-disappear report.
+- Real web engine, tray IPC, and Kidul Files are deferred.
