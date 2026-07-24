@@ -1079,6 +1079,7 @@ pub const MediaWidget = struct {
     pub fn renderCard(self: *MediaWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32, out_click: ?*CardClick) void {
         const border = style_.color_border_focused.toF64();
         const muted = style_.color_text_muted.toF64();
+        const card_bg = style_.color_background.toF64();
         const scale_f: f64 = @as(f64, scale);
 
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
@@ -1341,11 +1342,23 @@ pub const MediaWidget = struct {
 
                 if (self.focus == .result and self.selected_result == idx) {
                     const sel_pad = 4.0 * scale_f;
-                    c.cairo_new_path(cr);
-                    roundedRect(cr, tx - sel_pad, ty - sel_pad, tile_w + 2.0 * sel_pad, tile_h + 2.0 * sel_pad, 10.0 * scale_f);
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35);
+                    const depth = 3.0 * scale_f;
+                    const fx = tx - sel_pad;
+                    const fy = ty - sel_pad;
+                    const fw = tile_w + 2.0 * sel_pad;
+                    const fh = tile_h + 2.0 * sel_pad;
+                    const fr = 10.0 * scale_f;
+
+                    // 3D shadow: offset dark bottom-right edge
+                    roundedRect(cr, fx + depth, fy + depth, fw, fh, fr);
+                    c.cairo_set_source_rgba(cr, card_bg[0], card_bg[1], card_bg[2], 0.85);
+                    c.cairo_fill(cr);
+
+                    // Focus frame body
+                    roundedRect(cr, fx, fy, fw, fh, fr);
+                    c.cairo_set_source_rgba(cr, card_bg[0], card_bg[1], card_bg[2], 0.55);
                     c.cairo_fill_preserve(cr);
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.95);
                     c.cairo_set_line_width(cr, 3.0);
                     c.cairo_stroke(cr);
                 }
