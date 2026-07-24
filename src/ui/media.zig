@@ -487,11 +487,13 @@ pub const MediaWidget = struct {
         self.jumpToLetter(letters[idx]);
     }
 
-    pub fn moveSliderVertical(self: *MediaWidget, letters_delta: i32) void {
-        const letters: []const u8 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        const letter_idx: i32 = @intCast(self.currentSliderLetterIndex());
-        const new_letter_idx = @mod(letter_idx + letters_delta, @as(i32, @intCast(letters.len)));
-        self.jumpToLetter(letters[@intCast(new_letter_idx)]);
+    pub fn moveSliderVertical(self: *MediaWidget, rows_delta: i32) void {
+        const rows_per_letter: i32 = 1;
+        var off: i32 = @intCast(self.list_scroll_offset);
+        off += rows_delta * rows_per_letter;
+        off = @max(0, @min(off, @as(i32, @intCast(self.max_scroll_offset))));
+        self.list_scroll_offset = @intCast(off);
+        self.bumpGeneration();
     }
 
     pub fn currentSliderLetterIndex(self: *const MediaWidget) usize {
@@ -541,6 +543,10 @@ pub const MediaWidget = struct {
         self.search_len = 0;
         self.search_caret = 0;
         self.bumpGeneration();
+    }
+
+    pub fn hasResults(self: *const MediaWidget) bool {
+        return getLibrary(self.category).len > 0;
     }
 
     pub fn appendSearch(self: *MediaWidget, ch: u8) void {

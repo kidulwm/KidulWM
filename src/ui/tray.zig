@@ -1483,7 +1483,7 @@ pub const Tray = struct {
                 ly <= @as(f64, @floatFromInt(click.cat_y[i] + click.cat_h[i])) and
                 lx >= @as(f64, @floatFromInt(click.cat_x[i])) and
                 lx <= @as(f64, @floatFromInt(click.cat_x[i] + click.cat_w[i]))) {
-                self.media.category = click.cat_for_index[i];
+                self.media.setCategory(click.cat_for_index[i]);
                 self.media.focusControl(.category);
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
@@ -1539,21 +1539,21 @@ pub const Tray = struct {
             return true;
         }
 
-        // Alphabet quick-jump strip.
-        const in_letters = click.letters_w > 0 and click.letters_h > 0 and
-            lx >= @as(f64, @floatFromInt(click.letters_x)) and
-            ly >= @as(f64, @floatFromInt(click.letters_y)) and
-            lx <= @as(f64, @floatFromInt(click.letters_x + click.letters_w)) and
-            ly <= @as(f64, @floatFromInt(click.letters_y + click.letters_h));
-        self.media.slider_hover = in_letters;
-        if (in_letters) {
-            const rel_y = ly - @as(f64, @floatFromInt(click.letters_y));
-            const ratio = @max(0.0, @min(1.0, rel_y / @as(f64, @floatFromInt(click.letters_h))));
-            const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        // Scrollbar top/bottom quick zones.
+        const in_scrollbar = click.scroll_w > 0 and click.scroll_h > 0 and
+            lx >= @as(f64, @floatFromInt(click.scroll_x)) and
+            ly >= @as(f64, @floatFromInt(click.scroll_y)) and
+            lx <= @as(f64, @floatFromInt(click.scroll_x + click.scroll_w)) and
+            ly <= @as(f64, @floatFromInt(click.scroll_y + click.scroll_h));
+        self.media.slider_hover = in_scrollbar;
+        if (in_scrollbar) {
+            const rel_y = ly - @as(f64, @floatFromInt(click.scroll_y));
+            const ratio = rel_y / @as(f64, @floatFromInt(click.scroll_h));
+            const max_off = self.media.max_scroll_offset;
             if (ratio < 0.5) {
-                self.media.jumpToLetter(letters[0]); // top half -> A
+                self.media.list_scroll_offset = 0;
             } else {
-                self.media.jumpToLetter(letters[letters.len - 1]); // bottom half -> Z
+                self.media.list_scroll_offset = max_off;
             }
             self.media.focusSlider();
             self.requestUpdate();
@@ -1561,7 +1561,7 @@ pub const Tray = struct {
             return true;
         }
 
-        return false;
+        return true;
     }
 
     pub fn handleCalendarCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
@@ -1716,9 +1716,13 @@ pub const Tray = struct {
                 switch (focused) {
                     .category => self.media.focusControl(.search),
                     .search => {
-                        self.media.focusControl(.result);
-                        self.media.selected_result = self.media.grid_cols / 2;
-                        self.media.adjustScrollToSelection();
+                        if (self.media.hasResults()) {
+                            self.media.focusControl(.result);
+                            self.media.selected_result = self.media.grid_cols / 2;
+                            self.media.adjustScrollToSelection();
+                        } else {
+                            self.media.focusControl(.slider);
+                        }
                     },
                     .result => self.media.moveResultVertical(1),
                     .slider => self.media.moveSliderVertical(1),
@@ -1728,7 +1732,13 @@ pub const Tray = struct {
             .Tab => {
                 switch (focused) {
                     .category => self.media.focusControl(.search),
-                    .search => self.media.focusControl(.result),
+                    .search => {
+                        if (self.media.hasResults()) {
+                            self.media.focusControl(.result);
+                        } else {
+                            self.media.focusControl(.slider);
+                        }
+                    },
                     .result => self.media.focusControl(.category),
                     .slider => self.media.focusControl(.category),
                 }
