@@ -72,10 +72,10 @@ pub const presets = struct {
     };
     /// Cards: snap open, fade+slide closed toward source widget.
     pub const card = Preset{
-        .stiffness_open = 600.0,
-        .damping_open = 0.99,
-        .stiffness_close = 18.0,
-        .damping_close = 0.95,
+        .stiffness_open = 1200.0,
+        .damping_open = 1.0,
+        .stiffness_close = 180.0,
+        .damping_close = 1.0,
         .epsilon = 0.001,
         .fade_close = true,
         .slide_close_px = 60,

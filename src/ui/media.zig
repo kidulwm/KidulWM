@@ -295,6 +295,7 @@ pub const MediaWidget = struct {
     last_caret_blink_us: u64 = 0,
     show_caret: bool = true,
     grid_cols: usize = 5,
+    art_cache: std.StringHashMap(?*c.cairo_surface_t),
 
     state_generation: u32 = 0,
     slider_reveal: f64 = 0.0,
@@ -308,13 +309,18 @@ pub const MediaWidget = struct {
 
     pub fn init(allocator: std.mem.Allocator) MediaWidget {
         const ipc = "/run/user/1000/kidulwm-mpv.sock";
-        var self = MediaWidget{ .allocator = allocator };
+        var self = MediaWidget{
+            .allocator = allocator,
+            .art_cache = std.StringHashMap(?*c.cairo_surface_t).init(allocator),
+        };
         @memcpy(self.ipc_path[0..ipc.len], ipc);
         self.ipc_path[ipc.len] = 0;
         return self;
     }
 
     pub fn deinit(self: *MediaWidget) void {
+        self.clearArtCache();
+        self.art_cache.deinit();
         self.ensureStopped();
     }
 
@@ -339,7 +345,12 @@ pub const MediaWidget = struct {
             self.slider_hover = false;
             self.selected_result = 0;
             self.list_scroll_offset = 0;
+            self.slider_reveal = 0.0;
+            self.slider_reveal_target = 0.0;
             self.clearSearch();
+        } else {
+            self.slider_reveal = 0.0;
+            self.slider_reveal_target = 0.0;
         }
         self.bumpGeneration();
     }
@@ -366,10 +377,11 @@ pub const MediaWidget = struct {
 
     pub fn stepSliderReveal(self: *MediaWidget, dt: f64) void {
         const prev_reveal = self.slider_reveal;
+        const speed = 80.0; // near-instant slide
         if (self.slider_reveal < self.slider_reveal_target) {
-            self.slider_reveal = @min(self.slider_reveal_target, self.slider_reveal + dt * 24.0);
+            self.slider_reveal = @min(self.slider_reveal_target, self.slider_reveal + dt * speed);
         } else if (self.slider_reveal > self.slider_reveal_target) {
-            self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * 24.0);
+            self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * speed);
         }
         if (self.slider_reveal != prev_reveal) self.bumpGeneration();
     }
@@ -380,7 +392,8 @@ pub const MediaWidget = struct {
 
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
         const idx: i32 = @intCast(displayIndex(self.category));
-        const new_idx = @mod(idx + delta, 5);
+        const raw = idx + delta;
+        const new_idx = @max(0, @min(4, raw));
         self.setCategory(mediaCategoryFromIndex(@intCast(new_idx)));
     }
 
@@ -1040,57 +1053,81 @@ pub const MediaWidget = struct {
         c.cairo_fill(cr);
     }
 
-    fn renderTileArt(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, entry: LibraryEntry, border: [4]f64) void {
+    fn renderTileArt(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, entry: LibraryEntry, border: [4]f64, cache: *std.StringHashMap(?*c.cairo_surface_t)) void {
         const dir = std.fs.path.dirname(entry.path) orelse "/home/dad/Music";
         const stem = std.fs.path.stem(entry.path);
+        const seed = std.hash.Crc32.hash(entry.title);
 
-        const candidates = [_][]const u8{
-            "-landscape.jpg",
-            "-landscape.png",
-            "-backdrop.jpg",
-            "-backdrop.png",
-            "-poster.jpg",
-            "-poster.png",
-            "-logo.png",
-            ".png",
-            "cover.png",
-            "folder.png",
-            "art.png",
+        const gop = cache.getOrPut(entry.path) catch {
+            renderArtPlaceholder(cr, x, y, w, h, seed, border);
+            return;
         };
-        for (candidates) |suffix| {
-            var buf: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
-            const slash = if (dir.len > 0 and dir[dir.len - 1] == '/') "" else "/";
-            const full = std.fmt.bufPrintZ(&buf, "{s}{s}{s}{s}", .{ dir, slash, stem, suffix }) catch continue;
-            const surf = c.cairo_image_surface_create_from_png(full.ptr);
-            if (surf != null) {
-                const sw: f64 = @floatFromInt(c.cairo_image_surface_get_width(surf));
-                const sh: f64 = @floatFromInt(c.cairo_image_surface_get_height(surf));
-                if (sw > 0 and sh > 0) {
-                    const sx = w / sw;
-                    const sy = h / sh;
-                    const s = @max(sx, sy);
-                    const dx = x + (w - sw * s) * 0.5;
-                    const dy = y + (h - sh * s) * 0.5;
-                    c.cairo_save(cr);
-                    roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
-                    c.cairo_clip(cr);
-                    c.cairo_translate(cr, dx, dy);
-                    c.cairo_scale(cr, s, s);
-                    c.cairo_set_source_surface(cr, surf, 0, 0);
-                    c.cairo_paint(cr);
-                    c.cairo_restore(cr);
-                    c.cairo_surface_destroy(surf);
-                    roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
-                    c.cairo_set_line_width(cr, 1.0);
-                    c.cairo_stroke(cr);
-                    return;
+        var surf: ?*c.cairo_surface_t = null;
+        if (!gop.found_existing) {
+            const candidates = [_][]const u8{
+                "-landscape.jpg",
+                "-landscape.png",
+                "-backdrop.jpg",
+                "-backdrop.png",
+                "-poster.jpg",
+                "-poster.png",
+                "-logo.png",
+                ".png",
+                "cover.png",
+                "folder.png",
+                "art.png",
+            };
+            for (candidates) |suffix| {
+                var buf: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
+                const slash = if (dir.len > 0 and dir[dir.len - 1] == '/') "" else "/";
+                const full = std.fmt.bufPrintZ(&buf, "{s}{s}{s}{s}", .{ dir, slash, stem, suffix }) catch continue;
+                const loaded = c.cairo_image_surface_create_from_png(full.ptr);
+                if (loaded != null) {
+                    const sw: f64 = @floatFromInt(c.cairo_image_surface_get_width(loaded));
+                    const sh: f64 = @floatFromInt(c.cairo_image_surface_get_height(loaded));
+                    if (sw > 0 and sh > 0) {
+                        surf = loaded;
+                        break;
+                    }
+                    c.cairo_surface_destroy(loaded);
                 }
-                c.cairo_surface_destroy(surf);
             }
+            gop.value_ptr.* = surf;
+        } else {
+            surf = gop.value_ptr.*;
         }
-        const seed = std.hash.Crc32.hash(entry.title) ^ std.hash.Crc32.hash(entry.artist);
-        renderArtPlaceholder(cr, x, y, w, h, seed, border);
+
+        if (surf) |s| {
+            const sw: f64 = @floatFromInt(c.cairo_image_surface_get_width(s));
+            const sh: f64 = @floatFromInt(c.cairo_image_surface_get_height(s));
+            const sx = w / sw;
+            const sy = h / sh;
+            const scale_factor = @max(sx, sy);
+            const dx = x + (w - sw * scale_factor) * 0.5;
+            const dy = y + (h - sh * scale_factor) * 0.5;
+            c.cairo_save(cr);
+            roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
+            c.cairo_clip(cr);
+            c.cairo_translate(cr, dx, dy);
+            c.cairo_scale(cr, scale_factor, scale_factor);
+            c.cairo_set_source_surface(cr, s, 0, 0);
+            c.cairo_paint(cr);
+            c.cairo_restore(cr);
+            roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
+            c.cairo_set_line_width(cr, 1.0);
+            c.cairo_stroke(cr);
+        } else {
+            renderArtPlaceholder(cr, x, y, w, h, seed, border);
+        }
+    }
+
+    pub fn clearArtCache(self: *MediaWidget) void {
+        var it = self.art_cache.valueIterator();
+        while (it.next()) |ptr| {
+            if (ptr.*) |surf| c.cairo_surface_destroy(surf);
+        }
+        self.art_cache.clearRetainingCapacity();
     }
 
     pub fn renderCard(self: *MediaWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32, out_click: ?*CardClick) void {
@@ -1126,15 +1163,25 @@ pub const MediaWidget = struct {
         const pill_r = 6.0 * scale_f;
 
         const active_display = displayIndex(self.category);
+        const raw_scroll: i32 = @as(i32, @intCast(active_display)) - 2;
+        const clamped_scroll: i32 = @max(-2, @min(2, raw_scroll));
         for (0..5) |i| {
-            const offset: i32 = @as(i32, @intCast(i)) - 2;
-            const idx_i32 = @mod(@as(i32, @intCast(active_display)) + offset, 5);
-            const idx: usize = @intCast(idx_i32);
-            const cat = mediaCategoryFromIndex(idx);
+            const cat_idx_i32: i32 = clamped_scroll + @as(i32, @intCast(i));
+            if (cat_idx_i32 < 0 or cat_idx_i32 > 4) {
+                if (out_click) |click| {
+                    click.cat_for_index[i] = .music;
+                    click.cat_y[i] = 0;
+                    click.cat_h[i] = 0;
+                    click.cat_x[i] = 0;
+                    click.cat_w[i] = 0;
+                }
+                continue;
+            }
+            const cat = mediaCategoryFromIndex(@intCast(cat_idx_i32));
             const px = pill_start_x + @as(f64, @floatFromInt(i)) * (pill_w + pill_gap);
             const is_selected = self.category == cat;
             const is_focused = self.focus == .category and is_selected;
-            const dist = @abs(offset);
+            const dist = @abs(@as(i32, @intCast(i)) - 2);
             const dimmer = @as(f64, @floatFromInt(dist));
             const this_h = if (is_selected) pill_h_max else pill_h_min - @min(dimmer * 3.0 * scale_f, pill_h_min - 22.0 * scale_f);
             const py = cat_y + (pill_h_max - this_h) * 0.5;
@@ -1380,7 +1427,7 @@ pub const MediaWidget = struct {
                     c.cairo_stroke(cr);
                 }
 
-                renderTileArt(cr, tx, ty, tile_w, art_h, entry, border);
+                renderTileArt(cr, tx, ty, tile_w, art_h, entry, border, &self.art_cache);
 
                 c.cairo_set_font_size(cr, label_font);
                 c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.95);
@@ -1410,7 +1457,7 @@ pub const MediaWidget = struct {
             c.cairo_paint(cr);
 
             const over_art_h = over_h - label_h;
-            renderTileArt(cr, ox, oy, over_w, over_art_h, library[self.selected_result], border);
+            renderTileArt(cr, ox, oy, over_w, over_art_h, library[self.selected_result], border, &self.art_cache);
 
             c.cairo_set_font_size(cr, label_font);
             c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.95);
