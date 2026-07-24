@@ -361,9 +361,9 @@ pub const MediaWidget = struct {
     pub fn stepSliderReveal(self: *MediaWidget, dt: f64) void {
         const prev_reveal = self.slider_reveal;
         if (self.slider_reveal < self.slider_reveal_target) {
-            self.slider_reveal = @min(self.slider_reveal_target, self.slider_reveal + dt * 10.0);
+            self.slider_reveal = @min(self.slider_reveal_target, self.slider_reveal + dt * 16.0);
         } else if (self.slider_reveal > self.slider_reveal_target) {
-            self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * 10.0);
+            self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * 16.0);
         }
         if (self.slider_reveal != prev_reveal) self.bumpGeneration();
     }
@@ -1218,16 +1218,17 @@ pub const MediaWidget = struct {
         const bar_w: f64 = 5.0 * scale_f;
         const scroller_track: f64 = 30.0 * scale_f; // fixed right-side channel for the scroller and letters
         const cols = self.grid_cols;
-        const base_gap: f64 = pad_x; // edge gap matches content margin
-        const min_gap: f64 = 6.0 * scale_f;
+        const base_gap: f64 = 36.0 * scale_f;
+        const min_gap: f64 = 8.0 * scale_f;
         const tile_gap: f64 = @max(min_gap, base_gap - (scroller_track * self.slider_reveal) / @as(f64, @floatFromInt(cols + 1)));
-        const tile_w = (content_w - @as(f64, @floatFromInt(cols + 1)) * base_gap) / @as(f64, @floatFromInt(cols));
-        const list_x = pad_x + tile_gap;
-        const list_w = content_w - 2.0 * tile_gap;
+        const tile_w = (w_d - @as(f64, @floatFromInt(cols + 1)) * base_gap) / @as(f64, @floatFromInt(cols));
+        const list_x = tile_gap;
+        const list_w = w_d - 2.0 * tile_gap;
         const list_h = h_d - list_y - pad_y;
-        const channel_x_open = w_d - pad_x - scroller_track;
-        const channel_x = channel_x_open + (1.0 - self.slider_reveal) * (scroller_track + pad_x);
-        const channel_cx = channel_x + scroller_track * 0.5;
+        const right_gap_center = w_d - tile_gap * 0.5;
+        const channel_cx_open = right_gap_center;
+        const channel_cx = channel_cx_open + (1.0 - self.slider_reveal) * (tile_gap * 0.5 + scroller_track * 0.5);
+        const channel_x = channel_cx - scroller_track * 0.5;
 
         if (out_click) |click| {
             click.list_x = @intFromFloat(list_x);
