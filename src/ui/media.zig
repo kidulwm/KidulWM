@@ -381,7 +381,13 @@ pub const MediaWidget = struct {
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
         const idx: i32 = @intCast(displayIndex(self.category));
         const new_idx = @mod(idx + delta, 5);
-        self.category = mediaCategoryFromIndex(@intCast(new_idx));
+        self.setCategory(mediaCategoryFromIndex(@intCast(new_idx)));
+    }
+
+    pub fn setCategory(self: *MediaWidget, cat: MediaCategory) void {
+        self.category = cat;
+        self.search_len = 0;
+        self.search_caret = 0;
         self.selected_result = 0;
         self.list_scroll_offset = 0;
         self.bumpGeneration();
@@ -449,16 +455,21 @@ pub const MediaWidget = struct {
     }
 
     pub fn jumpToLetter(self: *MediaWidget, letter: u8) void {
+        self.jumpToSearchPrefix(&.{letter});
+    }
+
+    pub fn jumpToSearchPrefix(self: *MediaWidget, needle: []const u8) void {
         const library = getLibrary(self.category);
         if (library.len == 0) return;
-        const needle = std.ascii.toLower(letter);
+        if (needle.len == 0) return;
+        const lower_needle = std.ascii.lowerString(&self.search_buf, needle);
         var idx: usize = 0;
-        // Binary-ish scan to first title starting with letter.
+        // Find first title starting with prefix.
         for (library, 0..) |entry, i| {
             const title = std.mem.sliceTo(entry.title, 0);
             if (title.len == 0) continue;
-            const first = std.ascii.toLower(title[0]);
-            if (first >= needle) {
+            if (title.len < lower_needle.len) continue;
+            if (std.ascii.eqlIgnoreCase(title[0..lower_needle.len], lower_needle)) {
                 idx = i;
                 break;
             }
@@ -1406,19 +1417,19 @@ pub const MediaWidget = struct {
             c.cairo_restore(cr);
         }
 
-        // ---- Vertical slider scroller (weather-card style) ----
+        // ---- Plain scrollbar track ----
         const track_h = list_h;
         const track_r = bar_w * 0.5;
 
         roundedRect(cr, channel_cx - bar_w * 0.5, list_y, bar_w, track_h, track_r);
-        c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.12);
+        c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.10);
         c.cairo_fill_preserve(cr);
-        c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35);
+        c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
 
         const ratio = if (self.max_scroll_offset == 0) 0.0 else @as(f64, @floatFromInt(self.list_scroll_offset)) / @as(f64, @floatFromInt(self.max_scroll_offset));
-        const knob_r = @max(bar_w * 1.5, 10.0 * scale_f);
+        const knob_r = @max(bar_w * 1.5, 9.0 * scale_f);
         const usable_h = track_h - bar_w;
         const knob_cx = channel_cx;
         const knob_cy = list_y + bar_w * 0.5 + usable_h * ratio;
@@ -1429,72 +1440,6 @@ pub const MediaWidget = struct {
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
-
-        // ---- A-Z 5-letter scrolling selector on the vertical slider ----
-        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        const alpha_font_base = @as(f64, style_.font_size_s) * scale_f;
-        const strip_w = scroller_track - 4.0 * scale_f;
-        const strip_x = channel_cx - strip_w * 0.5;
-        const strip_y = list_y;
-        const strip_h = list_h;
-
-        if (out_click) |click| {
-            click.letters_y = @intFromFloat(strip_y);
-            click.letters_h = @intFromFloat(strip_h);
-        }
-
-        const show_all = self.slider_hover or self.focus == .slider;
-        const center_idx = self.currentSliderLetterIndex();
-
-        const window_size: usize = 5;
-        const half_window = window_size / 2;
-        var window_start: usize = if (center_idx <= half_window) 0 else center_idx - half_window;
-        if (center_idx + half_window >= letters.len) {
-            window_start = letters.len - window_size;
-        }
-
-        const slot_h = strip_h / @as(f64, @floatFromInt(window_size));
-        const current_slot: usize = if (center_idx <= half_window) center_idx else if (center_idx + half_window >= letters.len) window_size - (letters.len - center_idx) else half_window;
-        _ = current_slot;
-
-        // Keep the highlight small enough to fit inside the strip without overflowing the card.
-        const highlight_r = @min(@as(f64, 8.0) * scale_f, strip_w * 0.36);
-
-        if (show_all) {
-            for (letters, 0..) |ch, i| {
-                const slot_i = @as(i32, @intCast(i)) - @as(i32, @intCast(window_start));
-                if (slot_i < 0 or slot_i >= window_size) continue;
-
-                const distance: usize = if (i > center_idx) i - center_idx else center_idx - i;
-                const multiplier: f64 = if (distance == 0) 1.7 else if (distance == 1) 1.25 else 0.88;
-                const alpha_font = alpha_font_base * multiplier;
-
-                const slot_y = strip_y + @as(f64, @floatFromInt(slot_i)) * slot_h + slot_h * 0.5 + alpha_font * 0.35;
-                const cx = strip_x + strip_w * 0.5;
-
-                const lbuf = [1:0]u8{ch};
-                c.cairo_set_font_size(cr, alpha_font);
-                var lex: c.cairo_text_extents_t = undefined;
-                c.cairo_text_extents(cr, &lbuf, &lex);
-                const lx = cx - lex.width * 0.5;
-
-                if (distance == 0) {
-                    c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.5);
-                    c.cairo_new_path(cr);
-                    c.cairo_arc(cr, cx, slot_y - alpha_font * 0.25, highlight_r, 0, 2.0 * std.math.pi);
-                    c.cairo_fill_preserve(cr);
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.9);
-                    c.cairo_set_line_width(cr, 1.0);
-                    c.cairo_stroke(cr);
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
-                } else {
-                    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.65);
-                }
-
-                c.cairo_move_to(cr, lx, slot_y);
-                c.cairo_show_text(cr, &lbuf);
-            }
-        }
     }
 
     fn drawEllipsizedText(_: *MediaWidget, cr: *c.cairo_t, text: []const u8, x: f64, y: f64, max_w: f64) void {

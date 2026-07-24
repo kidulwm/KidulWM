@@ -1549,7 +1549,12 @@ pub const Tray = struct {
         if (in_letters) {
             const rel_y = ly - @as(f64, @floatFromInt(click.letters_y));
             const ratio = @max(0.0, @min(1.0, rel_y / @as(f64, @floatFromInt(click.letters_h))));
-            self.media.jumpToSliderPosition(ratio);
+            const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            if (ratio < 0.5) {
+                self.media.jumpToLetter(letters[0]); // top half -> A
+            } else {
+                self.media.jumpToLetter(letters[letters.len - 1]); // bottom half -> Z
+            }
             self.media.focusSlider();
             self.requestUpdate();
             self.host.request_frame(self.host.ctx);
@@ -1613,7 +1618,19 @@ pub const Tray = struct {
                 .Delete => { self.media.deleteSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 .Return, .KP_Enter => {
                     const text = self.media.acceptSearch();
-                    std.log.info("KidulWM: media search accepted: {s}", .{text});
+                    // Secret category easter egg: two-letter codes jump to category pills.
+                    if (text.len == 2) {
+                        const code = std.ascii.lowerString(&self.media.search_buf, text);
+                        if (std.mem.eql(u8, code, "sh")) { self.media.setCategory(.shop); }
+                        else if (std.mem.eql(u8, code, "mo")) { self.media.setCategory(.movies); }
+                        else if (std.mem.eql(u8, code, "mu")) { self.media.setCategory(.music); }
+                        else if (std.mem.eql(u8, code, "pi")) { self.media.setCategory(.pictures); }
+                        else if (std.mem.eql(u8, code, "tv")) { self.media.setCategory(.tv); }
+                        else { self.media.jumpToSearchPrefix(text); }
+                    } else if (text.len > 0) {
+                        self.media.jumpToSearchPrefix(text);
+                    }
+                    self.media.focusControl(.result);
                     self.requestUpdate();
                     self.host.request_frame(self.host.ctx);
                     return true;
