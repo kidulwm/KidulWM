@@ -1,6 +1,6 @@
 # KidulWM Handoff
 
-Updated 2026-07-24. Source of truth for resuming current work.
+Updated 2026-07-25. Source of truth for resuming current work.
 
 ## Current state
 
@@ -92,13 +92,15 @@ Updated 2026-07-24. Source of truth for resuming current work.
 - "Bobs Candy Shading" recipe is saved in the `kidulwm-ui` skill.
 - Deployed binary path on live VM is `/usr/bin/kidulwm`.
 
-## Kidul Browser side quest (2026-07-24)
+## Kidul Browser side quest (2026-07-25)
 
-- Project name: `kidul-browser` (renamed from `dotrix-browser`).
-- Location: `/home/dad/dev/kidul-browser`.
-- `zig build` passes; `--headless` smoke test passes.
-- Wayland/Cairo renderer draws the start screen correctly to the internal buffer.
-- Niri window rule added so the browser opens as a floating 1024x768 top-centered card.
-- Remaining presentation bug: Niri/`grim` still show a black window even though the internal Cairo buffer is correct. Work in progress.
-- Allocator mismatch in `src/Wayland.zig` key handling was fixed while responding to typing-disappear report.
-- Real web engine, tray IPC, and Kidul Files are deferred.
+- Project: `kidul-browser` at `/home/dad/dev/kidul-browser`.
+- Branch `main`, head `c6a4ad2`.
+- Keyboard nav fixed: Tab and arrow keys cycle slider / address bar / favorites.
+- Theme switched to muted black-gold candy; borders read from shared `border` / `border_focus` tokens.
+- Corner style is configurable (round default) — no hard-coded chamfers.
+- Centered top pill slider; default mode is `Isolate`; `Safe` and `Browse` extend to the left.
+- Address bar at 1/3 canvas height; favorites below with generous spacing, laid out for 3 future rows.
+- Window hints request a 1920×1080 slide (double-d of earlier 1024×768); small configs ignored in code.
+- Still deferred: real web engine, tray IPC, Kidul Files, Mullvad top-right slot.
+- Next test: relaunch and screenshot to verify slide size and proportions.
