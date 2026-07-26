@@ -1,6 +1,6 @@
 # KidulWM Handoff
 
-Updated 2026-07-25. Source of truth for resuming current work.
+Updated 2026-07-26. Source of truth for resuming current work.
 
 ## Current state
 
@@ -92,15 +92,23 @@ Updated 2026-07-25. Source of truth for resuming current work.
 - "Bobs Candy Shading" recipe is saved in the `kidulwm-ui` skill.
 - Deployed binary path on live VM is `/usr/bin/kidulwm`.
 
-## Kidul Browser side quest (2026-07-25)
+## Kidul Browser side quest (2026-07-26)
 
 - Project: `kidul-browser` at `/home/dad/dev/kidul-browser`.
-- Branch `main`, head `c6a4ad2`.
-- Keyboard nav fixed: Tab and arrow keys cycle slider / address bar / favorites.
-- Theme switched to muted black-gold candy; borders read from shared `border` / `border_focus` tokens.
-- Corner style is configurable (round default) — no hard-coded chamfers.
-- Centered top pill slider; default mode is `Isolate`; `Safe` and `Browse` extend to the left.
-- Address bar at 1/3 canvas height; favorites below with generous spacing, laid out for 3 future rows.
-- Window hints request a 1920×1080 slide (double-d of earlier 1024×768); small configs ignored in code.
-- Still deferred: real web engine, tray IPC, Kidul Files, Mullvad top-right slot.
-- Next test: relaunch and screenshot to verify slide size and proportions.
+- Detailed state lives in `/home/dad/dev/kidul-browser/HANDOFF.md`.
+
+### Current status
+
+- Renderer switched from WPE to **WebKitGTK 4.1**.
+- `renderer/webkitgtk-renderer.cc` writes snapshots to inherited memfds.
+- `src/Renderer.zig` confirms the frames are real: `/tmp/kb_frame_dump.png` renders `example.com` correctly.
+- Visible Wayland surface still shows a **black content rectangle**.
+- Bug is isolated to the path from `frame_mmap` → Cairo/SHM commit in `Wayland.zig`/`Renderer.zig`.
+- Baseline tagged in kidul-browser: `webkitgtk-blackbox-debug-base-20260726` (commit `327256d`).
+- Delegated to **coderBob** (`deleg_75e28f34`) for a focused fix.
+
+### Next step after coderBob returns
+
+- Verify `grim /tmp/kb_browser.png` shows page content.
+- If fixed, simplify the speculative 3-buffer SHM code if coderBob has not already.
+- Then decide on KidulWM tray integration / safe-mode VM wiring.
