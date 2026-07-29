@@ -89,7 +89,9 @@ pub const TypewriterState = struct {
     }
 
     pub fn isCursorVisible(self: *const TypewriterState, now_us: u64) bool {
-        return ((now_us / self.cursor_blink_us) % 2) == 0;
+        _ = self;
+        _ = now_us;
+        return true;
     }
 
     pub fn update(self: *TypewriterState, queue: *const NotificationQueue, now_us: u64) bool {

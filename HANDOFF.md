@@ -6,7 +6,7 @@ Updated 2026-07-29 (end of session). Source of truth for resuming.
 
 | Item | Value |
 |------|-------|
-| Branch | `CachyOS-Candy` (worktree has local changes) |
+| Branch | `full-tray-02251c9` |
 | Work VM | `fresh-one` (kidul@127.0.0.1:2260) |
 | Service log | `/tmp/kidulwm-service.log` |
 | Deployed WM binary | `/usr/bin/kidulwm` |
