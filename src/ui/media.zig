@@ -985,7 +985,7 @@ pub const MediaWidget = struct {
         }
 
         c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
-        const txt = if (self.cached.title[0] != 0) std.mem.sliceTo(&self.cached.title, 0) else "No media";
+        const txt = if (self.cached.title[0] != 0) std.mem.sliceTo(&self.cached.title, 0) else "";
         const font_h: f64 = @as(f64, style_.font_size_s) * 0.7 * scale_f;
         c.cairo_set_font_size(cr, font_h);
         var ext: c.cairo_text_extents_t = undefined;

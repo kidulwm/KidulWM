@@ -194,13 +194,7 @@ pub const WeatherWidget = struct {
         }
 
         if (!state_.available) {
-            c_cairo.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-            c_cairo.cairo_set_font_size(cr, mm_size);
-            const prompt = "set location";
-            var p_ext: c_cairo.cairo_text_extents_t = undefined;
-            c_cairo.cairo_text_extents(cr, prompt, &p_ext);
-            c_cairo.cairo_move_to(cr, (w_d - p_ext.width) * 0.5, @min(h_d - 6.0 * scale_f, mm_y + mm_size * 2.0));
-            c_cairo.cairo_show_text(cr, prompt);
+            // Location prompt intentionally suppressed; user configures location in the weather card.
         }
     }
 
