@@ -281,12 +281,7 @@ pub const Window = struct {
                 @intFromFloat(@round(self.animation.cur_x)),
                 @intFromFloat(@round(self.animation.cur_y)),
             );
-            if (self.chrome_tree) |chrome| {
-                chrome.node.setPosition(
-                    @intFromFloat(@round(self.animation.cur_x)),
-                    @intFromFloat(@round(self.animation.cur_y)),
-                );
-            }
+            // Chrome follows scene_tree automatically.
             self.updateChrome(self.chrome_focused, self.chrome_edges);
         } else {
             // Transition finished; reset so future layouts snap.
@@ -422,17 +417,14 @@ pub const Window = struct {
             self.chrome_tree = null;
         }
 
-        // Put the chrome in the server overlay tree so it floats above all
-        // window surfaces, including the focused slide.
-        const tree = self.server.overlay_tree.createSceneTree() catch return;
-        tree.node.setPosition(
-            @intFromFloat(@round(self.animation.cur_x)),
-            @intFromFloat(@round(self.animation.cur_y)),
-        );
-        // Peeks must stay on top so their visible seam border is not covered by
-        // the focused window's chrome.
-        const is_peek = !edges.eql(chrome_renderer.EdgeMode.all);
-        if (is_peek) tree.node.raiseToTop();
+        // Put the chrome inside the window's own scene tree so it always stays
+        // in front of the client surface. The chrome is translated by the
+        // wrapper tree, so it is positioned at (0, 0) inside it.
+        const tree = self.scene_tree.createSceneTree() catch return;
+        tree.node.setPosition(0, 0);
+        // Raise above the surface tree so rounded-corner and border drawing hide
+        // any client pixels that extend past the chrome shape.
+        tree.node.raiseToTop();
         self.chrome_tree = tree;
         self.chrome_width = w;
         self.chrome_height = h;
@@ -440,6 +432,18 @@ pub const Window = struct {
         self.chrome_edges = edges;
         self.chrome_scale = scale;
         self.chrome_style_generation = style_gen;
+
+        // Clip the client surface to the inner rectangle (inside the border).
+        // The chrome overlay covers the border/corner ring, so the visible
+        // result keeps the rounded look while preventing client pixels from
+        // leaking past it.
+        const border: i32 = @intFromFloat(@max(1.0, self.server.theme.border_width));
+        self.surface_tree.node.subsurfaceTreeSetClip(&wlr.Box{
+            .x = border,
+            .y = border,
+            .width = @max(1, w - 2 * border),
+            .height = @max(1, h - 2 * border),
+        });
 
         const style = self.server.theme;
         const surface = chrome_renderer.renderChrome(style, w, h, focused, scale, edges, label) orelse {
@@ -503,15 +507,15 @@ pub const Window = struct {
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
-        // wlroots emits the destroy signal while the surface and its signals still
-        // exist, so it is safe and required to remove our listeners now.
+        // Remove all listeners. wlroots asserts that toplevel signal lists are
+        // empty before freeing the object, so leaving set_title/set_app_id
+        // attached triggers an assertion.
+        window.destroy.link.remove();
+        window.set_title.link.remove();
+        window.set_app_id.link.remove();
         window.map.link.remove();
         window.unmap.link.remove();
         window.commit.link.remove();
-        window.set_title.link.remove();
-        window.set_app_id.link.remove();
-        // Remove the destroy listener itself from the signal currently emitting us.
-        window.destroy.link.remove();
         window.server.deckForWindow(window).removeWindow(window.id);
         window.link.remove();
         window.server.allocator.destroy(window);

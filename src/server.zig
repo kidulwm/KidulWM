@@ -13,6 +13,7 @@ const Theme = theme_mod.Theme;
 const slidedeck = @import("core/slidedeck.zig");
 const animation = @import("core/animation.zig");
 const chrome_renderer = @import("render/chrome.zig");
+const curtain_renderer = @import("render/curtain.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const ui = @import("./ui/tray.zig");
@@ -45,6 +46,7 @@ pub const Output = struct {
     frame: wl.Listener(*wlr.Output),
     destroy: wl.Listener(*wlr.Output),
     deck: slidedeck.SlideDeck,
+    curtains: ?*curtain_renderer.OutputCurtains,
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -55,6 +57,7 @@ pub const Output = struct {
             .frame = wl.Listener(*wlr.Output).init(handleFrame),
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
             .deck = slidedeck.SlideDeck.init(server.allocator),
+            .curtains = null,
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -65,6 +68,10 @@ pub const Output = struct {
         self.server.tray.removeOutput(self);
         self.frame.link.remove();
         self.destroy.link.remove();
+        if (self.curtains) |curtains| {
+            curtains.destroy();
+            self.curtains = null;
+        }
         self.deck.deinit();
     }
 
@@ -822,6 +829,15 @@ pub const Server = struct {
             const height = @as(u32, @intCast(wlr_output.height));
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
+            if (output.curtains) |curtains| {
+                var box: wlr.Box = undefined;
+                self.output_layout.getBox(wlr_output, &box);
+                const scale: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
+                const has_left_peek = output.deck.focused_index > 0;
+                const has_right_peek = output.deck.focused_index + 1 < output.deck.slides.items.len;
+                curtains.update(self.theme, self.theme_runtime.generation, scale, box, self.deck_split.left_peek, self.deck_split.right_peek, has_left_peek, has_right_peek);
+            }
+
             if (output.deck.slides.items.len == 0) continue;
             any_slides = true;
 
@@ -1010,6 +1026,10 @@ pub const Server = struct {
         };
         output.init(self, wlr_output, scene_output);
         std.log.info("KidulWM: output added to layout", .{});
+        output.curtains = curtain_renderer.OutputCurtains.create(self.allocator, self.overlay_tree) catch |err| blk: {
+            std.log.err("failed to create curtains: {}", .{err});
+            break :blk null;
+        };
         self.tray.addOutput(output);
         // Compute layout immediately so window panels appear on the first frame,
         // instead of waiting for the asynchronous layout-event loop tick.
@@ -1027,6 +1047,14 @@ pub const Server = struct {
 
     fn handleNewToplevelDecoration(listener: *wl.Listener(*wlr.XdgToplevelDecorationV1), decoration: *wlr.XdgToplevelDecorationV1) void {
         const self: *Server = @fieldParentPtr("new_toplevel_decoration", listener);
+        // Some clients create the decoration object before the xdg surface is
+        // initialized.  wlroots asserts when scheduling a configure on an
+        // uninitialized surface, so skip the explicit mode set in that case;
+        // the client/server default will apply once the surface is ready.
+        const toplevel = decoration.toplevel;
+        if (!toplevel.base.initialized) {
+            return;
+        }
         // Default to server-side decorations (no client title bars). Honour the
         // user's explicit override when they want title bars, but signature look
         // means SSD by default.

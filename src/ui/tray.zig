@@ -13,6 +13,7 @@ const card_frame = @import("card_frame.zig");
 const bob_logo_png = @embedFile("assets/bob/logo.png");
 const bob_text_png = @embedFile("assets/bob/text.png");
 const bob_text_mask_png = @embedFile("assets/bob/text_mask.png");
+const bob_emblem_mask_png = @embedFile("assets/bob/emblem_mask.png");
 
 // Archived Barry pose assets (tag tray-logo-animation-backup).
 const lay_png = @embedFile("assets/barry/lay.png");
@@ -295,6 +296,7 @@ pub const Tray = struct {
     bob_logo: *c.cairo_surface_t,
     bob_text: *c.cairo_surface_t,
     bob_text_mask: *c.cairo_surface_t,
+    bob_emblem_mask: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
     const barry_button_height: i32 = 84;
@@ -338,6 +340,8 @@ pub const Tray = struct {
         errdefer c.cairo_surface_destroy(bob_text);
         const bob_text_mask = try loadPngFromBytes(bob_text_mask_png);
         errdefer c.cairo_surface_destroy(bob_text_mask);
+        const bob_emblem_mask = try loadPngFromBytes(bob_emblem_mask_png);
+        errdefer c.cairo_surface_destroy(bob_emblem_mask);
 
         const card_shadow_tree = root.createSceneTree() catch null;
         const card_tree = root.createSceneTree() catch null;
@@ -375,6 +379,7 @@ pub const Tray = struct {
             .bob_logo = bob_logo,
             .bob_text = bob_text,
             .bob_text_mask = bob_text_mask,
+            .bob_emblem_mask = bob_emblem_mask,
         };
     }
 
@@ -1258,18 +1263,17 @@ pub const Tray = struct {
         self.drawPet(cr, x, y, w, h, s);
     }
     fn drawPet(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const surf = self.bob_text_mask;
+        const surf = self.bob_emblem_mask;
         const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
         const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
         if (img_w <= 0.0 or img_h <= 0.0) return;
 
-        const margin: f64 = 4.0 * s;
+        const margin: f64 = 18.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
         const scale = @min(avail_w / img_w, avail_h / img_h);
-        const left_nudge: f64 = 20.0 * s;
-        const draw_x = x + (w - img_w * scale) / 2.0 - left_nudge;
-        const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 13.0) * s;
+        const draw_x = x + (w - img_w * scale) / 2.0 - 12.0 * s;
+        const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 1.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
         const draw_y = y + h + pet_bottom_pad - bottom_above_border - img_h * scale;
 
