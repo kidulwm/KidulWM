@@ -3245,6 +3245,19 @@ pub fn notificationAdd(self: *Self, title: []const u8, body: []const u8, source_
 }
 
 fn drawNotificationWidget(self: *Self, widget: *PerOutputNotifications) void {
+    if (self.notifications.queue.activeCount() == 0) {
+        if (widget.scene_buffer) |sb| {
+            sb.node.destroy();
+            widget.scene_buffer = null;
+        }
+        if (widget.buffer) |buf| {
+            wlr.Buffer.drop(buf);
+            widget.buffer = null;
+        }
+        widget.last_w = 0;
+        widget.last_h = 0;
+        return;
+    }
     const box = self.host.right_peek_box(self.host.ctx, notificationWidgetIndex(self, widget)) orelse return;
     if (box.width <= 0 or box.height <= 0) return;
 

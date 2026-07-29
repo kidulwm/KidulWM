@@ -178,6 +178,12 @@ pub const NotificationWidget = struct {
         self.queue.deinit();
     }
 
+    pub fn clear(self: *NotificationWidget) void {
+        self.tw.reset(0);
+        self.queue.deinit();
+        self.queue = NotificationQueue.init(self.queue.allocator, 32);
+    }
+
     pub fn push(self: *NotificationWidget, title: []const u8, body: []const u8, source_id: []const u8) !void {
         const now = animation.nowUs();
         try self.queue.push(title, body, source_id, now);
@@ -194,7 +200,7 @@ pub const NotificationWidget = struct {
                 return true;
             }
         }
-        return alive or self.tw.is_idle;
+        return alive;
     }
 };
 

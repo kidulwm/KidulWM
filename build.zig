@@ -119,6 +119,12 @@ pub fn build(b: *std.Build) void {
     const control_exe = b.addExecutable(.{ .name = "kidulwm-control", .root_module = control_mod });
     b.installArtifact(control_exe);
 
+    // TODO: replace python bridge with native Zig D-Bus service.
+    // The Zig bridge scaffold lives in src/notify-bridge/ but is not yet
+    // compiling; leaving it out of the build keeps `zig build` green while
+    // notifications flow through the Python bridge installed as a systemd
+    // user service (config/systemd/user/kidulwm-notify-bridge.service).
+
     const moon_test_mod = b.createModule(.{
         .root_source_file = b.path("src/test_moon.zig"),
         .target = target,

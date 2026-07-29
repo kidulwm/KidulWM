@@ -77,6 +77,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
             const source_id = it.next() orelse "test";
             break :blk .{ .notification_test = .{ .title = title, .body = body, .source_id = source_id } };
         }
+        if (std.mem.eql(u8, cmd, "notification_clear")) break :blk .{ .notification_clear = {} };
         if (std.mem.eql(u8, cmd, "set_theme")) {
             const key = it.next() orelse {
                 std.log.err("set_theme requires a key argument", .{});
