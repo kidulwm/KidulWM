@@ -95,6 +95,28 @@ const KeyboardDevice = struct {
             // this keeps arrow keys from moving a focused window while navigating the card.
             return;
         }
+        // Tray takes full keyboard control while open (arrows to navigate, Return to activate, Escape to close).
+        if (server.tray.isOpen()) {
+            switch (sym) {
+                xkb.Keysym.Up => {
+                    server.tray.selectPrev();
+                    return;
+                },
+                xkb.Keysym.Down => {
+                    server.tray.selectNext();
+                    return;
+                },
+                xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
+                    server.tray.activateSelected();
+                    return;
+                },
+                xkb.Keysym.Escape => {
+                    server.tray.toggle();
+                    return;
+                },
+                else => {},
+            }
+        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 

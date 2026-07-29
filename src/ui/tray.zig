@@ -2,6 +2,9 @@ const std = @import("std");
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const c = @import("dm").c;
+const c_std = @cImport({
+    @cInclude("stdlib.h");
+});
 const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
@@ -104,6 +107,7 @@ pub const TrayHost = struct {
 const Action = union(enum) {
     toggle_tray,
     cycle_animation,
+    media_card,
     spawn: []const u8,
     settings_page: []const u8,
     none,
@@ -311,15 +315,19 @@ pub const Tray = struct {
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
-        const items = try allocator.alloc(TrayItem, 4);
-        items[0] = .{ .id = "term", .label = "Terminal", .action = .{ .spawn = "" } };
-        items[1] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "" } };
-        items[2] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "" } };
-        items[3] = .{ .id = "motion", .label = "Motion", .action = .cycle_animation };
+        const items = try allocator.alloc(TrayItem, 8);
+            items[0] = .{ .id = "assistant", .label = "Assistant", .action = .none };
+            items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "kidul-browser" } };
+            items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "foot -e yazi" } };
+            items[3] = .{ .id = "games", .label = "Games", .action = .none };
+            items[4] = .{ .id = "maps", .label = "Maps", .action = .none };
+            items[5] = .{ .id = "media", .label = "Media", .action = .media_card };
+            items[6] = .{ .id = "office", .label = "Office", .action = .none };
+            items[7] = .{ .id = "settings", .label = "Settings", .action = .none };
 
-        var manual_order: std.ArrayList(usize) = .empty;
-        errdefer manual_order.deinit(allocator);
-        try manual_order.appendSlice(allocator, &[_]usize{ 0, 1, 2, 3 });
+            var manual_order: std.ArrayList(usize) = .empty;
+            errdefer manual_order.deinit(allocator);
+            try manual_order.appendSlice(allocator, &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 });
 
         const barry_lay = try loadPngFromBytes(lay_png);
         errdefer c.cairo_surface_destroy(barry_lay);
@@ -671,8 +679,8 @@ pub const Tray = struct {
             self.toggle();
             return;
         }
-        if (self.selected_index > 0) {
-            self.selected_index -= 1;
+        if (self.selected_index < self.items.len) {
+            self.selected_index += 1;
         }
         if (self.selected_index == 0) {
             self.bobChangedState(.sitting);
@@ -690,8 +698,12 @@ pub const Tray = struct {
             self.toggle();
             return;
         }
-        if (self.selected_index < self.items.len) {
-            self.selected_index += 1;
+        if (self.selected_index > 0) {
+            self.selected_index -= 1;
+        }
+        if (self.selected_index == 0) {
+            self.bobChangedState(.sitting);
+        } else {
             self.bobChangedState(.standing);
         }
         self.hover_index = self.selected_index;
@@ -715,7 +727,16 @@ pub const Tray = struct {
         switch (it.action) {
             .cycle_animation => self.host.cycle_animation(self.host.ctx),
             .toggle_tray => self.toggle(),
-            .spawn => {},
+            .media_card => {
+                self.toggleMediaCard();
+            },
+            .spawn => |cmd| {
+                if (cmd.len > 0) {
+                    var buf: [512]u8 = undefined;
+                    const script = std.fmt.bufPrint(&buf, "{s} &", .{cmd}) catch cmd;
+                    _ = c_std.system(script.ptr);
+                }
+            },
             .settings_page => {},
             .none => {},
         }
@@ -1271,7 +1292,7 @@ pub const Tray = struct {
         const margin: f64 = 18.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
-        const scale = @min(avail_w / img_w, avail_h / img_h);
+        const scale = @min(avail_w / img_w, avail_h / img_h) * 0.80;
         const draw_x = x + (w - img_w * scale) / 2.0 - 12.0 * s;
         const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 1.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;

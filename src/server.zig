@@ -1342,6 +1342,7 @@ pub const Server = struct {
         const envp = [_:null]?[*:0]const u8{
             "WAYLAND_DISPLAY=wayland-1",
             "XDG_RUNTIME_DIR=/run/user/1000",
+            "GTK_CSD=0",
             "GHOSTTY_RESOURCES_DIR=/usr/share/ghostty",
             null,
         };

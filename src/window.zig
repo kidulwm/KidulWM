@@ -369,21 +369,39 @@ pub const Window = struct {
         }
         const y: i32 = 0;
 
-        std.log.info("KidulWM peek offset window={d} edges={s} buf={d}x{d} geom={d},{d} {d}x{d} target_w={d} offset={d},{d}", .{
-            self.id,
-            if (edges.left) "left" else "right",
-            surface.current.width,
-            surface.current.height,
-            geom.x,
-            geom.y,
-            geom.width,
-            geom.height,
-            target_w,
-            x,
-            y,
-        });
-
         self.setSurfaceOffset(x, y);
+    }
+
+    /// Focused window: scale and offset the surface so its content geometry
+    /// exactly fills the wrapper. CSD shadows/padding are pushed under the
+    /// chrome border ring, eliminating the inner gap.
+    pub fn setSurfaceOffsetForFocus(self: *Window) void {
+        const surface = self.toplevel.base.surface;
+        if (!surface.mapped) return;
+
+        const geom = self.toplevel.base.geometry;
+        const target_w: f64 = self.animation.target_w;
+        const target_h: f64 = self.animation.target_h;
+
+        // Avoid division by zero: if geometry reports zero, fall back to no-op.
+        if (geom.width <= 0 or geom.height <= 0) return;
+
+        // Buffer size (full client buffer including CSD padding).
+        const buf_w: f64 = @floatFromInt(surface.current.width);
+        const buf_h: f64 = @floatFromInt(surface.current.height);
+
+        // Scale so the content area maps to the wrapper.
+        const sx = target_w / @as(f64, @floatFromInt(geom.width));
+        const sy = target_h / @as(f64, @floatFromInt(geom.height));
+
+        const dest_w: i32 = @intFromFloat(@round(buf_w * sx));
+        const dest_h: i32 = @intFromFloat(@round(buf_h * sy));
+
+        const off_x: i32 = @intFromFloat(@round(-@as(f64, @floatFromInt(geom.x)) * sx));
+        const off_y: i32 = @intFromFloat(@round(-@as(f64, @floatFromInt(geom.y)) * sy));
+
+        self.setSurfaceDestSize(dest_w, dest_h);
+        self.setSurfaceOffset(off_x, off_y);
     }
 
     /// Regenerate the compositor-drawn chrome overlay for this window.
@@ -433,16 +451,14 @@ pub const Window = struct {
         self.chrome_scale = scale;
         self.chrome_style_generation = style_gen;
 
-        // Clip the client surface to the inner rectangle (inside the border).
-        // The chrome overlay covers the border/corner ring, so the visible
-        // result keeps the rounded look while preventing client pixels from
-        // leaking past it.
-        const border: i32 = @intFromFloat(@max(1.0, self.server.theme.border_width));
+        // Clip the client surface to the full window bounds. The chrome overlay
+        // already masks the border/corner ring, so the surface does not need to
+        // be inset by the border width here.
         self.surface_tree.node.subsurfaceTreeSetClip(&wlr.Box{
-            .x = border,
-            .y = border,
-            .width = @max(1, w - 2 * border),
-            .height = @max(1, h - 2 * border),
+            .x = 0,
+            .y = 0,
+            .width = w,
+            .height = h,
         });
 
         const style = self.server.theme;
