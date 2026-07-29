@@ -10,6 +10,8 @@ const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
 const WeatherWidget = @import("./weather.zig").WeatherWidget;
 const MediaWidget = @import("./media.zig").MediaWidget;
+const NotificationWidget = @import("./notifications.zig").NotificationWidget;
+const notifications = @import("./notifications.zig");
 const card_frame = @import("card_frame.zig");
 
 // Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
@@ -184,6 +186,21 @@ const PerOutputMedia = struct {
     last_theme_generation: u32 = 0,
 };
 
+const PerOutputNotifications = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    last_text_hash: u64 = 0,
+    last_theme_generation: u32 = 0,
+    last_count: usize = 0,
+};
+
 const BarryPet = struct {
     output_ctx: *anyopaque,
     tree: *wlr.SceneTree,
@@ -283,7 +300,9 @@ pub const Tray = struct {
     card_close_dx: f32 = -1.0,
     card_close_dy: f32 = -1.0,
 
-    // Click hit tests now use per-output widget/pet last_* geometry.
+    // Notification typewriter stream.
+    notifications: NotificationWidget,
+    notification_widgets: std.ArrayList(PerOutputNotifications),
 
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
@@ -366,8 +385,10 @@ pub const Tray = struct {
             .widgets = .empty,
             .weather_widgets = .empty,
             .media_widgets = .empty,
+            .notification_widgets = .empty,
             .weather = WeatherWidget.init(allocator),
             .media = MediaWidget.init(allocator),
+            .notifications = NotificationWidget.init(allocator),
             .card_shadow_tree = card_shadow_tree,
             .card_tree = card_tree,
             .card_year = @as(i32, @intCast(local_now.tm_year)) + 1900,
@@ -397,8 +418,10 @@ pub const Tray = struct {
         for (self.widgets.items) |*w| self.destroyWidget(w);
         for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
         for (self.media_widgets.items) |*w| self.destroyMediaWidget(w);
+        for (self.notification_widgets.items) |*w| self.destroyNotificationWidget(w);
         self.weather.deinit();
         self.media.deinit();
+        self.notifications.deinit();
         self.outputs.deinit(self.allocator);
         self.barry_pets.deinit(self.allocator);
         self.widgets.deinit(self.allocator);
@@ -498,6 +521,21 @@ pub const Tray = struct {
             std.log.err("KidulWM: failed to append media widget: {}", .{err});
             media_tree.node.destroy();
         };
+        const notification_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create notification widget scene tree: {}", .{err});
+            return;
+        };
+        const notification_widget = PerOutputNotifications{
+            .output_ctx = output_ctx,
+            .tree = notification_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.notification_widgets.append(self.allocator, notification_widget) catch |err| {
+            std.log.err("KidulWM: failed to append notification widget: {}", .{err});
+            notification_tree.node.destroy();
+        };
         const pet = BarryPet{
             .output_ctx = output_ctx,
             .tree = pet_tree,
@@ -540,6 +578,13 @@ pub const Tray = struct {
             if (w.output_ctx == output_ctx) {
                 self.destroyMediaWidget(w);
                 _ = self.media_widgets.orderedRemove(i);
+                break;
+            }
+        }
+        for (self.notification_widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyNotificationWidget(w);
+                _ = self.notification_widgets.orderedRemove(i);
                 break;
             }
         }
@@ -1007,6 +1052,9 @@ pub const Tray = struct {
 
         self.updateCard();
 
+        const notify_changed = self.notifications.update(now_us);
+        if (notify_changed) needs_redraw = true;
+
         for (self.widgets.items) |*widget| {
             widget.info = self.host.output_info(self.host.ctx, widgetIndex(self, widget));
             self.drawWidget(widget);
@@ -1027,6 +1075,10 @@ pub const Tray = struct {
         }
         if (self.media_card_open or self.media.cached.playing) {
             needs_redraw = true;
+        }
+        for (self.notification_widgets.items) |*notification_widget| {
+            notification_widget.info = self.host.output_info(self.host.ctx, notificationWidgetIndex(self, notification_widget));
+            self.drawNotificationWidget(notification_widget);
         }
 
         for (self.barry_pets.items, 0..) |*pet, i| {
@@ -1480,6 +1532,14 @@ pub const Tray = struct {
     }
 
     fn destroyMediaWidget(_: *Self, widget: *PerOutputMedia) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
+    }
+
+    fn destroyNotificationWidget(_: *Self, widget: *PerOutputNotifications) void {
         if (widget.scene_buffer) |sb| sb.node.destroy();
         if (widget.buffer) |buf| wlr.Buffer.drop(buf);
         widget.tree.node.destroy();
@@ -3167,4 +3227,141 @@ pub const Tray = struct {
         c.cairo_arc(cr, x + radius_h, y + radius_h, radius_h, std.math.pi, 3.0 * std.math.pi / 2.0);
         c.cairo_close_path(cr);
     }
+
+fn notificationWidgetIndex(self: *const Tray, widget: *const PerOutputNotifications) usize {
+    for (self.notification_widgets.items, 0..) |*w, i| {
+        if (w == widget) return i;
+    }
+    return 0;
+}
+
+pub fn notificationAdd(self: *Self, title: []const u8, body: []const u8, source_id: []const u8) void {
+    self.notifications.push(title, body, source_id) catch |err| {
+        std.log.err("KidulWM: failed to add notification: {}", .{err});
+        return;
+    };
+    self.requestUpdate();
+    self.host.request_frame(self.host.ctx);
+}
+
+fn drawNotificationWidget(self: *Self, widget: *PerOutputNotifications) void {
+    const box = self.host.right_peek_box(self.host.ctx, notificationWidgetIndex(self, widget)) orelse return;
+    if (box.width <= 0 or box.height <= 0) return;
+
+    const style_ = self.host.theme.style;
+    const theme_gen = self.host.theme.generation;
+    const scale = widget.info.scale;
+
+    const peek_hmargin: i32 = 0;
+    const panel_w: i32 = @max(40, box.width - 2 * peek_hmargin);
+    const top_breathing: i32 = self.notifications.config.top_breathing_room;
+    const bottom_pad: i32 = 22;
+
+    var clock_bottom: i32 = box.y + top_breathing;
+    for (self.widgets.items) |w| {
+        if (w.last_y + w.last_h > clock_bottom) {
+            clock_bottom = w.last_y + w.last_h;
+        }
+    }
+
+    var media_top: i32 = box.y + box.height - bottom_pad;
+    for (self.media_widgets.items) |w| {
+        if (w.last_y > box.y) {
+            media_top = @min(media_top, w.last_y);
+        }
+    }
+
+    const avail_h = media_top - clock_bottom - top_breathing;
+    if (avail_h < 40) return;
+
+    const panel_x = box.x + peek_hmargin;
+    const panel_y = clock_bottom + top_breathing;
+    const panel_h = avail_h;
+
+    const text_hash: u64 = std.hash.Crc32.hash(
+        if (self.notifications.queue.items.items.len > self.notifications.tw.queue_index and
+            self.notifications.tw.queue_index < self.notifications.queue.items.items.len)
+            blk: {
+                const item = &self.notifications.queue.items.items[self.notifications.tw.queue_index];
+                break :blk item.body[0..@min(item.body.len, self.notifications.tw.chars_revealed)];
+            }
+        else
+            "",
+    );
+
+    const redraw = widget.scene_buffer == null or
+        widget.last_w != panel_w or
+        widget.last_h != panel_h or
+        widget.last_x != panel_x or
+        widget.last_y != panel_y or
+        widget.last_text_hash != text_hash or
+        widget.last_theme_generation != theme_gen;
+
+    if (!redraw) {
+        widget.tree.node.setPosition(panel_x, panel_y);
+        widget.tree.node.raiseToTop();
+        return;
+    }
+
+    widget.last_w = panel_w;
+    widget.last_h = panel_h;
+    widget.last_x = panel_x;
+    widget.last_y = panel_y;
+    widget.last_text_hash = text_hash;
+    widget.last_theme_generation = theme_gen;
+
+    const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(panel_w)) * scale));
+    const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(panel_h)) * scale));
+    const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+    if (stride <= 0) return;
+    const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+    const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+        std.log.err("KidulWM: notification widget buffer alloc failed: {}", .{err});
+        return;
+    };
+    defer self.allocator.free(temp);
+    @memset(temp, 0);
+
+    const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+    defer c.cairo_surface_destroy(surface);
+    const cr = c.cairo_create(surface) orelse {
+        std.log.err("KidulWM: failed to create cairo context for notification widget", .{});
+        return;
+    };
+    defer c.cairo_destroy(cr);
+
+    c.cairo_save(cr);
+    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+    c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+    c.cairo_paint(cr);
+    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+    notifications.renderNotifications(cr, .{
+        .x = panel_x,
+        .y = panel_y,
+        .width = dev_w,
+        .height = dev_h,
+    }, style_, &self.notifications, animation.nowUs());
+
+    c.cairo_restore(cr);
+
+    const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+    const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+        std.log.err("KidulWM: failed to create notification widget buffer: {}", .{err});
+        return;
+    };
+    if (widget.buffer) |old| wlr.Buffer.drop(old);
+    widget.buffer = buffer;
+    if (widget.scene_buffer) |old| old.node.destroy();
+    const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+        std.log.err("KidulWM: failed to create notification widget scene buffer: {}", .{err});
+        wlr.Buffer.drop(buffer);
+        widget.buffer = null;
+        return;
+    };
+    sb.setDestSize(panel_w, panel_h);
+    widget.scene_buffer = sb;
+    widget.tree.node.setPosition(panel_x, panel_y);
+    widget.tree.node.raiseToTop();
+}
 };

@@ -268,6 +268,10 @@ pub const Server = struct {
                 self.tray.media.seek(p.seconds);
                 return .{ .ok = true };
             },
+            .notification_test => |p| {
+                self.tray.notificationAdd(p.title, p.body, p.source_id);
+                return .{ .ok = true, .message = "notification added" };
+            },
             else => return self.handleStateRequest(req),
         }
         return self.handleStateRequest(req);
@@ -324,7 +328,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .quit => {},
+            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };

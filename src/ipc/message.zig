@@ -28,6 +28,7 @@ pub const RequestTag = enum {
     media_next,
     media_prev,
     media_seek,
+    notification_test,
     quit,
 };
 
@@ -74,6 +75,11 @@ pub const Request = union(RequestTag) {
     media_prev: void,
     media_seek: struct {
         seconds: f64,
+    },
+    notification_test: struct {
+        title: []const u8,
+        body: []const u8,
+        source_id: []const u8,
     },
     quit: void,
 };

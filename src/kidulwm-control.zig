@@ -71,6 +71,12 @@ pub fn main(init: std.process.Init.Minimal) !void {
             };
             break :blk .{ .media_seek = .{ .seconds = seconds } };
         }
+        if (std.mem.eql(u8, cmd, "notification_test")) {
+            const title = it.next() orelse "Test";
+            const body = it.next() orelse "This is a test notification.";
+            const source_id = it.next() orelse "test";
+            break :blk .{ .notification_test = .{ .title = title, .body = body, .source_id = source_id } };
+        }
         if (std.mem.eql(u8, cmd, "set_theme")) {
             const key = it.next() orelse {
                 std.log.err("set_theme requires a key argument", .{});
