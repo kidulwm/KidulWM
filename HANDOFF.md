@@ -37,6 +37,21 @@ Updated 2026-07-30 (notification bridge env fix proven). Source of truth for res
 - Verified end-to-end: `notify-send "Test" "body"` reaches the typewriter stream without manual env setup.
 - Broken Zig bridge remains in `src/notify-bridge/` as scaffold for a future native rewrite.
 
+## Notification design direction (just decided)
+
+- We accept mistakes and iterate; source-specific rules from the start, tuned over time.
+- Categories with examples:
+  - **Bob Brain / Files**: folder/file changes (favourite).
+  - **System**: updates, backup status, low battery, network up/down.
+  - **Security**: reuse data lines from rkt-dashboard (blocked IPs, failed SSH, bad downloads, USB guard pending/connected/blocked).
+  - **Communications**: email, messages, calls.
+  - **Media**: player state, track changes, errors.
+  - **Calendar/Reminders**: appointments, timers.
+- Downloads from the Files/browser require user approval (safety guard).
+- Per-source formatting, prominence, and sound from day one; users can change them in Settings later.
+- Sounds are per-source/category so you can identify importance by ear. Start with a small sound set and grow it.
+- **Slide title/favicon band**: will live in the right peek between the bottom of the notification stream and the top of the media-player double-helix. We need to reserve that vertical space now.
+
 ## Critical design decisions locked in
 
 - Curtains are **permanent tied-back** unless a peek exists on that side; when a peek exists the panel drops to full output height.
@@ -54,7 +69,10 @@ Updated 2026-07-30 (notification bridge env fix proven). Source of truth for res
 - Clicking/tapping the stream opens a **peek card** displaying the full notification river.
 - Peek is a temporary layer beside the focused slide; it does not replace or dim the focused app.
 - River will group notifications by source/app with per-item dismiss and clear-all controls.
-- Visual polish (fonts, spacing, sound, cursor blink, idle timing) comes after the functional peek layer.
+- Source-specific rules from the start: different formatting and sound per source/category.
+- **Reusable security/USB lines**: rkt-dashboard already writes `security-state.json`, `usb-pending.jsonl`, and `usb-guard-state.json`; the notification watcher can read those same files.
+- **Slide titles/favicons** will sit in the right peek between the notification stream and the media-player helix; reserve that space.
+- Visual polish and sound mapping are after the functional rule/card layer.
 
 ## Visual references on disk
 
@@ -93,8 +111,11 @@ Expect to see the text appear in the typewriter stream under the clock.
 
 ## Next session work
 
-1. **Implement notification peek/card** triggered by clicking/tapping the stream under the clock. Card shows full river grouped by app with dismiss per item and clear all.
-2. **Copy `/tmp/curtains9.png` silhouette pixel-for-pixel** into `src/render/curtain.zig` as the tied-back left panel, then mirror for the right panel.
+1. **System-event notification watcher** — write a small Python/systemd service that polls the same rkt-dashboard state files (security, USB) and emits `notify-send` into KidulWM. Use this to define the first source rules.
+2. **Notification rule/config foundation** — add a config file that maps source/category → display treatment (colour, sound, persistence, approval-required).
+3. **Implement notification peek/card** triggered by clicking/tapping the stream under the clock. Card shows full river grouped by app with dismiss per item and clear all.
+4. **Reserve right-peek space** between notification stream and media helix for slide title/favicon band.
+5. **Copy `/tmp/curtains9.png` silhouette pixel-for-pixel** into `src/render/curtain.zig` as the tied-back left panel, then mirror for the right panel.
 3. Apply the curtain design rules above (thinnest at rope, bulge above/below, 5 px gap from focused slide, rope at 1/5 top, black velvet, border-color rope).
 4. Build/deploy/screenshot until the static tied-back shape is approved.
 5. Then implement the **dropped** curtain state: mostly straight vertical folds all the way to the bottom, still 5 px outside the slide.
