@@ -149,82 +149,71 @@ pub const NetworkWidget = struct {
         const gold = style_.color_border_focused.toF64();
         const muted = style_.color_text_muted.toF64();
 
-        // Kapitayan sun: same visual footprint as the weather moon icon.
+        // Kapitayan sun: hollow center ring with radiating beams.
         const margin: f64 = 4.0 * scale_f;
-        const sun_r = @max(5.0 * scale_f, @min(w_d * 0.36, 11.0 * scale_f, (h_d - margin * 2.0) * 0.45));
+        const sun_r = @max(5.0 * scale_f, @min(w_d * 0.42, 14.0 * scale_f, (h_d - margin * 2.0) * 0.5));
         if (sun_r < 4.0 * scale_f) return;
 
         const cx = w_d * 0.5;
         const cy = margin + sun_r;
-        const center_r = @max(5.0 * scale_f, sun_r * 0.28);
+        const center_r = @max(4.5 * scale_f, sun_r * 0.27);
         const beam_outer = sun_r;
 
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
         c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
         c.cairo_set_line_join(cr, c.CAIRO_LINE_JOIN_ROUND);
 
-        // Draw beams first so the center circle sits cleanly on top.
-        switch (self.state) {
-            .connected => {
-                // All four corner beams in gold, with a subtle glow.
-                drawBeams(cr, cx, cy, center_r, beam_outer, true, true, true, true, gold, 4.0 * scale_f);
-                drawBeams(cr, cx, cy, center_r, beam_outer, true, true, true, true, gold, 1.5 * scale_f);
-            },
-            .disconnected => {
-                // Missing top beams; remaining beams + centre in burnt orange.
-                const burnt = [4]f64{ @as(f64, 0xD9) / 255.0, @as(f64, 0x72) / 255.0, @as(f64, 0x2E) / 255.0, 0.85 };
-                drawBeams(cr, cx, cy, center_r, beam_outer, false, false, true, true, burnt, 1.5 * scale_f);
-            },
-            .none => {
-                // No beams; just a quiet centre circle.
-            },
-        }
-
-        // Centre circle.
         const center_color = switch (self.state) {
             .connected => gold,
             .disconnected => [4]f64{ @as(f64, 0xD9) / 255.0, @as(f64, 0x72) / 255.0, @as(f64, 0x2E) / 255.0, 0.85 },
             .none => muted,
         };
+
+        // Draw beams first so the ring sits cleanly on top.
+        switch (self.state) {
+            .connected => {
+                const glow = [4]f64{ gold[0], gold[1], gold[2], 0.45 };
+                drawBeams8(cr, cx, cy, center_r, beam_outer, glow, 5.0 * scale_f);
+                drawBeams8(cr, cx, cy, center_r, beam_outer, gold, 2.0 * scale_f);
+            },
+            .disconnected => {
+                const burnt = [4]f64{ @as(f64, 0xD9) / 255.0, @as(f64, 0x72) / 255.0, @as(f64, 0x2E) / 255.0, 0.85 };
+                drawBeams8(cr, cx, cy, center_r, beam_outer, burnt, 2.0 * scale_f);
+            },
+            .none => {},
+        }
+
+        // Hollow centre ring.
         c.cairo_new_path(cr);
         c.cairo_arc(cr, cx, cy, center_r, 0, 2.0 * std.math.pi);
         c.cairo_set_source_rgba(cr, center_color[0], center_color[1], center_color[2], center_color[3]);
-        c.cairo_fill(cr);
+        c.cairo_set_line_width(cr, 2.5 * scale_f);
+        c.cairo_stroke(cr);
     }
 
-    fn drawBeams(
-        cr: *c.cairo_t,
-        cx: f64,
-        cy: f64,
-        inner: f64,
-        outer: f64,
-        nw: bool,
-        ne: bool,
-        sw: bool,
-        se: bool,
-        color: [4]f64,
-        width: f64,
-    ) void {
+    fn drawBeams8(cr: *c.cairo_t, cx: f64, cy: f64, inner: f64, outer: f64, color: [4]f64, width: f64) void {
         c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
         c.cairo_set_line_width(cr, width);
         const delta = outer - inner;
-
-        if (nw) drawBeam(cr, cx, cy, -1.0, -1.0, inner, delta);
-        if (ne) drawBeam(cr, cx, cy, 1.0, -1.0, inner, delta);
-        if (sw) drawBeam(cr, cx, cy, -1.0, 1.0, inner, delta);
-        if (se) drawBeam(cr, cx, cy, 1.0, 1.0, inner, delta);
-    }
-
-    fn drawBeam(cr: *c.cairo_t, cx: f64, cy: f64, sx: f64, sy: f64, inner: f64, len: f64) void {
-        const dx = sx * 0.70710678118;
-        const dy = sy * 0.70710678118;
-        const x1 = cx + dx * inner;
-        const y1 = cy + dy * inner;
-        const x2 = cx + dx * (inner + len);
-        const y2 = cy + dy * (inner + len);
-        c.cairo_move_to(cr, x1, y1);
-        c.cairo_line_to(cr, x2, y2);
-        c.cairo_stroke(cr);
+        const dirs = [_][2]f64{
+            .{ -1.0, -1.0 }, .{ 1.0, -1.0 }, .{ -1.0, 1.0 }, .{ 1.0, 1.0 },
+            .{ 0.0, -1.0 }, .{ 0.0, 1.0 }, .{ -1.0, 0.0 }, .{ 1.0, 0.0 },
+        };
+        for (dirs) |d| {
+            const len = if (d[0] == 0.0 or d[1] == 0.0) delta * 0.8 else delta;
+            const nx = d[0];
+            const ny = d[1];
+            const hl = @sqrt(nx * nx + ny * ny);
+            const dx = nx / hl;
+            const dy = ny / hl;
+            const x1 = cx + dx * inner;
+            const y1 = cy + dy * inner;
+            const x2 = cx + dx * (inner + len);
+            const y2 = cy + dy * (inner + len);
+            c.cairo_move_to(cr, x1, y1);
+            c.cairo_line_to(cr, x2, y2);
+            c.cairo_stroke(cr);
+        }
     }
 
     pub fn renderCard(self: *const NetworkWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32) void {

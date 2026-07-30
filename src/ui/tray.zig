@@ -2423,7 +2423,7 @@ pub const Tray = struct {
         const peek_vmargin = 2;
         const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
-        const reserved_network_h: i32 = @intFromFloat(2.0 * @as(f64, scale));
+        const reserved_network_h: i32 = @intFromFloat(4.0 * @as(f64, scale));
         const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin - reserved_network_h, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
         const pill_y = box.y + peek_vmargin + reserved_network_h;
@@ -2805,10 +2805,10 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 8;
-        const reserved_network_h: i32 = @intFromFloat(44.0 * @as(f64, scale));
-        const max_pill_side: i32 = @max(44, reserved_network_h);
-        const pill_w: i32 = @max(44, @min(box.width - 2 * peek_hmargin, max_pill_side));
-        const pill_h: i32 = @max(44, @min(reserved_network_h, box.height - 2 * peek_vmargin));
+        const reserved_network_h: i32 = @intFromFloat(32.0 * @as(f64, scale));
+        const max_pill_side: i32 = @max(32, reserved_network_h);
+        const pill_w: i32 = @max(32, @min(box.width - 2 * peek_hmargin, max_pill_side));
+        const pill_h: i32 = @max(32, @min(reserved_network_h, box.height - 2 * peek_vmargin));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
         const pill_y = box.y + peek_vmargin + 8;
 
