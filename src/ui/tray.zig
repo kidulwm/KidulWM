@@ -10,6 +10,8 @@ const style = @import("../core/style.zig");
 const animation = @import("../core/animation.zig");
 const WeatherWidget = @import("./weather.zig").WeatherWidget;
 const MediaWidget = @import("./media.zig").MediaWidget;
+const NetworkWidget = @import("./network.zig").NetworkWidget;
+const NetworkState = @import("./network.zig").NetworkState;
 const NotificationWidget = @import("./notifications.zig").NotificationWidget;
 const notifications = @import("./notifications.zig");
 const card_frame = @import("card_frame.zig");
@@ -201,6 +203,22 @@ const PerOutputNotifications = struct {
     last_count: usize = 0,
 };
 
+const PerOutputNetwork = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    last_scale: f32 = 0.0,
+    last_state: NetworkState = .none,
+    last_theme_generation: u32 = 0,
+};
+
 const BarryPet = struct {
     output_ctx: *anyopaque,
     tree: *wlr.SceneTree,
@@ -279,9 +297,13 @@ pub const Tray = struct {
     // Top-left peek widget (weather).
     weather_widgets: std.ArrayList(PerOutputWeather),
     media_widgets: std.ArrayList(PerOutputMedia),
+    network_widgets: std.ArrayList(PerOutputNetwork),
     weather: WeatherWidget,
+    network: NetworkWidget,
     media: MediaWidget,
     media_card_open: bool = false,
+    network_card_open: bool = false,
+    network_card_last_state: NetworkState = .none,
     media_card_click: MediaWidget.CardClick = .{},
     card_tree: ?*wlr.SceneTree = null,
     card_scene_buffer: ?*wlr.SceneBuffer = null,
@@ -385,9 +407,11 @@ pub const Tray = struct {
             .widgets = .empty,
             .weather_widgets = .empty,
             .media_widgets = .empty,
+            .network_widgets = .empty,
             .notification_widgets = .empty,
             .weather = WeatherWidget.init(allocator),
             .media = MediaWidget.init(allocator),
+            .network = NetworkWidget.init(allocator),
             .notifications = NotificationWidget.init(allocator),
             .card_shadow_tree = card_shadow_tree,
             .card_tree = card_tree,
@@ -418,15 +442,18 @@ pub const Tray = struct {
         for (self.widgets.items) |*w| self.destroyWidget(w);
         for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
         for (self.media_widgets.items) |*w| self.destroyMediaWidget(w);
+        for (self.network_widgets.items) |*w| self.destroyNetworkWidget(w);
         for (self.notification_widgets.items) |*w| self.destroyNotificationWidget(w);
         self.weather.deinit();
         self.media.deinit();
+        self.network.deinit();
         self.notifications.deinit();
         self.outputs.deinit(self.allocator);
         self.barry_pets.deinit(self.allocator);
         self.widgets.deinit(self.allocator);
         self.weather_widgets.deinit(self.allocator);
         self.media_widgets.deinit(self.allocator);
+        self.network_widgets.deinit(self.allocator);
         var it = self.icon_cache.iterator();
         while (it.next()) |entry| {
             c.cairo_surface_destroy(entry.value_ptr.*);
@@ -525,6 +552,21 @@ pub const Tray = struct {
             std.log.err("KidulWM: failed to create notification widget scene tree: {}", .{err});
             return;
         };
+        const network_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create network widget scene tree: {}", .{err});
+            return;
+        };
+        const network_widget = PerOutputNetwork{
+            .output_ctx = output_ctx,
+            .tree = network_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.network_widgets.append(self.allocator, network_widget) catch |err| {
+            std.log.err("KidulWM: failed to append network widget: {}", .{err});
+            network_tree.node.destroy();
+        };
         const notification_widget = PerOutputNotifications{
             .output_ctx = output_ctx,
             .tree = notification_tree,
@@ -578,6 +620,13 @@ pub const Tray = struct {
             if (w.output_ctx == output_ctx) {
                 self.destroyMediaWidget(w);
                 _ = self.media_widgets.orderedRemove(i);
+                break;
+            }
+        }
+        for (self.network_widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyNetworkWidget(w);
+                _ = self.network_widgets.orderedRemove(i);
                 break;
             }
         }
@@ -655,10 +704,12 @@ pub const Tray = struct {
     }
 
     pub fn closeAllCards(self: *Self) void {
-        if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open) return;
+        if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open and !self.network_card_open) return;
         self.calendar_card_open = false;
         self.weather_card_open = false;
         self.media_card_open = false;
+        self.network_card_open = false;
+        self.network.card.close();
         self.weather.card.open = false;
         self.media.setCardOpen(false);
         self.requestUpdate();
@@ -695,6 +746,30 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn toggleNetworkCard(self: *Self) void {
+        if (self.calendar_card_open) {
+            self.calendar_card_open = false;
+        }
+        if (self.weather_card_open) {
+            self.weather_card_open = false;
+            self.weather.card.open = false;
+        }
+        if (self.media_card_open) {
+            self.media_card_open = false;
+            self.media.setCardOpen(false);
+        }
+        self.network_card_open = !self.network_card_open;
+        if (self.network_card_open) {
+            self.network.card.open = true;
+            self.card_mode = .network;
+            self.setCardCloseDirection(.network);
+        } else {
+            self.network.card.close();
+        }
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     pub fn toggleMediaCard(self: *Self) void {
         if (self.calendar_card_open) {
             self.calendar_card_open = false;
@@ -715,7 +790,7 @@ pub const Tray = struct {
     }
 
     fn anyCardOpen(self: *const Self) bool {
-        return self.calendar_card_open or self.weather_card_open or self.media_card_open;
+        return self.calendar_card_open or self.weather_card_open or self.media_card_open or self.network_card_open;
     }
 
     pub fn selectNext(self: *Self) void {
@@ -1072,6 +1147,17 @@ pub const Tray = struct {
         for (self.media_widgets.items) |*media_widget| {
             media_widget.info = self.host.output_info(self.host.ctx, mediaWidgetIndex(self, media_widget));
             self.drawMediaWidget(media_widget);
+        }
+
+        // Update network state and draw top-right network icon.
+        self.network.update();
+        if (self.network.state != self.network_card_last_state) {
+            self.network_card_last_state = self.network.state;
+            self.requestUpdate();
+        }
+        for (self.network_widgets.items) |*network_widget| {
+            network_widget.info = self.host.output_info(self.host.ctx, networkWidgetIndex(self, network_widget));
+            self.drawNetworkWidget(network_widget);
         }
         if (self.media_card_open or self.media.cached.playing) {
             needs_redraw = true;
@@ -1531,7 +1617,22 @@ pub const Tray = struct {
         return 0;
     }
 
+    fn networkWidgetIndex(self: *const Self, widget: *PerOutputNetwork) usize {
+        for (self.network_widgets.items, 0..) |*w, i| {
+            if (w == widget) return i;
+        }
+        return 0;
+    }
+
     fn destroyMediaWidget(_: *Self, widget: *PerOutputMedia) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
+    }
+
+    fn destroyNetworkWidget(_: *Self, widget: *PerOutputNetwork) void {
         if (widget.scene_buffer) |sb| sb.node.destroy();
         if (widget.buffer) |buf| wlr.Buffer.drop(buf);
         widget.tree.node.destroy();
@@ -1933,6 +2034,19 @@ pub const Tray = struct {
         return false;
     }
 
+    fn pointInsideNetworkWidget(self: *const Self, px: f64, py: f64) bool {
+        for (self.network_widgets.items) |w| {
+            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+            const b = w.click_box;
+            const oh: i32 = widget_hit_overhang;
+            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
+                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
+                py >= @as(f64, @floatFromInt(b.y - oh)) and
+                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh))) return true;
+        }
+        return false;
+    }
+
     fn pointInsidePet(self: *const Self, px: f64, py: f64) bool {
         for (self.barry_pets.items) |pet| {
             const pw = pet.last_w;
@@ -2091,8 +2205,14 @@ pub const Tray = struct {
         }
         // Click on the weather peek widget toggles the weather card.
         if (self.pointInsideWeatherWidget(px, py)) {
-            if (self.calendar_card_open or self.media_card_open) self.closeAllCards();
+            if (self.calendar_card_open or self.media_card_open or self.network_card_open) self.closeAllCards();
             self.toggleWeatherCard();
+            return true;
+        }
+        // Click on the network peek widget toggles the network card.
+        if (self.pointInsideNetworkWidget(px, py)) {
+            if (self.calendar_card_open or self.weather_card_open or self.media_card_open) self.closeAllCards();
+            self.toggleNetworkCard();
             return true;
         }
         // Click on the media peek widget toggles the media card.
@@ -2122,6 +2242,11 @@ pub const Tray = struct {
                     return true;
                 }
                 // weather card (no interactive regions yet)
+                self.closeAllCards();
+                return true;
+            }
+            // network card (no interactive regions yet)
+            if (self.network_card_open) {
                 self.closeAllCards();
                 return true;
             }
@@ -2298,9 +2423,10 @@ pub const Tray = struct {
         const peek_vmargin = 2;
         const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
-        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
+        const reserved_network_h: i32 = @intFromFloat(2.0 * @as(f64, scale));
+        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin - reserved_network_h, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        const pill_y = box.y + peek_vmargin;
+        const pill_y = box.y + peek_vmargin + reserved_network_h;
 
         const needs_redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -2478,12 +2604,12 @@ pub const Tray = struct {
         const scale = widget.info.scale;
 
         const peek_hmargin = 2;
-        const peek_vmargin = 4;
+        const peek_vmargin = 8;
         const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
         const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        const pill_y = box.y + peek_vmargin;
+        const pill_y = box.y + peek_vmargin + 4;
 
         const redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -2665,6 +2791,95 @@ pub const Tray = struct {
         widget.tree.node.raiseToTop();
     }
 
+    fn drawNetworkWidget(self: *Self, widget: *PerOutputNetwork) void {
+        const box = self.host.right_peek_box(self.host.ctx, networkWidgetIndex(self, widget)) orelse {
+            return;
+        };
+        if (box.width <= 0 or box.height <= 0) {
+            return;
+        }
+
+        const style_ = self.host.theme.style;
+        const theme_gen = self.host.theme.generation;
+        const scale = widget.info.scale;
+
+        const peek_hmargin = 2;
+        const peek_vmargin = 8;
+        const reserved_network_h: i32 = @intFromFloat(44.0 * @as(f64, scale));
+        const max_pill_side: i32 = @max(44, reserved_network_h);
+        const pill_w: i32 = @max(44, @min(box.width - 2 * peek_hmargin, max_pill_side));
+        const pill_h: i32 = @max(44, @min(reserved_network_h, box.height - 2 * peek_vmargin));
+        const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
+        const pill_y = box.y + peek_vmargin + 8;
+
+        const redraw = widget.scene_buffer == null or
+            widget.last_w != pill_w or
+            widget.last_h != pill_h or
+            widget.last_x != pill_x or
+            widget.last_y != pill_y or
+            widget.last_scale != scale or
+            widget.last_state != self.network.state or
+            widget.last_theme_generation != theme_gen;
+
+        if (!redraw) {
+            widget.tree.node.setPosition(pill_x, pill_y);
+            widget.tree.node.raiseToTop();
+            return;
+        }
+
+        widget.last_w = pill_w;
+        widget.last_h = pill_h;
+        widget.last_x = pill_x;
+        widget.last_y = pill_y;
+        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
+        widget.last_scale = scale;
+        widget.last_state = self.network.state;
+        widget.last_theme_generation = theme_gen;
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: network widget buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for network widget", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        c.cairo_save(cr);
+        self.network.renderPeek(cr, .{ .x = 0, .y = 0, .width = dev_w, .height = dev_h }, style_, scale);
+        c.cairo_restore(cr);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create network widget buffer: {}", .{err});
+            return;
+        };
+        if (widget.buffer) |old| wlr.Buffer.drop(old);
+        widget.buffer = buffer;
+        if (widget.scene_buffer) |old| old.node.destroy();
+        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create network widget scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            widget.buffer = null;
+            return;
+        };
+        sb.setDestSize(pill_w, pill_h);
+        widget.scene_buffer = sb;
+        widget.tree.node.setPosition(pill_x, pill_y);
+        widget.tree.node.raiseToTop();
+    }
+
     fn updateCard(self: *Self) void {
         const now_us = animation.nowUs();
         const prev = self.last_update_us;
@@ -2722,7 +2937,8 @@ pub const Tray = struct {
             self.card_last_w != w or
             self.card_last_h != h or
             self.card_last_mode != current_mode or
-            self.media.state_generation != self.media_state_generation;
+            self.media.state_generation != self.media_state_generation or
+            self.network_card_last_state != self.network.state;
 
         const closing = self.card_anim.isClosing();
         const slide_t: f32 = if (closing) (1.0 - self.card_anim.value) else 0.0;
@@ -2751,6 +2967,7 @@ pub const Tray = struct {
             self.card_last_generation = self.host.theme.generation;
             self.card_last_mode = current_mode;
             self.media_state_generation = self.media.state_generation;
+            self.network_card_last_state = self.network.state;
             const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);
             if (stride <= 0) return;
             const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(h));
@@ -2770,6 +2987,7 @@ pub const Tray = struct {
             switch (current_mode) {
                 .calendar => self.drawClockCalendarCard(cr, @floatFromInt(w), @floatFromInt(h)),
                 .weather => self.weather.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
+                .network => self.network.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
                 .media => blk: {
                     var click: MediaWidget.CardClick = .{};
                     self.media.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self), &click);
@@ -2840,7 +3058,7 @@ pub const Tray = struct {
         }
     }
 
-    const CardMode = enum { calendar, weather, media };
+    const CardMode = enum { calendar, weather, media, network };
 
     fn activeCardMode(self: *const Self) CardMode {
         if (self.weather_card_open) return .weather;
@@ -2863,6 +3081,11 @@ pub const Tray = struct {
             },
             .calendar => {
                 // Calendar widget lives at the top-right; close back toward it.
+                self.card_close_dx = mag;
+                self.card_close_dy = -mag;
+            },
+            .network => {
+                // Network widget lives at the top-right; close back toward it.
                 self.card_close_dx = mag;
                 self.card_close_dy = -mag;
             },
