@@ -18,6 +18,8 @@ KidulWM takes the layout *ergonomics* of [Niri](https://github.com/YaLTeR/niri) 
 - **No traditional bar** — widgets, notifications ("Snippets"), and system status live in the compositor chrome.
 - **Solid, Safe & Secure** — no secrets or private material committed; credential handling stays outside the repo.
 
+KidulWM is created by [Barticus & Bob](AUTHORS).
+
 ## Repository
 
 Primary home:
