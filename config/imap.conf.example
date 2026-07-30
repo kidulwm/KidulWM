@@ -1,0 +1,13 @@
+# KidulWM IMAP watcher configuration.
+# Copy to ~/.config/kidulwm/imap.conf and fill in real credentials.
+# This file should NEVER be committed to git; it is kept in ~/.config.
+#
+# For Proton Mail: install Proton Bridge, then use localhost and the
+# Bridge-provided IMAP port/credentials.
+
+host=127.0.0.1
+port=1143
+username=your-bridge-username
+password=your-bridge-password
+poll_seconds=30
+# ssl=false   # Proton Bridge is local plaintext IMAP; do not enable TLS here.

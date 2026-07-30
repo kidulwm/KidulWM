@@ -105,30 +105,38 @@ pub const SourceRule = struct {
     display_mode: DisplayMode,
     action_id: ?[]const u8,
     label: []const u8,
+    /// Color for the source label only; body text keeps the neutral color.
+    label_color: [4]f64,
 };
 
 /// Default rules matching config/notifications.yaml. Used when a source_id has
 /// no explicit override and no caller-supplied options.
 fn defaultRule(source_id: []const u8) SourceRule {
     if (std.mem.eql(u8, source_id, "security")) {
-        return .{ .priority = .critical, .display_mode = .typewriter, .action_id = "security", .label = "Security" };
+        return .{ .priority = .critical, .display_mode = .typewriter, .action_id = "security", .label = "Security", .label_color = .{ 0.847, 0.451, 0.180, 0.85 } };
     }
     if (std.mem.eql(u8, source_id, "usb")) {
-        return .{ .priority = .critical, .display_mode = .typewriter, .action_id = "usb", .label = "USB" };
+        return .{ .priority = .critical, .display_mode = .typewriter, .action_id = "usb", .label = "USB", .label_color = .{ 0.847, 0.451, 0.180, 0.85 } };
     }
     if (std.mem.eql(u8, source_id, "download")) {
-        return .{ .priority = .critical, .display_mode = .typewriter, .action_id = "download", .label = "Download" };
+        return .{ .priority = .critical, .display_mode = .typewriter, .action_id = "download", .label = "Download", .label_color = .{ 0.847, 0.451, 0.180, 0.85 } };
     }
     if (std.mem.eql(u8, source_id, "system")) {
-        return .{ .priority = .high, .display_mode = .typewriter, .action_id = null, .label = "System" };
+        return .{ .priority = .high, .display_mode = .typewriter, .action_id = null, .label = "System", .label_color = .{ 0.580, 0.557, 0.482, 0.75 } };
     }
     if (std.mem.eql(u8, source_id, "files")) {
-        return .{ .priority = .normal, .display_mode = .typewriter, .action_id = null, .label = "Files" };
+        return .{ .priority = .normal, .display_mode = .typewriter, .action_id = null, .label = "Files", .label_color = .{ 0.760, 0.670, 0.380, 0.92 } };
     }
     if (std.mem.eql(u8, source_id, "media")) {
-        return .{ .priority = .low, .display_mode = .typewriter, .action_id = null, .label = "Media" };
+        return .{ .priority = .low, .display_mode = .typewriter, .action_id = null, .label = "Media", .label_color = .{ 0.650, 0.580, 0.700, 0.85 } };
     }
-    return .{ .priority = .normal, .display_mode = .typewriter, .action_id = null, .label = "Notification" };
+    if (std.mem.eql(u8, source_id, "email")) {
+        return .{ .priority = .normal, .display_mode = .typewriter, .action_id = null, .label = "Email", .label_color = .{ 0.380, 0.650, 0.720, 0.90 } };
+    }
+    if (std.mem.eql(u8, source_id, "assistant")) {
+        return .{ .priority = .low, .display_mode = .typewriter, .action_id = null, .label = "Bob's", .label_color = .{ 0.580, 0.557, 0.482, 0.95 } };
+    }
+    return .{ .priority = .normal, .display_mode = .typewriter, .action_id = null, .label = "Snippet", .label_color = .{ 0.580, 0.557, 0.482, 0.95 } };
 }
 
 pub const NotificationQueue = struct {
@@ -580,6 +588,7 @@ fn renderTypewriterCard(
     const h_d: f64 = @floatFromInt(box.height);
     const gold = style_.color_border_focused.toF64();
     const text = style_.tray_text_color.toF64();
+    const is_actionable = item.action_id != null;
 
     c.cairo_save(cr);
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
@@ -591,56 +600,33 @@ fn renderTypewriterCard(
         return 0.0;
     }
 
-    // Critical act-now cards get a subtle tinted backing + burnt-orange border.
-    const is_actionable = item.action_id != null;
-    if (is_actionable and item.priority == .critical) {
-        const pcolor = item.priority.labelColor();
-        const bmargin: f64 = 4.0;
-        const corner: f64 = 6.0;
-        // Tinted backing for readability.
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.55);
-        roundedRect(cr, bmargin, bmargin, w_d - 2.0 * bmargin, h_d - 2.0 * bmargin, corner);
-        c.cairo_fill(cr);
-        // Subtle burnt-orange border.
-        c.cairo_set_source_rgba(cr, pcolor[0], pcolor[1], pcolor[2], 0.45);
-        c.cairo_set_line_width(cr, 1.0);
-        roundedRect(cr, bmargin, bmargin, w_d - 2.0 * bmargin, h_d - 2.0 * bmargin, corner);
-        c.cairo_stroke(cr);
-    }
-
-    // Chrome-free stream: a faint single-rule top accent for non-actionable cards.
-    if (!is_actionable or item.priority != .critical) {
-        c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.18);
-        c.cairo_set_line_width(cr, 1.0);
-        c.cairo_move_to(cr, 0.0, 0.0);
-        c.cairo_line_to(cr, w_d, 0.0);
-        c.cairo_stroke(cr);
-    }
-
     const label_font = "Fantasque Sans Mono";
     const source_font = "Fantasque Sans Mono";
     const title_font = "Fantasque Sans Mono";
     const body_font = "Fantasque Sans Mono";
-    const label_size: f64 = @as(f64, style_.font_size_s) * 0.90;
-    const source_size: f64 = @as(f64, style_.font_size_m) * 1.15;
-    const title_size: f64 = @as(f64, style_.font_size_s) * 1.05;
+    const source_size: f64 = @as(f64, style_.font_size_s) * 1.15;
     const body_size: f64 = @as(f64, style_.font_size_s) * 1.00;
+    const label_size: f64 = @as(f64, style_.font_size_s) * 0.90;
+    const title_size: f64 = @as(f64, style_.font_size_s) * 1.05;
 
-    var y: f64 = pad_x + label_size;
+    var y: f64 = pad_x + source_size;
 
-    // Priority label on its own line.
-    c.cairo_select_font_face(cr, label_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
-    c.cairo_set_font_size(cr, label_size);
-    const pcolor = item.priority.labelColor();
-    c.cairo_set_source_rgba(cr, pcolor[0], pcolor[1], pcolor[2], pcolor[3]);
-    centerText(cr, item.priority.label(), content_w, pad_x, y);
-    y += label_size * 1.4;
+    // Actionable warnings show the priority label first.
+    if (is_actionable and item.priority == .critical) {
+        c.cairo_select_font_face(cr, label_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+        c.cairo_set_font_size(cr, label_size);
+        const pcolor = item.priority.labelColor();
+        c.cairo_set_source_rgba(cr, pcolor[0], pcolor[1], pcolor[2], pcolor[3]);
+        centerText(cr, item.priority.label(), content_w, pad_x, y);
+        y += label_size * 1.4;
+    }
 
     // Source label (from rule table) with burst count.
     const rule = defaultRule(item.source_id);
+    const scolor = rule.label_color;
     c.cairo_select_font_face(cr, source_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
     c.cairo_set_font_size(cr, source_size);
-    c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.95);
+    c.cairo_set_source_rgba(cr, scolor[0], scolor[1], scolor[2], scolor[3]);
     var source_buf: [256]u8 = undefined;
     const source_to_show = if (item.group_count > 1) blk: {
         const s = std.fmt.bufPrint(&source_buf, "{s} ({d})", .{ rule.label, item.group_count }) catch rule.label;
@@ -649,15 +635,15 @@ fn renderTypewriterCard(
     centerText(cr, source_to_show, content_w, pad_x, y);
     y += source_size * 1.25;
 
-    // Title/detail line: the main at-a-glance info for this card.
-    // For downloads this is file type and size (e.g. ".iso 1.5GB"); the full
-    // filename/details live inside the action/peek card.
-    c.cairo_select_font_face(cr, title_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
-    c.cairo_set_font_size(cr, title_size);
-    c.cairo_set_source_rgba(cr, text[0], text[1], text[2], 0.92);
-    const title_abbrev = abbreviateText(cr, item.title, content_w, title_size);
-    centerText(cr, title_abbrev, content_w, pad_x, y);
-    y += title_size * 1.2;
+    // Actionable warnings show a detail/title line before the body.
+    if (is_actionable and item.priority == .critical) {
+        c.cairo_select_font_face(cr, title_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+        c.cairo_set_font_size(cr, title_size);
+        c.cairo_set_source_rgba(cr, text[0], text[1], text[2], 0.92);
+        const title_abbrev = abbreviateText(cr, item.title, content_w, title_size);
+        centerText(cr, title_abbrev, content_w, pad_x, y);
+        y += title_size * 1.2;
+    }
 
     // Body: state/progress line shown once, centered.
     var state_buf: [256]u8 = undefined;
@@ -696,8 +682,8 @@ fn renderTypewriterCard(
             centerText(cr, label, content_w, pad_x, body_y);
         }
     } else {
-        // Non-progress bodies show the full normalized text, wrapped once.
-        const state_text = normalizeState(full_body);
+        // Non-progress bodies show the full normalized text, wrapped once and abbreviated.
+        const state_text = abbreviateText(cr, normalizeState(full_body), content_w, body_size);
         var offset: usize = 0;
         while (offset < state_text.len) {
             const line = nextLine(cr, state_text[offset..], content_w);
@@ -712,20 +698,49 @@ fn renderTypewriterCard(
         }
     }
 
-    // Action-card hint: if this card has an action_id, draw a small trailing
-    // indicator so the user knows it can be clicked/interacted with.
-    if (item.action_id != null) {
+    // Action-card hint: only on actionable warnings.
+    if (is_actionable and item.priority == .critical) {
         const hint_y = body_y + body_size * 0.8;
         if (hint_y + body_size <= h_d) {
             c.cairo_select_font_face(cr, body_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
             c.cairo_set_font_size(cr, body_size * 0.75);
             c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.75);
             centerText(cr, "· · ·", content_w, pad_x, hint_y);
+            body_y = hint_y + body_size * 0.6;
         }
     }
 
+    const content_bottom = body_y + body_size * 0.5;
+
+    // Critical act-now cards get a subtle tinted backing + burnt-orange border
+    // sized tightly to the rendered content.
+    if (is_actionable and item.priority == .critical) {
+        const pcolor = item.priority.labelColor();
+        const bmargin: f64 = 4.0;
+        const corner: f64 = 6.0;
+        const border_h = content_bottom - bmargin * 2.0 + body_size * 0.3;
+        // Tinted backing for readability.
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.55);
+        roundedRect(cr, bmargin, bmargin, w_d - 2.0 * bmargin, border_h, corner);
+        c.cairo_fill(cr);
+        // Subtle burnt-orange border.
+        c.cairo_set_source_rgba(cr, pcolor[0], pcolor[1], pcolor[2], 0.45);
+        c.cairo_set_line_width(cr, 1.0);
+        roundedRect(cr, bmargin, bmargin, w_d - 2.0 * bmargin, border_h, corner);
+        c.cairo_stroke(cr);
+    }
+
+    // Chrome-free stream: a faint bottom rule for non-actionable cards.
+    if (!is_actionable or item.priority != .critical) {
+        c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.10);
+        c.cairo_set_line_width(cr, 1.0);
+        c.cairo_move_to(cr, 0.0, content_bottom);
+        c.cairo_line_to(cr, w_d, content_bottom);
+        c.cairo_stroke(cr);
+    }
+
     c.cairo_restore(cr);
-    return body_y + body_size * 0.5;
+    return content_bottom;
 }
 
 fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
@@ -741,10 +756,21 @@ fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
 
 fn centerText(cr: *c.cairo_t, txt: []const u8, content_w: f64, x_offset: f64, y_baseline: f64) void {
     var ext: c.cairo_text_extents_t = undefined;
-    c.cairo_text_extents(cr, @ptrCast(txt.ptr), &ext);
+    // Cairo expects a null-terminated C string; heap-allocated slices are not.
+    var nt_buf: [512]u8 = undefined;
+    const safe = if (txt.len < nt_buf.len) blk: {
+        @memcpy(nt_buf[0..txt.len], txt);
+        nt_buf[txt.len] = 0;
+        break :blk nt_buf[0..txt.len :0];
+    } else blk: {
+        @memcpy(nt_buf[0..nt_buf.len - 1], txt[0 .. nt_buf.len - 1]);
+        nt_buf[nt_buf.len - 1] = 0;
+        break :blk nt_buf[0 .. nt_buf.len - 1 :0];
+    };
+    c.cairo_text_extents(cr, safe.ptr, &ext);
     const x = x_offset + (content_w - ext.width) * 0.5;
     c.cairo_move_to(cr, x, y_baseline);
-    c.cairo_show_text(cr, @ptrCast(txt.ptr));
+    c.cairo_show_text(cr, safe.ptr);
 }
 
 /// Return the longest prefix of `text` that fits in `max_w`.

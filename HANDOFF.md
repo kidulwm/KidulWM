@@ -138,6 +138,29 @@ notify-send "Hello" "from the bridge"
 
 Expect to see the text appear in the typewriter stream under the clock.
 
+## IMAP email watcher install & test
+
+```bash
+# Copy the watcher and example config to the target system
+sudo mkdir -p /usr/share/kidulwm/scripts
+sudo cp /home/dad/dev/KidulWM/scripts/imap-watcher.py /usr/share/kidulwm/scripts/
+sudo chmod 755 /usr/share/kidulwm /usr/share/kidulwm/scripts
+sudo chmod 644 /usr/share/kidulwm/scripts/imap-watcher.py
+
+# Create your private config; never commit this file
+cp /home/dad/dev/KidulWM/config/imap.conf.example ~/.config/kidulwm/imap.conf
+# edit ~/.config/kidulwm/imap.conf with Proton Bridge credentials
+
+# Install and start the user service
+mkdir -p ~/.config/systemd/user
+cp /home/dad/dev/KidulWM/config/systemd/user/kidulwm-imap-watcher.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now kidulwm-imap-watcher
+systemctl --user status kidulwm-imap-watcher
+```
+
+With one new unread message you'll see `Sender Name` / `Subject`; with multiple you'll see `Email` / `N new`.
+
 ## Next session work
 
 1. **FINISH notification stream body visibility** — confirm short body text appears under the title line; adjust contrast/backing if still missing on live wallpaper.
@@ -162,8 +185,10 @@ Expect to see the text appear in the typewriter stream under the clock.
 - `src/ipc/message.zig`, `src/server.zig`, `src/kidulwm-control.zig` — added optional `priority`, `action_id`, `display_mode` to `notification_test`; `notification_clear` still present.
 - `scripts/notify-bridge.py` — forwards urgency hints and `kidulwm-action` hints; maps numeric urgency levels to priority names.
 - `scripts/system-watcher.py` — sends per-event priority hints (`critical` for security, USB pending/blocked; `high` for connected/other).
-- `src/render/curtain.zig` — curtain renderer.
-- `src/server.zig` — curtain import, `Output.curtains` field, init/deinit/update wiring, temporary decoration guard.
+- `scripts/imap-watcher.py` — new Python IMAP email watcher; polls INBOX and sends `email` source notifications.
+- `config/imap.conf.example` — example config for the IMAP watcher.
+- `config/systemd/user/kidulwm-imap-watcher.service` — user service to run the IMAP watcher.
+- `config/notifications.yaml` — added `email` source rule.
 - `build.zig` — temporarily excluded the broken Zig bridge binary from the build (comment TODO).
 - `HANDOFF.md` — this file.
 

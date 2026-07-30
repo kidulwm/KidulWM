@@ -1,0 +1,14 @@
+[Unit]
+Description=KidulWM IMAP email watcher
+Documentation=file:///usr/share/kidulwm/config/imap.conf.example
+PartOf=graphical-session.target
+After=kidulwm.service
+
+[Service]
+Type=simple
+ExecStart=/usr/share/kidulwm/scripts/imap-watcher.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

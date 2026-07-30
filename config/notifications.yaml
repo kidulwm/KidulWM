@@ -51,6 +51,14 @@ sources:
       persist_seconds: 5
     sound: "note"
 
+  email:
+    label: "Email"
+    display:
+      color: "text"
+      position: "stream"
+      persist_seconds: 8
+    sound: "pop"
+
   default:
     label: "Notification"
     display:
