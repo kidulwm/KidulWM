@@ -3301,20 +3301,35 @@ fn drawNotificationWidget(self: *Self, widget: *PerOutputNotifications) void {
     const panel_y = clock_bottom + top_breathing;
     const panel_h = avail_h;
 
+    const active_item = if (self.notifications.queue.items.items.len > self.notifications.tw.queue_index and
+        self.notifications.tw.queue_index < self.notifications.queue.items.items.len)
+        &self.notifications.queue.items.items[self.notifications.tw.queue_index]
+    else
+        null;
     const text_hash: u64 = std.hash.Crc32.hash(
-        if (self.notifications.queue.items.items.len > self.notifications.tw.queue_index and
-            self.notifications.tw.queue_index < self.notifications.queue.items.items.len)
-            blk: {
-                const item = &self.notifications.queue.items.items[self.notifications.tw.queue_index];
-                break :blk item.body[0..@min(item.body.len, self.notifications.tw.chars_revealed)];
-            }
-        else
-            "",
+        if (active_item) |item| item.body[0..@min(item.body.len, self.notifications.tw.chars_revealed)] else "",
     );
+
+    // First measure the natural content height on a device-width surface.
+    const dev_w_for_measure: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(panel_w)) * scale));
+    const measure_surface = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, dev_w_for_measure, 8);
+    const measure_cr = c.cairo_create(measure_surface) orelse {
+        c.cairo_surface_destroy(measure_surface);
+        return;
+    };
+    const content_h = notifications.renderNotificationsHeight(measure_cr, .{
+        .x = panel_x,
+        .y = panel_y,
+        .width = panel_w,
+        .height = panel_h,
+    }, style_, &self.notifications, animation.nowUs());
+    c.cairo_destroy(measure_cr);
+    c.cairo_surface_destroy(measure_surface);
+    const final_h = @min(panel_h, @max(40, content_h));
 
     const redraw = widget.scene_buffer == null or
         widget.last_w != panel_w or
-        widget.last_h != panel_h or
+        widget.last_h != final_h or
         widget.last_x != panel_x or
         widget.last_y != panel_y or
         widget.last_text_hash != text_hash or
@@ -3327,14 +3342,14 @@ fn drawNotificationWidget(self: *Self, widget: *PerOutputNotifications) void {
     }
 
     widget.last_w = panel_w;
-    widget.last_h = panel_h;
+    widget.last_h = final_h;
     widget.last_x = panel_x;
     widget.last_y = panel_y;
     widget.last_text_hash = text_hash;
     widget.last_theme_generation = theme_gen;
 
     const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(panel_w)) * scale));
-    const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(panel_h)) * scale));
+    const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(final_h)) * scale));
     const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
     if (stride <= 0) return;
     const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
@@ -3382,7 +3397,7 @@ fn drawNotificationWidget(self: *Self, widget: *PerOutputNotifications) void {
         widget.buffer = null;
         return;
     };
-    sb.setDestSize(panel_w, panel_h);
+    sb.setDestSize(panel_w, final_h);
     widget.scene_buffer = sb;
     widget.tree.node.setPosition(panel_x, panel_y);
     widget.tree.node.raiseToTop();

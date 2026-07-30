@@ -1,6 +1,6 @@
 # KidulWM Handoff
 
-Updated 2026-07-30 (notification priority cards locked, progress bar tested). Source of truth for resuming.
+Updated 2026-07-30 (notification stream cards content-sized and layout-tested). Source of truth for resuming.
 
 ## Current state
 
@@ -17,6 +17,18 @@ Updated 2026-07-30 (notification priority cards locked, progress bar tested). So
 ## What this session changed
 
 ### 1. Notification priority card system (just locked)
+
+### 1b. Notification stream card layout / sizing (in progress)
+- Cards now size to their content height rather than filling the whole right-peek panel.
+- Layout per card:
+  1. Priority label line (`CRITICAL`, `HIGH`, etc.).
+  2. Source label line (`Download`, `Security`, `USB`, `Files`, `System`, `Media`).
+  3. Title/detail line (file type/size for downloads, event summary for security/system).
+  4. Body/state/progress line:
+     - progress bodies draw a thin gold bar when `%` token is present;
+     - non-progress bodies draw wrapped text (`pending approval` normalizes to `Pending`).
+- Critical actionable cards (`security`, `usb`, `download`) get a subtle dark backing + burnt-orange rounded border.
+- Added `download` source rule and action hook.
 - Refactored `src/ui/notifications.zig` from a simple queue into a `NotificationCard` unit.
   - Title and body/panel are now one card; `display_mode` selects the skin to draw it with.
   - Day-one skins: `.typewriter` (active); `.scroll`, `.banner`, `.river` stubbed for later.
@@ -128,15 +140,16 @@ Expect to see the text appear in the typewriter stream under the clock.
 
 ## Next session work
 
-1. **Implement the action card** for `security` and `usb` notifications: Block / Allow / Details buttons, rendered in KidulWM card style.
-2. **Implement notification peek/card** triggered by clicking/tapping the stream under the clock. Card shows full river grouped by app with dismiss per item and clear all.
-3. **Reserve right-peek space** between notification stream and media helix for slide title/favicon band.
-4. **Copy `/tmp/curtains9.png` silhouette pixel-for-pixel** into `src/render/curtain.zig` as the tied-back left panel, then mirror for the right panel.
-5. Apply the curtain design rules above (thinnest at rope, bulge above/below, 5 px gap from focused slide, rope at 1/5 top, black velvet, border-color rope).
-6. Build/deploy/screenshot until the static tied-back shape is approved.
-7. Then implement the **dropped** curtain state: mostly straight vertical folds all the way to the bottom, still 5 px outside the slide.
-8. Verify peek-trigger transitions and remove/replace the temporary `handleNewToplevelDecoration` guard.
-9. (Future) Rewrite the bridge in pure Zig and remove the Python service once D-Bus service handling is solid.
+1. **FINISH notification stream body visibility** — confirm short body text appears under the title line; adjust contrast/backing if still missing on live wallpaper.
+2. **Implement the action card** for `security`, `usb`, and `download` notifications: Block / Allow / Details buttons, rendered in KidulWM card style.
+3. **Add progress-bar candy** — live current/total size count and optional ETA inside the body string.
+4. **Implement notification peek/card** triggered by clicking/tapping the stream under the clock.
+5. **Reserve right-peek space** between notification stream and media helix for slide title/favicon band.
+6. **Copy `/tmp/curtains9.png` silhouette pixel-for-pixel** into `src/render/curtain.zig`.
+7. Apply curtain design rules and build/deploy/screenshot until approved.
+8. Then implement the **dropped** curtain state.
+9. Verify peek-trigger transitions and remove/replace the temporary `handleNewToplevelDecoration` guard.
+
 
 ## Files changed (uncommitted)
 

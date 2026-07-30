@@ -538,25 +538,33 @@ pub fn renderNotifications(
     widget: *NotificationWidget,
     now_us: u64,
 ) void {
-    if (widget.queue.activeCount() == 0) return;
+    _ = renderNotificationsHeight(cr, box, style_, widget, now_us);
+}
+
+/// Same as renderNotifications but returns the natural content height.
+pub fn renderNotificationsHeight(
+    cr: *c.cairo_t,
+    box: PeekBox,
+    style_: style.Style,
+    widget: *NotificationWidget,
+    now_us: u64,
+) i32 {
+    if (widget.queue.activeCount() == 0) return 0;
     const w_d: f64 = @floatFromInt(box.width);
     const h_d: f64 = @floatFromInt(box.height);
-    if (w_d < 20.0 or h_d < 20.0) return;
+    if (w_d < 20.0 or h_d < 20.0) return 0;
 
-    // Pick the current card from the queue.
-    if (widget.tw.queue_index >= widget.queue.items.items.len) return;
+    if (widget.tw.queue_index >= widget.queue.items.items.len) return 0;
     const item = &widget.queue.items.items[widget.tw.queue_index];
-    if (item.dismissed) return;
+    if (item.dismissed) return 0;
 
-    // Skin dispatch hook. Currently only typewriter is implemented; the other
-    // modes fall back to it so we can add scroll/banner/river later without
-    // touching the queue logic.
-    switch (item.display_mode) {
+    const h: f64 = switch (item.display_mode) {
         .typewriter => renderTypewriterCard(cr, box, style_, widget, item, now_us),
         .scroll => renderTypewriterCard(cr, box, style_, widget, item, now_us),
         .banner => renderTypewriterCard(cr, box, style_, widget, item, now_us),
         .river => renderTypewriterCard(cr, box, style_, widget, item, now_us),
-    }
+    };
+    return @intFromFloat(@ceil(h));
 }
 
 fn renderTypewriterCard(
@@ -566,7 +574,7 @@ fn renderTypewriterCard(
     widget: *NotificationWidget,
     item: *NotificationCard,
     now_us: u64,
-) void {
+) f64 {
     _ = now_us;
     const w_d: f64 = @floatFromInt(box.width);
     const h_d: f64 = @floatFromInt(box.height);
@@ -576,18 +584,37 @@ fn renderTypewriterCard(
     c.cairo_save(cr);
     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-    // Chrome-free stream: a faint single-rule top accent only.
-    c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.18);
-    c.cairo_set_line_width(cr, 1.0);
-    c.cairo_move_to(cr, 0.0, 0.0);
-    c.cairo_line_to(cr, w_d, 0.0);
-    c.cairo_stroke(cr);
-
     const pad_x: f64 = @floatFromInt(widget.config.hmargin);
     const content_w = w_d - 2.0 * pad_x;
     if (content_w <= 0.0) {
         c.cairo_restore(cr);
-        return;
+        return 0.0;
+    }
+
+    // Critical act-now cards get a subtle tinted backing + burnt-orange border.
+    const is_actionable = item.action_id != null;
+    if (is_actionable and item.priority == .critical) {
+        const pcolor = item.priority.labelColor();
+        const bmargin: f64 = 4.0;
+        const corner: f64 = 6.0;
+        // Tinted backing for readability.
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.55);
+        roundedRect(cr, bmargin, bmargin, w_d - 2.0 * bmargin, h_d - 2.0 * bmargin, corner);
+        c.cairo_fill(cr);
+        // Subtle burnt-orange border.
+        c.cairo_set_source_rgba(cr, pcolor[0], pcolor[1], pcolor[2], 0.45);
+        c.cairo_set_line_width(cr, 1.0);
+        roundedRect(cr, bmargin, bmargin, w_d - 2.0 * bmargin, h_d - 2.0 * bmargin, corner);
+        c.cairo_stroke(cr);
+    }
+
+    // Chrome-free stream: a faint single-rule top accent for non-actionable cards.
+    if (!is_actionable or item.priority != .critical) {
+        c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.18);
+        c.cairo_set_line_width(cr, 1.0);
+        c.cairo_move_to(cr, 0.0, 0.0);
+        c.cairo_line_to(cr, w_d, 0.0);
+        c.cairo_stroke(cr);
     }
 
     const label_font = "Fantasque Sans Mono";
@@ -622,12 +649,14 @@ fn renderTypewriterCard(
     centerText(cr, source_to_show, content_w, pad_x, y);
     y += source_size * 1.25;
 
-    // Title/detail line (filename, event name, etc.) — abbreviated if too long.
+    // Title/detail line: the main at-a-glance info for this card.
+    // For downloads this is file type and size (e.g. ".iso 1.5GB"); the full
+    // filename/details live inside the action/peek card.
     c.cairo_select_font_face(cr, title_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
     c.cairo_set_font_size(cr, title_size);
     c.cairo_set_source_rgba(cr, text[0], text[1], text[2], 0.92);
-    const title_to_show = if (item.title.len > 0) item.title else "";
-    centerText(cr, title_to_show, content_w, pad_x, y);
+    const title_abbrev = abbreviateText(cr, item.title, content_w, title_size);
+    centerText(cr, title_abbrev, content_w, pad_x, y);
     y += title_size * 1.2;
 
     // Body: state/progress line shown once, centered.
@@ -638,6 +667,7 @@ fn renderTypewriterCard(
 
     c.cairo_select_font_face(cr, body_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
     c.cairo_set_font_size(cr, body_size);
+    c.cairo_set_source_rgba(cr, text[0], text[1], text[2], 0.95);
 
     var body_y = y;
     if (progress) |pct| {
@@ -666,9 +696,19 @@ fn renderTypewriterCard(
             centerText(cr, label, content_w, pad_x, body_y);
         }
     } else {
-        if (body_y + body_size <= h_d) {
-            c.cairo_set_source_rgba(cr, text[0], text[1], text[2], 0.75);
-            centerText(cr, visible, content_w, pad_x, body_y);
+        // Non-progress bodies show the full normalized text, wrapped once.
+        const state_text = normalizeState(full_body);
+        var offset: usize = 0;
+        while (offset < state_text.len) {
+            const line = nextLine(cr, state_text[offset..], content_w);
+            if (body_y + body_size > h_d) {
+                offset = state_text.len;
+                break;
+            }
+            centerText(cr, line, content_w, pad_x, body_y);
+            body_y += body_size * 1.35;
+            offset += line.len;
+            if (offset < state_text.len and state_text[offset] == ' ') offset += 1;
         }
     }
 
@@ -684,19 +724,8 @@ fn renderTypewriterCard(
         }
     }
 
-    // Fade out the lower portion so overflowed text gently disappears.
-    const fade_h = h_d * 0.25;
-    const fade_y = h_d - fade_h;
-    if (fade_h > 0.0 and fade_y > 0.0) {
-        const pattern = c.cairo_pattern_create_linear(0.0, fade_y, 0.0, h_d);
-        c.cairo_pattern_add_color_stop_rgba(pattern, 0.0, 0.0, 0.0, 0.0, 0.0);
-        c.cairo_pattern_add_color_stop_rgba(pattern, 1.0, 0.0, 0.0, 0.0, 1.0);
-        c.cairo_set_source(cr, pattern);
-        c.cairo_rectangle(cr, 0.0, fade_y, w_d, fade_h);
-        c.cairo_fill(cr);
-        c.cairo_pattern_destroy(pattern);
-    }
     c.cairo_restore(cr);
+    return body_y + body_size * 0.5;
 }
 
 fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
@@ -762,6 +791,74 @@ fn drawCaret(cr: *c.cairo_t, body_size: f64, color: [4]f64) void {
     c.cairo_set_source_rgba(cr, color[0], color[1], color[2], 1.0);
     c.cairo_rectangle(cr, cur_x + 1.0, cur_y - h * 0.75, w, h);
     c.cairo_fill(cr);
+}
+
+/// Middle-ellipsis abbreviation of `text` so it fits in `max_w` at the current
+/// font. If it already fits, return the original slice unchanged.
+fn abbreviateText(cr: *c.cairo_t, text: []const u8, max_w: f64, _: f64) []const u8 {
+    if (text.len == 0) return text;
+    var ext: c.cairo_text_extents_t = undefined;
+    c.cairo_text_extents(cr, @ptrCast(text.ptr), &ext);
+    if (ext.width <= max_w) return text;
+
+    const ellipsis = "...";
+    c.cairo_text_extents(cr, @ptrCast(ellipsis), &ext);
+    const ellipsis_w = ext.width;
+    if (max_w <= ellipsis_w) return text;
+
+    const avail = max_w - ellipsis_w;
+    // Binary search for the longest prefix that fits in half the available width.
+    var lo: usize = 1;
+    var hi: usize = text.len;
+    while (lo < hi) {
+        const mid = lo + (hi - lo) / 2;
+        c.cairo_text_extents(cr, @ptrCast(text[0..mid].ptr), &ext);
+        if (ext.width <= avail * 0.5) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    const left_len = lo - 1;
+
+    lo = 1;
+    hi = text.len;
+    while (lo < hi) {
+        const mid = lo + (hi - lo) / 2;
+        c.cairo_text_extents(cr, @ptrCast(text[text.len - mid ..].ptr), &ext);
+        if (ext.width <= avail * 0.5) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    const right_len = lo - 1;
+
+    if (left_len + right_len + 3 >= text.len) return text;
+    return std.fmt.bufPrint(&abbrev_buf, "{s}{s}{s}", .{ text[0..left_len], ellipsis, text[text.len - right_len ..] }) catch text;
+}
+
+var abbrev_buf: [512]u8 = undefined;
+
+/// Extract a small detail token from the body, e.g. file type/size for downloads.
+/// Format: detail|state or detail · state. Returns empty if no detail.
+fn extractDetail(body: []const u8) []const u8 {
+    // Look for a '|' separator used for extra metadata.
+    if (std.mem.indexOfScalar(u8, body, '|')) |idx| {
+        return std.mem.trim(u8, body[0..idx], " ");
+    }
+    // No detail present.
+    return "";
+}
+
+/// Normalize state text: "pending approval" → "Pending".
+fn normalizeState(text: []const u8) []const u8 {
+    if (std.mem.eql(u8, text, "pending approval")) return "Pending";
+    if (std.mem.startsWith(u8, text, "pending")) return "Pending";
+    if (std.mem.eql(u8, text, "completed")) return "Completed";
+    if (std.mem.eql(u8, text, "failed")) return "Failed";
+    if (std.mem.eql(u8, text, "blocked")) return "Blocked";
+    return text;
 }
 
 /// Look for the last "NN%" in the body and return the percent value.
