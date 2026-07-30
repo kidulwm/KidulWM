@@ -1,0 +1,60 @@
+# KidulWM notification source rules.
+# The system watcher and bridge read this file to decide how each notification
+# is displayed and whether it needs user approval.
+
+sources:
+  files:
+    label: "Files"
+    watch_dirs:
+      - "~/Downloads"
+      - "~/Documents"
+      - "~/Desktop"
+      - "~/Pictures"
+    events: [created, moved_to]
+    approval_required_for:
+      - "~/Downloads/*"
+    display:
+      color: "accent"
+      position: "stream"
+      persist_seconds: 8
+    sound: "paper"
+
+  security:
+    label: "Security"
+    display:
+      color: "warning"
+      position: "stream"
+      persist_seconds: 12
+    sound: "shield"
+
+  usb:
+    label: "USB"
+    display:
+      color: "accent"
+      position: "stream"
+      persist_seconds: 10
+    sound: "plug"
+
+  system:
+    label: "System"
+    display:
+      color: "muted"
+      position: "stream"
+      persist_seconds: 6
+    sound: "bell"
+
+  media:
+    label: "Media"
+    display:
+      color: "accent"
+      position: "stream"
+      persist_seconds: 5
+    sound: "note"
+
+  default:
+    label: "Notification"
+    display:
+      color: "text"
+      position: "stream"
+      persist_seconds: 6
+    sound: "pop"

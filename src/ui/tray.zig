@@ -3235,8 +3235,13 @@ fn notificationWidgetIndex(self: *const Tray, widget: *const PerOutputNotificati
     return 0;
 }
 
-pub fn notificationAdd(self: *Self, title: []const u8, body: []const u8, source_id: []const u8) void {
-    self.notifications.push(title, body, source_id) catch |err| {
+pub fn notificationAdd(self: *Self, title: []const u8, body: []const u8, source_id: []const u8, priority: ?[]const u8, action_id: ?[]const u8, display_mode: ?[]const u8) void {
+    const opts = notifications.PushOptions{
+        .priority = if (priority) |p| notifications.Priority.fromString(p) else null,
+        .action_id = action_id,
+        .display_mode = if (display_mode) |m| notifications.DisplayMode.fromString(m) else null,
+    };
+    self.notifications.push(title, body, source_id, opts) catch |err| {
         std.log.err("KidulWM: failed to add notification: {}", .{err});
         return;
     };
@@ -3268,7 +3273,11 @@ fn drawNotificationWidget(self: *Self, widget: *PerOutputNotifications) void {
     const peek_hmargin: i32 = 0;
     const panel_w: i32 = @max(40, box.width - 2 * peek_hmargin);
     const top_breathing: i32 = self.notifications.config.top_breathing_room;
-    const bottom_pad: i32 = 22;
+    // Leave room below notifications for the future slide title/favicon band,
+    // then the media widget starts below that.
+    const title_band_h: i32 = 42;
+    const media_gap: i32 = 8;
+    const bottom_pad: i32 = 22 + title_band_h + media_gap;
 
     var clock_bottom: i32 = box.y + top_breathing;
     for (self.widgets.items) |w| {
@@ -3284,7 +3293,8 @@ fn drawNotificationWidget(self: *Self, widget: *PerOutputNotifications) void {
         }
     }
 
-    const avail_h = media_top - clock_bottom - top_breathing;
+    const hard_stop = media_top - title_band_h - media_gap;
+    const avail_h = hard_stop - clock_bottom - top_breathing;
     if (avail_h < 40) return;
 
     const panel_x = box.x + peek_hmargin;

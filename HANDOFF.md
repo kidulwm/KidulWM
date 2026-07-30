@@ -1,6 +1,6 @@
 # KidulWM Handoff
 
-Updated 2026-07-30 (notification bridge env fix proven). Source of truth for resuming.
+Updated 2026-07-30 (notification priority cards locked, progress bar tested). Source of truth for resuming.
 
 ## Current state
 
@@ -16,14 +16,31 @@ Updated 2026-07-30 (notification bridge env fix proven). Source of truth for res
 
 ## What this session changed
 
-### 1. Curtain overlay feature (active work)
+### 1. Notification priority card system (just locked)
+- Refactored `src/ui/notifications.zig` from a simple queue into a `NotificationCard` unit.
+  - Title and body/panel are now one card; `display_mode` selects the skin to draw it with.
+  - Day-one skins: `.typewriter` (active); `.scroll`, `.banner`, `.river` stubbed for later.
+  - `Priority`: `.critical`, `.high`, `.normal`, `.low`.
+- Priority behaviour:
+  - `critical` interrupts the current card immediately and pauses the normal stream.
+  - `high` waits for the current card to finish, then cuts ahead of normal/low.
+  - normal/low rotate one-at-a-time; low only shows when nothing else is queued.
+  - After an urgent card clears, the stream takes a 1.5 s "curtain down" break before resuming normal cards.
+  - Burnt-orange `CRITICAL` label; smaller priority label sits above source/title line.
+- Burst grouping: multiple same-source critical events within 2 s collapse into one card with a count (e.g. `USB (3)`).
+- Action-card hooks: `security` and `usb` notifications carry `action_id` metadata so a future click can open a Block/Allow/Details card.
+- `src/ipc/message.zig`, `src/server.zig`, `src/kidulwm-control.zig`: `notification_test` now accepts optional `priority`, `action_id`, `display_mode` fields.
+- `scripts/notify-bridge.py` and `scripts/system-watcher.py` forward priority hints and action IDs.
+- `config/notifications.yaml` remains the rule reference; the in-code `defaultRule` table matches it.
+
+### 2. Curtain overlay feature (active work)
 - Added `src/render/curtain.zig` with `OutputCurtains` / `Panel` structures.
 - Wired into `src/server.zig`: import, `Output.curtains` field, create/destroy/update calls in `handleNewOutput`, `Output.init`, `Output.deinit`, and `applyLayout`.
 - Rendered below widgets/tray so widgets stay fully visible.
 - Current implementation draws full-height side panels with black velvet folds and a border-color rope tie-back + small tassel.
 - Temporary crash guard added in `handleNewToplevelDecoration` to skip `setMode(.server_side)` for uninitialized xdg surfaces; this kept the compositor alive during testing.
 
-### 2. kidul-browser integration remains benched
+### 3. kidul-browser integration remains benched
 - kidul-browser is on hold per user direction.
 - Browser files unchanged this session.
 
@@ -111,16 +128,15 @@ Expect to see the text appear in the typewriter stream under the clock.
 
 ## Next session work
 
-1. **System-event notification watcher** — write a small Python/systemd service that polls the same rkt-dashboard state files (security, USB) and emits `notify-send` into KidulWM. Use this to define the first source rules.
-2. **Notification rule/config foundation** — add a config file that maps source/category → display treatment (colour, sound, persistence, approval-required).
-3. **Implement notification peek/card** triggered by clicking/tapping the stream under the clock. Card shows full river grouped by app with dismiss per item and clear all.
-4. **Reserve right-peek space** between notification stream and media helix for slide title/favicon band.
-5. **Copy `/tmp/curtains9.png` silhouette pixel-for-pixel** into `src/render/curtain.zig` as the tied-back left panel, then mirror for the right panel.
-3. Apply the curtain design rules above (thinnest at rope, bulge above/below, 5 px gap from focused slide, rope at 1/5 top, black velvet, border-color rope).
-4. Build/deploy/screenshot until the static tied-back shape is approved.
-5. Then implement the **dropped** curtain state: mostly straight vertical folds all the way to the bottom, still 5 px outside the slide.
-6. Verify peek-trigger transitions and remove/replace the temporary `handleNewToplevelDecoration` guard.
-7. (Future) Rewrite the bridge in pure Zig and remove the Python service once D-Bus service handling is solid.
+1. **Implement the action card** for `security` and `usb` notifications: Block / Allow / Details buttons, rendered in KidulWM card style.
+2. **Implement notification peek/card** triggered by clicking/tapping the stream under the clock. Card shows full river grouped by app with dismiss per item and clear all.
+3. **Reserve right-peek space** between notification stream and media helix for slide title/favicon band.
+4. **Copy `/tmp/curtains9.png` silhouette pixel-for-pixel** into `src/render/curtain.zig` as the tied-back left panel, then mirror for the right panel.
+5. Apply the curtain design rules above (thinnest at rope, bulge above/below, 5 px gap from focused slide, rope at 1/5 top, black velvet, border-color rope).
+6. Build/deploy/screenshot until the static tied-back shape is approved.
+7. Then implement the **dropped** curtain state: mostly straight vertical folds all the way to the bottom, still 5 px outside the slide.
+8. Verify peek-trigger transitions and remove/replace the temporary `handleNewToplevelDecoration` guard.
+9. (Future) Rewrite the bridge in pure Zig and remove the Python service once D-Bus service handling is solid.
 
 ## Files changed (uncommitted)
 
@@ -128,9 +144,13 @@ Expect to see the text appear in the typewriter stream under the clock.
 - `src/server.zig` — curtain import, `Output.curtains` field, init/deinit/update wiring, temporary decoration guard.
 - `scripts/notify-bridge.py` — Python D-Bus notification bridge; keep `BusName` reference so name stays owned.
 - `config/systemd/user/kidulwm-notify-bridge.service` — `Type=simple`, added required env vars.
-- `src/ui/notifications.zig` — stop idle-redraw loop; destroy widget buffer when queue empty.
-- `src/ui/tray.zig` — skip notification render entirely when queue is empty.
-- `src/ipc/message.zig`, `src/server.zig`, `src/kidulwm-control.zig` — added `notification_clear` IPC command.
+- `src/ui/notifications.zig` — `NotificationCard` unit with priority, display_mode, action_id, burst grouping, priority interrupts, resume-after-break.
+- `src/ui/tray.zig` — updated `notificationAdd` to accept optional priority/action/display args; still skips render when queue empty.
+- `src/ipc/message.zig`, `src/server.zig`, `src/kidulwm-control.zig` — added optional `priority`, `action_id`, `display_mode` to `notification_test`; `notification_clear` still present.
+- `scripts/notify-bridge.py` — forwards urgency hints and `kidulwm-action` hints; maps numeric urgency levels to priority names.
+- `scripts/system-watcher.py` — sends per-event priority hints (`critical` for security, USB pending/blocked; `high` for connected/other).
+- `src/render/curtain.zig` — curtain renderer.
+- `src/server.zig` — curtain import, `Output.curtains` field, init/deinit/update wiring, temporary decoration guard.
 - `build.zig` — temporarily excluded the broken Zig bridge binary from the build (comment TODO).
 - `HANDOFF.md` — this file.
 

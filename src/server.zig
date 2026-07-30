@@ -269,7 +269,7 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .notification_test => |p| {
-                self.tray.notificationAdd(p.title, p.body, p.source_id);
+                self.tray.notificationAdd(p.title, p.body, p.source_id, p.priority, p.action_id, p.display_mode);
                 return .{ .ok = true, .message = "notification added" };
             },
             .notification_clear => {

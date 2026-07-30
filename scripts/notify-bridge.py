@@ -27,7 +27,7 @@ OBJECT_PATH = "/org/freedesktop/Notifications"
 INTERFACE = "org.freedesktop.Notifications"
 
 
-def forward_to_kidulwm(title: str, body: str, source: str) -> None:
+def forward_to_kidulwm(title: str, body: str, source: str, priority: str | None = None, action_id: str | None = None) -> None:
     """Send one notification into KidulWM's tray queue."""
     runtime = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
     sock = os.path.join(runtime, "kidulwm-control.sock")
@@ -35,8 +35,13 @@ def forward_to_kidulwm(title: str, body: str, source: str) -> None:
         print(f"kidulwm socket missing: {sock}", file=sys.stderr)
         return
     try:
+        cmd = ["kidulwm-control", "notification_test", title, body, source]
+        if priority:
+            cmd.append(priority)
+            if action_id:
+                cmd.append(action_id)
         subprocess.run(
-            ["kidulwm-control", "notification_test", title, body, source],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             check=True,
@@ -68,7 +73,24 @@ class Notifications(dbus.service.Object):
         title = summary.strip() or (app_name.strip() or "Notification")
         clean_body = body.strip()
         source = app_name.strip() or "unknown"
-        forward_to_kidulwm(title, clean_body, source)
+        priority = hints.get("urgency", None)
+        if priority is not None:
+            try:
+                level = int(priority)
+                if level == 2:
+                    priority = "critical"
+                elif level == 1:
+                    priority = "normal"
+                elif level == 0:
+                    priority = "low"
+                else:
+                    priority = None
+            except (ValueError, TypeError):
+                priority = str(priority) if str(priority) else None
+        action_id = hints.get("kidulwm-action", source if source in ("security", "usb") else None)
+        if action_id is not None:
+            action_id = str(action_id)
+        forward_to_kidulwm(title, clean_body, source, priority, action_id)
         return replaces_id if replaces_id else self._next_id
 
     @dbus.service.method(INTERFACE, in_signature="", out_signature="as")

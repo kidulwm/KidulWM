@@ -75,7 +75,17 @@ pub fn main(init: std.process.Init.Minimal) !void {
             const title = it.next() orelse "Test";
             const body = it.next() orelse "This is a test notification.";
             const source_id = it.next() orelse "test";
-            break :blk .{ .notification_test = .{ .title = title, .body = body, .source_id = source_id } };
+            const priority = it.next();
+            const action_id = it.next();
+            const display_mode = it.next();
+            break :blk .{ .notification_test = .{
+                .title = title,
+                .body = body,
+                .source_id = source_id,
+                .priority = priority,
+                .action_id = action_id,
+                .display_mode = display_mode,
+            } };
         }
         if (std.mem.eql(u8, cmd, "notification_clear")) break :blk .{ .notification_clear = {} };
         if (std.mem.eql(u8, cmd, "set_theme")) {
