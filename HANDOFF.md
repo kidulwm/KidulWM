@@ -82,3 +82,42 @@ sudo systemctl start kidulwm
 Verify service is active, then capture screenshot and compare to `/tmp/kidulwm-network-14.png`.
 
 For notifications, after the service is running run `notify-send "Test" "body"` and watch the tray stream.
+
+
+## Codeberg remote workflow
+
+Use this whenever you need to ensure the work is pushed or pulled from the canonical remote.
+
+- Canonical repo: https://codeberg.org/kidulwm/KidulWM
+- Default branch: `main`
+- Local working copy: `/home/dad/dev/KidulWM`
+- SSH key for pushes: `~/.ssh/id_ed25519_kidulwm` (registered on Codeberg as `dotrix-workstation`)
+- Remotes:
+  - `origin` points to Codeberg
+  - `github-archive` points to the old GitHub mirror (kept for history only)
+
+### Push current branch
+```bash
+cd /home/dad/dev/KidulWM
+git push origin main
+```
+
+### Pull latest from Codeberg
+```bash
+cd /home/dad/dev/KidulWM
+git pull origin main
+```
+
+### Check remotes
+```bash
+cd /home/dad/dev/KidulWM
+git remote -v
+```
+
+If authentication is refused, verify the SSH key is loaded:
+```bash
+ssh-add -l | grep id_ed25519_kidulwm
+ssh -T git@codeberg.org
+```
+
+Do **not** commit credentials, tokens, or the private key itself. The key file stays in `~/.ssh/`; it is never added to the repo.
