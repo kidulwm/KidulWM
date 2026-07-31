@@ -1,106 +1,31 @@
 # KidulWM Handoff
 
-Updated 2026-07-31 (session wrap-up). Source of truth for resuming.
-
 ## Current state
 
-| Item | Value |
-|------|-------|
-| Branch | `main` |
-| Last commit | `3ffe272` replace bottom-left tray toggle with Kidul circular goddess icon |
-| Work VM | `fresh-one` (kidul@127.0.0.1:2260) |
-| Service log | `/tmp/kidulwm-service.log` |
-| Deployed WM binary | `/usr/bin/kidulwm` |
-| Shorthand history | `Bob` = legacy top-left tray logo ; `Barry` = legacy bottom-left pet (both now parked/hidden) |
-| Notification bridge | Python D-Bus service (`scripts/notify-bridge.py`) owns `org.freedesktop.Notifications`, forwards to KidulWM IPC. |
-| notify-send route | Works without manual env after adding `DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY` to service. |
+- Branch: `main`
+- Last commit: `36bfa70 kidulButton` (deployed, locked in)
+- Working tree: clean except for this `HANDOFF.md`. Weather/media modifications from this session are stashed at `stash@{0}`.
+- Untracked files present: `scripts/fetch-weather.py`, `config/weather.conf.example`
 
-## What this session changed
+## What happened this session
 
-### 1. Network icon merged into clock widget
+- `kidulButton` commit was completed and deployed successfully.
+- Tried to fix a perceived "double moon" / "cheap" look in the left-peek weather widget.
+- `src/ui/weather.zig` and `src/ui/media.zig` were reverted and re-touched multiple times; the working copy ended back at the committed `kidulButton` state with the changes stashed.
+- Added `Environment=HOME=/home/kidul` to the VM's `/etc/systemd/system/kidulwm.service` so the weather widget can resolve its cache path.
+- Manually wrote a real weather cache to the VM at `~/.cache/kidulwm/weather/home.json` with **Toowoomba, QLD** data (current temp ~12°C, code 1, night).
+- The widget's moon phase uses system Unix time (`time(null)`), which was correct.
+- The visual issue was mostly caused by the widget rendering default/zero data (no cache found) and the bottom condition icon overlapping visually with the moon.
 
-- `src/ui/network.zig`:
-  - Removed brightness icon; network icon size increased to 16×scale.
-  - VPN icon sits left of network; battery icon sits right.
-- `src/ui/tray.zig`:
-  - Dedicated network widget tree is now hidden; `drawNetworkWidget` only polls state.
-  - Network icon is rendered into the clock widget buffer at the top (status band = 34 px).
-  - Clock widget moved up to the top of the right-peek box, then lowered 18 px for final vertical position.
-  - Gap between network icon and clock digits tightened to ~1 px.
-  - Click zone: top ~52 px of the right-peek box = network/brightness; below = calendar.
+## VM state
 
-### 2. Bottom-left tray toggle replaced with Kidul circular goddess icon
+- VM: `fresh-one` (kidul@127.0.0.1:2260)
+- Service file now contains `Environment=HOME=/home/kidul`
+- Deployed binary: `/usr/bin/kidulwm`
+- Weather cache: `~/.cache/kidulwm/weather/home.json` (Toowoomba)
 
-- New logo asset: `src/ui/assets/bob/emblem_mask.png` (flipped horizontally from `~/Pictures/KidulIcon.png`, black made transparent).
-- Top-of-tray Barry lozenge is hidden; the single bottom button is now the tray toggle.
-- Icon is rotated 9° anti-clockwise from the committed state (`3ffe272`).
-  - **In-flight tweak at session end:** user wants -17° anti-clockwise and a small vertical raise, but the working tree got corrupted by repeated patches and had to be restored to `3ffe272`. A small loop occurred during the final rotation adjustment.
-- Button is rendered as a glass disc with soft shadow, theme-colored rim, and a 3 px inner shading ring.
+## Pending decisions
 
-### 3. Pending / next session
-
-- **Finish the bottom-left logo tweak:** rotation should be `-17°` (cairo negative) and icon raised ~6 px from the bottom (`raise_up = 6.0 * s`). The current committed code is at `9.0` (clockwise), so it needs to be flipped negative.
-- **Rename refactor:** settle on `drawKidulButton` / `drawKidulIcon` names once the visual result is locked. The `Barry`/`Pet` names in `tray.zig` are now misleading.
-- Brightness scroll behavior is **not yet routed** to the network icon (pointer axis in `src/input/pointer.zig` bypasses `Tray.scroll`).
-- Network card (`renderCard`) is still mostly stub.
-- Notification action cards and curtain renderer still parked.
-
-## Visual references on disk
-
-| File | Meaning |
-|------|---------|
-| `/tmp/kidul_status_on_clock.png` | Latest network-icon-on-clock layout (do not analyze unless requested) |
-| `/tmp/curtains9.png` | Target tied-back curtain silhouette |
-
-## Next session work
-
-1. Apply the final bottom-icon rotation/raise cleanly (and possibly rename `drawPet` → `drawKidulButton`).
-2. Verify the icon follows theme border colors under accent changes.
-3. Route pointer-axis scrolling so hovering the network icon adjusts screen brightness.
-4. Finish network card UI.
-5. Return to notification action cards and curtain work.
-
-## Files touched this session
-
-- `src/ui/network.zig`
-- `src/ui/tray.zig`
-- `src/ui/assets/bob/emblem_mask.png`
-- `src/ui/assets/bob/logo.png` (reverted to original text logo)
-
-## How to resume
-
-```bash
-cd /home/dad/dev/KidulWM
-git log --oneline -5
-zig build
-scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \
-  zig-out/bin/kidulwm \
-  kidul@127.0.0.1:/tmp/
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1
-sudo systemctl stop kidulwm
-sudo cp /tmp/kidulwm /usr/bin/kidulwm
-sudo systemctl start kidulwm
-```
-
-Verify service is active, then proceed with the pending tweak.
-
-## Codeberg remote workflow
-
-- Canonical repo: https://codeberg.org/kidulwm/KidulWM
-- Default branch: `main`
-- Local working copy: `/home/dad/dev/KidulWM`
-- SSH key for pushes: `~/.ssh/id_ed25519_kidulwm` (registered on Codeberg as `dotrix-workstation`)
-
-### Push current branch
-```bash
-cd /home/dad/dev/KidulWM
-git push origin main
-```
-
-### Pull latest from Codeberg
-```bash
-cd /home/dad/dev/KidulWM
-git pull origin main
-```
-
-Do **not** commit credentials, tokens, or the private key itself.
+1. Keep or drop the stashed weather/media tweaks (`git stash drop` or `git stash pop`).
+2. Keep or remove the untracked `scripts/fetch-weather.py` and `config/weather.conf.example`.
+3. Decide the intended look of the weather peek widget (moon + condition icon vs moon only) once the screenshot/data flow is confirmed.
