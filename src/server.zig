@@ -1366,6 +1366,10 @@ pub const Server = struct {
         return self.tray.handlePointerClick(x, y);
     }
 
+    pub fn handlePointerAxis(self: *Server, x: f64, y: f64, delta: f64) bool {
+        return self.tray.handleAxis(x, y, delta);
+    }
+
     pub fn logPointerDiagnostic(self: *Server, tag: []const u8, x: f64, y: f64) void {
         _ = self;
         const now = @import("core/animation.zig").nowUs();

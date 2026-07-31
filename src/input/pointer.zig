@@ -116,6 +116,9 @@ const PointerDevice = struct {
     fn handleAxis(listener: *wl.Listener(*wlr.Pointer.event.Axis), event: *wlr.Pointer.event.Axis) void {
         const self: *PointerDevice = @fieldParentPtr("axis", listener);
         const server = self.manager.server;
+        if (server.handlePointerAxis(server.cursor_x, server.cursor_y, event.delta)) {
+            return;
+        }
         server.seat.pointerNotifyAxis(
             event.time_msec,
             event.orientation,

@@ -29,11 +29,21 @@ pub const NetworkCard = struct {
     }
 };
 
+pub const Status = struct {
+    network: NetworkState = .none,
+    brightness: f64 = 1.0,
+    vpn_active: bool = false,
+    battery_present: bool = false,
+    battery_charging: bool = false,
+    battery_level: f64 = 1.0,
+};
+
 pub const NetworkWidget = struct {
     allocator: std.mem.Allocator,
     card: NetworkCard = .{},
     state: NetworkState = .none,
     last_scan_ms: u64 = 0,
+    status: Status = .{},
 
     const scan_interval_ms: u64 = 2000;
     const brightness_step_ratio: f64 = 0.05;
@@ -70,6 +80,10 @@ pub const NetworkWidget = struct {
         const now = nowMs();
         if (now -% self.last_scan_ms >= scan_interval_ms) {
             self.scanState();
+            self.scanBrightness();
+            self.scanVpn();
+            self.scanBattery();
+            self.status.network = self.state;
             self.last_scan_ms = now;
         }
     }
@@ -119,7 +133,6 @@ pub const NetworkWidget = struct {
                 const line = std.mem.sliceTo(&line_buf, 0);
                 if (std.mem.startsWith(u8, line, "up")) {
                     any_up = true;
-                    break;
                 }
             }
         }
@@ -140,6 +153,90 @@ pub const NetworkWidget = struct {
         height: i32,
     };
 
+    fn scanBrightness(self: *NetworkWidget) void {
+        var controller_buf: [128:0]u8 = undefined;
+        @memset(&controller_buf, 0);
+        if (!findBacklightController(&controller_buf)) {
+            self.status.brightness = 1.0;
+            return;
+        }
+        const controller = std.mem.sliceTo(&controller_buf, 0);
+
+        var max_path: [256:0]u8 = undefined;
+        @memset(&max_path, 0);
+        const max_path_z = std.fmt.bufPrintZ(&max_path, "/sys/class/backlight/{s}/max_brightness", .{controller}) catch return;
+        const max = readIntFile(max_path_z);
+        if (max <= 0) {
+            self.status.brightness = 1.0;
+            return;
+        }
+
+        var cur_path: [256:0]u8 = undefined;
+        @memset(&cur_path, 0);
+        const cur_path_z = std.fmt.bufPrintZ(&cur_path, "/sys/class/backlight/{s}/brightness", .{controller}) catch return;
+        const current = readIntFile(cur_path_z);
+
+        self.status.brightness = if (max > 0) std.math.clamp(@as(f64, @floatFromInt(current)) / @as(f64, @floatFromInt(max)), 0.0, 1.0) else 1.0;
+    }
+
+    fn scanVpn(self: *NetworkWidget) void {
+        self.status.vpn_active = false;
+        const dir = c_std.opendir("/sys/class/net");
+        if (dir == null) return;
+        defer _ = c_std.closedir(dir);
+
+        var entry: ?*c_std.dirent = null;
+        while (true) {
+            entry = c_std.readdir(dir);
+            if (entry == null) break;
+            const name = std.mem.sliceTo(&entry.?.d_name, 0);
+            if (name.len == 0 or name[0] == '.') continue;
+            if (std.mem.startsWith(u8, name, "wg") or
+                std.mem.startsWith(u8, name, "tun") or
+                std.mem.startsWith(u8, name, "tap") or
+                std.mem.startsWith(u8, name, "vpn"))
+            {
+                self.status.vpn_active = true;
+                break;
+            }
+        }
+    }
+
+    fn scanBattery(self: *NetworkWidget) void {
+        const names = [_][]const u8{ "BAT0", "BAT1" };
+        self.status.battery_present = false;
+        self.status.battery_charging = false;
+        self.status.battery_level = 1.0;
+        for (names) |name| {
+            var present_path: [256:0]u8 = undefined;
+            @memset(&present_path, 0);
+            const present_z = std.fmt.bufPrintZ(&present_path, "/sys/class/power_supply/{s}/present", .{name}) catch continue;
+            if (readIntFile(present_z) != 1) continue;
+
+            self.status.battery_present = true;
+
+            var cap_path: [256:0]u8 = undefined;
+            @memset(&cap_path, 0);
+            const cap_z = std.fmt.bufPrintZ(&cap_path, "/sys/class/power_supply/{s}/capacity", .{name}) catch continue;
+            const cap = readIntFile(cap_z);
+            self.status.battery_level = @as(f64, @floatFromInt(std.math.clamp(cap, 0, 100))) / 100.0;
+
+            var status_path: [256:0]u8 = undefined;
+            @memset(&status_path, 0);
+            const status_z = std.fmt.bufPrintZ(&status_path, "/sys/class/power_supply/{s}/status", .{name}) catch continue;
+            var status_buf: [32:0]u8 = undefined;
+            @memset(&status_buf, 0);
+            const f = c_std.fopen(status_z, "r");
+            if (f == null) continue;
+            defer _ = c_std.fclose(f);
+            if (c_std.fgets(&status_buf, @intCast(status_buf.len), f) != null) {
+                const line = std.mem.sliceTo(&status_buf, 0);
+                const lower = std.ascii.lowerString(&status_buf, line);
+                self.status.battery_charging = std.mem.startsWith(u8, lower, "charging") or std.mem.startsWith(u8, lower, "full");
+            }
+        }
+    }
+
     pub fn renderPeek(self: *const NetworkWidget, cr: *c.cairo_t, box: PeekBox, style_: style.Style, scale: f32) void {
         const w_d: f64 = @floatFromInt(box.width);
         const h_d: f64 = @floatFromInt(box.height);
@@ -147,48 +244,193 @@ pub const NetworkWidget = struct {
 
         const scale_f: f64 = @as(f64, scale);
         const gold = style_.color_border_focused.toF64();
-        const muted = style_.color_text_muted.toF64();
+        const warning = [4]f64{ 0.851, 0.447, 0.18, 0.85 };
 
-        // Kapitayan sun: hollow center ring with radiating beams.
-        const margin: f64 = 4.0 * scale_f;
-        const sun_r = @max(5.0 * scale_f, @min(w_d * 0.42, 14.0 * scale_f, (h_d - margin * 2.0) * 0.5));
-        if (sun_r < 4.0 * scale_f) return;
-
-        const cx = w_d * 0.5;
-        const cy = margin + sun_r;
-        const center_r = @max(4.5 * scale_f, sun_r * 0.27);
-        const beam_outer = sun_r;
+        // Larger network icon; smaller satellites stay subtle.
+        const net_size: f64 = 16.0 * scale_f;
+        const sat_size: f64 = 11.0 * scale_f;
+        const net_sat_gap: f64 = 14.0 * scale_f;
 
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
         c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
         c.cairo_set_line_join(cr, c.CAIRO_LINE_JOIN_ROUND);
 
-        const center_color = switch (self.state) {
-            .connected => gold,
-            .disconnected => [4]f64{ @as(f64, 0xD9) / 255.0, @as(f64, 0x72) / 255.0, @as(f64, 0x2E) / 255.0, 0.85 },
-            .none => muted,
-        };
+        const show_vpn = self.status.vpn_active;
+        const show_battery = self.status.battery_present and (!self.status.battery_charging or self.status.battery_level < 1.0);
 
-        // Draw beams first so the ring sits cleanly on top.
-        switch (self.state) {
-            .connected => {
-                const glow = [4]f64{ gold[0], gold[1], gold[2], 0.45 };
-                drawBeams8(cr, cx, cy, center_r, beam_outer, glow, 5.0 * scale_f);
-                drawBeams8(cr, cx, cy, center_r, beam_outer, gold, 2.0 * scale_f);
-            },
-            .disconnected => {
-                const burnt = [4]f64{ @as(f64, 0xD9) / 255.0, @as(f64, 0x72) / 255.0, @as(f64, 0x2E) / 255.0, 0.85 };
-                drawBeams8(cr, cx, cy, center_r, beam_outer, burnt, 2.0 * scale_f);
-            },
-            .none => {},
+        // Vertically nudge the whole icon group down so it reads as part of the
+        // tray immediately above the clock.
+        const cy = h_d * 0.55;
+        const net_cx = w_d * 0.5;
+
+        // Draw the always-present network icon centered.
+        const net_color = if (self.status.network != .connected) warning else gold;
+        drawNetworkIcon(cr, net_cx, cy, net_size * 0.5, self.status.network, net_color);
+
+        // Known place to look: VPN always to the left of the network icon.
+        if (show_vpn) {
+            const cx = net_cx - net_size * 0.5 - net_sat_gap - sat_size * 0.5;
+            drawVpnIcon(cr, cx, cy, sat_size * 0.5, gold);
         }
 
-        // Hollow centre ring.
+        // Known place to look: battery always to the right of the network icon.
+        if (show_battery) {
+            const cx = net_cx + net_size * 0.5 + net_sat_gap + sat_size * 0.5;
+            const color = if (self.status.battery_level < 0.2 and !self.status.battery_charging) warning else gold;
+            drawBatteryIcon(cr, cx, cy, sat_size * 0.5, self.status.battery_level, self.status.battery_charging, color);
+        }
+    }
+
+    fn drawNetworkIcon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, state: NetworkState, color: [4]f64) void {
+        c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+        c.cairo_set_line_width(cr, 1.2);
+
+        // Tiny dot at the base.
+        c.cairo_new_path(cr);
+        c.cairo_arc(cr, cx, cy + r * 0.45, r * 0.16, 0, 2.0 * std.math.pi);
+        c.cairo_fill(cr);
+
+        // Three radiating arcs, whispy and open.
+        const arcs = [_]struct { y: f64, span: f64 }{
+            .{ .y = r * 0.15, .span = r * 0.55 },
+            .{ .y = -r * 0.15, .span = r * 0.95 },
+            .{ .y = -r * 0.45, .span = r * 1.35 },
+        };
+        for (arcs) |a| {
+            c.cairo_new_path(cr);
+            c.cairo_arc(cr, cx, cy + a.y, a.span, std.math.pi * 0.75, std.math.pi * 2.25);
+            c.cairo_stroke(cr);
+        }
+
+        if (state == .disconnected or state == .none) {
+            // Small cross strike through the dot.
+            const x0 = cx - r * 0.25;
+            const x1 = cx + r * 0.25;
+            const y0 = cy + r * 0.2;
+            const y1 = cy + r * 0.7;
+            c.cairo_new_path(cr);
+            c.cairo_move_to(cr, x0, y0);
+            c.cairo_line_to(cr, x1, y1);
+            c.cairo_move_to(cr, x1, y0);
+            c.cairo_line_to(cr, x0, y1);
+            c.cairo_set_line_width(cr, 1.5);
+            c.cairo_stroke(cr);
+        }
+    }
+
+    fn drawBrightnessIcon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, color: [4]f64) void {
+        c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+        c.cairo_set_line_width(cr, 1.2);
+        // Small central circle.
+        const center_r = r * 0.25;
         c.cairo_new_path(cr);
         c.cairo_arc(cr, cx, cy, center_r, 0, 2.0 * std.math.pi);
-        c.cairo_set_source_rgba(cr, center_color[0], center_color[1], center_color[2], center_color[3]);
-        c.cairo_set_line_width(cr, 2.5 * scale_f);
         c.cairo_stroke(cr);
+
+        // Eight very fine rays, uneven lengths for a hand-drawn feel.
+        const rays = [_]struct { a: f64, inner: f64, outer: f64 }{
+            .{ .a = 0.0, .inner = center_r + r * 0.18, .outer = r },
+            .{ .a = std.math.pi / 4.0, .inner = center_r + r * 0.12, .outer = r * 0.92 },
+            .{ .a = std.math.pi / 2.0, .inner = center_r + r * 0.18, .outer = r },
+            .{ .a = std.math.pi * 0.75, .inner = center_r + r * 0.12, .outer = r * 0.92 },
+            .{ .a = std.math.pi, .inner = center_r + r * 0.18, .outer = r },
+            .{ .a = std.math.pi * 1.25, .inner = center_r + r * 0.12, .outer = r * 0.92 },
+            .{ .a = std.math.pi * 1.5, .inner = center_r + r * 0.18, .outer = r },
+            .{ .a = std.math.pi * 1.75, .inner = center_r + r * 0.12, .outer = r * 0.92 },
+        };
+        for (rays) |ray| {
+            const x1 = cx + std.math.cos(ray.a) * ray.inner;
+            const y1 = cy + std.math.sin(ray.a) * ray.inner;
+            const x2 = cx + std.math.cos(ray.a) * ray.outer;
+            const y2 = cy + std.math.sin(ray.a) * ray.outer;
+            c.cairo_new_path(cr);
+            c.cairo_move_to(cr, x1, y1);
+            c.cairo_line_to(cr, x2, y2);
+            c.cairo_set_line_width(cr, 1.0);
+            c.cairo_stroke(cr);
+        }
+    }
+
+    fn drawVpnIcon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, color: [4]f64) void {
+        c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+        c.cairo_set_line_width(cr, 1.2);
+        // Shield outline: top arc + tapering sides.
+        c.cairo_new_path(cr);
+        const top = cy - r * 0.65;
+        const bottom = cy + r * 0.55;
+        const left = cx - r * 0.6;
+        const right = cx + r * 0.6;
+        c.cairo_move_to(cr, cx, top);
+        c.cairo_line_to(cr, right, top + r * 0.35);
+        c.cairo_line_to(cr, right - r * 0.12, bottom);
+        c.cairo_line_to(cr, cx, bottom + r * 0.22);
+        c.cairo_line_to(cr, left + r * 0.12, bottom);
+        c.cairo_line_to(cr, left, top + r * 0.35);
+        c.cairo_close_path(cr);
+        c.cairo_stroke(cr);
+
+        // Tiny keyhole dot in the center.
+        c.cairo_new_path(cr);
+        c.cairo_arc(cr, cx, cy + r * 0.05, r * 0.14, 0, 2.0 * std.math.pi);
+        c.cairo_fill(cr);
+    }
+
+    fn drawBatteryIcon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, level: f64, charging: bool, color: [4]f64) void {
+        c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+        c.cairo_set_line_width(cr, 1.2);
+        const w = r * 1.35;
+        const h = r * 0.75;
+        const x = cx - w * 0.5;
+        const y = cy - h * 0.5;
+        // Body.
+        c.cairo_new_path(cr);
+        roundedRect(cr, x, y, w, h, r * 0.12);
+        c.cairo_stroke(cr);
+        // Positive nub.
+        c.cairo_new_path(cr);
+        const nub_w = r * 0.18;
+        const nub_h = h * 0.45;
+        c.cairo_rectangle(cr, x + w, cy - nub_h * 0.5, nub_w, nub_h);
+        c.cairo_fill(cr);
+
+        // Fill level.
+        const pad = r * 0.18;
+        const fill_w = (w - pad * 2.0) * std.math.clamp(level, 0.0, 1.0);
+        if (fill_w > 0.5) {
+            c.cairo_new_path(cr);
+            c.cairo_rectangle(cr, x + pad, y + pad, fill_w, h - pad * 2.0);
+            c.cairo_fill_preserve(cr);
+            c.cairo_stroke(cr);
+        }
+
+        if (charging) {
+            // Tiny bolt inside.
+            c.cairo_new_path(cr);
+            const bx = cx;
+            const by = cy;
+            c.cairo_move_to(cr, bx + r * 0.18, by - r * 0.35);
+            c.cairo_line_to(cr, bx - r * 0.05, by);
+            c.cairo_line_to(cr, bx + r * 0.12, by);
+            c.cairo_line_to(cr, bx - r * 0.18, by + r * 0.35);
+            c.cairo_close_path(cr);
+            c.cairo_set_source_rgba(cr, color[0], color[1], color[2], 1.0);
+            c.cairo_fill(cr);
+        }
+    }
+
+    fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
+        const rr = @min(r, w / 2.0, h / 2.0);
+        c.cairo_new_sub_path(cr);
+        c.cairo_move_to(cr, x + rr, y);
+        c.cairo_line_to(cr, x + w - rr, y);
+        c.cairo_arc(cr, x + w - rr, y + rr, rr, -std.math.pi / 2.0, 0);
+        c.cairo_line_to(cr, x + w, y + h - rr);
+        c.cairo_arc(cr, x + w - rr, y + h - rr, rr, 0, std.math.pi / 2.0);
+        c.cairo_line_to(cr, x + rr, y + h);
+        c.cairo_arc(cr, x + rr, y + h - rr, rr, std.math.pi / 2.0, std.math.pi);
+        c.cairo_line_to(cr, x, y + rr);
+        c.cairo_arc(cr, x + rr, y + rr, rr, std.math.pi, std.math.pi * 1.5);
+        c.cairo_close_path(cr);
     }
 
     fn drawBeams8(cr: *c.cairo_t, cx: f64, cy: f64, inner: f64, outer: f64, color: [4]f64, width: f64) void {

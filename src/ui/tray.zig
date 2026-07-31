@@ -2193,10 +2193,13 @@ pub const Tray = struct {
 
     pub fn handlePointerClick(self: *Self, px: f64, py: f64) bool {
         
-        // Close any open card if the click misses the widgets/cards below,
-        // but let the weather and clock widgets still respond.
+        // Status icon sits on top of the clock, so check it first.
         var need_close_card = false;
-
+        if (self.pointInsideNetworkWidget(px, py)) {
+            if (self.calendar_card_open or self.weather_card_open or self.media_card_open) self.closeAllCards();
+            self.toggleNetworkCard();
+            return true;
+        }
         // Click on the clock/date peek widget toggles the calendar card.
         if (self.pointInsideWidget(px, py)) {
             if (self.weather_card_open) self.closeAllCards();
@@ -2207,12 +2210,6 @@ pub const Tray = struct {
         if (self.pointInsideWeatherWidget(px, py)) {
             if (self.calendar_card_open or self.media_card_open or self.network_card_open) self.closeAllCards();
             self.toggleWeatherCard();
-            return true;
-        }
-        // Click on the network peek widget toggles the network card.
-        if (self.pointInsideNetworkWidget(px, py)) {
-            if (self.calendar_card_open or self.weather_card_open or self.media_card_open) self.closeAllCards();
-            self.toggleNetworkCard();
             return true;
         }
         // Click on the media peek widget toggles the media card.
@@ -2384,6 +2381,15 @@ pub const Tray = struct {
         return true;
     }
 
+    pub fn handleAxis(self: *Self, px: f64, py: f64, delta: f64) bool {
+        // Brightness scroll: only when hovering the top-right status tray (above the clock).
+        if (!self.pointInsideNetworkWidget(px, py)) return false;
+        self.network.adjustBrightness(delta);
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+        return true;
+    }
+
     fn handleCardDateHover(self: *Self, local_px: f64, local_py: f64) bool {
         const pad_x: f64 = 30.0;
         const pad_y: f64 = 22.0;
@@ -2423,10 +2429,10 @@ pub const Tray = struct {
         const peek_vmargin = 2;
         const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
-        const reserved_network_h: i32 = @intFromFloat(4.0 * @as(f64, scale));
-        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin - reserved_network_h, max_pill_side));
+        const reserved_status_h: i32 = @intFromFloat(32.0 * @as(f64, scale));
+        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin - reserved_status_h, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        const pill_y = box.y + peek_vmargin + reserved_network_h;
+        const pill_y = box.y + peek_vmargin + reserved_status_h;
 
         const needs_redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -2803,14 +2809,15 @@ pub const Tray = struct {
         const theme_gen = self.host.theme.generation;
         const scale = widget.info.scale;
 
-        const peek_hmargin = 2;
-        const peek_vmargin = 8;
-        const reserved_network_h: i32 = @intFromFloat(32.0 * @as(f64, scale));
-        const max_pill_side: i32 = @max(32, reserved_network_h);
-        const pill_w: i32 = @max(32, @min(box.width - 2 * peek_hmargin, max_pill_side));
-        const pill_h: i32 = @max(32, @min(reserved_network_h, box.height - 2 * peek_vmargin));
-        const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        const pill_y = box.y + peek_vmargin + 8;
+        const desired_w: i32 = @as(i32, @intFromFloat(160.0 * scale));
+        const centered_w: i32 = @min(box.width, desired_w);
+        const peek_hmargin: i32 = @divTrunc(box.width - centered_w, 2);
+        const reserved_status_h: i32 = @intFromFloat(32.0 * @as(f64, scale));
+        const pill_w: i32 = box.width - 2 * peek_hmargin;
+        const pill_h: i32 = @max(reserved_status_h - 8, @as(i32, @intFromFloat(18.0 * @as(f64, scale))));
+        const pill_x = box.x + peek_hmargin;
+        // Sit the status icon right on top of the clock widget, not floating at the top edge.
+        const pill_y = box.y + reserved_status_h - pill_h + 4;
 
         const redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -2831,7 +2838,8 @@ pub const Tray = struct {
         widget.last_h = pill_h;
         widget.last_x = pill_x;
         widget.last_y = pill_y;
-        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
+        // Click/scroll active area tightly follows the icon band, leaving the clock below clickable.
+        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = pill_w, .height = pill_h };
         widget.last_scale = scale;
         widget.last_state = self.network.state;
         widget.last_theme_generation = theme_gen;
