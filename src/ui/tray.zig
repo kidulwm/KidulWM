@@ -2538,7 +2538,7 @@ pub const Tray = struct {
 
         // Top buffer so the date block sits just below the status band and
         // the clock digits read as close to the network icon as possible.
-        const top_pad: f64 = status_band_h + 4.0 * scale;
+        const top_pad: f64 = status_band_h + 1.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
         const time_x = (w_d - num_ext.width) * 0.5;
 
