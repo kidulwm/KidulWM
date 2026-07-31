@@ -57,103 +57,67 @@ pub fn renderMoon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, phase: Phase, outlin
     const frac = phase.age / synodic_month;
     const phase_angle = frac * 2.0 * std.math.pi;
 
-    // Body disc uses the shadow color as a faint base. Paint a full disc first.
+    // Reserve outer pixels for a crisp system border ring.
+    const border_width: f64 = 2.0;
+    const ring_r = @max(0.0, r - border_width);
+    const body_r = @max(0.0, ring_r - 1.0);
+
     c.cairo_save(cr);
 
-    // 1. Base full disc (dark side)
-    c.cairo_set_source_rgba(cr, shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3]);
+    // 1. Solid system border color ring at the very outside.
+    c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
     c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
     c.cairo_fill(cr);
 
-    // 2. Lit cap as a cosine-shaped mask across the disc.
-    // Map phase to terminator x offset: at new moon -r, full moon 0, new moon +r.
-    // cos(phase_angle) goes 1 -> -1 -> 1 over the cycle; x ranges -r..r.
-    const terminator_x = -r * std.math.cos(phase_angle);
+    // 2. One-pixel background gap ring so the moon body separates cleanly.
+    c.cairo_set_source_rgba(cr, shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3]);
+    c.cairo_arc(cr, cx, cy, ring_r, 0, 2 * std.math.pi);
+    c.cairo_fill(cr);
+
+    // 3. Moon body base (dark side).
+    c.cairo_set_source_rgba(cr, shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3]);
+    c.cairo_arc(cr, cx, cy, body_r, 0, 2 * std.math.pi);
+    c.cairo_fill(cr);
+
+    // 4. Lit cap as a cosine-shaped mask across the body disc.
+    const terminator_x = -body_r * std.math.cos(phase_angle);
     const lit_fraction = 0.5 * (1.0 - std.math.cos(phase_angle));
 
     if (lit_fraction > 0.001) {
-        // Clip to the moon disc.
-        c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
+        c.cairo_save(cr);
+        c.cairo_arc(cr, cx, cy, body_r, 0, 2 * std.math.pi);
         c.cairo_clip(cr);
-        defer _ = c.cairo_clip(cr);
 
-        // Build a soft horizontal step from shadow to light across the terminator.
-        // We paint with the outline/gold color and vary alpha to make it fade.
-        const soft: f64 = r * 0.35; // terminator softness
-
-        // Compute alpha stops across the gradient band. The lit side is to the right of
-        // terminator_x for a waxing moon, but the cos() formulation handles both halves.
-        // Use a horizontal linear alpha gradient from shadow to light.
-        // The gradient covers the terminator band: [terminator_x - soft, terminator_x + soft].
+        const soft: f64 = body_r * 0.35;
         const grad = c.cairo_pattern_create_linear(terminator_x - soft, 0.0, terminator_x + soft, 0.0);
         defer c.cairo_pattern_destroy(grad);
 
-        // The sign of the terminator shift flips each half-cycle; we flip the gradient stops
-        // to keep lit side on the correct half of the disc.
         if (frac < 0.5) {
-            // Waxing: light on right side of terminator.
             c.cairo_pattern_add_color_stop_rgba(grad, 0.0, outline_color[0], outline_color[1], outline_color[2], 0.0);
             c.cairo_pattern_add_color_stop_rgba(grad, 0.5, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
             c.cairo_pattern_add_color_stop_rgba(grad, 1.0, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
         } else {
-            // Waning: light on left side of terminator.
             c.cairo_pattern_add_color_stop_rgba(grad, 0.0, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
             c.cairo_pattern_add_color_stop_rgba(grad, 0.5, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
             c.cairo_pattern_add_color_stop_rgba(grad, 1.0, outline_color[0], outline_color[1], outline_color[2], 0.0);
         }
 
         c.cairo_set_source(cr, grad);
-        c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
+        c.cairo_arc(cr, cx, cy, body_r, 0, 2 * std.math.pi);
         c.cairo_fill(cr);
 
-        // 3. Subtle spherical shading overlay (radial gradient from center to rim),
-        // using the outline color at low alpha on the limb and a highlight on the top-left.
-        const sphere = c.cairo_pattern_create_radial(cx - r * 0.3, cy - r * 0.3, 0.0, cx, cy, r);
+        // 5. Subtle spherical shading overlay.
+        const sphere = c.cairo_pattern_create_radial(cx - body_r * 0.3, cy - body_r * 0.3, 0.0, cx, cy, body_r);
         defer c.cairo_pattern_destroy(sphere);
         c.cairo_pattern_add_color_stop_rgba(sphere, 0.0, outline_color[0], outline_color[1], outline_color[2], 0.18);
         c.cairo_pattern_add_color_stop_rgba(sphere, 0.55, outline_color[0], outline_color[1], outline_color[2], 0.05);
         c.cairo_pattern_add_color_stop_rgba(sphere, 1.0, 0.0, 0.0, 0.0, 0.35);
         c.cairo_set_source(cr, sphere);
-        c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
+        c.cairo_arc(cr, cx, cy, body_r, 0, 2 * std.math.pi);
         c.cairo_fill(cr);
-    } else if (phase.illumination > 0.99) {
-        // Full moon: entirely lit, but still add the sphere shading.
-        const sphere = c.cairo_pattern_create_radial(cx - r * 0.3, cy - r * 0.3, 0.0, cx, cy, r);
-        defer c.cairo_pattern_destroy(sphere);
-        c.cairo_pattern_add_color_stop_rgba(sphere, 0.0, outline_color[0], outline_color[1], outline_color[2], 0.18);
-        c.cairo_pattern_add_color_stop_rgba(sphere, 0.55, outline_color[0], outline_color[1], outline_color[2], 0.05);
-        c.cairo_pattern_add_color_stop_rgba(sphere, 1.0, 0.0, 0.0, 0.0, 0.35);
-        c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
-        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
-        c.cairo_fill(cr);
-        c.cairo_set_source(cr, sphere);
-        c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
-        c.cairo_fill(cr);
+
+        c.cairo_restore(cr);
     }
-
-    // Inner rim border glow: a subtle ring of the border color just inside the outline.
-    const rim = c.cairo_pattern_create_radial(cx, cy, r * 0.65, cx, cy, r);
-    defer c.cairo_pattern_destroy(rim);
-    c.cairo_pattern_add_color_stop_rgba(rim, 0.0, outline_color[0], outline_color[1], outline_color[2], 0.0);
-    c.cairo_pattern_add_color_stop_rgba(rim, 0.80, outline_color[0], outline_color[1], outline_color[2], 0.0);
-    c.cairo_pattern_add_color_stop_rgba(rim, 1.0, outline_color[0], outline_color[1], outline_color[2], 0.12);
-    c.cairo_set_source(cr, rim);
-    c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
-    c.cairo_fill(cr);
-
-    const border_width: f64 = 2.5;
-
-    // Thin background gap ring so the system border pops even when the moon is full.
-    c.cairo_set_source_rgba(cr, shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3]);
-    c.cairo_set_line_width(cr, 1.5);
-    c.cairo_arc(cr, cx, cy, r - border_width * 0.5, 0, 2 * std.math.pi);
-    c.cairo_stroke(cr);
-
-    // Solid system border color rim on top, so it reads as a real UI border.
-    c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
-    c.cairo_set_line_width(cr, border_width);
-    c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
-    c.cairo_stroke(cr);
 
     c.cairo_restore(cr);
 }
@@ -188,7 +152,6 @@ pub fn renderMoonTestStrip(path: []const u8, outline_color: [4]f64, shadow_color
         const illum = 0.5 * (1.0 - std.math.cos(frac * 2.0 * std.math.pi));
         const ph: Phase = .{ .illumination = illum, .age = age, .name = phaseName(frac) };
         renderMoon(cr, px, py, r, ph, outline_color, shadow_color);
-
     }
 
     _ = c.cairo_surface_write_to_png(surface, path.ptr);
