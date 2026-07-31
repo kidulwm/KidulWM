@@ -132,18 +132,18 @@ pub fn renderMoon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, phase: Phase, outlin
     }
 
     // Inner rim border glow: a subtle ring of the border color just inside the outline.
-    const rim = c.cairo_pattern_create_radial(cx, cy, r * 0.78, cx, cy, r);
+    const rim = c.cairo_pattern_create_radial(cx, cy, r * 0.65, cx, cy, r);
     defer c.cairo_pattern_destroy(rim);
     c.cairo_pattern_add_color_stop_rgba(rim, 0.0, outline_color[0], outline_color[1], outline_color[2], 0.0);
-    c.cairo_pattern_add_color_stop_rgba(rim, 0.75, outline_color[0], outline_color[1], outline_color[2], 0.0);
-    c.cairo_pattern_add_color_stop_rgba(rim, 1.0, outline_color[0], outline_color[1], outline_color[2], 0.55);
+    c.cairo_pattern_add_color_stop_rgba(rim, 0.70, outline_color[0], outline_color[1], outline_color[2], 0.0);
+    c.cairo_pattern_add_color_stop_rgba(rim, 1.0, outline_color[0], outline_color[1], outline_color[2], 0.35);
     c.cairo_set_source(cr, rim);
     c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
     c.cairo_fill(cr);
 
-    // Rim outline.
+    // Thin solid system border color rim on top, so it reads as a real UI border.
     c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
-    c.cairo_set_line_width(cr, 2.0);
+    c.cairo_set_line_width(cr, 1.0);
     c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
     c.cairo_stroke(cr);
 
