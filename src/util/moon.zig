@@ -58,7 +58,7 @@ pub fn renderMoon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, phase: Phase, outlin
     const phase_angle = frac * 2.0 * std.math.pi;
 
     // Reserve outer pixels for a crisp system border ring.
-    const border_width: f64 = 1.0;
+    const border_width: f64 = 1.5;
     const ring_r = r - border_width * 0.5;
     const body_r = @max(0.0, ring_r - 1.5);
 
