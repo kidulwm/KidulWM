@@ -184,12 +184,13 @@ pub const WeatherWidget = struct {
         c_cairo.cairo_show_text(cr, minmax_str);
 
         // Weather condition icon below the min/max line.
-        var icon_r: f64 = 56.0 * scale_f;
-        const max_icon_r = @min(w_d * 0.5 - 4.0 * scale_f, h_d - (mm_y + 4.0 * scale_f));
+        var icon_r: f64 = 52.0 * scale_f;
+        const icon_bottom_margin: f64 = 2.0 * scale_f;
+        const max_icon_r = @min(w_d * 0.5 - 4.0 * scale_f, (h_d - (mm_y + icon_bottom_margin)) * 0.5);
         icon_r = @min(icon_r, @max(0.0, max_icon_r));
         if (icon_r >= 8.0 * scale_f) {
             const icon_cx = w_d * 0.5;
-            const icon_cy = mm_y + 4.0 * scale_f + icon_r;
+            const icon_cy = mm_y + icon_bottom_margin + icon_r;
             renderConditionIcon(cr, icon_cx, icon_cy, icon_r, state_.weather_code, state_.is_day != 0, state_.wind_speed, gold);
         }
 
