@@ -1431,16 +1431,18 @@ pub const Tray = struct {
         const margin: f64 = 18.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
-        const scale = @min(avail_w / img_w, avail_h / img_h) * 1.10;
+        const scale = @min(avail_w / img_w, avail_h / img_h) * 1.00;
         const draw_x = x + (w - img_w * scale) / 2.0 - 12.0 * s;
         const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 1.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
-        const draw_y = y + h + pet_bottom_pad - bottom_above_border - img_h * scale;
+        const raise_up: f64 = 17.0 * s;
+        const draw_y = y + h + pet_bottom_pad - bottom_above_border - img_h * scale - raise_up;
 
         const center_x = draw_x + img_w * scale / 2.0;
         const center_y = draw_y + img_h * scale / 2.0;
         const img_half = @min(img_w, img_h) / 2.0;
-        const outer_r = img_half * scale * 0.90;
+        const icon_r = img_half * scale;
+        const outer_r = icon_r * 0.95;
         const shade_px: f64 = 3.0 * s;
 
         const c1 = self.host.theme.style.color_border_focused.toF64();
@@ -1475,15 +1477,15 @@ pub const Tray = struct {
         const cx = img_w / 2.0;
         const cy = img_h / 2.0;
         c.cairo_translate(cr, cx, cy);
-        c.cairo_rotate(cr, 9.0 * std.math.pi / 180.0);
+        c.cairo_rotate(cr, -17.0 * std.math.pi / 180.0);
         c.cairo_translate(cr, -cx, -cy);
-        c.cairo_arc(cr, cx, cy, outer_r / scale, 0.0, 2.0 * std.math.pi);
+        c.cairo_arc(cr, cx, cy, img_half, 0.0, 2.0 * std.math.pi);
         c.cairo_clip(cr);
 
         const grad = c.cairo_pattern_create_linear(0.0, 0.0, 0.0, img_h);
         defer c.cairo_pattern_destroy(grad);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, c1[0], c1[1], c1[2], c1[3]);
-        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, c2[0], c2[1], c2[2], c2[3]);
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, c1[0], c1[1], c1[2], 1.0);
+        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, c2[0], c2[1], c2[2], 1.0);
         c.cairo_set_source(cr, grad);
         c.cairo_mask_surface(cr, surf, 0.0, 0.0);
         c.cairo_restore(cr);
