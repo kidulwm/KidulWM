@@ -2035,14 +2035,18 @@ pub const Tray = struct {
     }
 
     fn pointInsideNetworkWidget(self: *const Self, px: f64, py: f64) bool {
-        for (self.network_widgets.items) |w| {
-            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+        // The network icon is rendered at the top of the clock widget buffer.
+        // Treat the upper part of the right-peek box as the network/brightness
+        // zone, with a generous click area.
+        for (self.widgets.items) |w| {
             const b = w.click_box;
-            const oh: i32 = widget_hit_overhang;
-            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
-                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
-                py >= @as(f64, @floatFromInt(b.y - oh)) and
-                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh))) return true;
+            if (b.width <= 0 or b.height <= 0) continue;
+            const status_h: f64 = 52.0 * @as(f64, w.info.scale);
+            const x0: f64 = @floatFromInt(b.x);
+            const x1: f64 = @floatFromInt(b.x + b.width);
+            const y0: f64 = @floatFromInt(b.y);
+            const y1: f64 = y0 + status_h;
+            if (px >= x0 and px < x1 and py >= y0 and py < y1) return true;
         }
         return false;
     }
@@ -2424,15 +2428,14 @@ pub const Tray = struct {
         const theme_gen = self.host.theme.generation;
         const scale = widget.info.scale;
 
-        // Content-sized widget, horizontally centered, vertically pinned to top of peek.
+        // Content-sized widget, horizontally centered, filling the top of the right peek.
         const peek_hmargin = 2;
-        const peek_vmargin = 2;
+        const peek_vmargin = 20;
         const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
-        const reserved_status_h: i32 = @intFromFloat(32.0 * @as(f64, scale));
-        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin - reserved_status_h, max_pill_side));
+        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        const pill_y = box.y + peek_vmargin + reserved_status_h;
+        const pill_y = box.y + peek_vmargin;
 
         const needs_redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -2489,6 +2492,19 @@ pub const Tray = struct {
         const muted_color = tstyle.color_text_muted.toF64();
         const w_d: f64 = @floatFromInt(dev_w);
         const h_d: f64 = @floatFromInt(dev_h);
+        const status_band_h: f64 = 34.0 * @as(f64, scale);
+
+        // Network icon is drawn first at the top of the same buffer,
+        // with the clock content sitting just underneath it.
+        c.cairo_save(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+        self.network.renderPeek(cr, .{
+            .x = 0,
+            .y = 0,
+            .width = dev_w,
+            .height = @as(i32, @intFromFloat(status_band_h)),
+        }, tstyle, scale);
+        c.cairo_restore(cr);
 
         // 24-hour time, natural font proportions, no squish.
         const hour = @as(i32, @intCast(tm.*.tm_hour));
@@ -2520,9 +2536,9 @@ pub const Tray = struct {
             c.cairo_text_extents(cr, num_str, &num_ext);
         }
 
-        // Top buffer so the widget content sits below the top edge; scale the
-        // date block down if needed so the month line never clips.
-        const top_pad: f64 = h_d * 0.35 + 3.0 * scale;
+        // Top buffer so the date block sits just below the status band and
+        // the clock digits read as close to the network icon as possible.
+        const top_pad: f64 = status_band_h + 4.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
         const time_x = (w_d - num_ext.width) * 0.5;
 
@@ -2798,94 +2814,26 @@ pub const Tray = struct {
     }
 
     fn drawNetworkWidget(self: *Self, widget: *PerOutputNetwork) void {
-        const box = self.host.right_peek_box(self.host.ctx, networkWidgetIndex(self, widget)) orelse {
-            return;
-        };
-        if (box.width <= 0 or box.height <= 0) {
-            return;
+        // The network icon is now rendered inside the clock widget buffer, but
+        // we still poll state here. Hide the dedicated network tree so it does
+        // not draw a second copy or fight for z-order.
+        widget.tree.node.setEnabled(false);
+        if (widget.scene_buffer) |old| {
+            old.node.destroy();
+            widget.scene_buffer = null;
         }
-
-        const style_ = self.host.theme.style;
-        const theme_gen = self.host.theme.generation;
-        const scale = widget.info.scale;
-
-        const desired_w: i32 = @as(i32, @intFromFloat(160.0 * scale));
-        const centered_w: i32 = @min(box.width, desired_w);
-        const peek_hmargin: i32 = @divTrunc(box.width - centered_w, 2);
-        const reserved_status_h: i32 = @intFromFloat(32.0 * @as(f64, scale));
-        const pill_w: i32 = box.width - 2 * peek_hmargin;
-        const pill_h: i32 = @max(reserved_status_h - 8, @as(i32, @intFromFloat(18.0 * @as(f64, scale))));
-        const pill_x = box.x + peek_hmargin;
-        // Sit the status icon right on top of the clock widget, not floating at the top edge.
-        const pill_y = box.y + reserved_status_h - pill_h + 4;
-
-        const redraw = widget.scene_buffer == null or
-            widget.last_w != pill_w or
-            widget.last_h != pill_h or
-            widget.last_x != pill_x or
-            widget.last_y != pill_y or
-            widget.last_scale != scale or
-            widget.last_state != self.network.state or
-            widget.last_theme_generation != theme_gen;
-
-        if (!redraw) {
-            widget.tree.node.setPosition(pill_x, pill_y);
-            widget.tree.node.raiseToTop();
-            return;
-        }
-
-        widget.last_w = pill_w;
-        widget.last_h = pill_h;
-        widget.last_x = pill_x;
-        widget.last_y = pill_y;
-        // Click/scroll active area tightly follows the icon band, leaving the clock below clickable.
-        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = pill_w, .height = pill_h };
-        widget.last_scale = scale;
-        widget.last_state = self.network.state;
-        widget.last_theme_generation = theme_gen;
-
-        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
-        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
-        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
-        if (stride <= 0) return;
-        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
-        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
-            std.log.err("KidulWM: network widget buffer alloc failed: {}", .{err});
-            return;
-        };
-        defer self.allocator.free(temp);
-        @memset(temp, 0);
-
-        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
-        defer c.cairo_surface_destroy(surface);
-        const cr = c.cairo_create(surface) orelse {
-            std.log.err("KidulWM: failed to create cairo context for network widget", .{});
-            return;
-        };
-        defer c.cairo_destroy(cr);
-
-        c.cairo_save(cr);
-        self.network.renderPeek(cr, .{ .x = 0, .y = 0, .width = dev_w, .height = dev_h }, style_, scale);
-        c.cairo_restore(cr);
-
-        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
-        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
-            std.log.err("KidulWM: failed to create network widget buffer: {}", .{err});
-            return;
-        };
-        if (widget.buffer) |old| wlr.Buffer.drop(old);
-        widget.buffer = buffer;
-        if (widget.scene_buffer) |old| old.node.destroy();
-        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
-            std.log.err("KidulWM: failed to create network widget scene buffer: {}", .{err});
-            wlr.Buffer.drop(buffer);
+        if (widget.buffer) |old| {
+            wlr.Buffer.drop(old);
             widget.buffer = null;
-            return;
-        };
-        sb.setDestSize(pill_w, pill_h);
-        widget.scene_buffer = sb;
-        widget.tree.node.setPosition(pill_x, pill_y);
-        widget.tree.node.raiseToTop();
+        }
+        widget.last_w = 0;
+        widget.last_h = 0;
+        widget.last_x = 0;
+        widget.last_y = 0;
+        widget.click_box = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
+        widget.last_scale = widget.info.scale;
+        widget.last_state = self.network.state;
+        widget.last_theme_generation = self.host.theme.generation;
     }
 
     fn updateCard(self: *Self) void {
