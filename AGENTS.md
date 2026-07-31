@@ -1,0 +1,33 @@
+# Agent Reference for KidulWM
+
+When working on this repository, treat these files as authoritative before guessing or searching the wider filesystem.
+
+## VM / deploy / test workflow
+
+Source of truth: `KNOWN_CMDS.md` in this repository.
+
+- **fresh-one**: SSH to `kidul@127.0.0.1:2260`, key `~/.ssh/id_ed25519_kidulwm`
+- **cachyos-kidulwm**: SSH to `kidul@127.0.0.1:2222`, same key
+- Deployment is done by building the host binary and copying it to `/usr/bin/kidulwm` on the VM; the VM source tree is a static snapshot, not git.
+
+## Secrets / credentials
+
+- SSH key is at `~/.ssh/id_ed25519_kidulwm`
+- GitHub credentials are in `~/.hermes/secrets/github`
+- Social platform credentials are in `~/.hermes/secrets/social`
+- Never type credentials in chat; read them from the restricted files above.
+
+## UI / visual polish
+
+- Do not analyze screenshots or run vision tools unless Barticus explicitly asks.
+- Make only the exact requested UI change; do not widen scope.
+- Weather/moon widget is flagship eye-candy — minimal, surgical changes only.
+
+## Build / environment notes
+
+- If host `zig build` fails with glibc `_FORTIFY_SOURCE` / `__builtin.object_size` errors, add `@cDefine("_FORTIFY_SOURCE", "0");` at the top of the affected `@cImport` blocks (e.g., `src/ui/media.zig`, `src/ui/network.zig`).
+- Weather widget needs `Environment=HOME=/home/kidul` in its systemd service so the cache path resolves correctly.
+
+## When in doubt
+
+Read `KNOWN_CMDS.md` first. If it's not there, check `HANDOFF.md` in this repository.

@@ -3,6 +3,7 @@ const c = @import("dm").c;
 const style = @import("../core/style.zig");
 
 const unistd = @cImport({
+    @cDefine("_FORTIFY_SOURCE", "0");
     @cInclude("unistd.h");
     @cInclude("stdlib.h");
     @cInclude("string.h");

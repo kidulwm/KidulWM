@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("dm").c;
 const c_std = @cImport({
+    @cDefine("_FORTIFY_SOURCE", "0");
     @cInclude("stdio.h");
     @cInclude("stdlib.h");
     @cInclude("string.h");
