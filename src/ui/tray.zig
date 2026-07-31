@@ -1330,19 +1330,20 @@ pub const Tray = struct {
         c.cairo_paint(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-        // Barry lozenge at top.
-        const bh: f64 = @as(f64, barry_button_height) * scale_d;
-        const bmargin: f64 = @as(f64, bottom_margin) * scale_d;
-        const by: f64 = bmargin;
-        self.drawBarryButton(cr, 0.0, by, bw, bh, scale_d);
+        // Barry lozenge at top is disabled; the single Kidul button at the
+        // bottom-left of the left peek is now the tray toggle.
+        // const bh: f64 = @as(f64, barry_button_height) * scale_d;
+        // const bmargin: f64 = @as(f64, bottom_margin) * scale_d;
+        // const by: f64 = bmargin;
+        // self.drawBarryButton(cr, 0.0, by, bw, bh, scale_d);
 
-        // Stack below Barry with stagger.
+        // Stack starts at the top now that the Barry lozenge is gone.
         if (self.tray_anim.value > 0.001 and self.items.len > 0) {
             const gap: f64 = @as(f64, button_gap) * scale_d;
             const item_h: f64 = @as(f64, button_height) * scale_d;
             const item_size = item_h + gap;
             const scroll_px: f64 = @floor(@as(f64, self.scroll_offset) * scale_d);
-            const stack_origin: f64 = by + bh + gap;
+            const stack_origin: f64 = gap;
             const stagger_delay: f32 = 0.05;
 
             for (0..self.items.len) |raw_idx| {
@@ -1430,25 +1431,80 @@ pub const Tray = struct {
         const margin: f64 = 18.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
-        const scale = @min(avail_w / img_w, avail_h / img_h) * 0.80;
+        const scale = @min(avail_w / img_w, avail_h / img_h) * 1.10;
         const draw_x = x + (w - img_w * scale) / 2.0 - 12.0 * s;
         const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 1.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
         const draw_y = y + h + pet_bottom_pad - bottom_above_border - img_h * scale;
 
+        const center_x = draw_x + img_w * scale / 2.0;
+        const center_y = draw_y + img_h * scale / 2.0;
+        const img_half = @min(img_w, img_h) / 2.0;
+        const outer_r = img_half * scale * 0.90;
+        const shade_px: f64 = 3.0 * s;
+
+        const c1 = self.host.theme.style.color_border_focused.toF64();
+        const c2 = self.host.theme.style.color_border.toF64();
+
+        // Button base: soft circular shadow for depth.
+        c.cairo_save(cr);
+        c.cairo_arc(cr, center_x + 1.0 * s, center_y + 2.0 * s, outer_r, 0.0, 2.0 * std.math.pi);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
+        c.cairo_fill(cr);
+        c.cairo_restore(cr);
+
+        // Glassy button disc behind the icon.
+        c.cairo_save(cr);
+        c.cairo_arc(cr, center_x, center_y, outer_r, 0.0, 2.0 * std.math.pi);
+        const glass = c.cairo_pattern_create_radial(center_x, center_y, 0.0, center_x, center_y, outer_r);
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.12, 0.12, 0.13, 0.90);
+        c.cairo_pattern_add_color_stop_rgba(glass, 1.0, 0.04, 0.04, 0.05, 0.82);
+        c.cairo_set_source(cr, glass);
+        c.cairo_fill_preserve(cr);
+        c.cairo_pattern_destroy(glass);
+        c.cairo_set_source_rgba(cr, c1[0], c1[1], c1[2], 0.45);
+        c.cairo_set_line_width(cr, 1.0 * s);
+        c.cairo_stroke(cr);
+        c.cairo_restore(cr);
+
+        // Icon: rotated, clipped to a smaller perfect circle, and tinted with
+        // the theme border gradient.
         c.cairo_save(cr);
         c.cairo_translate(cr, draw_x, draw_y);
         c.cairo_scale(cr, scale, scale);
+        const cx = img_w / 2.0;
+        const cy = img_h / 2.0;
+        c.cairo_translate(cr, cx, cy);
+        c.cairo_rotate(cr, 9.0 * std.math.pi / 180.0);
+        c.cairo_translate(cr, -cx, -cy);
+        c.cairo_arc(cr, cx, cy, outer_r / scale, 0.0, 2.0 * std.math.pi);
+        c.cairo_clip(cr);
 
         const grad = c.cairo_pattern_create_linear(0.0, 0.0, 0.0, img_h);
         defer c.cairo_pattern_destroy(grad);
-        const c1 = self.host.theme.style.color_border_focused.toF64();
-        const c2 = self.host.theme.style.color_border.toF64();
         c.cairo_pattern_add_color_stop_rgba(grad, 0.0, c1[0], c1[1], c1[2], c1[3]);
         c.cairo_pattern_add_color_stop_rgba(grad, 1.0, c2[0], c2[1], c2[2], c2[3]);
-
         c.cairo_set_source(cr, grad);
         c.cairo_mask_surface(cr, surf, 0.0, 0.0);
+        c.cairo_restore(cr);
+
+        // Bob's special shading: soft inner ring just inside the outer edge.
+        c.cairo_save(cr);
+        const shade_grad = c.cairo_pattern_create_radial(center_x, center_y, @max(0.0, outer_r - shade_px), center_x, center_y, outer_r);
+        defer c.cairo_pattern_destroy(shade_grad);
+        c.cairo_pattern_add_color_stop_rgba(shade_grad, 0.0, c1[0], c1[1], c1[2], 0.0);
+        c.cairo_pattern_add_color_stop_rgba(shade_grad, 1.0, c1[0], c1[1], c1[2], 0.55);
+        c.cairo_set_source(cr, shade_grad);
+        c.cairo_arc(cr, center_x, center_y, outer_r, 0.0, 2.0 * std.math.pi);
+        c.cairo_fill(cr);
+        c.cairo_restore(cr);
+
+        // Final neat outer ring.
+        c.cairo_save(cr);
+        c.cairo_arc(cr, center_x, center_y, outer_r, 0.0, 2.0 * std.math.pi);
+        c.cairo_set_source_rgba(cr, c1[0], c1[1], c1[2], 1.0);
+        c.cairo_set_line_width(cr, 1.0 * s);
+        c.cairo_stroke(cr);
         c.cairo_restore(cr);
     }
 
