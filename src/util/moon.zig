@@ -141,9 +141,17 @@ pub fn renderMoon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, phase: Phase, outlin
     c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
     c.cairo_fill(cr);
 
-    // Thin solid system border color rim on top, so it reads as a real UI border.
+    const border_width: f64 = 2.5;
+
+    // Thin background gap ring so the system border pops even when the moon is full.
+    c.cairo_set_source_rgba(cr, shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3]);
+    c.cairo_set_line_width(cr, 1.5);
+    c.cairo_arc(cr, cx, cy, r - border_width * 0.5, 0, 2 * std.math.pi);
+    c.cairo_stroke(cr);
+
+    // Solid system border color rim on top, so it reads as a real UI border.
     c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
-    c.cairo_set_line_width(cr, 2.5);
+    c.cairo_set_line_width(cr, border_width);
     c.cairo_arc(cr, cx, cy, r, 0, 2 * std.math.pi);
     c.cairo_stroke(cr);
 
