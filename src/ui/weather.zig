@@ -184,7 +184,7 @@ pub const WeatherWidget = struct {
         c_cairo.cairo_show_text(cr, minmax_str);
 
         // Weather condition icon below the min/max line.
-        var icon_r: f64 = 20.0 * scale_f;
+        var icon_r: f64 = 48.0 * scale_f;
         const max_icon_r = @min(w_d * 0.5 - 4.0 * scale_f, h_d - (mm_y + 8.0 * scale_f));
         icon_r = @min(icon_r, @max(0.0, max_icon_r));
         if (icon_r >= 8.0 * scale_f) {
