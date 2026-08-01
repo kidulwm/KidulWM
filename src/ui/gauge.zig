@@ -3,163 +3,111 @@ const c = @import("dm").c;
 const style = @import("../core/style.zig");
 const gauge_data = @import("../core/gauge_data.zig");
 
-const wave_sheet_png = @embedFile("assets/gauge_waves_20.png");
-const stage_count = 20;
-const cols: u32 = 5;
-const rows: u32 = 4;
-const cell_w: u32 = 100;
-const cell_h: u32 = 100;
-const pad: u32 = 2;
-
-const PngStream = struct {
-    data: []const u8,
-    offset: usize = 0,
-};
-
-fn readPngStream(closure: *anyopaque, out: [*c]u8, len: c_uint) callconv(.c) c.cairo_status_t {
-    const ctx: *PngStream = @ptrCast(@alignCast(closure));
-    const l: usize = len;
-    const remaining = if (ctx.offset >= ctx.data.len) 0 else ctx.data.len - ctx.offset;
-    const copy = @min(remaining, l);
-    if (copy > 0) {
-        @memcpy(out[0..copy], ctx.data[ctx.offset .. ctx.offset + copy]);
-        ctx.offset += copy;
-    }
-    if (copy < l) {
-        @memset(out[copy..l], 0);
-    }
-    return c.CAIRO_STATUS_SUCCESS;
-}
-
-fn loadPngFromBytes(bytes: []const u8) !*c.cairo_surface_t {
-    var ctx = PngStream{ .data = bytes };
-    const surf = c.cairo_image_surface_create_from_png_stream(
-        @ptrCast(&readPngStream),
-        @ptrCast(&ctx),
-    ) orelse return error.OutOfMemory;
-    if (c.cairo_surface_status(surf) != c.CAIRO_STATUS_SUCCESS) {
-        c.cairo_surface_destroy(surf);
-        return error.InvalidPng;
-    }
-    const format = c.cairo_image_surface_get_format(surf);
-    if (format == c.CAIRO_FORMAT_ARGB32) return surf;
-
-    const w = c.cairo_image_surface_get_width(surf);
-    const h = c.cairo_image_surface_get_height(surf);
-    const argb = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, w, h) orelse {
-        c.cairo_surface_destroy(surf);
-        return error.OutOfMemory;
-    };
-    const cr = c.cairo_create(argb) orelse {
-        c.cairo_surface_destroy(argb);
-        c.cairo_surface_destroy(surf);
-        return error.OutOfMemory;
-    };
-    c.cairo_set_source_surface(cr, surf, 0, 0);
-    c.cairo_paint(cr);
-    c.cairo_destroy(cr);
-    c.cairo_surface_destroy(surf);
-    return argb;
-}
-
 pub const GaugeWidget = struct {
     allocator: std.mem.Allocator,
-    wave_surface: ?*c.cairo_surface_t = null,
-    cell_surfaces: [stage_count]?*c.cairo_surface_t = .{null} ** stage_count,
 
     pub fn init(allocator: std.mem.Allocator) GaugeWidget {
         return .{ .allocator = allocator };
     }
 
-    pub fn deinit(self: *GaugeWidget) void {
-        for (&self.cell_surfaces) |*opt| {
-            if (opt.*) |surf| c.cairo_surface_destroy(surf);
-            opt.* = null;
-        }
-        if (self.wave_surface) |surf| c.cairo_surface_destroy(surf);
-    }
-
-    fn ensureCells(self: *GaugeWidget) void {
-        if (self.wave_surface != null) return;
-        self.wave_surface = loadPngFromBytes(wave_sheet_png) catch |err| {
-            std.log.err("KidulWM: failed to load gauge wave sheet: {}", .{err});
-            return;
-        };
-        const sheet = self.wave_surface.?;
-        const sheet_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(sheet)));
-        const sheet_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(sheet)));
-        const src_cell_w = (sheet_w - @as(f64, @floatFromInt(cols + 1)) * @as(f64, @floatFromInt(pad))) / @as(f64, @floatFromInt(cols));
-        const src_cell_h = (sheet_h - @as(f64, @floatFromInt(rows + 1)) * @as(f64, @floatFromInt(pad))) / @as(f64, @floatFromInt(rows));
-
-        for (0..stage_count) |stage| {
-            const col = stage % cols;
-            const row = stage / cols;
-            const src_x = @as(f64, @floatFromInt(pad)) + @as(f64, @floatFromInt(col)) * (src_cell_w + @as(f64, @floatFromInt(pad)));
-            const src_y = @as(f64, @floatFromInt(pad)) + @as(f64, @floatFromInt(row)) * (src_cell_h + @as(f64, @floatFromInt(pad)));
-
-            const cell = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, cell_w, cell_h) orelse continue;
-            const cr = c.cairo_create(cell) orelse {
-                c.cairo_surface_destroy(cell);
-                continue;
-            };
-            c.cairo_set_source_surface(cr, sheet, -src_x, -src_y);
-            c.cairo_pattern_set_filter(c.cairo_get_source(cr), c.CAIRO_FILTER_BILINEAR);
-            c.cairo_paint(cr);
-            c.cairo_destroy(cr);
-            self.cell_surfaces[stage] = cell;
-        }
-    }
+    pub fn deinit(_: *GaugeWidget) void {}
 
     pub const PeekBox = struct { x: i32, y: i32, width: i32, height: i32 };
 
     pub fn renderPeek(self: *GaugeWidget, cr: *c.cairo_t, box: PeekBox, style_: style.Style, scale: f32) void {
-        self.ensureCells();
         const w_d: f64 = @floatFromInt(box.width);
         const h_d: f64 = @floatFromInt(box.height);
         if (w_d < 8.0 or h_d < 8.0) return;
 
-        const gold = style_.color_border_focused.toF64();
-        const unfocused = style_.color_border.toF64();
-        const metrics = [_]gauge_data.Metric{ .gpu_temp, .cpu_temp, .ram_usage, .disk1_size, .disk2_size };
-        const labels = [_][]const u8{ "GPU", "CPU", "RAM", "D1", "D2" };
+        const data = gauge_data.GaugeData.init(self.allocator);
+        const metrics = [_]gauge_data.Metric{ .gpu_temp, .cpu_temp };
+        const labels = [_][]const u8{ "GPU", "CPU" };
 
-        const gauge_h = h_d / @as(f64, @floatFromInt(metrics.len));
-        const margin: f64 = 2.0 * @as(f64, scale);
+        const focused = style_.color_border_focused.toF64();
+        const unfocused = style_.color_border.toF64();
+        const burnt_orange = [4]f64{ 0.85, 0.42, 0.10, 1.0 };
+
+        const s = @as(f64, scale);
+        const row_h = h_d / @as(f64, @floatFromInt(metrics.len));
+        const bar_w: f64 = 12.0 * s;
+        const bar_h: f64 = @min(row_h * 0.40, 55.0 * s);
+        const bulb_r: f64 = bar_w * 0.85;
+
+        // Group the gauges near the top of the available vertical space.
+        const group_top = 50.0 * s;
+        const gauge_gap = 104.0 * s;
+
+        c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
 
         var i: usize = 0;
         while (i < metrics.len) : (i += 1) {
-            const y = @as(f64, @floatFromInt(i)) * gauge_h;
+            const y_center = group_top + @as(f64, @floatFromInt(i)) * gauge_gap;
+            const value = sampleMetric(&data, metrics[i]) catch 0.30 + 0.12 * @as(f64, @floatFromInt(i % 5));
 
-            // wave spans full width, leaving a little margin
-            const icon_size = @min(gauge_h - margin * 2.0, w_d - margin * 2.0) * 0.75;
-            const icon_x = (w_d - icon_size) * 0.5;
-            const icon_y = y + margin;
+            const warn_level = warnLevel(value);
+            const fg = if (warn_level >= 1) burnt_orange else focused;
+            const fill_color = if (warn_level >= 3) burnt_orange else unfocused;
+            const outline_color = if (warn_level >= 2) burnt_orange else unfocused;
 
-            // Preview value (random-ish per index)
-            const t = 0.05 + 0.90 * @abs(@sin(@as(f64, @floatFromInt(i)) * 1.7 + 0.5));
-            const stage = @min(stage_count - 1, @as(usize, @intFromFloat(@floor(t * @as(f64, @floatFromInt(stage_count))))));
-            const cell = self.cell_surfaces[stage] orelse continue;
+            const bar_x = w_d * 0.5;
+            const bar_top = y_center - bar_h * 0.5;
+            const bar_bottom = y_center + bar_h * 0.5;
+            const bulb_center_y = bar_bottom - bulb_r;
 
-            // Draw wave smaller and in the unfocused border color.
             c.cairo_save(cr);
-            c.cairo_rectangle(cr, icon_x, icon_y, icon_size, icon_size);
-            c.cairo_clip(cr);
-            c.cairo_translate(cr, icon_x, icon_y);
-            c.cairo_scale(cr, icon_size / @as(f64, @floatFromInt(cell_w)), icon_size / @as(f64, @floatFromInt(cell_h)));
-            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], unfocused[3]);
-            c.cairo_mask_surface(cr, cell, 0, 0);
-            c.cairo_restore(cr);
 
-            // label directly underneath the wave, flush against it, in focused border color.
-            c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-            c.cairo_set_font_size(cr, 12.0 * @as(f64, scale));
-            c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+            // Subtle Bob shading in the empty parts of the gauge.
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.12);
+            c.cairo_arc(cr, bar_x, bulb_center_y, bulb_r - 1.5 * s, 0, 2.0 * std.math.pi);
+            c.cairo_fill(cr);
+            const empty_top = bar_top + bar_w * 0.5;
+            c.cairo_rectangle(cr, bar_x - bar_w * 0.5 + 1.5 * s, empty_top, bar_w - 3.0 * s, bulb_center_y - bulb_r - empty_top);
+            c.cairo_fill(cr);
+
+            // Liquid fill.
+            c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], fill_color[3]);
+            const fill_top = bar_bottom - bar_h * value;
+            if (fill_top <= bulb_center_y + bulb_r) {
+                c.cairo_arc(cr, bar_x, bulb_center_y, bulb_r - 1.5 * s, 0, 2.0 * std.math.pi);
+                c.cairo_fill(cr);
+            }
+            if (bar_bottom - fill_top > bulb_r * 2.0) {
+                c.cairo_rectangle(cr, bar_x - bar_w * 0.5 + 2.0 * s, fill_top, bar_w - 4.0 * s, bulb_center_y - fill_top);
+                c.cairo_fill(cr);
+            }
+
+            // Clean outline: bulb + two vertical lines + dome cap, no borders beyond the glass.
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
+            c.cairo_set_line_width(cr, 2.0 * s);
+
+            c.cairo_move_to(cr, bar_x - bar_w * 0.5, bulb_center_y - bulb_r);
+            c.cairo_line_to(cr, bar_x - bar_w * 0.5, bar_top + bar_w * 0.5);
+            c.cairo_arc(cr, bar_x, bar_top + bar_w * 0.5, bar_w * 0.5, std.math.pi, 0);
+            c.cairo_line_to(cr, bar_x + bar_w * 0.5, bulb_center_y - bulb_r);
+            c.cairo_arc(cr, bar_x, bulb_center_y, bulb_r, 0, 2.0 * std.math.pi);
+            c.cairo_stroke(cr);
+
+            // Label below.
+            c.cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
+            c.cairo_set_font_size(cr, 14.0 * s);
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, @ptrCast(labels[i]), &ext);
-            const label_x = (w_d - ext.width) * 0.5;
-            const label_y = y + icon_size + margin * 0.5 + ext.height * 0.8;
-            c.cairo_move_to(cr, label_x, label_y);
+            c.cairo_move_to(cr, bar_x - ext.width * 0.5, bar_bottom + 22.0 * s);
             c.cairo_show_text(cr, @ptrCast(labels[i]));
+
+            c.cairo_restore(cr);
         }
+    }
+
+    fn warnLevel(value: f64) u32 {
+        if (value >= 0.95) return 3;
+        if (value >= 0.90) return 2;
+        if (value >= 0.85) return 1;
+        return 0;
+    }
+
+    fn sampleMetric(data: *const gauge_data.GaugeData, metric: gauge_data.Metric) !f64 {
+        const v = try data.sample(metric);
+        return @max(0.0, @min(1.0, v.value));
     }
 };
