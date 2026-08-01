@@ -56,16 +56,16 @@ pub const GaugeWidget = struct {
 
             c.cairo_save(cr);
 
-            // Subtle Bob shading in the empty parts of the gauge.
-            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.12);
+            // Subtle -color tint in the empty parts of the gauge (5% opacity).
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.05);
             c.cairo_arc(cr, bar_x, bulb_center_y, bulb_r - 1.5 * s, 0, 2.0 * std.math.pi);
             c.cairo_fill(cr);
             const empty_top = bar_top + bar_w * 0.5;
             c.cairo_rectangle(cr, bar_x - bar_w * 0.5 + 1.5 * s, empty_top, bar_w - 3.0 * s, bulb_center_y - bulb_r - empty_top);
             c.cairo_fill(cr);
 
-            // Liquid fill.
-            c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], fill_color[3]);
+            // Liquid fill: use border color at partial transparency for a softer look.
+            c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], 0.55);
             const fill_top = bar_bottom - bar_h * value;
             if (fill_top <= bulb_center_y + bulb_r) {
                 c.cairo_arc(cr, bar_x, bulb_center_y, bulb_r - 1.5 * s, 0, 2.0 * std.math.pi);
@@ -76,9 +76,9 @@ pub const GaugeWidget = struct {
                 c.cairo_fill(cr);
             }
 
-            // Clean outline: bulb + two vertical lines + dome cap, no borders beyond the glass.
-            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], outline_color[3]);
-            c.cairo_set_line_width(cr, 2.0 * s);
+            // Clean outline in unfocused border color, slightly thicker.
+            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.85);
+            c.cairo_set_line_width(cr, 3.0 * s);
 
             c.cairo_move_to(cr, bar_x - bar_w * 0.5, bulb_center_y - bulb_r);
             c.cairo_line_to(cr, bar_x - bar_w * 0.5, bar_top + bar_w * 0.5);
