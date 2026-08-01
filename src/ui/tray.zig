@@ -14,6 +14,7 @@ const NetworkWidget = @import("./network.zig").NetworkWidget;
 const NetworkState = @import("./network.zig").NetworkState;
 const NotificationWidget = @import("./notifications.zig").NotificationWidget;
 const notifications = @import("./notifications.zig");
+const GaugeWidget = @import("./gauge.zig").GaugeWidget;
 const card_frame = @import("card_frame.zig");
 
 // Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
@@ -171,6 +172,20 @@ const PerOutputWeather = struct {
     last_theme_generation: u32 = 0,
 };
 
+const PerOutputGauge = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    last_scale: f32 = 0.0,
+    last_theme_generation: u32 = 0,
+};
 
 const PerOutputMedia = struct {
     output_ctx: *anyopaque,
@@ -296,9 +311,12 @@ pub const Tray = struct {
     widgets: std.ArrayList(PerOutputWidget),
     // Top-left peek widget (weather).
     weather_widgets: std.ArrayList(PerOutputWeather),
+    // Left peek widget (gauges), stacked below weather.
+    gauge_widgets: std.ArrayList(PerOutputGauge),
     media_widgets: std.ArrayList(PerOutputMedia),
     network_widgets: std.ArrayList(PerOutputNetwork),
     weather: WeatherWidget,
+    gauge: GaugeWidget,
     network: NetworkWidget,
     media: MediaWidget,
     media_card_open: bool = false,
@@ -406,10 +424,12 @@ pub const Tray = struct {
             .barry_pets = .empty,
             .widgets = .empty,
             .weather_widgets = .empty,
+            .gauge_widgets = .empty,
             .media_widgets = .empty,
             .network_widgets = .empty,
             .notification_widgets = .empty,
             .weather = WeatherWidget.init(allocator),
+            .gauge = GaugeWidget.init(allocator),
             .media = MediaWidget.init(allocator),
             .network = NetworkWidget.init(allocator),
             .notifications = NotificationWidget.init(allocator),
@@ -441,10 +461,12 @@ pub const Tray = struct {
         for (self.barry_pets.items) |*pet| self.destroyPet(pet);
         for (self.widgets.items) |*w| self.destroyWidget(w);
         for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
+        for (self.gauge_widgets.items) |*w| self.destroyGaugeWidget(w);
         for (self.media_widgets.items) |*w| self.destroyMediaWidget(w);
         for (self.network_widgets.items) |*w| self.destroyNetworkWidget(w);
         for (self.notification_widgets.items) |*w| self.destroyNotificationWidget(w);
         self.weather.deinit();
+        self.gauge.deinit();
         self.media.deinit();
         self.network.deinit();
         self.notifications.deinit();
@@ -533,6 +555,21 @@ pub const Tray = struct {
             std.log.err("KidulWM: failed to append weather widget: {}", .{err});
             weather_tree.node.destroy();
         };
+        const gauge_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create gauge widget scene tree: {}", .{err});
+            return;
+        };
+        const gauge_widget = PerOutputGauge{
+            .output_ctx = output_ctx,
+            .tree = gauge_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.gauge_widgets.append(self.allocator, gauge_widget) catch |err| {
+            std.log.err("KidulWM: failed to append gauge widget: {}", .{err});
+            gauge_tree.node.destroy();
+        };
         const media_tree = self.root.createSceneTree() catch |err| {
             std.log.err("KidulWM: failed to create media widget scene tree: {}", .{err});
             return;
@@ -616,6 +653,13 @@ pub const Tray = struct {
                 break;
             }
         }
+        for (self.gauge_widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyGaugeWidget(w);
+                _ = self.gauge_widgets.orderedRemove(i);
+                break;
+            }
+        }
         for (self.media_widgets.items, 0..) |*w, i| {
             if (w.output_ctx == output_ctx) {
                 self.destroyMediaWidget(w);
@@ -664,6 +708,14 @@ pub const Tray = struct {
 
 
     fn destroyWeatherWidget(_: *Self, widget: *PerOutputWeather) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
+    }
+
+    fn destroyGaugeWidget(_: *Self, widget: *PerOutputGauge) void {
         if (widget.scene_buffer) |sb| sb.node.destroy();
         if (widget.buffer) |buf| wlr.Buffer.drop(buf);
         widget.tree.node.destroy();
@@ -1140,6 +1192,12 @@ pub const Tray = struct {
         for (self.weather_widgets.items) |*weather_widget| {
             weather_widget.info = self.host.output_info(self.host.ctx, weatherWidgetIndex(self, weather_widget));
             self.drawWeatherWidget(weather_widget);
+        }
+
+        // Draw gauge widget below weather.
+        for (self.gauge_widgets.items) |*gauge_widget| {
+            gauge_widget.info = self.host.output_info(self.host.ctx, gaugeWidgetIndex(self, gauge_widget));
+            self.drawGaugeWidget(gauge_widget);
         }
 
         // Update media backend and draw bottom-right peek widget.
@@ -1663,6 +1721,13 @@ pub const Tray = struct {
 
     fn weatherWidgetIndex(self: *const Self, widget: *PerOutputWeather) usize {
         for (self.weather_widgets.items, 0..) |*w, i| {
+            if (w == widget) return i;
+        }
+        return 0;
+    }
+
+    fn gaugeWidgetIndex(self: *const Self, widget: *PerOutputGauge) usize {
+        for (self.gauge_widgets.items, 0..) |*w, i| {
             if (w == widget) return i;
         }
         return 0;
@@ -2760,6 +2825,106 @@ pub const Tray = struct {
         if (widget.scene_buffer) |old| old.node.destroy();
         const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
             std.log.err("KidulWM: failed to create weather widget scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            widget.buffer = null;
+            return;
+        };
+        sb.setDestSize(pill_w, pill_h);
+        widget.scene_buffer = sb;
+        widget.tree.node.setPosition(pill_x, pill_y);
+        widget.tree.node.raiseToTop();
+    }
+
+    fn drawGaugeWidget(self: *Self, widget: *PerOutputGauge) void {
+        const full_box = self.host.left_peek_box(self.host.ctx, gaugeWidgetIndex(self, widget)) orelse {
+            return;
+        };
+        if (full_box.width <= 0 or full_box.height <= 0) {
+            return;
+        }
+
+        const style_ = self.host.theme.style;
+        const theme_gen = self.host.theme.generation;
+        const scale = widget.info.scale;
+
+        const peek_hmargin = 2;
+        const peek_vmargin = 8;
+        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 153.0) * @as(f64, scale))));
+        const bottom_reserve: i32 = @max(90, @as(i32, @intFromFloat(@as(f64, 94.0) * @as(f64, scale)))); // button + margin
+        const pill_w: i32 = @max(20, @min(full_box.width - 2 * peek_hmargin, weather_height));
+        const pill_x = full_box.x + peek_hmargin + @divTrunc(full_box.width - 2 * peek_hmargin - pill_w, 2);
+        const top_y = full_box.y + weather_height + peek_vmargin + 4;
+        const bottom_y = full_box.y + full_box.height - bottom_reserve;
+        const pill_h: i32 = @max(40, bottom_y - top_y);
+        const pill_y = top_y;
+
+        const redraw = widget.scene_buffer == null or
+            widget.last_w != pill_w or
+            widget.last_h != pill_h or
+            widget.last_x != pill_x or
+            widget.last_y != pill_y or
+            widget.last_scale != scale or
+            widget.last_theme_generation != theme_gen;
+
+        if (!redraw) {
+            widget.tree.node.setPosition(pill_x, pill_y);
+            widget.tree.node.raiseToTop();
+            return;
+        }
+
+        widget.last_w = pill_w;
+        widget.last_h = pill_h;
+        widget.last_x = pill_x;
+        widget.last_y = pill_y;
+        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
+        widget.last_scale = scale;
+        widget.last_theme_generation = theme_gen;
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: gauge widget buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for gauge widget", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        c.cairo_save(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        self.gauge.renderPeek(cr, .{
+            .x = pill_x,
+            .y = pill_y,
+            .width = dev_w,
+            .height = dev_h,
+        }, style_, scale);
+
+        c.cairo_restore(cr);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create gauge widget buffer: {}", .{err});
+            return;
+        };
+        if (widget.buffer) |old| wlr.Buffer.drop(old);
+        widget.buffer = buffer;
+        if (widget.scene_buffer) |old| old.node.destroy();
+        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create gauge widget scene buffer: {}", .{err});
             wlr.Buffer.drop(buffer);
             widget.buffer = null;
             return;
