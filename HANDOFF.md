@@ -3,42 +3,54 @@
 ## Current state
 
 - Branch: `main`
-- Last commit: `36bfa70 kidulButton` (deployed, locked in)
-- Working tree: `src/ui/weather.zig` modified; untracked `config/weather.conf.example`, `scripts/fetch-weather.py`
+- Last commit: `03aadff gauge: add RAM ampoule, widen left peek, refactor metric reads, archive wave gauge`
+- Working tree: clean
+- Build: `zig build -Doptimize=ReleaseSafe` passes on host
 
-## What happened this session
+## Left peek gauge layout (in progress)
 
-- `kidulButton` commit was completed and deployed successfully.
-- Tried to fix a perceived "double moon" / "cheap" look in the left-peek weather widget.
-- `src/ui/weather.zig` and `src/ui/media.zig` were reverted and re-touched multiple times; the working copy ended back at the committed `kidulButton` state with the changes stashed.
-- Added `Environment=HOME=/home/kidul` to the VM's `/etc/systemd/system/kidulwm.service` so the weather widget can resolve its cache path.
-- Manually wrote a real weather cache to the VM at `~/.cache/kidulwm/weather/home.json` with **Toowoomba, QLD** data (current temp ~12°C, code 1, night).
-- The widget's moon phase uses system Unix time (`time(null)`), which was correct.
-- The visual issue was mostly caused by the widget rendering default/zero data (no cache found) and the bottom condition icon overlapping visually with the moon.
+Current composition in `src/ui/gauge.zig`:
 
-## Weather icon size change (in progress)
+- **Top**: GPU / CPU mercury thermometers
+  - Thin glass tubes, round bottom bulb, liquid fill
+  - Fill color: border color at 55% alpha
+  - Empty space: % tint of border color
+  - Outline: unfocused border color, 3 px thick, 85% alpha
+  - Labels: GPU, CPU below each gauge
+  - Warning levels tint fill/outline burnt orange at 85%/90%/95%
 
-- `src/ui/weather.zig` line 187: condition icon base radius bumped from `68.0 * scale_f` to `96.0 * scale_f`.
-- `src/ui/weather.zig` line 188: icon bottom margin bumped from `1.0 * scale_f` to `2.0 * scale_f`.
-- Moon renderer and layout untouched per user direction.
-- **Not yet built or deployed** — host `zig build` fails on clean `main` due to C header fortification errors in `media.zig`/`network.zig`.
+- **Middle**: RAM chemistry ampoule
+  - Round-bottom flask / sealed ampoule shape
+  - Fills from bottom with same liquid style
+  - Label: RAM
 
-## Build/deploy blocker
+- **Bottom**: reserved for disk "vault" / treasure-chest silhouettes (not started)
 
-- Host `zig build -Doptimize=ReleaseSafe` fails on `main` with glibc `_FORTIFY_SOURCE` macro errors translating `/usr/include/bits/fcntl2.h`.
-- VM `fresh-one` SSH reachable at `kidul@127.0.0.1:2260`, but `/home/kidul/KidulWM` source tree is stale and lacks the current weather widget code.
-- Existing binary at `/usr/bin/kidulwm` on VM is the deployed `kidulButton` build.
+Archived: original wave-gauge implementation is preserved under `src/ui/gauge/archive/`.
 
 ## VM state
 
 - VM: `fresh-one` (kidul@127.0.0.1:2260)
-- Service file now contains `Environment=HOME=/home/kidul`
 - Deployed binary: `/usr/bin/kidulwm`
-- Weather cache: `~/.cache/kidulwm/weather/home.json` (Toowoomba)
+- Service: `kidulwm.service`
+- Left peek split is widened to 6%/88%/6% via `src/core/style.zig`
+
+## Build/deploy workflow
+
+```bash
+cd /home/dad/dev/KidulWM
+zig build -Doptimize=ReleaseSafe
+
+scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \
+  zig-out/bin/kidulwm zig-out/bin/kidulwm-control \
+  kidul@127.0.0.1:/tmp/
+
+ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \
+  'sudo systemctl stop kidulwm && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm'
+```
 
 ## Pending decisions
 
-1. Resolve build environment so the weather icon change can be compiled and deployed.
-2. Keep or drop the stashed weather/media tweaks (`git stash drop` or `git stash pop`).
-3. Keep or remove the untracked `scripts/fetch-weather.py` and `config/weather.conf.example`.
-4. Decide the intended look of the weather peek widget (moon + condition icon vs moon only) once the screenshot/data flow is confirmed.
+1. Disk gauge design: minimal vault / strongbox silhouettes for D1/D2 at bottom of left peek.
+2. Font: consider custom KidulWM typeface (classy, clear, slightly Fantasque Sans Mono / JetBrains inspired).
+3. Final polish pass on gauge colors, label sizing, and vertical spacing.
