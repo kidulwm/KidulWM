@@ -119,7 +119,7 @@ pub const GaugeWidget = struct {
         if (w_d < 8.0 or h_d < 8.0) return;
 
         const gold = style_.color_border_focused.toF64();
-        const muted = style_.color_text_muted.toF64();
+        const unfocused = style_.color_border.toF64();
         const metrics = [_]gauge_data.Metric{ .gpu_temp, .cpu_temp, .ram_usage, .disk1_size, .disk2_size };
         const labels = [_][]const u8{ "GPU", "CPU", "RAM", "D1", "D2" };
 
@@ -131,7 +131,7 @@ pub const GaugeWidget = struct {
             const y = @as(f64, @floatFromInt(i)) * gauge_h;
 
             // wave spans full width, leaving a little margin
-            const icon_size = @min(gauge_h - margin * 2.0, w_d - margin * 2.0);
+            const icon_size = @min(gauge_h - margin * 2.0, w_d - margin * 2.0) * 0.75;
             const icon_x = (w_d - icon_size) * 0.5;
             const icon_y = y + margin;
 
@@ -140,22 +140,24 @@ pub const GaugeWidget = struct {
             const stage = @min(stage_count - 1, @as(usize, @intFromFloat(@floor(t * @as(f64, @floatFromInt(stage_count))))));
             const cell = self.cell_surfaces[stage] orelse continue;
 
-            // Draw wave full-width, colorized with theme gold.
+            // Draw wave smaller and in the unfocused border color.
             c.cairo_save(cr);
+            c.cairo_rectangle(cr, icon_x, icon_y, icon_size, icon_size);
+            c.cairo_clip(cr);
             c.cairo_translate(cr, icon_x, icon_y);
             c.cairo_scale(cr, icon_size / @as(f64, @floatFromInt(cell_w)), icon_size / @as(f64, @floatFromInt(cell_h)));
-            c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
+            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], unfocused[3]);
             c.cairo_mask_surface(cr, cell, 0, 0);
             c.cairo_restore(cr);
 
-            // label centered underneath the wave
-            c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-            c.cairo_set_font_size(cr, 7.0 * @as(f64, scale));
+            // label directly underneath the wave, flush against it, in focused border color.
+            c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
+            c.cairo_set_font_size(cr, 12.0 * @as(f64, scale));
             c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, @ptrCast(labels[i]), &ext);
             const label_x = (w_d - ext.width) * 0.5;
-            const label_y = y + gauge_h - margin - ext.height * 0.5;
+            const label_y = y + icon_size + margin * 0.5 + ext.height * 0.8;
             c.cairo_move_to(cr, label_x, label_y);
             c.cairo_show_text(cr, @ptrCast(labels[i]));
         }
