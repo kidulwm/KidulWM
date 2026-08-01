@@ -31,7 +31,7 @@ pub const GaugeWidget = struct {
         self.renderMercuryGauges(cr, w_d, s, focused, unfocused, burnt_orange);
 
         // RAM circular ampoule in the middle.
-        self.renderRamAmpoule(cr, w_d, h_d, s, focused, unfocused, burnt_orange);
+        self.renderRamAmpouleInternal(cr, w_d, h_d, s, focused, unfocused, burnt_orange);
     }
 
     fn renderMercuryGauges(self: *GaugeWidget, cr: *c.cairo_t, w_d: f64, s: f64, focused: [4]f64, unfocused: [4]f64, burnt_orange: [4]f64) void {
@@ -106,46 +106,143 @@ pub const GaugeWidget = struct {
         }
     }
 
-    fn renderRamAmpoule(self: *GaugeWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, s: f64, focused: [4]f64, unfocused: [4]f64, burnt_orange: [4]f64) void {
+    pub fn renderRamAmpoule(self: *GaugeWidget, cr: *c.cairo_t, box_w: i32, box_h: i32, scale: f32, style_: style.Style) void {
+        const w_d: f64 = @floatFromInt(box_w);
+        const h_d: f64 = @floatFromInt(box_h);
+        const focused = style_.color_border_focused.toF64();
+        const unfocused = style_.color_border.toF64();
+        const burnt_orange = [4]f64{ 0.85, 0.42, 0.10, 1.0 };
+        const s = @as(f64, scale);
+        self.renderRamAmpouleInternal(cr, w_d, h_d, s, focused, unfocused, burnt_orange);
+    }
+
+    fn renderRamAmpouleInternal(self: *GaugeWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, s: f64, focused: [4]f64, unfocused: [4]f64, burnt_orange: [4]f64) void {
         _ = self;
         _ = h_d;
         const value = sampleMetric(.ram_usage) catch 0.45;
         const warn_level = warnLevel(value);
         const fg = if (warn_level >= 1) burnt_orange else focused;
         const fill_color = if (warn_level >= 3) burnt_orange else unfocused;
+        const outline_color = if (warn_level >= 2) burnt_orange else unfocused;
 
         const cx = w_d * 0.5;
-        const cy = 220.0 * s;
-        const radius = 38.0 * s;
-        const neck_w = 16.0 * s;
-        const neck_h = 18.0 * s;
+        const cy = 258.0 * s;
+        const body_w: f64 = 58.0 * s;
+        const body_h: f64 = 42.0 * s;
+        const rim_w: f64 = 46.0 * s;
+        const rim_h: f64 = 8.0 * s;
+
+        // Cauldron body path: rim, left belly, bottom, right belly.
+        const left_rim = [2]f64{ cx - rim_w * 0.5, cy - body_h * 0.5 };
+        const right_rim = [2]f64{ cx + rim_w * 0.5, cy - body_h * 0.5 };
+        const left_belly = [2]f64{ cx - body_w * 0.5, cy + rim_h };
+        const right_belly = [2]f64{ cx + body_w * 0.5, cy + rim_h };
+        const bottom = [2]f64{ cx, cy + body_h * 0.5 };
 
         c.cairo_save(cr);
 
-        // Build ampoule path: round bottom + straight neck.
-        c.cairo_move_to(cr, cx - neck_w * 0.5, cy - radius);
-        c.cairo_line_to(cr, cx - neck_w * 0.5, cy);
-        c.cairo_arc(cr, cx, cy, radius, std.math.pi, 0);
-        c.cairo_line_to(cr, cx + neck_w * 0.5, cy - radius);
+        // Feet.
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.85);
+        c.cairo_set_line_width(cr, 2.0 * s);
+        c.cairo_move_to(cr, cx - body_w * 0.35, cy + body_h * 0.45);
+        c.cairo_line_to(cr, cx - body_w * 0.35, cy + body_h * 0.6);
+        c.cairo_stroke(cr);
+        c.cairo_move_to(cr, cx + body_w * 0.35, cy + body_h * 0.45);
+        c.cairo_line_to(cr, cx + body_w * 0.35, cy + body_h * 0.6);
+        c.cairo_stroke(cr);
+
+        // Empty vessel.
+        c.cairo_move_to(cr, left_rim[0], left_rim[1]);
+        c.cairo_curve_to(cr, left_rim[0] - body_w * 0.12, left_rim[1] + body_h * 0.35,
+                              left_belly[0], left_belly[1] - body_h * 0.15,
+                              left_belly[0], left_belly[1]);
+        c.cairo_curve_to(cr, left_belly[0], bottom[1] - body_h * 0.1,
+                              bottom[0] - body_w * 0.15, bottom[1],
+                              bottom[0], bottom[1]);
+        c.cairo_curve_to(cr, bottom[0] + body_w * 0.15, bottom[1],
+                              right_belly[0], bottom[1] - body_h * 0.1,
+                              right_belly[0], right_belly[1]);
+        c.cairo_curve_to(cr, right_belly[0], right_belly[1] - body_h * 0.15,
+                              right_rim[0] + body_w * 0.12, right_rim[1] + body_h * 0.35,
+                              right_rim[0], right_rim[1]);
         c.cairo_close_path(cr);
-
-        // Empty vessel with 5% tint.
-        c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.05);
+        c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.06);
         c.cairo_fill_preserve(cr);
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.85);
+        c.cairo_set_line_width(cr, 2.5 * s);
+        c.cairo_stroke(cr);
 
-        // Liquid fill in bottom half of ampoule.
+        // Rim.
         c.cairo_save(cr);
-        c.cairo_clip(cr);
-        const fill_h = radius * 2.0 * value;
-        c.cairo_rectangle(cr, cx - radius, cy + radius - fill_h, radius * 2.0, fill_h);
-        c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], 0.55);
-        c.cairo_fill(cr);
+        c.cairo_move_to(cr, left_rim[0], left_rim[1]);
+        c.cairo_curve_to(cr, left_rim[0], left_rim[1] - rim_h,
+                              right_rim[0], right_rim[1] - rim_h,
+                              right_rim[0], right_rim[1]);
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.85);
+        c.cairo_set_line_width(cr, 2.5 * s);
+        c.cairo_stroke(cr);
         c.cairo_restore(cr);
 
-        // Outline.
-        c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.85);
-        c.cairo_set_line_width(cr, 3.0 * s);
-        c.cairo_stroke(cr);
+        // Liquid fill clipped to body.
+        const fill_h = body_h * value;
+        const fill_top = bottom[1] - fill_h;
+        c.cairo_save(cr);
+        c.cairo_move_to(cr, left_rim[0], left_rim[1]);
+        c.cairo_curve_to(cr, left_rim[0] - body_w * 0.12, left_rim[1] + body_h * 0.35,
+                              left_belly[0], left_belly[1] - body_h * 0.15,
+                              left_belly[0], left_belly[1]);
+        c.cairo_curve_to(cr, left_belly[0], bottom[1] - body_h * 0.1,
+                              bottom[0] - body_w * 0.15, bottom[1],
+                              bottom[0], bottom[1]);
+        c.cairo_curve_to(cr, bottom[0] + body_w * 0.15, bottom[1],
+                              right_belly[0], bottom[1] - body_h * 0.1,
+                              right_belly[0], right_belly[1]);
+        c.cairo_curve_to(cr, right_belly[0], right_belly[1] - body_h * 0.15,
+                              right_rim[0] + body_w * 0.12, right_rim[1] + body_h * 0.35,
+                              right_rim[0], right_rim[1]);
+        c.cairo_close_path(cr);
+        c.cairo_clip(cr);
+        c.cairo_rectangle(cr, left_belly[0], fill_top, right_belly[0] - left_belly[0], fill_h);
+        c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], 0.55);
+        c.cairo_fill(cr);
+
+        // Bubbles.
+        c.cairo_set_source_rgba(cr, focused[0], focused[1], focused[2], 0.5);
+        const bubbles = [_][3]f64{
+            .{ cx - body_w * 0.18, fill_top - 2.0 * s, 1.8 * s },
+            .{ cx + body_w * 0.10, fill_top - 6.0 * s, 1.2 * s },
+            .{ cx + body_w * 0.25, fill_top - 1.0 * s, 1.5 * s },
+        };
+        for (bubbles) |b| {
+            c.cairo_arc(cr, b[0], b[1], b[2], 0, 2.0 * std.math.pi);
+            c.cairo_fill(cr);
+        }
+        c.cairo_restore(cr);
+
+        // Smoke puffs above the rim.
+        const smoke_alpha: f64 = if (value > 0.50) 0.18 else 0.08;
+        const puff_base_y = left_rim[1] - rim_h - 3.0 * s;
+        const puffs = [_][3]f64{
+            .{ cx - rim_w * 0.22, puff_base_y - 4.0 * s, 2.2 * s },
+            .{ cx + rim_w * 0.05, puff_base_y - 9.0 * s, 1.8 * s },
+            .{ cx + rim_w * 0.28, puff_base_y - 3.0 * s, 2.0 * s },
+            .{ cx - rim_w * 0.05, puff_base_y - 14.0 * s, 1.5 * s },
+        };
+        c.cairo_set_source_rgba(cr, focused[0], focused[1], focused[2], smoke_alpha);
+        for (puffs) |p| {
+            c.cairo_arc(cr, p[0], p[1], p[2], 0, 2.0 * std.math.pi);
+            c.cairo_fill(cr);
+        }
+
+        // Percentage label inside the liquid.
+        var percent_buf: [16]u8 = undefined;
+        const percent_text = std.fmt.bufPrintZ(&percent_buf, "{d}%", .{@as(u32, @intFromFloat(value * 100.0))}) catch "RAM";
+        c.cairo_set_source_rgba(cr, focused[0], focused[1], focused[2], 0.9);
+        c.cairo_set_font_size(cr, 11.0 * s);
+        var percent_ext: c.cairo_text_extents_t = undefined;
+        c.cairo_text_extents(cr, @ptrCast(percent_text), &percent_ext);
+        c.cairo_move_to(cr, cx - percent_ext.width * 0.5, cy + body_h * 0.25 + 4.0 * s);
+        c.cairo_show_text(cr, @ptrCast(percent_text));
 
         // Label.
         c.cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
@@ -153,7 +250,7 @@ pub const GaugeWidget = struct {
         const label = "RAM";
         var ext: c.cairo_text_extents_t = undefined;
         c.cairo_text_extents(cr, @ptrCast(label), &ext);
-        c.cairo_move_to(cr, cx - ext.width * 0.5, cy + radius + neck_h + 18.0 * s);
+        c.cairo_move_to(cr, cx - ext.width * 0.5, bottom[1] + 18.0 * s);
         c.cairo_show_text(cr, @ptrCast(label));
 
         c.cairo_restore(cr);

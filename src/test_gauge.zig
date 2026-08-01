@@ -6,10 +6,9 @@ const theme = @import("core/theme.zig");
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    _ = allocator;
 
     const width: i32 = 240;
-    const height: i32 = 220;
+    const height: i32 = 400;
     const surface = c_cairo.cairo_image_surface_create(c_cairo.CAIRO_FORMAT_ARGB32, width, height) orelse return error.SurfaceFail;
     defer c_cairo.cairo_surface_destroy(surface);
     const cr = c_cairo.cairo_create(surface) orelse return error.ContextFail;
@@ -21,8 +20,8 @@ pub fn main() !void {
     c_cairo.cairo_set_operator(cr, c_cairo.CAIRO_OPERATOR_OVER);
 
     const style_ = style.default();
-    const gw = gauge.GaugeWidget.init(allocator);
-    gw.renderPeek(cr, .{ .x = 0, .y = 0, .width = width, .height = height }, style_, 1.0);
+    var gw = gauge.GaugeWidget.init(allocator);
+    gw.renderRamAmpoule(cr, width, height, 1.0, style_);
 
-    _ = c_cairo.cairo_surface_write_to_png(surface, "/tmp/gauge_test.png");
+    _ = c_cairo.cairo_surface_write_to_png(surface, "/tmp/gauge.png");
 }

@@ -139,6 +139,21 @@ pub fn build(b: *std.Build) void {
     const moon_test_step = b.step("moon-test", "Render moon test strip to /tmp/moon_test.png");
     moon_test_step.dependOn(&moon_test_run.step);
 
+    const gauge_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/test_gauge.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    gauge_test_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
+    gauge_test_mod.addImport("core", b.createModule(.{ .root_source_file = b.path("src/core/style.zig") }));
+    gauge_test_mod.linkSystemLibrary("cairo", .{});
+    const gauge_test_exe = b.addExecutable(.{ .name = "gauge-test", .root_module = gauge_test_mod });
+    const gauge_test_run = b.addRunArtifact(gauge_test_exe);
+    gauge_test_run.step.dependOn(b.getInstallStep());
+    const gauge_test_step = b.step("gauge-test", "Render gauge test strip to /tmp/gauge_test.png");
+    gauge_test_step.dependOn(&gauge_test_run.step);
+
     b.installFile("config/keybinds.conf", "share/kidulwm/keybinds.conf");
 
     const run_cmd = b.addRunArtifact(exe);
