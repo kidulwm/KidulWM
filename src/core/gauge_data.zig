@@ -26,8 +26,8 @@ pub const GaugeData = struct {
     pub fn sample(self: *const GaugeData, metric: Metric) !GaugeValue {
         _ = self;
         return switch (metric) {
-            .gpu_temp => .{ .metric = metric, .label = "GPU", .value = try readGpuTemp() / 100.0, .raw = try readGpuTemp(), .unit = "°C" },
-            .cpu_temp => .{ .metric = metric, .label = "CPU", .value = try readCpuTemp() / 100.0, .raw = try readCpuTemp(), .unit = "°C" },
+            .gpu_temp => .{ .metric = metric, .label = "GPU", .value = (try readGpuTemp()) / 100.0, .raw = try readGpuTemp(), .unit = "°C" },
+            .cpu_temp => .{ .metric = metric, .label = "CPU", .value = (try readCpuTemp()) / 100.0, .raw = try readCpuTemp(), .unit = "°C" },
             .ram_usage => blk: {
                 const ram = try readRamUsage();
                 break :blk .{ .metric = metric, .label = "RAM", .value = ram.used / ram.total, .raw = ram.used / ram.total * 100.0, .unit = "%" };
@@ -45,7 +45,7 @@ pub const GaugeData = struct {
 };
 
 fn readCpuTemp() !f64 {
-    return readFirstFloat("/sys/class/thermal/thermal_zone0/temp") / 1000.0;
+    return (try readFirstFloat("/sys/class/thermal/thermal_zone0/temp")) / 1000.0;
 }
 
 fn readGpuTemp() !f64 {
@@ -56,11 +56,7 @@ fn readGpuTemp() !f64 {
 const RamInfo = struct { used: f64, total: f64 };
 
 fn readRamUsage() !RamInfo {
-    const file = try std.fs.openFileAbsolute("/proc/meminfo", .{});
-    defer file.close();
-    var buf: [1024]u8 = undefined;
-    const n = try file.read(&buf);
-    const text = buf[0..n];
+    const text = try readFileToBuf("/proc/meminfo");
     var total: f64 = 1;
     var available: f64 = 0;
     var lines = std.mem.splitScalar(u8, text, '\n');
@@ -89,11 +85,29 @@ fn readDiskUsage(path: []const u8) !DiskInfo {
 }
 
 fn readFirstFloat(path: []const u8) !f64 {
-    const file = try std.fs.openFileAbsolute(path, .{});
-    defer file.close();
-    var buf: [64]u8 = undefined;
-    const n = try file.read(&buf);
-    return parseFloat(buf[0..n]);
+    const text = try readFileToBuf(path);
+    return parseFloat(text);
+}
+
+fn readFileToBuf(path: []const u8) ![]const u8 {
+    const linux = std.os.linux;
+    var path_buf: [256:0]u8 = undefined;
+    if (path.len >= path_buf.len) return error.PathTooLong;
+    @memcpy(path_buf[0..path.len], path);
+    path_buf[path.len] = 0;
+    const fd = linux.open(&path_buf, .{ .ACCMODE = .RDONLY }, 0);
+    if (@as(isize, @bitCast(fd)) < 0) return error.FileNotFound;
+    const fd_i: i32 = @intCast(fd);
+    defer _ = linux.close(fd_i);
+    var buf: [4096]u8 = undefined;
+    var end: usize = 0;
+    while (true) {
+        const n = linux.read(fd_i, &buf, buf.len);
+        if (n < 0) return error.ReadFailed;
+        if (n == 0) break;
+        end = @as(usize, @intCast(n));
+    }
+    return buf[0..end];
 }
 
 fn parseFloatAfterColon(line: []const u8) f64 {

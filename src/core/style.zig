@@ -208,11 +208,11 @@ pub const layout = struct {
         right_peek: f32,
     };
 
-    /// Default three-column split (5% peek / 90% focus / 5% peek).
+    /// Default three-column split (8% peek / 84% focus / 8% peek).
     pub const default_split: SplitPreset = .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 };
 
-    /// Three-column horizontal arrangement (5% peek / 90% / 5% peek).
-    pub const horizontal_split: SplitPreset = .{ .left_peek = 0.05, .focus = 0.90, .right_peek = 0.05 };
+    /// Three-column horizontal arrangement (8% peek / 84% / 8% peek).
+    pub const horizontal_split: SplitPreset = .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 };
 
     /// Vertical top/bottom arrangements.
     pub const vertical_top_split: SplitPreset = .{ .left_peek = 0.0, .focus = 0.5, .right_peek = 0.5 };
