@@ -42,21 +42,21 @@ pub const GaugeWidget = struct {
         const metrics = [_]gauge_data.Metric{ .disk1_size, .disk2_size };
         const labels = [_][]const u8{ "d1", "d2" };
 
-        const chest_w: f64 = 42.0 * s;
-        const chest_h: f64 = 30.0 * s;
-        const lid_h: f64 = 10.0 * s;
-        const gap: f64 = 8.0 * s;
-        const top_y = 460.0 * s + @as(f64, @floatFromInt(i)) * (chest_h + gap);
+        const chest_w: f64 = 54.0 * s;
+        const chest_h: f64 = 38.0 * s;
+        const lid_h: f64 = 12.0 * s;
+        const gap: f64 = 45.0 * s;
 
         var i: usize = 0;
         while (i < metrics.len) : (i += 1) {
+            const top_y = 460.0 * s + @as(f64, @floatFromInt(i)) * (chest_h + gap);
             const value = sampleMetric(metrics[i]) catch 0.30 + 0.15 * @as(f64, @floatFromInt(i));
             const warn_level = warnLevel(value);
             const fg = if (warn_level >= 1) burnt_orange else focused;
             const fill_color = if (warn_level >= 3) burnt_orange else unfocused;
             const outline_color = if (warn_level >= 2) burnt_orange else unfocused;
 
-            const cx = w_d * 0.5 + (@as(f64, @floatFromInt(i)) - 0.5) * (chest_w + gap);
+            const cx = w_d * 0.5;
             const cy = top_y + chest_h * 0.5;
             const left = cx - chest_w * 0.5;
             const right = cx + chest_w * 0.5;
@@ -74,7 +74,14 @@ pub const GaugeWidget = struct {
             c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.10);
             c.cairo_fill_preserve(cr);
             c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 2.0 * s);
+            c.cairo_set_line_width(cr, 3.0 * s);
+            c.cairo_stroke(cr);
+
+            // Thin top edge where lid meets body.
+            c.cairo_move_to(cr, left + 1.0 * s, top + lid_h);
+            c.cairo_line_to(cr, right - 1.0 * s, top + lid_h);
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+            c.cairo_set_line_width(cr, 1.5 * s);
             c.cairo_stroke(cr);
 
             // Liquid fill inside chest.
@@ -93,13 +100,6 @@ pub const GaugeWidget = struct {
                 c.cairo_restore(cr);
             }
 
-            // Chest lid (slightly open feel).
-            c.cairo_move_to(cr, left, top + lid_h);
-            c.cairo_line_to(cr, right, top + lid_h);
-            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 2.0 * s);
-            c.cairo_stroke(cr);
-
             // Lid curve.
             c.cairo_move_to(cr, left, top + lid_h);
             c.cairo_curve_to(cr, left + chest_w * 0.25, top - lid_h * 0.3,
@@ -108,13 +108,13 @@ pub const GaugeWidget = struct {
             c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.08);
             c.cairo_fill_preserve(cr);
             c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 2.0 * s);
+            c.cairo_set_line_width(cr, 3.0 * s);
             c.cairo_stroke(cr);
 
-            // Lock plate.
+            // Lock plate with thicker border.
             c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 1.5 * s);
-            c.cairo_arc(cr, cx, top + lid_h, 2.0 * s, 0, 2.0 * std.math.pi);
+            c.cairo_set_line_width(cr, 3.0 * s);
+            c.cairo_arc(cr, cx, top + lid_h, 3.5 * s, 0, 2.0 * std.math.pi);
             c.cairo_stroke(cr);
 
             // Label.
