@@ -45,11 +45,11 @@ pub const GaugeWidget = struct {
         const chest_w: f64 = 54.0 * s;
         const chest_h: f64 = 38.0 * s;
         const lid_h: f64 = 12.0 * s;
-        const gap: f64 = 45.0 * s;
+        const gap: f64 = 67.0 * s;
 
         var i: usize = 0;
         while (i < metrics.len) : (i += 1) {
-            const top_y = 460.0 * s + @as(f64, @floatFromInt(i)) * (chest_h + gap);
+            const top_y = 473.0 * s + @as(f64, @floatFromInt(i)) * (chest_h + gap);
             const value = sampleMetric(metrics[i]) catch 0.30 + 0.15 * @as(f64, @floatFromInt(i));
             const warn_level = warnLevel(value);
             const fg = if (warn_level >= 1) burnt_orange else focused;
@@ -138,8 +138,8 @@ pub const GaugeWidget = struct {
         const bar_h: f64 = 55.0 * s;
         const bulb_r: f64 = bar_w * 0.85;
 
-        const group_top = 50.0 * s;
-        const gauge_gap = 104.0 * s;
+        const group_top = 97.0 * s;
+        const gauge_gap = 130.0 * s;
 
         var i: usize = 0;
         while (i < metrics.len) : (i += 1) {
@@ -221,7 +221,7 @@ pub const GaugeWidget = struct {
         const outline_color = if (warn_level >= 2) burnt_orange else unfocused;
 
         const cx = w_d * 0.5;
-        const cy = 348.0 * s;
+        const cy = 362.0 * s;
         const body_w: f64 = 58.0 * s;
         const body_h: f64 = 42.0 * s;
         const rim_w: f64 = 46.0 * s;
