@@ -33,7 +33,7 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Up, .action = .tray_select_prev }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Down, .action = .tray_select_next }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.m, .action = .media_card_toggle }) catch {};
-    const browser = allocator.dupe(u8, "bash /home/kidul/run_test.sh") catch &[_]u8{};
+    const browser = allocator.dupe(u8, "/usr/local/bin/launch-kidul-browser.sh") catch &[_]u8{};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.c, .action = .{ .spawn = browser } }) catch {
         if (browser.len > 0) allocator.free(browser);
     };

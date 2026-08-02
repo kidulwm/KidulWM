@@ -376,7 +376,7 @@ pub const Tray = struct {
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
         const items = try allocator.alloc(TrayItem, 8);
             items[0] = .{ .id = "assistant", .label = "Assistant", .action = .none };
-            items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "kidul-browser" } };
+            items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "/usr/local/bin/launch-kidul-browser.sh" } };
             items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "foot -e yazi" } };
             items[3] = .{ .id = "games", .label = "Games", .action = .none };
             items[4] = .{ .id = "maps", .label = "Maps", .action = .none };
