@@ -37,7 +37,7 @@ pub const GaugeWidget = struct {
     fn renderMercuryGauges(self: *GaugeWidget, cr: *c.cairo_t, w_d: f64, s: f64, focused: [4]f64, unfocused: [4]f64, burnt_orange: [4]f64) void {
         _ = self;
         const metrics = [_]gauge_data.Metric{ .gpu_temp, .cpu_temp };
-        const labels = [_][]const u8{ "GPU", "CPU" };
+        const labels = [_][]const u8{ "gpu", "cpu" };
 
         const bar_w: f64 = 12.0 * s;
         const bar_h: f64 = 55.0 * s;
@@ -126,7 +126,7 @@ pub const GaugeWidget = struct {
         const outline_color = if (warn_level >= 2) burnt_orange else unfocused;
 
         const cx = w_d * 0.5;
-        const cy = 258.0 * s;
+        const cy = 348.0 * s;
         const body_w: f64 = 58.0 * s;
         const body_h: f64 = 42.0 * s;
         const rim_w: f64 = 46.0 * s;
@@ -141,15 +141,23 @@ pub const GaugeWidget = struct {
 
         c.cairo_save(cr);
 
-        // Feet.
-        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.85);
-        c.cairo_set_line_width(cr, 2.0 * s);
-        c.cairo_move_to(cr, cx - body_w * 0.35, cy + body_h * 0.45);
-        c.cairo_line_to(cr, cx - body_w * 0.35, cy + body_h * 0.6);
+        // Feet: short thick curved outward legs with rounded ball tips.
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+        c.cairo_set_line_width(cr, 5.0 * s);
+        c.cairo_move_to(cr, cx - body_w * 0.32, cy + body_h * 0.42);
+        c.cairo_curve_to(cr, cx - body_w * 0.36, cy + body_h * 0.45,
+                              cx - body_w * 0.40, cy + body_h * 0.48,
+                              cx - body_w * 0.42, cy + body_h * 0.50);
         c.cairo_stroke(cr);
-        c.cairo_move_to(cr, cx + body_w * 0.35, cy + body_h * 0.45);
-        c.cairo_line_to(cr, cx + body_w * 0.35, cy + body_h * 0.6);
+        c.cairo_arc(cr, cx - body_w * 0.44, cy + body_h * 0.54, 4.8 * s, 0, 2.0 * std.math.pi);
+        c.cairo_fill(cr);
+        c.cairo_move_to(cr, cx + body_w * 0.32, cy + body_h * 0.42);
+        c.cairo_curve_to(cr, cx + body_w * 0.36, cy + body_h * 0.45,
+                              cx + body_w * 0.40, cy + body_h * 0.48,
+                              cx + body_w * 0.42, cy + body_h * 0.50);
         c.cairo_stroke(cr);
+        c.cairo_arc(cr, cx + body_w * 0.44, cy + body_h * 0.54, 4.8 * s, 0, 2.0 * std.math.pi);
+        c.cairo_fill(cr);
 
         // Empty vessel.
         c.cairo_move_to(cr, left_rim[0], left_rim[1]);
@@ -166,11 +174,45 @@ pub const GaugeWidget = struct {
                               right_rim[0] + body_w * 0.12, right_rim[1] + body_h * 0.35,
                               right_rim[0], right_rim[1]);
         c.cairo_close_path(cr);
-        c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.06);
+        c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.12);
         c.cairo_fill_preserve(cr);
-        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.85);
-        c.cairo_set_line_width(cr, 2.5 * s);
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+        c.cairo_set_line_width(cr, 3.0 * s);
         c.cairo_stroke(cr);
+
+        // Side shading to give a rounded 3D look.
+        c.cairo_save(cr);
+        c.cairo_move_to(cr, left_rim[0], left_rim[1]);
+        c.cairo_curve_to(cr, left_rim[0] - body_w * 0.12, left_rim[1] + body_h * 0.35,
+                              left_belly[0], left_belly[1] - body_h * 0.15,
+                              left_belly[0], left_belly[1]);
+        c.cairo_curve_to(cr, left_belly[0], bottom[1] - body_h * 0.1,
+                              bottom[0] - body_w * 0.15, bottom[1],
+                              bottom[0], bottom[1]);
+        c.cairo_curve_to(cr, bottom[0] + body_w * 0.15, bottom[1],
+                              right_belly[0], bottom[1] - body_h * 0.1,
+                              right_belly[0], right_belly[1]);
+        c.cairo_curve_to(cr, right_belly[0], right_belly[1] - body_h * 0.15,
+                              right_rim[0] + body_w * 0.12, right_rim[1] + body_h * 0.35,
+                              right_rim[0], right_rim[1]);
+        c.cairo_close_path(cr);
+        c.cairo_clip(cr);
+
+        // Left shadow.
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.18);
+        c.cairo_rectangle(cr, left_belly[0] - body_w * 0.05, left_rim[1] - body_h * 0.2, body_w * 0.28, body_h * 1.4);
+        c.cairo_fill(cr);
+
+        // Right highlight.
+        c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.06);
+        c.cairo_rectangle(cr, right_belly[0] - body_w * 0.23, left_rim[1] - body_h * 0.2, body_w * 0.28, body_h * 1.4);
+        c.cairo_fill(cr);
+
+        // Bottom darker shading.
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.22);
+        c.cairo_rectangle(cr, left_belly[0], bottom[1] - body_h * 0.35, right_belly[0] - left_belly[0], body_h * 0.35);
+        c.cairo_fill(cr);
+        c.cairo_restore(cr);
 
         // Rim.
         c.cairo_save(cr);
@@ -178,8 +220,8 @@ pub const GaugeWidget = struct {
         c.cairo_curve_to(cr, left_rim[0], left_rim[1] - rim_h,
                               right_rim[0], right_rim[1] - rim_h,
                               right_rim[0], right_rim[1]);
-        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.85);
-        c.cairo_set_line_width(cr, 2.5 * s);
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+        c.cairo_set_line_width(cr, 3.0 * s);
         c.cairo_stroke(cr);
         c.cairo_restore(cr);
 
@@ -234,20 +276,10 @@ pub const GaugeWidget = struct {
             c.cairo_fill(cr);
         }
 
-        // Percentage label inside the liquid.
-        var percent_buf: [16]u8 = undefined;
-        const percent_text = std.fmt.bufPrintZ(&percent_buf, "{d}%", .{@as(u32, @intFromFloat(value * 100.0))}) catch "RAM";
-        c.cairo_set_source_rgba(cr, focused[0], focused[1], focused[2], 0.9);
-        c.cairo_set_font_size(cr, 11.0 * s);
-        var percent_ext: c.cairo_text_extents_t = undefined;
-        c.cairo_text_extents(cr, @ptrCast(percent_text), &percent_ext);
-        c.cairo_move_to(cr, cx - percent_ext.width * 0.5, cy + body_h * 0.25 + 4.0 * s);
-        c.cairo_show_text(cr, @ptrCast(percent_text));
-
         // Label.
         c.cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
         c.cairo_set_font_size(cr, 14.0 * s);
-        const label = "RAM";
+        const label = "ram";
         var ext: c.cairo_text_extents_t = undefined;
         c.cairo_text_extents(cr, @ptrCast(label), &ext);
         c.cairo_move_to(cr, cx - ext.width * 0.5, bottom[1] + 18.0 * s);
