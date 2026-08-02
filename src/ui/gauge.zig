@@ -37,107 +37,6 @@ pub const GaugeWidget = struct {
         self.renderChestGauges(cr, w_d, s, focused, unfocused, burnt_orange);
     }
 
-    fn renderChestGauges(self: *GaugeWidget, cr: *c.cairo_t, w_d: f64, s: f64, focused: [4]f64, unfocused: [4]f64, burnt_orange: [4]f64) void {
-        _ = self;
-        const metrics = [_]gauge_data.Metric{ .disk1_size, .disk2_size };
-        const labels = [_][]const u8{ "d1", "d2" };
-
-        const chest_w: f64 = 48.6 * s;
-        const chest_h: f64 = 34.2 * s;
-        const lid_h: f64 = 10.8 * s;
-        const gap: f64 = 67.0 * s;
-
-        var i: usize = 0;
-        while (i < metrics.len) : (i += 1) {
-            const top_y = 473.0 * s + @as(f64, @floatFromInt(i)) * (chest_h + gap);
-            const value = sampleMetric(metrics[i]) catch 0.30 + 0.15 * @as(f64, @floatFromInt(i));
-            const warn_level = warnLevel(value);
-            const fg = if (warn_level >= 1) burnt_orange else focused;
-            const fill_color = if (warn_level >= 3) burnt_orange else unfocused;
-            const outline_color = if (warn_level >= 2) burnt_orange else unfocused;
-
-            const cx = w_d * 0.5;
-            const cy = top_y + chest_h * 0.5;
-            const left = cx - chest_w * 0.5;
-            const right = cx + chest_w * 0.5;
-            const bottom_y = cy + chest_h * 0.5;
-            const top = cy - chest_h * 0.5;
-
-            c.cairo_save(cr);
-
-            // Empty chest body.
-            c.cairo_move_to(cr, left, top + lid_h);
-            c.cairo_line_to(cr, right, top + lid_h);
-            c.cairo_line_to(cr, right, bottom_y);
-            c.cairo_line_to(cr, left, bottom_y);
-            c.cairo_close_path(cr);
-            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.10);
-            c.cairo_fill_preserve(cr);
-            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 3.0 * s);
-            c.cairo_stroke(cr);
-
-            // Thin top edge where lid meets body.
-            c.cairo_move_to(cr, left + 1.0 * s, top + lid_h);
-            c.cairo_line_to(cr, right - 1.0 * s, top + lid_h);
-            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 1.5 * s);
-            c.cairo_stroke(cr);
-
-            // Liquid fill inside chest.
-            const fill_h = (chest_h - lid_h) * value;
-            if (fill_h > 0) {
-                c.cairo_save(cr);
-                c.cairo_move_to(cr, left + 1.0 * s, top + lid_h);
-                c.cairo_line_to(cr, right - 1.0 * s, top + lid_h);
-                c.cairo_line_to(cr, right - 1.0 * s, bottom_y);
-                c.cairo_line_to(cr, left + 1.0 * s, bottom_y);
-                c.cairo_close_path(cr);
-                c.cairo_clip(cr);
-                c.cairo_rectangle(cr, left, bottom_y - fill_h, chest_w, fill_h);
-                c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], 0.55);
-                c.cairo_fill(cr);
-                c.cairo_restore(cr);
-            }
-
-            // Lid curve.
-            c.cairo_move_to(cr, left, top + lid_h);
-            c.cairo_curve_to(cr, left + chest_w * 0.25, top - lid_h * 0.3,
-                                  right - chest_w * 0.25, top - lid_h * 0.3,
-                                  right, top + lid_h);
-            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.08);
-            c.cairo_fill_preserve(cr);
-            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 3.0 * s);
-            c.cairo_stroke(cr);
-
-            // Lock plate with thicker border.
-            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-            c.cairo_set_line_width(cr, 3.0 * s);
-            c.cairo_arc(cr, cx, top + lid_h, 3.5 * s, 0, 2.0 * std.math.pi);
-            c.cairo_stroke(cr);
-
-            // Label inside chest, at bottom.
-            c.cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
-            c.cairo_set_font_size(cr, 11.0 * s);
-            var ext: c.cairo_text_extents_t = undefined;
-            c.cairo_text_extents(cr, @ptrCast(labels[i]), &ext);
-            const label_x = cx - ext.width * 0.5;
-            const label_y = bottom_y - 4.0 * s;
-
-            // Clear a small zone behind the label so it stands out.
-            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.12);
-            c.cairo_rectangle(cr, label_x - 2.0 * s, label_y - ext.height - 2.0 * s, ext.width + 4.0 * s, ext.height + 4.0 * s);
-            c.cairo_fill(cr);
-
-            // Draw label.
-            c.cairo_move_to(cr, label_x, label_y);
-            c.cairo_show_text(cr, @ptrCast(labels[i]));
-
-            c.cairo_restore(cr);
-        }
-    }
-
     fn renderMercuryGauges(self: *GaugeWidget, cr: *c.cairo_t, w_d: f64, s: f64, focused: [4]f64, unfocused: [4]f64, burnt_orange: [4]f64) void {
         _ = self;
         const metrics = [_]gauge_data.Metric{ .gpu_temp, .cpu_temp };
@@ -380,16 +279,22 @@ pub const GaugeWidget = struct {
         c.cairo_restore(cr);
 
         // Smoke puffs above the rim.
-        const smoke_alpha: f64 = if (value > 0.50) 0.18 else 0.08;
+        const smoke_alpha: f64 = if (value > 0.50) 0.45 else 0.22;
         const puff_base_y = left_rim[1] - rim_h - 3.0 * s;
         const puffs = [_][3]f64{
-            .{ cx - rim_w * 0.22, puff_base_y - 4.0 * s, 2.2 * s },
-            .{ cx + rim_w * 0.05, puff_base_y - 9.0 * s, 1.8 * s },
-            .{ cx + rim_w * 0.28, puff_base_y - 3.0 * s, 2.0 * s },
-            .{ cx - rim_w * 0.05, puff_base_y - 14.0 * s, 1.5 * s },
+            .{ cx - rim_w * 0.32, puff_base_y - 6.0 * s, 3.2 * s },
+            .{ cx + rim_w * 0.08, puff_base_y - 14.0 * s, 2.6 * s },
+            .{ cx + rim_w * 0.38, puff_base_y - 5.0 * s, 2.9 * s },
+            .{ cx - rim_w * 0.08, puff_base_y - 20.0 * s, 2.2 * s },
+            .{ cx + rim_w * 0.18, puff_base_y - 26.0 * s, 1.8 * s },
         };
-        c.cairo_set_source_rgba(cr, focused[0], focused[1], focused[2], smoke_alpha);
         for (puffs) |p| {
+            // Outer glow ring.
+            c.cairo_set_source_rgba(cr, focused[0], focused[1], focused[2], smoke_alpha * 0.35);
+            c.cairo_arc(cr, p[0], p[1], p[2] * 1.6, 0, 2.0 * std.math.pi);
+            c.cairo_fill(cr);
+            // Solid core puff.
+            c.cairo_set_source_rgba(cr, focused[0], focused[1], focused[2], smoke_alpha);
             c.cairo_arc(cr, p[0], p[1], p[2], 0, 2.0 * std.math.pi);
             c.cairo_fill(cr);
         }
@@ -404,6 +309,107 @@ pub const GaugeWidget = struct {
         c.cairo_show_text(cr, @ptrCast(label));
 
         c.cairo_restore(cr);
+    }
+
+    fn renderChestGauges(self: *GaugeWidget, cr: *c.cairo_t, w_d: f64, s: f64, focused: [4]f64, unfocused: [4]f64, burnt_orange: [4]f64) void {
+        _ = self;
+        const metrics = [_]gauge_data.Metric{ .disk1_size, .disk2_size };
+        const labels = [_][]const u8{ "d1", "d2" };
+
+        const chest_w: f64 = 48.6 * s;
+        const chest_h: f64 = 34.2 * s;
+        const lid_h: f64 = 10.8 * s;
+        const gap: f64 = 67.0 * s;
+
+        var i: usize = 0;
+        while (i < metrics.len) : (i += 1) {
+            const top_y = 473.0 * s + @as(f64, @floatFromInt(i)) * (chest_h + gap);
+            const value = sampleMetric(metrics[i]) catch 0.30 + 0.15 * @as(f64, @floatFromInt(i));
+            const warn_level = warnLevel(value);
+            const fg = if (warn_level >= 1) burnt_orange else focused;
+            const fill_color = if (warn_level >= 3) burnt_orange else unfocused;
+            const outline_color = if (warn_level >= 2) burnt_orange else unfocused;
+
+            const cx = w_d * 0.5;
+            const cy = top_y + chest_h * 0.5;
+            const left = cx - chest_w * 0.5;
+            const right = cx + chest_w * 0.5;
+            const bottom_y = cy + chest_h * 0.5;
+            const top = cy - chest_h * 0.5;
+
+            c.cairo_save(cr);
+
+            // Empty chest body.
+            c.cairo_move_to(cr, left, top + lid_h);
+            c.cairo_line_to(cr, right, top + lid_h);
+            c.cairo_line_to(cr, right, bottom_y);
+            c.cairo_line_to(cr, left, bottom_y);
+            c.cairo_close_path(cr);
+            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.10);
+            c.cairo_fill_preserve(cr);
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+            c.cairo_set_line_width(cr, 3.0 * s);
+            c.cairo_stroke(cr);
+
+            // Thin top edge where lid meets body.
+            c.cairo_move_to(cr, left + 1.0 * s, top + lid_h);
+            c.cairo_line_to(cr, right - 1.0 * s, top + lid_h);
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+            c.cairo_set_line_width(cr, 1.5 * s);
+            c.cairo_stroke(cr);
+
+            // Liquid fill inside chest.
+            const fill_h = (chest_h - lid_h) * value;
+            if (fill_h > 0) {
+                c.cairo_save(cr);
+                c.cairo_move_to(cr, left + 1.0 * s, top + lid_h);
+                c.cairo_line_to(cr, right - 1.0 * s, top + lid_h);
+                c.cairo_line_to(cr, right - 1.0 * s, bottom_y);
+                c.cairo_line_to(cr, left + 1.0 * s, bottom_y);
+                c.cairo_close_path(cr);
+                c.cairo_clip(cr);
+                c.cairo_rectangle(cr, left, bottom_y - fill_h, chest_w, fill_h);
+                c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], 0.55);
+                c.cairo_fill(cr);
+                c.cairo_restore(cr);
+            }
+
+            // Lid curve.
+            c.cairo_move_to(cr, left, top + lid_h);
+            c.cairo_curve_to(cr, left + chest_w * 0.25, top - lid_h * 0.3,
+                                  right - chest_w * 0.25, top - lid_h * 0.3,
+                                  right, top + lid_h);
+            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.08);
+            c.cairo_fill_preserve(cr);
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+            c.cairo_set_line_width(cr, 3.0 * s);
+            c.cairo_stroke(cr);
+
+            // Lock plate with thicker border.
+            c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+            c.cairo_set_line_width(cr, 3.0 * s);
+            c.cairo_arc(cr, cx, top + lid_h, 3.5 * s, 0, 2.0 * std.math.pi);
+            c.cairo_stroke(cr);
+
+            // Label inside chest, at bottom.
+            c.cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
+            c.cairo_set_font_size(cr, 11.0 * s);
+            var ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, @ptrCast(labels[i]), &ext);
+            const label_x = cx - ext.width * 0.5;
+            const label_y = bottom_y - 4.0 * s;
+
+            // Clear a small zone behind the label so it stands out.
+            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.12);
+            c.cairo_rectangle(cr, label_x - 2.0 * s, label_y - ext.height - 2.0 * s, ext.width + 4.0 * s, ext.height + 4.0 * s);
+            c.cairo_fill(cr);
+
+            // Draw label.
+            c.cairo_move_to(cr, label_x, label_y);
+            c.cairo_show_text(cr, @ptrCast(labels[i]));
+
+            c.cairo_restore(cr);
+        }
     }
 
     fn warnLevel(value: f64) u32 {
