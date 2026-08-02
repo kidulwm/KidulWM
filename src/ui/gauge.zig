@@ -42,9 +42,9 @@ pub const GaugeWidget = struct {
         const metrics = [_]gauge_data.Metric{ .disk1_size, .disk2_size };
         const labels = [_][]const u8{ "d1", "d2" };
 
-        const chest_w: f64 = 54.0 * s;
-        const chest_h: f64 = 38.0 * s;
-        const lid_h: f64 = 12.0 * s;
+        const chest_w: f64 = 48.6 * s;
+        const chest_h: f64 = 34.2 * s;
+        const lid_h: f64 = 10.8 * s;
         const gap: f64 = 67.0 * s;
 
         var i: usize = 0;
@@ -117,12 +117,21 @@ pub const GaugeWidget = struct {
             c.cairo_arc(cr, cx, top + lid_h, 3.5 * s, 0, 2.0 * std.math.pi);
             c.cairo_stroke(cr);
 
-            // Label.
+            // Label inside chest, at bottom.
             c.cairo_set_source_rgba(cr, fg[0], fg[1], fg[2], fg[3]);
             c.cairo_set_font_size(cr, 11.0 * s);
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, @ptrCast(labels[i]), &ext);
-            c.cairo_move_to(cr, cx - ext.width * 0.5, bottom_y + 14.0 * s);
+            const label_x = cx - ext.width * 0.5;
+            const label_y = bottom_y - 4.0 * s;
+
+            // Clear a small zone behind the label so it stands out.
+            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.12);
+            c.cairo_rectangle(cr, label_x - 2.0 * s, label_y - ext.height - 2.0 * s, ext.width + 4.0 * s, ext.height + 4.0 * s);
+            c.cairo_fill(cr);
+
+            // Draw label.
+            c.cairo_move_to(cr, label_x, label_y);
             c.cairo_show_text(cr, @ptrCast(labels[i]));
 
             c.cairo_restore(cr);
@@ -222,10 +231,10 @@ pub const GaugeWidget = struct {
 
         const cx = w_d * 0.5;
         const cy = 362.0 * s;
-        const body_w: f64 = 58.0 * s;
-        const body_h: f64 = 42.0 * s;
-        const rim_w: f64 = 46.0 * s;
-        const rim_h: f64 = 8.0 * s;
+        const body_w: f64 = 52.0 * s;
+        const body_h: f64 = 38.0 * s;
+        const rim_w: f64 = 41.0 * s;
+        const rim_h: f64 = 7.0 * s;
 
         // Cauldron body path: rim, left belly, bottom, right belly.
         const left_rim = [2]f64{ cx - rim_w * 0.5, cy - body_h * 0.5 };
@@ -236,21 +245,35 @@ pub const GaugeWidget = struct {
 
         c.cairo_save(cr);
 
-        // Feet: short thick curved outward legs with rounded ball tips.
-        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
-        c.cairo_set_line_width(cr, 5.0 * s);
+        // Feet: outlined curved legs with shaded interior and solid ball tips.
+        // Left leg.
         c.cairo_move_to(cr, cx - body_w * 0.32, cy + body_h * 0.42);
         c.cairo_curve_to(cr, cx - body_w * 0.36, cy + body_h * 0.45,
                               cx - body_w * 0.40, cy + body_h * 0.48,
                               cx - body_w * 0.42, cy + body_h * 0.50);
+        c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.10);
+        c.cairo_set_line_width(cr, 4.0 * s);
+        c.cairo_stroke_preserve(cr);
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+        c.cairo_set_line_width(cr, 1.5 * s);
         c.cairo_stroke(cr);
-        c.cairo_arc(cr, cx - body_w * 0.44, cy + body_h * 0.54, 4.8 * s, 0, 2.0 * std.math.pi);
-        c.cairo_fill(cr);
+
+        // Right leg.
         c.cairo_move_to(cr, cx + body_w * 0.32, cy + body_h * 0.42);
         c.cairo_curve_to(cr, cx + body_w * 0.36, cy + body_h * 0.45,
                               cx + body_w * 0.40, cy + body_h * 0.48,
                               cx + body_w * 0.42, cy + body_h * 0.50);
+        c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.10);
+        c.cairo_set_line_width(cr, 4.0 * s);
+        c.cairo_stroke_preserve(cr);
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+        c.cairo_set_line_width(cr, 1.5 * s);
         c.cairo_stroke(cr);
+
+        // Ball tips.
+        c.cairo_set_source_rgba(cr, outline_color[0], outline_color[1], outline_color[2], 0.75);
+        c.cairo_arc(cr, cx - body_w * 0.44, cy + body_h * 0.54, 4.8 * s, 0, 2.0 * std.math.pi);
+        c.cairo_fill(cr);
         c.cairo_arc(cr, cx + body_w * 0.44, cy + body_h * 0.54, 4.8 * s, 0, 2.0 * std.math.pi);
         c.cairo_fill(cr);
 
