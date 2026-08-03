@@ -437,6 +437,7 @@ pub fn run(self: *Self) !void {
     }
 
     fn drawLeftPeek(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
+        _ = h;
         const label = friendlyLabelFor(self.current_path);
         const name = if (label.len > w - 2) label[0 .. w - 2] else label;
         const pad_left = if (name.len + 2 >= w) 0 else (w - name.len) / 2;
