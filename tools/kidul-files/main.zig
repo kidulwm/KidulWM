@@ -182,9 +182,32 @@ const App = struct {
         entries.clearAndFree(allocator);
     }
 
-    pub fn run(self: *Self) !void {
+    var g_app: ?*App = null;
+
+fn handleSigWinch(signo: c_int) callconv(.c) void {
+    _ = signo;
+    if (g_app) |app| {
+        app.updateTermSize();
+        app.draw() catch {};
+    }
+}
+
+pub fn run(self: *Self) !void {
         enableRawMode();
         defer disableRawMode();
+        g_app = self;
+        defer g_app = null;
+
+        // Retry a few times to let Ghostty resize the pty before first draw.
+        var startup_delay: usize = 0;
+        while (startup_delay < 10) : (startup_delay += 1) {
+            self.updateTermSize();
+            if (self.term_h >= 30) break;
+            _ = c.usleep(50_000);
+        }
+
+        // Handle terminal resize.
+        _ = c.signal(c.SIGWINCH, handleSigWinch);
 
         while (self.running) {
             self.updateTermSize();
@@ -326,39 +349,32 @@ const App = struct {
 
         _ = c.fputs("\x1b[2J\x1b[H", stdout);
 
-        const margin = 2;
         const gap = 1;
-        const inner_w = if (w > 2 * margin + 4 * gap) w - 2 * margin - 4 * gap else 40;
+        const top_y = 1;
+        const card_y = 3;
+        const card_h = if (h > card_y + 2) h - card_y - 2 else 1;
 
-        const left_w = @max(10, inner_w / 8);
-        const right_w = @max(10, inner_w / 8);
-        const mid_w = if (inner_w > left_w + right_w + 2 * gap) inner_w - left_w - right_w - 2 * gap else 20;
-        const content_h = if (h > 6) h - 6 else 1;
+        const left_w = @max(12, w / 8);
+        const right_w = @max(12, w / 8);
+        const mid_w = if (w > left_w + right_w + 2 * gap + 4) w - left_w - right_w - 2 * gap - 4 else 20;
 
-        const left_x = margin + 1;
+        const left_x = 2;
         const mid_x = left_x + left_w + gap;
         const right_x = mid_x + mid_w + gap;
 
-        // Top bar.
-        self.drawPills(stdout, w, margin);
-        self.drawPath(stdout, w, margin + 2);
+        // Top: drive pills.
+        self.drawPills(stdout, w, top_y);
 
-        // Cards fill from below top bar to above bottom hint bar.
-        const center_y = margin + 4;
-        const left_y = center_y + (content_h / 5);
-        const left_h = content_h - (content_h / 5);
+        // Cards side by side, full height.
+        self.drawCard(stdout, left_x, card_y, left_w, card_h);
+        self.drawLeftPeek(stdout, left_x, card_y, left_w, card_h);
 
-        self.drawCard(stdout, left_x, left_y, left_w, left_h);
-        self.drawLeftPeek(stdout, left_x, left_y, left_w, left_h);
+        self.drawCard(stdout, mid_x, card_y, mid_w, card_h);
+        self.drawMiddle(stdout, mid_x, card_y, mid_w, card_h);
 
-        self.drawCard(stdout, mid_x, center_y, mid_w, content_h);
-        self.drawMiddle(stdout, mid_x, center_y, mid_w, content_h);
+        self.drawCard(stdout, right_x, card_y, right_w, card_h);
+        self.drawRightPeek(stdout, right_x, card_y, right_w, card_h);
 
-        self.drawCard(stdout, right_x, center_y, right_w, content_h);
-        self.drawRightPeek(stdout, right_x, center_y, right_w, content_h);
-
-        // Bottom hint bar.
-        _ = c.fprintf(stdout, "\x1b[%d;1H\x1b[2K\x1b[38;2;148;142;123m<- -> navigate | up/down select | right open | q quit\x1b[0m", h);
         _ = c.fflush(stdout);
     }
 
