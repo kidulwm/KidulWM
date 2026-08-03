@@ -465,13 +465,11 @@ pub fn run(self: *Self) !void {
             const entry = self.entries.items[idx];
             _ = c.fprintf(stdout, "\x1b[%d;%dH", screen_row, x + 1);
             if (idx == self.selected_index) {
-                _ = c.fputs("\x1b[7m", stdout);
+                _ = c.fputs("\x1b[38;5;222m", stdout);
             } else {
                 _ = c.fputs("\x1b[0m\x1b[38;5;252m", stdout);
             }
-            const marker: []const u8 = if (entry.is_dir) "/" else " ";
             const name = if (entry.name.len > w - 2) entry.name[0 .. w - 2] else entry.name;
-            _ = c.fwrite(marker.ptr, 1, marker.len, stdout);
             _ = c.fwrite(name.ptr, 1, name.len, stdout);
             _ = c.fputs("\x1b[0m", stdout);
         }

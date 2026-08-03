@@ -380,7 +380,7 @@ pub const Tray = struct {
         const items = try allocator.alloc(TrayItem, 8);
             items[0] = .{ .id = "assistant", .label = "Assistant", .action = .none };
             items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "/usr/local/bin/launch-kidul-browser.sh" } };
-            items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 ghostty --font-size=38 --background=0a0a0b -e /usr/bin/kidul-files" } };
+            items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 ghostty --font-size=36 --background=0a0a0b -e /usr/bin/kidul-files" } };
             items[3] = .{ .id = "games", .label = "Games", .action = .none };
             items[4] = .{ .id = "maps", .label = "Maps", .action = .none };
             items[5] = .{ .id = "media", .label = "Media", .action = .media_card };
@@ -2211,7 +2211,7 @@ pub const Tray = struct {
     fn launchKidulFiles(self: *Self, path: []const u8) void {
         _ = self;
         var buf: [1024]u8 = undefined;
-        const script = std.fmt.bufPrint(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 ghostty --font-size=38 --background=0a0a0b -e /usr/bin/kidul-files {s} &", .{path}) catch return;
+        const script = std.fmt.bufPrint(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 ghostty --font-size=36 --background=0a0a0b -e /usr/bin/kidul-files {s} &", .{path}) catch return;
         _ = c_std.system(script.ptr);
     }
 
