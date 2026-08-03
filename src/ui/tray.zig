@@ -13,6 +13,7 @@ const WeatherWidget = @import("./weather.zig").WeatherWidget;
 const MediaWidget = @import("./media.zig").MediaWidget;
 const NetworkWidget = @import("./network.zig").NetworkWidget;
 const NetworkState = @import("./network.zig").NetworkState;
+const FilesWidget = @import("./files_card.zig").FilesWidget;
 const NotificationWidget = @import("./notifications.zig").NotificationWidget;
 const notifications = @import("./notifications.zig");
 const GaugeWidget = @import("./gauge.zig").GaugeWidget;
@@ -114,6 +115,11 @@ const Action = union(enum) {
     toggle_tray,
     cycle_animation,
     media_card,
+    files_card,
+    spawn: []const u8,
+    spawn: []const u8,
+    spawn: []const u8,
+    spawn: []const u8,
     spawn: []const u8,
     settings_page: []const u8,
     none,
@@ -322,8 +328,10 @@ pub const Tray = struct {
     gauge: GaugeWidget,
     network: NetworkWidget,
     media: MediaWidget,
+    files: FilesWidget,
     media_card_open: bool = false,
     network_card_open: bool = false,
+    files_card_open: bool = false,
     network_card_last_state: NetworkState = .none,
     media_card_click: MediaWidget.CardClick = .{},
     card_tree: ?*wlr.SceneTree = null,
@@ -435,6 +443,7 @@ pub const Tray = struct {
             .gauge = GaugeWidget.init(allocator),
             .media = MediaWidget.init(allocator),
             .network = NetworkWidget.init(allocator),
+            .files = FilesWidget.init(allocator),
             .notifications = NotificationWidget.init(allocator),
             .card_shadow_tree = card_shadow_tree,
             .card_tree = card_tree,
@@ -472,6 +481,7 @@ pub const Tray = struct {
         self.gauge.deinit();
         self.media.deinit();
         self.network.deinit();
+        self.files.deinit();
         self.notifications.deinit();
         self.outputs.deinit(self.allocator);
         self.barry_pets.deinit(self.allocator);
@@ -759,14 +769,16 @@ pub const Tray = struct {
     }
 
     pub fn closeAllCards(self: *Self) void {
-        if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open and !self.network_card_open) return;
+        if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open and !self.network_card_open and !self.files_card_open) return;
         self.calendar_card_open = false;
         self.weather_card_open = false;
         self.media_card_open = false;
         self.network_card_open = false;
+        self.files_card_open = false;
         self.network.card.close();
         self.weather.card.open = false;
         self.media.setCardOpen(false);
+        self.files.card.open = false;
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
     }
@@ -845,7 +857,7 @@ pub const Tray = struct {
     }
 
     fn anyCardOpen(self: *const Self) bool {
-        return self.calendar_card_open or self.weather_card_open or self.media_card_open or self.network_card_open;
+        return self.calendar_card_open or self.weather_card_open or self.media_card_open or self.network_card_open or self.files_card_open;
     }
 
     pub fn selectNext(self: *Self) void {
@@ -3236,6 +3248,7 @@ pub const Tray = struct {
                 .calendar => self.drawClockCalendarCard(cr, @floatFromInt(w), @floatFromInt(h)),
                 .weather => self.weather.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
                 .network => self.network.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
+                .files => self.files.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
                 .media => blk: {
                     var click: MediaWidget.CardClick = .{};
                     self.media.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self), &click);
@@ -3306,11 +3319,13 @@ pub const Tray = struct {
         }
     }
 
-    const CardMode = enum { calendar, weather, media, network };
+    const CardMode = enum { calendar, weather, media, network, files };
 
     fn activeCardMode(self: *const Self) CardMode {
         if (self.weather_card_open) return .weather;
         if (self.media_card_open) return .media;
+        if (self.network_card_open) return .network;
+        if (self.files_card_open) return .files;
         return .calendar;
     }
 

@@ -3,37 +3,35 @@
 ## Current state
 
 - Branch: `main`
-- Last commit: `03aadff gauge: add RAM ampoule, widen left peek, refactor metric reads, archive wave gauge`
-- Working tree: clean
-- Build: `zig build -Doptimize=ReleaseSafe` passes on host
+- Last commit: `c81e813 kidul-files: text background good!`
+- Working tree: `src/ui/files_card.zig` (new), `src/ui/tray.zig` (modified)
+- Build: not yet tested with files card wiring
 
-## Left peek gauge layout (in progress)
+## Files card GUI (in progress)
 
-Current composition in `src/ui/gauge.zig`:
+New module `src/ui/files_card.zig` created:
+- `FilesWidget` with `renderCard()` for Cairo-based three-pane file manager.
+- Drive pills auto-detected from `/proc/self/mounts`.
+- 20/60/20 three-pane layout, focus-follow vertical centering, preview centering.
+- Font size 27.
 
-- **Top**: GPU / CPU mercury thermometers
-  - Thin glass tubes, round bottom bulb, liquid fill
-  - Fill color: border color at 55% alpha
-  - Empty space: % tint of border color
-  - Outline: unfocused border color, 3 px thick, 85% alpha
-  - Labels: GPU, CPU below each gauge
-  - Warning levels tint fill/outline burnt orange at 85%/90%/95%
+`src/ui/tray.zig` partially wired:
+- Imports `FilesWidget`.
+- Adds `files: FilesWidget` field, init/deinit.
+- Adds `files_card_open` flag.
+- Adds `.files` to `CardMode` enum.
+- Updates `closeAllCards`, `anyCardOpen`, `activeCardMode`.
+- Adds `.files => self.files.renderCard(...)` to card render switch.
 
-- **Middle**: RAM chemistry ampoule
-  - Round-bottom flask / sealed ampoule shape
-  - Fills from bottom with same liquid style
-  - Label: RAM
+## Still needed
 
-- **Bottom**: reserved for disk "vault" / treasure-chest silhouettes (not started)
-
-Archived: original wave-gauge implementation is preserved under `src/ui/gauge/archive/`.
-
-## VM state
-
-- VM: `fresh-one` (kidul@127.0.0.1:2260)
-- Deployed binary: `/usr/bin/kidulwm`
-- Service: `kidulwm.service`
-- Left peek split is widened to 6%/88%/6% via `src/core/style.zig`
+1. Add `files_card` variant to `TrayItem.Action` enum.
+2. Change Files tray item action from `.spawn` to `.files_card`.
+3. Add `toggleFilesCard()` method and handle `.files_card` in tray activation.
+4. Replace `launchKidulFiles()` disk-gauge spawn with opening the files card.
+5. Fix `src/ui/files_card.zig` compilation issues (check Zig syntax, `std.mem.splitAny` usage, `c.cairo_text_extents_t`, etc.).
+6. Build `zig build -Doptimize=ReleaseSafe`.
+7. Deploy to VM `fresh-one` and test.
 
 ## Build/deploy workflow
 
@@ -48,9 +46,3 @@ scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \
 ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \
   'sudo systemctl stop kidulwm && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm'
 ```
-
-## Pending decisions
-
-1. Disk gauge design: minimal vault / strongbox silhouettes for D1/D2 at bottom of left peek.
-2. Font: consider custom KidulWM typeface (classy, clear, slightly Fantasque Sans Mono / JetBrains inspired).
-3. Final polish pass on gauge colors, label sizing, and vertical spacing.
