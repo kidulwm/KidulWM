@@ -3,35 +3,46 @@
 ## Current state
 
 - Branch: `main`
-- Last commit: `c81e813 kidul-files: text background good!`
-- Working tree: `src/ui/files_card.zig` (new), `src/ui/tray.zig` (modified)
-- Build: not yet tested with files card wiring
+- Last commit: `a0b001b files card: full-featured file manager with click/key routing and shared card frame`
+- Working tree: clean
+- Build: passing (`zig build -Doptimize=ReleaseSafe`)
+- Deployed: `fresh-one` VM via scp/ssh
 
-## Files card GUI (in progress)
+## Files card GUI
 
-New module `src/ui/files_card.zig` created:
-- `FilesWidget` with `renderCard()` for Cairo-based three-pane file manager.
-- Drive pills auto-detected from `/proc/self/mounts`.
-- 20/60/20 three-pane layout, focus-follow vertical centering, preview centering.
-- Font size 27.
+`src/ui/files_card.zig` now provides a full-featured Cairo file manager card:
+- Two-pane layout: left file list (~55%), right preview pane (~45%).
+- Drive pills at top from `/proc/self/mounts`.
+- Breadcrumb path bar, folder/file glyphs, dotfile dimming, selected-row highlight.
+- Scrollbar when list overflows.
+- Preview pane shows filename and text-file preview.
+- Click inside the list selects/activates entries; clicks inside the preview pane are consumed.
+- Inner panels follow system `corner_style` (round/chamfer/square).
+- Outer card now uses the shared `card_frame` mat with system border/corners.
 
-`src/ui/tray.zig` partially wired:
-- Imports `FilesWidget`.
-- Adds `files: FilesWidget` field, init/deinit.
-- Adds `files_card_open` flag.
-- Adds `.files` to `CardMode` enum.
-- Updates `closeAllCards`, `anyCardOpen`, `activeCardMode`.
-- Adds `.files => self.files.renderCard(...)` to card render switch.
+`src/ui/tray.zig` wiring:
+- `files_card_open` flag and `files.card.open` kept in sync.
+- `toggleFilesCard()` opens/closes the card and refreshes state.
+- `handleFilesCardClick()` routes clicks to the card.
+- `handleFilesCardKey()` maps Up/Down/Return/BackSpace/Escape/Left.
+- `backToTray()` closes any card and returns focus to the tray.
 
-## Still needed
+Keyboard routing (`src/input/keyboard.zig`):
+- Card key block dispatches to the active card.
+- Fixed inverted `tray_select_next`/`tray_select_prev` mapping in `handleAction`.
 
-1. Add `files_card` variant to `TrayItem.Action` enum.
-2. Change Files tray item action from `.spawn` to `.files_card`.
-3. Add `toggleFilesCard()` method and handle `.files_card` in tray activation.
-4. Replace `launchKidulFiles()` disk-gauge spawn with opening the files card.
-5. Fix `src/ui/files_card.zig` compilation issues (check Zig syntax, `std.mem.splitAny` usage, `c.cairo_text_extents_t`, etc.).
-6. Build `zig build -Doptimize=ReleaseSafe`.
-7. Deploy to VM `fresh-one` and test.
+## Back-to-tray behavior
+
+All cards now support `Left` arrow to return to the tray from the card's leftmost focus:
+- Calendar, Weather, Files: `Left` → `backToTray()`.
+- Media card: `Left` while focused on the category pills → `backToTray()`.
+
+## Known issues / next steps
+
+1. Files card Up/Down arrow keys may not move selection for some users; verify whether the card receives key events. If still broken, add tracing in `handleFilesCardKey` and `keyboard.zig` card block.
+2. Click inside the card should no longer close it (any click inside card bounds is consumed).
+3. Card outer border/corners now follow the system `corner_style`; inner panes also follow it.
+4. Polish: drive pill interaction, directory history, larger click targets, sorting options, etc.
 
 ## Build/deploy workflow
 
