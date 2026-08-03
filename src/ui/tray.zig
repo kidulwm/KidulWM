@@ -2388,7 +2388,7 @@ pub const Tray = struct {
         // Click on a disk chest gauge launches the file manager on the home drive.
         if (self.pointInsideGaugeWidget(px, py)) |_| {
             self.closeAllCards();
-            self.launchKidulFiles("/home");
+            self.launchKidulFiles("/home/dad");
             return true;
         }
         // Click inside the currently open card:

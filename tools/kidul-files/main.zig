@@ -92,6 +92,12 @@ const App = struct {
         const mounts = readFileAlloc(allocator, "/proc/self/mounts") catch return;
         defer allocator.free(mounts);
 
+        const home_env = c.getenv("HOME");
+        const home_path: []const u8 = if (home_env != null and home_env[0] != 0)
+            std.mem.sliceTo(home_env, 0)
+        else
+            "/home";
+
         var lines = std.mem.splitAny(u8, mounts, "\n");
         var drive_idx: usize = 1;
 
@@ -103,19 +109,51 @@ const App = struct {
             const fs_type = it.next() orelse continue;
 
             if (isPseudoFs(fs_type)) continue;
-            if (std.mem.eql(u8, mount_point, "/")) continue;
-            if (isHomePath(mount_point)) {
-                try drives.append(allocator, .{ .name = try allocator.dupe(u8, "home"), .path = try allocator.dupe(u8, mount_point) });
-            } else {
-                const name = try std.fmt.allocPrint(allocator, "drive{d}", .{drive_idx});
+
+            const name = if (std.mem.eql(u8, mount_point, "/"))
+                try allocator.dupe(u8, "root")
+            else if (std.mem.eql(u8, mount_point, home_path))
+                try driveNameForHome(allocator, home_path)
+            else if (std.mem.startsWith(u8, mount_point, home_path) and mount_point.len > home_path.len and mount_point[home_path.len] == '/')
+                try driveNameForPath(allocator, mount_point)
+            else if (isHomePath(mount_point))
+                try allocator.dupe(u8, "home")
+            else blk: {
+                const n = try std.fmt.allocPrint(allocator, "drive{d}", .{drive_idx});
                 drive_idx += 1;
-                try drives.append(allocator, .{ .name = name, .path = try allocator.dupe(u8, mount_point) });
-            }
+                break :blk n;
+            };
+
+            try drives.append(allocator, .{ .name = name, .path = try allocator.dupe(u8, mount_point) });
         }
 
         if (drives.items.len == 0) {
             try drives.append(allocator, .{ .name = try allocator.dupe(u8, "home"), .path = try allocator.dupe(u8, "/home") });
         }
+    }
+
+    fn driveNameForHome(allocator: std.mem.Allocator, home_path: []const u8) ![]const u8 {
+        const basename = std.fs.path.basename(home_path);
+        if (basename.len > 0 and !std.mem.eql(u8, basename, "/")) {
+            return toLower(allocator, basename);
+        }
+        return allocator.dupe(u8, "home");
+    }
+
+    fn driveNameForPath(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+        const basename = std.fs.path.basename(path);
+        if (basename.len > 0 and !std.mem.eql(u8, basename, "/")) {
+            return toLower(allocator, basename);
+        }
+        return allocator.dupe(u8, "drive");
+    }
+
+    fn toLower(allocator: std.mem.Allocator, s: []const u8) ![]const u8 {
+        const out = try allocator.alloc(u8, s.len);
+        for (s, 0..) |ch, i| {
+            out[i] = std.ascii.toLower(ch);
+        }
+        return out;
     }
 
     fn isPseudoFs(fs_type: []const u8) bool {
@@ -204,6 +242,12 @@ pub fn run(self: *Self) !void {
             self.updateTermSize();
             if (self.term_h >= 30) break;
             _ = c.usleep(50_000);
+        }
+
+        const debug = c.fopen("/tmp/kidul-files-debug.log", "w");
+        if (debug) |d| {
+            _ = c.fprintf(d, "term_w=%zu term_h=%zu path=%s\n", self.term_w, self.term_h, self.current_path.ptr);
+            _ = c.fclose(d);
         }
 
         // Handle terminal resize.
@@ -334,9 +378,8 @@ pub fn run(self: *Self) !void {
         if (std.mem.eql(u8, path, "/")) return "root";
         if (std.mem.eql(u8, path, "/home")) return "home";
         if (std.mem.startsWith(u8, path, "/home/")) {
-            // /home/dad  ->  dad
+            // /home/dad  ->  dad, /home/dad/MyFolders -> dad/MyFolders
             const rest = path[6..];
-            if (std.mem.indexOf(u8, rest, "/")) |idx| return rest[0..idx];
             return rest;
         }
         return path;
@@ -350,97 +393,52 @@ pub fn run(self: *Self) !void {
         _ = c.fputs("\x1b[2J\x1b[H", stdout);
 
         const gap = 1;
-        const top_y = 1;
-        const card_y = 3;
-        const card_h = if (h > card_y + 2) h - card_y - 2 else 1;
+        const card_h = if (h > 0) h else 1;
+        const card_y = 1;
 
-        // Total usable width with 1-char margin each side.
-        const inner_w = if (w > 4) w - 4 else 40;
-        const left_w = @max(12, inner_w / 8);
-        const right_w = @max(12, inner_w / 8);
-        const mid_w = if (inner_w > left_w + right_w + 2 * gap) inner_w - left_w - right_w - 2 * gap else 20;
+        // 20/60/20 split, full terminal height.
+        const inner_w = if (w > 2 * gap + 2) w - 2 * gap - 2 else 40;
+        const side_w = @max(10, inner_w / 5);
+        const mid_w = if (inner_w > 2 * side_w + 2 * gap) inner_w - 2 * side_w - 2 * gap else 20;
 
         const left_x = 2;
-        const mid_x = left_x + left_w + gap;
+        const mid_x = left_x + side_w + gap;
         const right_x = mid_x + mid_w + gap;
 
-        // Top: drive pills.
-        self.drawPills(stdout, w, top_y);
+        self.drawPanel(stdout, left_x, card_y, side_w, card_h);
+        self.drawLeftPeek(stdout, left_x, card_y, side_w, card_h);
 
-        // Cards side by side, full height, solid filled backgrounds.
-        self.drawCard(stdout, left_x, card_y, left_w, card_h);
-        self.drawLeftPeek(stdout, left_x, card_y, left_w, card_h);
-
-        self.drawCard(stdout, mid_x, card_y, mid_w, card_h);
+        self.drawPanel(stdout, mid_x, card_y, mid_w, card_h);
         self.drawMiddle(stdout, mid_x, card_y, mid_w, card_h);
 
-        self.drawCard(stdout, right_x, card_y, right_w, card_h);
-        self.drawRightPeek(stdout, right_x, card_y, right_w, card_h);
+        self.drawPanel(stdout, right_x, card_y, side_w, card_h);
+        self.drawRightPeek(stdout, right_x, card_y, side_w, card_h);
 
         _ = c.fflush(stdout);
     }
 
-    fn drawCard(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, width: usize, height: usize) void {
+    fn drawPanel(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, width: usize, height: usize) void {
         _ = self;
-        const border = "\x1b[38;2;148;142;123m"; // #948e7b
-        const fill = "\x1b[48;2;40;38;34m";      // solid dark panel background
+        const fill = "\x1b[48;5;235m";
         const reset = "\x1b[0m";
+        const space_buf = "                                                                ";
         var row: usize = 0;
         while (row < height) : (row += 1) {
-            _ = c.fprintf(stdout, "\x1b[%d;%dH", y + row, x);
-            const is_edge = (row == 0 or row == height - 1);
-            // Left edge.
-            _ = c.fputs(border, stdout);
-            _ = c.fputc(if (is_edge) '─' else '│', stdout);
-            _ = c.fputs(reset, stdout);
-            // Interior filled with solid background.
-            _ = c.fputs(fill, stdout);
-            var col: usize = 0;
-            while (col < width - 2) : (col += 1) {
-                _ = c.fputc(if (is_edge) '─' else ' ', stdout);
-            }
-            _ = c.fputs(reset, stdout);
-            // Right edge.
-            _ = c.fputs(border, stdout);
-            _ = c.fputc(if (is_edge) '─' else '│', stdout);
+            _ = c.fprintf(stdout, "\x1b[%d;%dH%s", y + row, x, fill);
+            const w = if (width > space_buf.len) space_buf.len else width;
+            _ = c.fwrite(space_buf.ptr, 1, w, stdout);
             _ = c.fputs(reset, stdout);
         }
-    }
-
-    fn drawPills(self: *Self, stdout: *c.struct__IO_FILE, w: usize, y: usize) void {
-        var total: usize = 0;
-        for (self.drives.items) |drive| {
-            total += drive.name.len + 4;
-        }
-        const start_x = if (total + 2 >= w) 1 else (w - total) / 2 + 1;
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[2K", y, start_x);
-        for (self.drives.items, 0..) |drive, i| {
-            if (i == self.selected_drive) {
-                _ = c.fputs("\x1b[7m ", stdout);
-                _ = c.fwrite(drive.name.ptr, 1, drive.name.len, stdout);
-                _ = c.fputs(" \x1b[0m  ", stdout);
-            } else {
-                _ = c.fputs("\x1b[38;2;148;142;123m ", stdout);
-                _ = c.fwrite(drive.name.ptr, 1, drive.name.len, stdout);
-                _ = c.fputs(" \x1b[0m  ", stdout);
-            }
-        }
-    }
-
-    fn drawPath(self: *Self, stdout: *c.struct__IO_FILE, w: usize, y: usize) void {
-        const friendly = friendlyLabelFor(self.current_path);
-        const x = if (friendly.len + 2 >= w) 1 else (w - friendly.len) / 2;
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[2K\x1b[38;2;184;176;155m", y, x);
-        _ = c.fwrite(friendly.ptr, 1, friendly.len, stdout);
-        _ = c.fputs("\x1b[0m", stdout);
     }
 
     fn drawLeftPeek(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
         _ = h;
         const label = friendlyLabelFor(self.current_path);
-        const name = if (label.len > w - 4) label[0 .. w - 4] else label;
+        const name = if (label.len > w - 2) label[0 .. w - 2] else label;
         const pad_left = if (name.len + 2 >= w) 0 else (w - name.len) / 2;
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[38;2;184;176;155m", y + 1, x + 2);
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", y + 2, x + 1);
+        _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m\x1b[38;5;250m", y + 2, x + 1);
         if (pad_left > 0) {
             var p: usize = 0;
             while (p < pad_left) : (p += 1) _ = c.fputc(' ', stdout);
@@ -450,23 +448,29 @@ pub fn run(self: *Self) !void {
     }
 
     fn drawMiddle(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
-        var row: usize = 1;
-        while (row < h - 1) : (row += 1) {
-            const idx = self.scroll_offset + row - 1;
-            _ = c.fprintf(stdout, "\x1b[%d;%dH", y + row, x + 2);
-            if (idx >= self.entries.items.len) {
-                _ = c.fputs("\x1b[2K\x1b[0m", stdout);
-                continue;
-            }
+        const visible_rows = h - 2;
+        const count = self.entries.items.len;
+        const start_y = if (count < visible_rows) y + 1 + (visible_rows - count) / 2 else y + 1;
+        var row: usize = 0;
+        while (row < visible_rows) : (row += 1) {
+            const screen_row = start_y + row;
+            if (screen_row >= y + h - 1) break;
+            const idx = self.scroll_offset + row;
+            // Fill the whole row with panel background first.
+            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", screen_row, x + 1);
+            _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
+            _ = c.fputs("\x1b[0m", stdout);
+            if (idx >= self.entries.items.len) continue;
+            // Now draw the text on top.
+            _ = c.fprintf(stdout, "\x1b[%d;%dH", screen_row, x + 1);
             const entry = self.entries.items[idx];
             if (idx == self.selected_index) {
                 _ = c.fputs("\x1b[7m", stdout);
             } else {
-                _ = c.fputs("\x1b[0m", stdout);
+                _ = c.fputs("\x1b[0m\x1b[38;5;250m", stdout);
             }
             const marker: []const u8 = if (entry.is_dir) "/" else " ";
-            const name = if (entry.name.len > w - 4) entry.name[0 .. w - 4] else entry.name;
-            _ = c.fputs("\x1b[2K", stdout);
+            const name = if (entry.name.len > w - 2) entry.name[0 .. w - 2] else entry.name;
             _ = c.fwrite(marker.ptr, 1, marker.len, stdout);
             _ = c.fwrite(name.ptr, 1, name.len, stdout);
             _ = c.fputs("\x1b[0m", stdout);
@@ -475,25 +479,33 @@ pub fn run(self: *Self) !void {
 
     fn drawRightPeek(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
         const label = "preview";
+        const label_y = y + 1 + (h - 1) / 2;
         const label_x = if (label.len + 2 >= w) x + 1 else x + (w - label.len) / 2;
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;40;38;34m\x1b[38;2;106;99;84m%s\x1b[0m", y + 1, label_x, label);
-        var row: usize = 2;
+        // Fill label row with background, then label.
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", label_y, x + 1);
+        _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m\x1b[38;5;240m%s\x1b[0m", label_y, label_x, label);
+        var row: usize = 1;
         const lines = std.mem.splitAny(u8, self.preview_text.items, "\n");
         var it = lines;
         while (it.next()) |line| {
             if (row >= h - 1) break;
-            const trimmed = if (line.len > w - 6) line[0 .. w - 6] else line;
-            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[2K\x1b[48;2;40;38;34m\x1b[38;2;184;176;155m", y + row, x + 2);
+            const trimmed = if (line.len > w - 2) line[0 .. w - 2] else line;
+            // Fill row with background.
+            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", y + row, x + 1);
+            _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
+            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m\x1b[38;5;250m", y + row, x + 1);
             _ = c.fwrite(trimmed.ptr, 1, trimmed.len, stdout);
             _ = c.fputs("\x1b[0m", stdout);
             row += 1;
         }
         while (row < h - 1) : (row += 1) {
-            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[2K\x1b[48;2;40;38;34m\x1b[0m", y + row, x + 2);
+            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", y + row, x + 1);
+            _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
+            _ = c.fputs("\x1b[0m", stdout);
         }
     }
 };
-
 fn isImage(path_: []const u8) bool {
     const ext = std.fs.path.extension(path_);
     return std.mem.eql(u8, ext, ".png") or
@@ -511,10 +523,12 @@ fn enableRawMode() void {
     var raw = orig_termios;
     raw.c_lflag &= ~(@as(c_uint, c.ECHO | c.ICANON));
     _ = c.tcsetattr(0, c.TCSAFLUSH, &raw);
+    _ = c.fputs("\x1b[?25l", c.stdout);
 }
 
 fn disableRawMode() void {
     _ = c.tcsetattr(0, c.TCSAFLUSH, &orig_termios);
+    _ = c.fputs("\x1b[?25h", c.stdout);
 }
 
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
