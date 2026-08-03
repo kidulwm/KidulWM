@@ -779,6 +779,20 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    /// Close any open card and return focus to the tray, leaving the tray open for navigation.
+    pub fn backToTray(self: *Self) void {
+        self.closeAllCards();
+        if (!self.open) {
+            self.open = true;
+            self.pinned = true;
+            self.hovered = true;
+            self.scroll_offset = 0.0;
+            self.keepOpen();
+        }
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     pub fn toggleCard(self: *Self) void {
         if (self.weather_card_open) {
             self.weather_card_open = false;
@@ -869,6 +883,7 @@ pub const Tray = struct {
             self.network.card.close();
         }
         self.files_card_open = !self.files_card_open;
+        self.files.card.open = self.files_card_open;
         if (self.files_card_open) {
             self.card_mode = .files;
             self.setCardCloseDirection(.files);
@@ -1812,6 +1827,26 @@ pub const Tray = struct {
     }
 
 
+    fn handleFilesCardClick(self: *Self, px: f64, py: f64) bool {
+        if (!self.files_card_open) return false;
+        const box = self.card_box;
+        const w = self.card_last_w;
+        const h = self.card_last_h;
+        if (w <= 0 or h <= 0) return false;
+        const card_x = @as(f64, @floatFromInt(box.x + @divTrunc(box.width - w, 2)));
+        const card_y = @as(f64, @floatFromInt(box.y + @divTrunc(box.height - h, 2)));
+        const lx = px - card_x;
+        const ly = py - card_y;
+        if (lx < 0 or ly < 0 or lx > @as(f64, @floatFromInt(w)) or ly > @as(f64, @floatFromInt(h))) return false;
+        const scale = self.outputScaleForCard();
+        if (self.files.handleClick(lx, ly, @as(f64, @floatFromInt(w)), @as(f64, @floatFromInt(h)), scale)) {
+            self.requestUpdate();
+            self.host.request_frame(self.host.ctx);
+            return true;
+        }
+        return false;
+    }
+
     fn handleMediaCardClick(self: *Self, px: f64, py: f64) bool {
         if (!self.media_card_open) return false;
         const box = self.card_box;
@@ -1917,7 +1952,21 @@ pub const Tray = struct {
         if (!self.calendar_card_open) return false;
         switch (sym) {
             .Escape, .Return, .KP_Enter, .space => { self.closeAllCards(); return true; },
+            .Left => { self.backToTray(); return true; },
             else => return true,
+        }
+    }
+
+    pub fn handleFilesCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
+        if (!self.files_card_open) return false;
+        switch (sym) {
+            .Escape => { self.closeAllCards(); return true; },
+            .Up => { self.files.moveSelection(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Down => { self.files.moveSelection(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Return, .KP_Enter => { self.files.activateSelected(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .BackSpace => { self.files.goUp(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Left => { self.backToTray(); return true; },
+            else => return false,
         }
     }
 
@@ -1925,6 +1974,7 @@ pub const Tray = struct {
         if (!self.weather_card_open) return false;
         switch (sym) {
             .Escape, .Return, .KP_Enter, .space => { self.closeAllCards(); return true; },
+            .Left => { self.backToTray(); return true; },
             else => return true,
         }
     }
@@ -2024,7 +2074,7 @@ pub const Tray = struct {
         switch (sym) {
             .Left => {
                 switch (focused) {
-                    .category => self.media.moveCategory(-1),
+                    .category => self.backToTray(),
                     .subcategory => self.media.moveSubcategory(-1),
                     .search => self.media.moveSearchCaret(-1),
                     .result => self.media.moveResultSelection(-1),
@@ -2437,18 +2487,19 @@ pub const Tray = struct {
             const cbw = @as(f64, @floatFromInt(self.card_box.width));
             const cbh = @as(f64, @floatFromInt(self.card_box.height));
             if (px >= cbx and px < cbx + cbw and py >= cby and py < cby + cbh) {
+                // Any click inside an open card is consumed by the card. Per-card
+                // handlers may perform an selection/action; if they return false,
+                // the click is still a no-op rather than a dismiss.
                 if (self.calendar_card_open) {
-                    if (self.handleCardDateClick(px, py)) {
-                        return true;
-                    }
-                    self.closeAllCards();
+                    if (self.handleCardDateClick(px, py)) return true;
                     return true;
                 }
-                if (self.media_card_open and self.handleMediaCardClick(px, py)) {
+                if (self.media_card_open and self.handleMediaCardClick(px, py)) return true;
+                if (self.files_card_open) {
+                    _ = self.handleFilesCardClick(px, py);
                     return true;
                 }
                 // weather card (no interactive regions yet)
-                self.closeAllCards();
                 return true;
             }
             // network card (no interactive regions yet)
