@@ -117,10 +117,6 @@ const Action = union(enum) {
     media_card,
     files_card,
     spawn: []const u8,
-    spawn: []const u8,
-    spawn: []const u8,
-    spawn: []const u8,
-    spawn: []const u8,
     settings_page: []const u8,
     none,
 };
@@ -388,7 +384,7 @@ pub const Tray = struct {
         const items = try allocator.alloc(TrayItem, 8);
             items[0] = .{ .id = "assistant", .label = "Assistant", .action = .none };
             items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "/usr/local/bin/launch-kidul-browser.sh" } };
-            items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 ghostty --font-size=36 --background=0a0a0b -e /usr/bin/kidul-files" } };
+            items[2] = .{ .id = "files", .label = "Files", .action = .files_card };
             items[3] = .{ .id = "games", .label = "Games", .action = .none };
             items[4] = .{ .id = "maps", .label = "Maps", .action = .none };
             items[5] = .{ .id = "media", .label = "Media", .action = .media_card };
@@ -856,6 +852,32 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn toggleFilesCard(self: *Self) void {
+        if (self.calendar_card_open) {
+            self.calendar_card_open = false;
+        }
+        if (self.weather_card_open) {
+            self.weather_card_open = false;
+            self.weather.card.open = false;
+        }
+        if (self.media_card_open) {
+            self.media_card_open = false;
+            self.media.setCardOpen(false);
+        }
+        if (self.network_card_open) {
+            self.network_card_open = false;
+            self.network.card.close();
+        }
+        self.files_card_open = !self.files_card_open;
+        if (self.files_card_open) {
+            self.card_mode = .files;
+            self.setCardCloseDirection(.files);
+            self.files.refresh();
+        }
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     fn anyCardOpen(self: *const Self) bool {
         return self.calendar_card_open or self.weather_card_open or self.media_card_open or self.network_card_open or self.files_card_open;
     }
@@ -916,6 +938,9 @@ pub const Tray = struct {
             .toggle_tray => self.toggle(),
             .media_card => {
                 self.toggleMediaCard();
+            },
+            .files_card => {
+                self.toggleFilesCard();
             },
             .spawn => |cmd| {
                 if (cmd.len > 0) {
@@ -2397,10 +2422,9 @@ pub const Tray = struct {
             self.toggleMediaCard();
             return true;
         }
-        // Click on a disk chest gauge launches the file manager on the home drive.
+        // Click on a disk chest gauge opens the files card.
         if (self.pointInsideGaugeWidget(px, py)) |_| {
-            self.closeAllCards();
-            self.launchKidulFiles("/home/dad");
+            self.toggleFilesCard();
             return true;
         }
         // Click inside the currently open card:
@@ -3351,6 +3375,11 @@ pub const Tray = struct {
                 // Network widget lives at the top-right; close back toward it.
                 self.card_close_dx = mag;
                 self.card_close_dy = -mag;
+            },
+            .files => {
+                // Files card is opened from the disk gauge (left peek); close back toward it.
+                self.card_close_dx = -mag;
+                self.card_close_dy = mag;
             },
         }
     }

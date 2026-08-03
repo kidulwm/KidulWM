@@ -1,5 +1,11 @@
 const std = @import("std");
 const c = @import("dm").c;
+const c_std = @cImport({
+    @cDefine("_FORTIFY_SOURCE", "0");
+    @cInclude("stdio.h");
+    @cInclude("dirent.h");
+    @cInclude("sys/stat.h");
+});
 const style = @import("../core/style.zig");
 
 pub const FilesCard = struct {
@@ -23,25 +29,30 @@ pub const Drive = struct {
 pub const FilesWidget = struct {
     allocator: std.mem.Allocator,
     card: FilesCard = .{},
-    current_path: []const u8 = "/home/dad",
+    current_path: []const u8 = "/home/kidul",
     entries: std.ArrayList(Entry),
     drives: std.ArrayList(Drive),
     selected_index: usize = 0,
     scroll_offset: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) FilesWidget {
+        const current_path = allocator.dupe(u8, "/home/kidul") catch "/home/kidul";
         return .{
             .allocator = allocator,
-            .entries = std.ArrayList(Entry).init(allocator),
-            .drives = std.ArrayList(Drive).init(allocator),
+            .current_path = current_path,
+            .entries = .empty,
+            .drives = .empty,
         };
     }
 
     pub fn deinit(self: *FilesWidget) void {
         self.clearEntries();
         self.clearDrives();
-        self.entries.deinit();
-        self.drives.deinit();
+        self.entries.deinit(self.allocator);
+        self.drives.deinit(self.allocator);
+        if (self.current_path.ptr != "/home/kidul".ptr) {
+            self.allocator.free(self.current_path);
+        }
     }
 
     pub fn toggleCard(self: *FilesWidget) void {
@@ -87,11 +98,12 @@ pub const FilesWidget = struct {
 
     pub fn discoverDrives(self: *FilesWidget) void {
         self.clearDrives();
-        const file = std.fs.openFileAbsolute("/proc/self/mounts", .{}) catch return;
-        defer file.close();
-        const reader = file.reader();
-        var buf: [1024]u8 = undefined;
-        while (reader.readUntilDelimiterOrEof(&buf, '\n') catch break) |line| {
+        const file = c_std.fopen("/proc/self/mounts", "r") orelse return;
+        defer _ = c_std.fclose(file);
+        var line_buf: [1024]u8 = undefined;
+        while (c_std.fgets(&line_buf, line_buf.len, file) != null) {
+            const line_len = std.mem.indexOfScalar(u8, &line_buf, 0) orelse line_buf.len;
+            const line = std.mem.trimEnd(u8, line_buf[0..line_len], "\r\n");
             var it = std.mem.splitAny(u8, line, " ");
             const dev = it.next() orelse continue;
             const mount = it.next() orelse continue;
@@ -108,7 +120,7 @@ pub const FilesWidget = struct {
                     self.allocator.free(mount_copy);
                     continue;
                 };
-                self.drives.append(.{ .label = label_copy, .mount = mount_copy }) catch {
+                self.drives.append(self.allocator, .{ .label = label_copy, .mount = mount_copy }) catch {
                     self.allocator.free(mount_copy);
                     self.allocator.free(label_copy);
                 };
@@ -118,16 +130,23 @@ pub const FilesWidget = struct {
 
     pub fn loadDirectory(self: *FilesWidget, path: []const u8) !void {
         self.clearEntries();
-        var dir = std.fs.openDirAbsolute(path, .{ .iterate = true }) catch return;
-        defer dir.close();
-        var it = dir.iterate();
-        while (try it.next()) |entry| {
-            const name = try self.allocator.dupe(u8, entry.name);
-            self.entries.append(.{ .name = name, .is_dir = entry.kind == .directory }) catch {
-                self.allocator.free(name);
+        var path_z: [1024]u8 = undefined;
+        const nt = std.fmt.bufPrintZ(&path_z, "{s}", .{path}) catch return;
+        const dir = c_std.opendir(nt.ptr) orelse return;
+        defer _ = c_std.closedir(dir);
+        while (true) {
+            const entry = c_std.readdir(dir) orelse break;
+            const name_ptr: [*:0]u8 = @ptrCast(&entry.*.d_name[0]);
+            const name = std.mem.span(name_ptr);
+            if (std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..")) continue;
+            const full_path = std.fs.path.join(self.allocator, &.{ path, name }) catch continue;
+            defer self.allocator.free(full_path);
+            const is_dir = isDir(full_path);
+            const name_copy = self.allocator.dupe(u8, name) catch continue;
+            self.entries.append(self.allocator, .{ .name = name_copy, .is_dir = is_dir }) catch {
+                self.allocator.free(name_copy);
             };
         }
-        // Simple alphabetical sort, directories first.
         std.mem.sort(Entry, self.entries.items, {}, cmpEntry);
         self.selected_index = 0;
         self.scroll_offset = 0;
@@ -152,12 +171,18 @@ pub const FilesWidget = struct {
     }
 
     pub fn renderCard(self: *FilesWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32) void {
-        const scale_f: f64 = @floatFromInt(scale);
-        const bg = style_.color_background.toF64();
+        const scale_f: f64 = @floatCast(scale);
+        _ = style_.color_background.toF64();
         const gold = style_.color_border_focused.toF64();
         const muted = style_.color_text_muted.toF64();
-        const text = style_.color_text.toF64();
-        const font_size = 27.0 * scale_f;
+        const text = style_.tray_text_focused_color.toF64();
+        const font_size = 33.0 * scale_f;
+
+        // Fully transparent card background — files live in space.
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
         c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
         c.cairo_set_font_size(cr, font_size);
@@ -176,15 +201,10 @@ pub const FilesWidget = struct {
             const extents = textExtents(cr, drive.label);
             const pill_w = extents.width + 24.0 * scale_f;
             if (pill_x + pill_w > w_d - pad) break;
-            roundedRect(cr, pill_x, pills_y, pill_w, pill_h, pill_h * 0.25);
-            c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.12);
-            c.cairo_fill_preserve(cr);
-            c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.45);
-            c.cairo_set_line_width(cr, 1.0);
-            c.cairo_stroke(cr);
+            drawShadedButton(cr, pill_x, pills_y, pill_w, pill_h, pill_h * 0.25, gold, 0.35);
             c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
             c.cairo_move_to(cr, pill_x + (pill_w - extents.width) * 0.5, pills_y + (pill_h + extents.height) * 0.5 - 4.0 * scale_f);
-            c.cairo_show_text(cr, drive.label.ptr);
+            showTextZ(cr, drive.label);
             pill_x += pill_w + gap;
         }
 
@@ -194,36 +214,45 @@ pub const FilesWidget = struct {
         const left_x = pad;
         const mid_x = left_x + side_w + gap;
         const right_x = mid_x + mid_w + gap;
-        const corner = 10.0 * scale_f;
-
-        // Left pane.
-        drawPane(cr, bg, left_x, content_top, side_w, content_h, corner);
+        // Left pane label.
         const left_label = friendlyLabelFor(self.current_path);
         const left_extents = textExtents(cr, left_label);
+        const left_label_x = left_x + (side_w - left_extents.width) * 0.5;
+        const left_button_h = left_extents.height + 14.0 * scale_f;
+        const left_button_y = content_top + left_extents.height * 0.5 + 8.0 * scale_f;
+        drawShadedButton(cr, left_label_x - 8.0 * scale_f, left_button_y, left_extents.width + 16.0 * scale_f, left_button_h, 8.0 * scale_f, gold, 0.20);
         c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c.cairo_move_to(cr, left_x + (side_w - left_extents.width) * 0.5, content_top + 32.0 * scale_f);
-        c.cairo_show_text(cr, left_label.ptr);
+        c.cairo_move_to(cr, left_label_x, left_button_y + left_button_h * 0.5 + left_extents.height * 0.35);
+        showTextZ(cr, left_label);
 
         // Middle pane.
-        drawPane(cr, bg, mid_x, content_top, mid_w, content_h, corner);
         self.drawMiddle(cr, mid_x, content_top, mid_w, content_h, scale_f, text, muted);
 
-        // Right pane.
-        drawPane(cr, bg, right_x, content_top, side_w, content_h, corner);
+        // Right pane label.
         const preview_label = "preview";
         const preview_extents = textExtents(cr, preview_label);
+        const preview_label_x = right_x + (side_w - preview_extents.width) * 0.5;
+        drawShadedButton(cr, preview_label_x - 8.0 * scale_f, content_top + content_h * 0.5 - preview_extents.height * 0.5, preview_extents.width + 16.0 * scale_f, preview_extents.height + 16.0 * scale_f, 8.0 * scale_f, gold, 0.20);
         c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-        c.cairo_move_to(cr, right_x + (side_w - preview_extents.width) * 0.5, content_top + content_h * 0.5 + preview_extents.height * 0.5);
-        c.cairo_show_text(cr, preview_label.ptr);
+        c.cairo_move_to(cr, preview_label_x, content_top + content_h * 0.5 + preview_extents.height * 0.5);
+        showTextZ(cr, preview_label);
     }
 
     fn drawMiddle(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, text_color: [4]f64, muted_color: [4]f64) void {
-        const row_h = 32.0 * scale_f;
+        const row_h = 46.0 * scale_f;
         const visible_rows = @as(usize, @intFromFloat(@floor(h / row_h)));
         if (visible_rows == 0) return;
 
         const count = self.entries.items.len;
         if (count == 0) return;
+
+        // Find the longest entry width to make all buttons the same size.
+        var max_text_w: f64 = 0.0;
+        for (self.entries.items) |entry| {
+            const e = textExtents(cr, entry.name);
+            if (e.width > max_text_w) max_text_w = e.width;
+        }
+        const button_w = max_text_w + 48.0 * scale_f;
 
         // Keep selected item centered when possible.
         const target = @min(self.selected_index, count - 1);
@@ -246,21 +275,55 @@ pub const FilesWidget = struct {
             const row_y = y + @as(f64, @floatFromInt(i)) * row_h + row_h * 0.5;
             const extents = textExtents(cr, entry.name);
             const text_x = x + (w - extents.width) * 0.5;
-            if (idx == self.selected_index) {
+            const button_x = x + (w - button_w) * 0.5;
+            const is_selected = idx == self.selected_index;
+            const button_h = row_h * 0.95;
+            const button_y = row_y - button_h * 0.5;
+            drawShadedButton(cr, button_x, button_y, button_w, button_h, 10.0 * scale_f, muted_color, if (is_selected) 0.40 else 0.20);
+            if (is_selected) {
                 c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
             } else {
                 c.cairo_set_source_rgba(cr, muted_color[0], muted_color[1], muted_color[2], muted_color[3]);
             }
-            c.cairo_move_to(cr, text_x, row_y + extents.height * 0.25);
-            c.cairo_show_text(cr, entry.name.ptr);
+            c.cairo_move_to(cr, text_x, button_y + button_h * 0.5 + extents.height * 0.35);
+            showTextZ(cr, entry.name);
         }
     }
 };
 
-fn drawPane(cr: *c.cairo_t, bg: [4]f64, x: f64, y: f64, w: f64, h: f64, r: f64) void {
+fn isDir(path: []const u8) bool {
+    var path_z: [1024]u8 = undefined;
+    const nt = std.fmt.bufPrintZ(&path_z, "{s}", .{path}) catch return false;
+    var stat_buf: c_std.struct_stat = undefined;
+    if (c_std.stat(nt.ptr, &stat_buf) != 0) return false;
+    return (stat_buf.st_mode & c_std.S_IFMT) == c_std.S_IFDIR;
+}
+
+fn drawShadedButton(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64, border: [4]f64, fill_alpha: f64) void {
+    // 90% dark grey / near-black button background.
     roundedRect(cr, x, y, w, h, r);
-    c.cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], 0.95);
-    c.cairo_fill(cr);
+    c.cairo_set_source_rgba(cr, 0.06, 0.06, 0.06, 0.90);
+    c.cairo_fill_preserve(cr);
+    // Inner shading gradient for depth.
+    const grad = c.cairo_pattern_create_linear(x, y, x, y + h);
+    defer c.cairo_pattern_destroy(grad);
+    c.cairo_pattern_add_color_stop_rgba(grad, 0.0, 0.10, 0.10, 0.10, 0.55);
+    c.cairo_pattern_add_color_stop_rgba(grad, 0.5, 0.06, 0.06, 0.06, 0.20);
+    c.cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.02, 0.02, 0.02, 0.55);
+    c.cairo_set_source(cr, grad);
+    c.cairo_fill_preserve(cr);
+    // Goldy border.
+    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], border[3]);
+    c.cairo_set_line_width(cr, 1.0);
+    c.cairo_stroke(cr);
+    // Subtle top highlight rim.
+    c.cairo_new_sub_path(cr);
+    c.cairo_arc(cr, x + w - r, y + r, r, -std.math.pi / 2.0, 0.0);
+    c.cairo_arc(cr, x + r, y + r, r, -std.math.pi, -std.math.pi / 2.0);
+    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
+    c.cairo_set_line_width(cr, 1.0);
+    c.cairo_stroke(cr);
+    _ = fill_alpha;
 }
 
 fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
@@ -277,10 +340,28 @@ fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
     c.cairo_close_path(cr);
 }
 
-fn textExtents(cr: *c.cairo_t, text_: []const u8) c.cairo_text_extents_t {
+fn textExtents(cr: *c.cairo_t, text: []const u8) c.cairo_text_extents_t {
     var ext: c.cairo_text_extents_t = undefined;
-    c.cairo_text_extents(cr, text_.ptr, &ext);
+    var buf: [1024]u8 = undefined;
+    const nt = std.fmt.bufPrintZ(&buf, "{s}", .{text}) catch blk: {
+        const len = @min(text.len, buf.len - 1);
+        @memcpy(buf[0..len], text[0..len]);
+        buf[len] = 0;
+        break :blk buf[0..len :0];
+    };
+    c.cairo_text_extents(cr, nt.ptr, &ext);
     return ext;
+}
+
+fn showTextZ(cr: *c.cairo_t, text: []const u8) void {
+    var buf: [1024]u8 = undefined;
+    const nt = std.fmt.bufPrintZ(&buf, "{s}", .{text}) catch blk: {
+        const len = @min(text.len, buf.len - 1);
+        @memcpy(buf[0..len], text[0..len]);
+        buf[len] = 0;
+        break :blk buf[0..len :0];
+    };
+    c.cairo_show_text(cr, nt.ptr);
 }
 
 fn friendlyLabelFor(path: []const u8) []const u8 {
