@@ -442,7 +442,7 @@ pub fn run(self: *Self) !void {
         const pad_left = if (name.len + 2 >= w) 0 else (w - name.len) / 2;
         const label_y = y + (h / 2);
         fillRow(stdout, x, label_y, w);
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;250m", label_y, x + 1);
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;222m", label_y, x + 1);
         if (pad_left > 0) {
             var p: usize = 0;
             while (p < pad_left) : (p += 1) _ = c.fputc(' ', stdout);
@@ -465,11 +465,16 @@ pub fn run(self: *Self) !void {
             const entry = self.entries.items[idx];
             _ = c.fprintf(stdout, "\x1b[%d;%dH", screen_row, x + 1);
             if (idx == self.selected_index) {
-                _ = c.fputs("\x1b[38;5;222m", stdout);
+                _ = c.fputs("\x1b[48;2;34;36;37m\x1b[38;5;255m", stdout);
             } else {
-                _ = c.fputs("\x1b[0m\x1b[38;5;252m", stdout);
+                _ = c.fputs("\x1b[48;2;34;36;37m\x1b[38;5;245m", stdout);
             }
             const name = if (entry.name.len > w - 2) entry.name[0 .. w - 2] else entry.name;
+            const pad_left = if (name.len + 2 >= w) 0 else (w - name.len) / 2;
+            if (pad_left > 0) {
+                var p: usize = 0;
+                while (p < pad_left) : (p += 1) _ = c.fputc(' ', stdout);
+            }
             _ = c.fwrite(name.ptr, 1, name.len, stdout);
             _ = c.fputs("\x1b[0m", stdout);
         }
@@ -478,9 +483,15 @@ pub fn run(self: *Self) !void {
     fn drawRightPeek(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
         const label = "preview";
         const label_y = y + (h / 2);
-        const label_x = if (label.len + 2 >= w) x + 1 else x + (w - label.len) / 2;
+        const pad_left = if (label.len + 2 >= w) 0 else (w - label.len) / 2;
         fillRow(stdout, x, label_y, w);
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;240m%s\x1b[0m", label_y, label_x, label);
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;240m", label_y, x + 1);
+        if (pad_left > 0) {
+            var p: usize = 0;
+            while (p < pad_left) : (p += 1) _ = c.fputc(' ', stdout);
+        }
+        _ = c.fwrite(label.ptr, 1, label.len, stdout);
+        _ = c.fputs("\x1b[0m", stdout);
         var row: usize = 1;
         const lines = std.mem.splitAny(u8, self.preview_text.items, "\n");
         var it = lines;
@@ -488,7 +499,7 @@ pub fn run(self: *Self) !void {
             if (row >= h - 1) break;
             const trimmed = if (line.len > w - 2) line[0 .. w - 2] else line;
             fillRow(stdout, x, y + row, w);
-            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;252m", y + row, x + 1);
+            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;245m", y + row, x + 1);
             _ = c.fwrite(trimmed.ptr, 1, trimmed.len, stdout);
             _ = c.fputs("\x1b[0m", stdout);
             row += 1;
