@@ -393,10 +393,10 @@ pub fn run(self: *Self) !void {
         _ = c.fputs("\x1b[2J\x1b[H", stdout);
 
         const gap = 1;
-        const card_h = if (h > 0) h else 1;
         const card_y = 1;
+        const card_h = if (h > 0) h else 1;
 
-        // 20/60/20 split, full terminal height.
+        // 20/60/20 split.
         const inner_w = if (w > 2 * gap + 2) w - 2 * gap - 2 else 40;
         const side_w = @max(10, inner_w / 5);
         const mid_w = if (inner_w > 2 * side_w + 2 * gap) inner_w - 2 * side_w - 2 * gap else 20;
@@ -417,28 +417,32 @@ pub fn run(self: *Self) !void {
         _ = c.fflush(stdout);
     }
 
+    fn fillRow(stdout: *c.struct__IO_FILE, x: usize, y: usize, width: usize) void {
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m", y, x);
+        const space_buf = "                                                                        ";
+        var remaining = width;
+        while (remaining > 0) : (remaining -= if (remaining > space_buf.len) space_buf.len else remaining) {
+            const n = if (remaining > space_buf.len) space_buf.len else remaining;
+            _ = c.fwrite(space_buf.ptr, 1, n, stdout);
+        }
+        _ = c.fputs("\x1b[0m", stdout);
+    }
+
     fn drawPanel(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, width: usize, height: usize) void {
         _ = self;
-        const fill = "\x1b[48;5;235m";
-        const reset = "\x1b[0m";
-        const space_buf = "                                                                ";
         var row: usize = 0;
         while (row < height) : (row += 1) {
-            _ = c.fprintf(stdout, "\x1b[%d;%dH%s", y + row, x, fill);
-            const w = if (width > space_buf.len) space_buf.len else width;
-            _ = c.fwrite(space_buf.ptr, 1, w, stdout);
-            _ = c.fputs(reset, stdout);
+            fillRow(stdout, x, y + row, width);
         }
     }
 
     fn drawLeftPeek(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
-        _ = h;
         const label = friendlyLabelFor(self.current_path);
         const name = if (label.len > w - 2) label[0 .. w - 2] else label;
         const pad_left = if (name.len + 2 >= w) 0 else (w - name.len) / 2;
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", y + 2, x + 1);
-        _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m\x1b[38;5;250m", y + 2, x + 1);
+        const label_y = y + (h / 2);
+        fillRow(stdout, x, label_y, w);
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;250m", label_y, x + 1);
         if (pad_left > 0) {
             var p: usize = 0;
             while (p < pad_left) : (p += 1) _ = c.fputc(' ', stdout);
@@ -448,26 +452,22 @@ pub fn run(self: *Self) !void {
     }
 
     fn drawMiddle(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
-        const visible_rows = h - 2;
+        const visible_rows = if (h > 2) h - 2 else 1;
         const count = self.entries.items.len;
         const start_y = if (count < visible_rows) y + 1 + (visible_rows - count) / 2 else y + 1;
         var row: usize = 0;
         while (row < visible_rows) : (row += 1) {
             const screen_row = start_y + row;
-            if (screen_row >= y + h - 1) break;
+            if (screen_row >= y + h) break;
             const idx = self.scroll_offset + row;
-            // Fill the whole row with panel background first.
-            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", screen_row, x + 1);
-            _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
-            _ = c.fputs("\x1b[0m", stdout);
+            fillRow(stdout, x, screen_row, w);
             if (idx >= self.entries.items.len) continue;
-            // Now draw the text on top.
-            _ = c.fprintf(stdout, "\x1b[%d;%dH", screen_row, x + 1);
             const entry = self.entries.items[idx];
+            _ = c.fprintf(stdout, "\x1b[%d;%dH", screen_row, x + 1);
             if (idx == self.selected_index) {
                 _ = c.fputs("\x1b[7m", stdout);
             } else {
-                _ = c.fputs("\x1b[0m\x1b[38;5;250m", stdout);
+                _ = c.fputs("\x1b[0m\x1b[38;5;252m", stdout);
             }
             const marker: []const u8 = if (entry.is_dir) "/" else " ";
             const name = if (entry.name.len > w - 2) entry.name[0 .. w - 2] else entry.name;
@@ -479,30 +479,24 @@ pub fn run(self: *Self) !void {
 
     fn drawRightPeek(self: *Self, stdout: *c.struct__IO_FILE, x: usize, y: usize, w: usize, h: usize) void {
         const label = "preview";
-        const label_y = y + 1 + (h - 1) / 2;
+        const label_y = y + (h / 2);
         const label_x = if (label.len + 2 >= w) x + 1 else x + (w - label.len) / 2;
-        // Fill label row with background, then label.
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", label_y, x + 1);
-        _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
-        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m\x1b[38;5;240m%s\x1b[0m", label_y, label_x, label);
+        fillRow(stdout, x, label_y, w);
+        _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;240m%s\x1b[0m", label_y, label_x, label);
         var row: usize = 1;
         const lines = std.mem.splitAny(u8, self.preview_text.items, "\n");
         var it = lines;
         while (it.next()) |line| {
             if (row >= h - 1) break;
             const trimmed = if (line.len > w - 2) line[0 .. w - 2] else line;
-            // Fill row with background.
-            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", y + row, x + 1);
-            _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
-            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m\x1b[38;5;250m", y + row, x + 1);
+            fillRow(stdout, x, y + row, w);
+            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;2;34;36;37m\x1b[38;5;252m", y + row, x + 1);
             _ = c.fwrite(trimmed.ptr, 1, trimmed.len, stdout);
             _ = c.fputs("\x1b[0m", stdout);
             row += 1;
         }
         while (row < h - 1) : (row += 1) {
-            _ = c.fprintf(stdout, "\x1b[%d;%dH\x1b[48;5;235m", y + row, x + 1);
-            _ = c.fwrite("                                                            ".ptr, 1, w, stdout);
-            _ = c.fputs("\x1b[0m", stdout);
+            fillRow(stdout, x, y + row, w);
         }
     }
 };
