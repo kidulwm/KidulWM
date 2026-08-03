@@ -4,6 +4,7 @@ const wlr = @import("wlroots");
 const c = @import("dm").c;
 const c_std = @cImport({
     @cInclude("stdlib.h");
+    @cInclude("unistd.h");
 });
 const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
@@ -183,6 +184,8 @@ const PerOutputGauge = struct {
     last_x: i32 = 0,
     last_y: i32 = 0,
     click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    chest0_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    chest1_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
     last_scale: f32 = 0.0,
     last_theme_generation: u32 = 0,
 };
@@ -377,7 +380,7 @@ pub const Tray = struct {
         const items = try allocator.alloc(TrayItem, 8);
             items[0] = .{ .id = "assistant", .label = "Assistant", .action = .none };
             items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "/usr/local/bin/launch-kidul-browser.sh" } };
-            items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "foot -e yazi" } };
+            items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 ghostty -e /usr/bin/kidul-files" } };
             items[3] = .{ .id = "games", .label = "Games", .action = .none };
             items[4] = .{ .id = "maps", .label = "Maps", .action = .none };
             items[5] = .{ .id = "media", .label = "Media", .action = .media_card };
@@ -904,8 +907,8 @@ pub const Tray = struct {
             },
             .spawn => |cmd| {
                 if (cmd.len > 0) {
-                    var buf: [512]u8 = undefined;
-                    const script = std.fmt.bufPrint(&buf, "{s} &", .{cmd}) catch cmd;
+                    var buf: [1024]u8 = undefined;
+                    const script = std.fmt.bufPrint(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 {s} &", .{cmd}) catch cmd;
                     _ = c_std.system(script.ptr);
                 }
             },
@@ -2174,6 +2177,44 @@ pub const Tray = struct {
         return false;
     }
 
+    fn pointInsideGaugeWidget(self: *const Self, px: f64, py: f64) ?usize {
+        for (self.gauge_widgets.items) |w| {
+            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+            const b = w.click_box;
+            const oh: i32 = widget_hit_overhang;
+            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
+                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
+                py >= @as(f64, @floatFromInt(b.y - oh)) and
+                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh)))
+            {
+                if (w.chest0_box.width > 0 and w.chest0_box.height > 0 and
+                    px >= @as(f64, @floatFromInt(w.chest0_box.x)) and
+                    px < @as(f64, @floatFromInt(w.chest0_box.x + w.chest0_box.width)) and
+                    py >= @as(f64, @floatFromInt(w.chest0_box.y)) and
+                    py < @as(f64, @floatFromInt(w.chest0_box.y + w.chest0_box.height)))
+                {
+                    return 0;
+                }
+                if (w.chest1_box.width > 0 and w.chest1_box.height > 0 and
+                    px >= @as(f64, @floatFromInt(w.chest1_box.x)) and
+                    px < @as(f64, @floatFromInt(w.chest1_box.x + w.chest1_box.width)) and
+                    py >= @as(f64, @floatFromInt(w.chest1_box.y)) and
+                    py < @as(f64, @floatFromInt(w.chest1_box.y + w.chest1_box.height)))
+                {
+                    return 1;
+                }
+            }
+        }
+        return null;
+    }
+
+    fn launchKidulFiles(self: *Self, path: []const u8) void {
+        _ = self;
+        var buf: [1024]u8 = undefined;
+        const script = std.fmt.bufPrint(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 ghostty -e /usr/bin/kidul-files {s} &", .{path}) catch return;
+        _ = c_std.system(script.ptr);
+    }
+
     fn pointInsidePet(self: *const Self, px: f64, py: f64) bool {
         for (self.barry_pets.items) |pet| {
             const pw = pet.last_w;
@@ -2188,7 +2229,6 @@ pub const Tray = struct {
         }
         return false;
     }
-
 
     fn fit_and_draw(
         cr: *c.cairo_t,
@@ -2343,6 +2383,12 @@ pub const Tray = struct {
         if (self.pointInsideMediaWidget(px, py)) {
             if (self.calendar_card_open or self.weather_card_open) self.closeAllCards();
             self.toggleMediaCard();
+            return true;
+        }
+        // Click on a disk chest gauge launches the file manager on the home drive.
+        if (self.pointInsideGaugeWidget(px, py)) |_| {
+            self.closeAllCards();
+            self.launchKidulFiles("/home");
             return true;
         }
         // Click inside the currently open card:
@@ -2879,6 +2925,29 @@ pub const Tray = struct {
         widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
         widget.last_scale = scale;
         widget.last_theme_generation = theme_gen;
+
+        // Compute sub-click-boxes for the two disk chest gauges.
+        // These mirror the layout in gauge.zig renderChestGauges().
+        const s_f = @as(f64, scale);
+        const chest_w: f64 = 48.6 * s_f;
+        const chest_h: f64 = 34.2 * s_f;
+        const gap: f64 = 67.0 * s_f;
+        const top0: f64 = 473.0 * s_f;
+        const top1: f64 = top0 + (chest_h + gap);
+        const cx = @as(f64, @floatFromInt(pill_x)) + @as(f64, @floatFromInt(pill_w)) * 0.5;
+        const left = cx - chest_w * 0.5;
+        widget.chest0_box = .{
+            .x = @intFromFloat(left),
+            .y = @intFromFloat(@as(f64, @floatFromInt(pill_y)) + top0),
+            .width = @intFromFloat(chest_w),
+            .height = @intFromFloat(chest_h),
+        };
+        widget.chest1_box = .{
+            .x = @intFromFloat(left),
+            .y = @intFromFloat(@as(f64, @floatFromInt(pill_y)) + top1),
+            .width = @intFromFloat(chest_w),
+            .height = @intFromFloat(chest_h),
+        };
 
         const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
         const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));

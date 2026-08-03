@@ -514,6 +514,13 @@ pub const Window = struct {
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
+        // Detach all listeners now; wlroots asserts signal lists are empty
+        // when the toplevel/surface objects are later destroyed.
+        window.set_title.link.remove();
+        window.set_app_id.link.remove();
+        window.map.link.remove();
+        window.unmap.link.remove();
+        window.commit.link.remove();
         window.server.requestLayout();
     }
 
@@ -523,15 +530,6 @@ pub const Window = struct {
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
-        // Remove all listeners. wlroots asserts that toplevel signal lists are
-        // empty before freeing the object, so leaving set_title/set_app_id
-        // attached triggers an assertion.
-        window.destroy.link.remove();
-        window.set_title.link.remove();
-        window.set_app_id.link.remove();
-        window.map.link.remove();
-        window.unmap.link.remove();
-        window.commit.link.remove();
         window.server.deckForWindow(window).removeWindow(window.id);
         window.link.remove();
         window.server.allocator.destroy(window);

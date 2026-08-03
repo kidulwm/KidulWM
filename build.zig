@@ -162,6 +162,15 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run KidulWM");
     run_step.dependOn(&run_cmd.step);
 
+    const files_mod = b.createModule(.{
+        .root_source_file = b.path("tools/kidul-files/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const files_exe = b.addExecutable(.{ .name = "kidul-files", .root_module = files_mod });
+    b.installArtifact(files_exe);
+
     const layout_tests = b.addTest(.{
         .name = "layout-test",
         .root_module = b.createModule(.{
