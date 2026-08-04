@@ -626,67 +626,23 @@ pub const FilesWidget = struct {
     }
 
     fn drawPreview(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, font_size: f64, muted: [4]f64, text_color: [4]f64) void {
-        const margin: f64 = 16.0 * scale_f;
-        const title_size = font_size;
-        const body_size = font_size;
+        _ = font_size;
+        // If a folder is selected, show a large stylised folder icon.
+        if (self.selected_index < self.entries.items.len and self.entries.items[self.selected_index].is_dir) {
+            drawFolderIcon(cr, x, y, w, h, scale_f, text_color, muted);
+            return;
+        }
 
-        c.cairo_set_font_size(cr, title_size);
-        if (self.preview_path) |pp| {
-            const name = std.fs.path.basename(pp);
-            const title = if (name.len > 0) name else "...";
-            const ext = textExtents(cr, title);
-            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
-            c.cairo_move_to(cr, x + (w - ext.width) * 0.5, y + margin + ext.height);
-            showTextZ(cr, title);
-
-            const preview = self.readPreviewText(pp, 1024) catch null;
-            if (preview) |p| {
-                defer self.allocator.free(p);
-                c.cairo_set_font_size(cr, body_size);
-                const wrap_w = w - margin * 2.0;
-                var lines = std.mem.splitAny(u8, p, "\n");
-                var ly: f64 = y + margin + ext.height + 24.0 * scale_f;
-                var line_count: usize = 0;
-                while (lines.next()) |line| {
-                    if (line_count >= 20) break;
-                    const truncated = if (line.len > 80) line[0..80] else line;
-                    const line_extent = textExtents(cr, truncated);
-                    if (line_extent.width > wrap_w) {
-                        const chars = truncated.len;
-                        const avg_w = line_extent.width / @as(f64, @floatFromInt(chars));
-                        const max_chars: usize = @intFromFloat(wrap_w / avg_w);
-                        const safe_len = if (max_chars > 3) max_chars - 3 else 0;
-                        const safe_text = if (safe_len < truncated.len) truncated[0..safe_len] else truncated;
-                        const safe_extent = textExtents(cr, safe_text);
-                        const ellipsis_extent = textExtents(cr, "...");
-                        const block_w = safe_extent.width + ellipsis_extent.width;
-                        c.cairo_move_to(cr, x + (w - block_w) * 0.5, ly + body_size);
-                        showTextZ(cr, safe_text);
-                        c.cairo_move_to(cr, x + (w - block_w) * 0.5 + safe_extent.width, ly + body_size);
-                        showTextZ(cr, "...");
-                    } else {
-                        c.cairo_move_to(cr, x + (w - line_extent.width) * 0.5, ly + body_size);
-                        showTextZ(cr, truncated);
-                    }
-                    ly += body_size + 4.0 * scale_f;
-                    line_count += 1;
-                }
-            } else {
-                c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-                const nope = "no preview";
-                const ne = textExtents(cr, nope);
-                c.cairo_move_to(cr, x + (w - ne.width) * 0.5, y + h * 0.5 + ne.height * 0.35);
-                showTextZ(cr, nope);
-            }
-        } else {
+        // For files, the preview pane is intentionally left blank — files open in their assigned app.
+        // Draw a very subtle hint only when focused.
+        if (self.focus == .preview) {
             c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-            const hint = if (self.focus == .preview) "preview" else "select a file";
+            const hint = "press Enter to open";
             const ext = textExtents(cr, hint);
             c.cairo_move_to(cr, x + (w - ext.width) * 0.5, y + h * 0.5 + ext.height * 0.35);
             showTextZ(cr, hint);
         }
     }
-
     fn readPreviewText(self: *FilesWidget, path: []const u8, max_bytes: usize) !?[]u8 {
         var path_z: [1024]u8 = undefined;
         const nt = std.fmt.bufPrintZ(&path_z, "{s}", .{path}) catch return null;
@@ -705,6 +661,97 @@ pub const FilesWidget = struct {
         return try buf.toOwnedSlice(self.allocator);
     }
 };
+
+fn drawFolderIcon(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, text_color: [4]f64, muted: [4]f64) void {
+    _ = text_color;
+    // Manila folder icon: horizontal, thin-line, muted-gold, with inside border-color shading.
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    const folder_h = h * 0.92;
+    const folder_w = folder_h * 1.35;
+    const tab_h = folder_h * 0.20;
+    const round = 10.0 * scale_f;
+    const line_w = 1.5 * scale_f;
+    const shade = 0.10;
+
+    const fx = cx - folder_w * 0.5;
+    const fy = cy - folder_h * 0.5;
+
+    folderIconPath(cr, fx, fy, folder_w, folder_h, round, tab_h);
+    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], shade);
+    c.cairo_fill_preserve(cr);
+    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.70);
+    c.cairo_set_line_width(cr, line_w);
+    c.cairo_stroke(cr);
+}
+
+fn folderIconPath(cr: *c.cairo_t, fx: f64, fy: f64, fw: f64, fh: f64, r: f64, tab_h: f64) void {
+    c.cairo_new_sub_path(cr);
+    c.cairo_move_to(cr, fx + r, fy + tab_h);
+    c.cairo_line_to(cr, fx + fw * 0.32, fy + tab_h);
+    c.cairo_line_to(cr, fx + fw * 0.40, fy + tab_h * 0.60);
+    c.cairo_line_to(cr, fx + fw * 0.60, fy + tab_h * 0.60);
+    c.cairo_line_to(cr, fx + fw * 0.68, fy + tab_h);
+    c.cairo_line_to(cr, fx + fw - r, fy + tab_h);
+    c.cairo_arc(cr, fx + fw - r, fy + tab_h + r, r, -std.math.pi / 2.0, 0.0);
+    c.cairo_line_to(cr, fx + fw, fy + fh - r);
+    c.cairo_arc(cr, fx + fw - r, fy + fh - r, r, 0.0, std.math.pi / 2.0);
+    c.cairo_line_to(cr, fx + r, fy + fh);
+    c.cairo_arc(cr, fx + r, fy + fh - r, r, std.math.pi / 2.0, std.math.pi);
+    c.cairo_line_to(cr, fx, fy + tab_h + r);
+    c.cairo_arc(cr, fx + r, fy + tab_h + r, r, std.math.pi, 3.0 * std.math.pi / 2.0);
+    c.cairo_close_path(cr);
+}
+
+fn drawFileIcon(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, text_color: [4]f64, muted: [4]f64) void {
+    _ = text_color;
+    // A4 file icon: vertical, thin-line, muted-gold, with inside border-color shading.
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    const file_h = h * 0.85;
+    const file_w = file_h * 0.75;
+    const round = 8.0 * scale_f;
+    const line_w = 1.5 * scale_f;
+    const shade = 0.10;
+
+    const fx = cx - file_w * 0.5;
+    const fy = cy - file_h * 0.5;
+
+    // Main body with folded corner.
+    fileIconPath(cr, fx, fy, file_w, file_h, round);
+    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], shade);
+    c.cairo_fill_preserve(cr);
+    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.75);
+    c.cairo_set_line_width(cr, line_w);
+    c.cairo_stroke(cr);
+
+    // Folded corner line.
+    c.cairo_move_to(cr, fx + file_w * 0.65, fy);
+    c.cairo_line_to(cr, fx + file_w * 0.65, fy + file_h * 0.12);
+    c.cairo_line_to(cr, fx + file_w, fy + file_h * 0.12);
+    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.55);
+    c.cairo_set_line_width(cr, line_w);
+    c.cairo_stroke(cr);
+}
+
+fn fileIconPath(cr: *c.cairo_t, fx: f64, fy: f64, fw: f64, fh: f64, r: f64) void {
+    const fold_x = fx + fw * 0.65;
+    const fold_y = fy + fh * 0.12;
+    c.cairo_new_sub_path(cr);
+    c.cairo_move_to(cr, fx, fy + r);
+    c.cairo_line_to(cr, fx, fy + fh - r);
+    c.cairo_arc(cr, fx + r, fy + fh - r, r, std.math.pi, std.math.pi / 2.0);
+    c.cairo_line_to(cr, fx + fw - r, fy + fh);
+    c.cairo_arc(cr, fx + fw - r, fy + fh - r, r, std.math.pi / 2.0, 0.0);
+    c.cairo_line_to(cr, fx + fw, fy + fold_y + r);
+    c.cairo_arc(cr, fx + fw - r, fy + fold_y + r, r, 0.0, -std.math.pi / 2.0);
+    c.cairo_line_to(cr, fold_x + r, fy + fold_y);
+    c.cairo_line_to(cr, fold_x, fy + fold_y);
+    c.cairo_line_to(cr, fold_x, fy + r);
+    c.cairo_arc(cr, fx + r, fy + r, r, -std.math.pi / 2.0, std.math.pi);
+    c.cairo_close_path(cr);
+}
+
 
 fn headerSizeFor(font_size: f64) f64 {
     return font_size * 0.82;
