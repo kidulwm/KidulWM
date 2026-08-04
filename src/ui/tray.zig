@@ -1960,26 +1960,13 @@ pub const Tray = struct {
 
     pub fn handleFilesCardKey(self: *Self, sym: @import("xkbcommon").Keysym) bool {
         if (!self.files_card_open) return false;
+        if (self.files.handleKey(sym)) {
+            self.requestUpdate();
+            self.host.request_frame(self.host.ctx);
+            return true;
+        }
         switch (sym) {
             .Escape => { self.closeAllCards(); return true; },
-            .Up => { self.files.moveSelection(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Down => { self.files.moveSelection(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Return, .KP_Enter, .Right => { self.files.activateSelected(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .BackSpace => { self.files.goUp(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Left => {
-                const parent = std.fs.path.dirname(self.files.current_path);
-                const at_home = std.mem.eql(u8, self.files.current_path, "/home/kidul");
-                if (parent != null and !at_home) {
-                    self.files.goUp();
-                } else {
-                    if (self.open) {
-                        self.backToTray();
-                    } else {
-                        self.closeAllCards();
-                    }
-                }
-                return true;
-            },
             else => return false,
         }
     }

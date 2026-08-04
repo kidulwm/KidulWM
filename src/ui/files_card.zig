@@ -28,6 +28,8 @@ pub const Drive = struct {
     mount: []const u8,
 };
 
+pub const FocusArea = enum { pills, files, preview };
+
 pub const FilesWidget = struct {
     allocator: std.mem.Allocator,
     card: FilesCard = .{},
@@ -40,6 +42,10 @@ pub const FilesWidget = struct {
     scroll_offset: usize = 0,
     preview_path: ?[]const u8 = null,
     state_generation: usize = 0,
+    focus: FocusArea = .files,
+    selected_drive: usize = 0,
+    search_buf: [32]u8 = [_]u8{0} ** 32,
+    search_len: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) FilesWidget {
         const current_path = allocator.dupe(u8, "/home/kidul") catch "/home/kidul";
@@ -77,45 +83,183 @@ pub const FilesWidget = struct {
         return self.card.open;
     }
 
+    pub fn handleKey(self: *FilesWidget, sym: @import("xkbcommon").Keysym) bool {
+        switch (self.focus) {
+            .pills => return self.handlePillsKey(sym),
+            .files => return self.handleFilesKey(sym),
+            .preview => return self.handlePreviewKey(sym),
+        }
+    }
+
+    fn handlePillsKey(self: *FilesWidget, sym: @import("xkbcommon").Keysym) bool {
+        switch (sym) {
+            .Left => {
+                if (self.drives.items.len > 0) {
+                    if (self.selected_drive > 0) self.selected_drive -= 1 else self.selected_drive = self.drives.items.len - 1;
+                }
+                self.state_generation +|= 1;
+                return true;
+            },
+            .Right => {
+                if (self.drives.items.len > 0) {
+                    self.selected_drive = (self.selected_drive + 1) % self.drives.items.len;
+                }
+                self.state_generation +|= 1;
+                return true;
+            },
+            .Down, .Return, .KP_Enter => {
+                self.focus = .files;
+                self.state_generation +|= 1;
+                if (sym == @import("xkbcommon").Keysym.Return or sym == @import("xkbcommon").Keysym.KP_Enter) {
+                    if (self.selected_drive < self.drives.items.len) {
+                        self.navigateTo(self.drives.items[self.selected_drive].mount);
+                    }
+                }
+                return true;
+            },
+            .Escape => return false, // let tray close card
+            else => return false,
+        }
+    }
+
+    fn handleFilesKey(self: *FilesWidget, sym: @import("xkbcommon").Keysym) bool {
+        switch (sym) {
+            .Up => {
+                if (self.selected_index > 0) {
+                    self.moveSelection(-1);
+                } else {
+                    self.focus = .pills;
+                    self.state_generation +|= 1;
+                }
+                return true;
+            },
+            .Down => {
+                const count = self.entries.items.len;
+                if (count > 0 and self.selected_index + 1 < count) {
+                    self.moveSelection(1);
+                } else {
+                    self.focus = .preview;
+                    self.state_generation +|= 1;
+                }
+                return true;
+            },
+            .Right, .Return, .KP_Enter => {
+                self.activateSelected();
+                return true;
+            },
+            .Left, .BackSpace => {
+                if (self.search_len > 0 and sym == @import("xkbcommon").Keysym.BackSpace) {
+                    self.search_len -= 1;
+                    self.search_buf[self.search_len] = 0;
+                    self.state_generation +|= 1;
+                    return true;
+                }
+                const parent = std.fs.path.dirname(self.current_path);
+                if (parent != null and !std.mem.eql(u8, self.current_path, "/home/kidul")) {
+                    self.goUp();
+                } else {
+                    return false; // let tray handle back-to-tray/close
+                }
+                return true;
+            },
+            .Home => {
+                if (self.entries.items.len > 0) {
+                    self.selected_index = 0;
+                    self.updatePreview();
+                    self.state_generation +|= 1;
+                }
+                return true;
+            },
+            .End => {
+                if (self.entries.items.len > 0) {
+                    self.selected_index = self.entries.items.len - 1;
+                    self.updatePreview();
+                    self.state_generation +|= 1;
+                }
+                return true;
+            },
+            .Page_Up => {
+                const visible: isize = @max(1, @as(isize, @intCast(self.visibleRowsEstimate())));
+                self.moveSelection(-visible);
+                return true;
+            },
+            .Page_Down => {
+                const visible: isize = @max(1, @as(isize, @intCast(self.visibleRowsEstimate())));
+                self.moveSelection(visible);
+                return true;
+            },
+            .Escape => {
+                if (self.search_len > 0) {
+                    self.search_len = 0;
+                    self.search_buf[0] = 0;
+                    self.state_generation +|= 1;
+                    return true;
+                }
+                return false;
+            },
+            else => {
+                const ch = keySymToChar(sym);
+                if (ch != 0) {
+                    if (self.search_len < self.search_buf.len - 1) {
+                        self.search_buf[self.search_len] = ch;
+                        self.search_len += 1;
+                        self.search_buf[self.search_len] = 0;
+                        self.jumpToSearchPrefix();
+                    }
+                    return true;
+                }
+                return false;
+            },
+        }
+    }
+
+    fn handlePreviewKey(self: *FilesWidget, sym: @import("xkbcommon").Keysym) bool {
+        switch (sym) {
+            .Up, .Left, .BackSpace => {
+                self.focus = .files;
+                self.state_generation +|= 1;
+                return true;
+            },
+            else => return false,
+        }
+    }
+
+    fn keySymToChar(sym: @import("xkbcommon").Keysym) u8 {
+        const v = @intFromEnum(sym);
+        const xkb = @import("xkbcommon");
+        if (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z)) {
+            return @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.a))) + 'a';
+        }
+        if (v >= @intFromEnum(xkb.Keysym.A) and v <= @intFromEnum(xkb.Keysym.Z)) {
+            return @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.A))) + 'A';
+        }
+        if (v >= @intFromEnum(xkb.Keysym.@"0") and v <= @intFromEnum(xkb.Keysym.@"9")) {
+            return @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.@"0"))) + '0';
+        }
+        return 0;
+    }
+
+    fn jumpToSearchPrefix(self: *FilesWidget) void {
+        const needle = self.search_buf[0..self.search_len];
+        for (self.entries.items, 0..) |entry, i| {
+            if (entry.name.len >= needle.len and std.mem.startsWith(u8, entry.name, needle)) {
+                self.selected_index = i;
+                self.updatePreview();
+                self.state_generation +|= 1;
+                return;
+            }
+        }
+        self.state_generation +|= 1;
+    }
+
+    fn visibleRowsEstimate(self: *FilesWidget) usize {
+        _ = self;
+        return 6;
+    }
+
     pub fn handleClick(self: *FilesWidget, lx: f64, ly: f64, w_d: f64, h_d: f64, scale: f32) bool {
-        const scale_f: f64 = @floatCast(scale);
-        const pad: f64 = 18.0 * scale_f;
-        const gap: f64 = 10.0 * scale_f;
-        const header_h: f64 = 34.0 * scale_f;
-        const pill_h: f64 = header_h;
-        const content_top: f64 = pad + pill_h + gap;
-        const content_h: f64 = h_d - content_top - pad;
-        const content_w: f64 = w_d - 2.0 * pad;
-        const list_w = content_w * 0.55;
-        const list_x = pad;
-        const preview_x = list_x + list_w + gap;
-        const preview_w = content_w * 0.45 - gap;
-        const list_body_y = content_top + header_h + gap;
-        const list_body_h = content_h - header_h - gap;
-
-        // Click on the preview pane is consumed but does nothing else.
-        if (lx >= preview_x and lx < preview_x + preview_w and ly >= content_top and ly < content_top + content_h) {
-            return true;
-        }
-
-        if (lx < list_x or ly < list_body_y or lx > list_x + list_w or ly > list_body_y + list_body_h) return false;
-
-        const row_h = 34.0 * scale_f;
-        const row = @as(usize, @intFromFloat(@floor((ly - list_body_y) / row_h)));
-        const visible_rows = @as(usize, @intFromFloat(@floor(list_body_h / row_h)));
-        if (row >= visible_rows) return false;
-
-        const start = self.scroll_offset;
-        const idx = start + row;
-        if (idx >= self.entries.items.len) return false;
-
-        self.selected_index = idx;
-        self.updatePreview();
-        const entry = self.entries.items[idx];
-        if (entry.is_dir) {
-            const new_path = std.fs.path.join(self.allocator, &.{ self.current_path, entry.name }) catch return true;
-            self.navigateTo(new_path);
-        }
+        _ = self;
+        _ = lx; _ = ly; _ = w_d; _ = h_d; _ = scale;
         return true;
     }
 
@@ -172,7 +316,6 @@ pub const FilesWidget = struct {
 
     fn navigateTo(self: *FilesWidget, path: []const u8) void {
         const path_copy = self.allocator.dupe(u8, path) catch return;
-        // Truncate forward history if we branched.
         while (self.path_history.items.len > self.history_index + 1) {
             const old = self.path_history.pop() orelse break;
             self.allocator.free(old);
@@ -193,6 +336,8 @@ pub const FilesWidget = struct {
         self.current_path = path;
         self.selected_index = 0;
         self.scroll_offset = 0;
+        self.search_len = 0;
+        self.search_buf[0] = 0;
         self.loadDirectory(self.current_path) catch {};
         self.updatePreview();
         self.state_generation +|= 1;
@@ -285,107 +430,116 @@ pub const FilesWidget = struct {
         const muted = style_.color_text_muted.toF64();
         const text = style_.tray_text_focused_color.toF64();
         const font_size = 22.0 * scale_f;
-        const header_size = 18.0 * scale_f;
 
-        // The shared card mat already painted the background/border with system corners.
         c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
 
         const pad: f64 = 18.0 * scale_f;
         const gap: f64 = 10.0 * scale_f;
-        const header_h: f64 = 34.0 * scale_f;
-
-        // Drive pills at top.
-        const pill_h: f64 = header_h;
-        var pill_x: f64 = pad;
-        for (self.drives.items) |drive| {
-            c.cairo_set_font_size(cr, header_size);
-            const extents = textExtents(cr, drive.label);
-            const pill_w = extents.width + 24.0 * scale_f;
-            if (pill_x + pill_w > w_d - pad) break;
-            drawShadedButton(cr, pill_x, pad, pill_w, pill_h, pill_h * 0.25, gold, 0.30);
-            c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-            c.cairo_move_to(cr, pill_x + (pill_w - extents.width) * 0.5, pad + (pill_h + extents.height) * 0.5 - 4.0 * scale_f);
-            showTextZ(cr, drive.label);
-            pill_x += pill_w + gap;
-        }
-
-        const content_top: f64 = pad + pill_h + gap;
-        const content_h: f64 = h_d - content_top - pad;
+        const pill_h: f64 = 34.0 * scale_f;
+        const search_h: f64 = 34.0 * scale_f;
+        const button_h: f64 = 44.0 * scale_f;
+        const min_preview_h: f64 = 120.0 * scale_f;
+        const max_preview_h: f64 = 260.0 * scale_f;
         const content_w: f64 = w_d - 2.0 * pad;
 
-        // Measure longest file name to size the left pane.
+        // Compute focused pane width from longest file name + buffer.
         c.cairo_set_font_size(cr, font_size);
         var max_name_w: f64 = 0.0;
         for (self.entries.items) |entry| {
             const ext = textExtents(cr, entry.name);
             if (ext.width > max_name_w) max_name_w = ext.width;
         }
-        const text_inset: f64 = 28.0 * scale_f;
-        const list_margin: f64 = 8.0 * scale_f;
-        const scrollbar_w: f64 = 12.0 * scale_f;
-        const min_list_w = content_w * 0.25;
-        const max_list_w = content_w * 0.55;
-        const desired_list_w = text_inset + max_name_w + list_margin + scrollbar_w;
-        const list_w = @min(@max(desired_list_w, min_list_w), max_list_w);
-        const preview_w = content_w - list_w - gap;
-        const list_x = pad;
-        const preview_x = list_x + list_w + gap;
+        const files_w = @min(@max(max_name_w + font_size * 4.0, content_w * 0.35), content_w * 0.75);
+        const files_x = (content_w - files_w) * 0.5 + pad;
+        const available_h: f64 = h_d - pad - pad;
 
-        // Left file list panel.
-        drawPanel(cr, list_x, content_top, list_w, content_h, style_, gold);
-        self.drawBreadcrumbs(cr, list_x, content_top, list_w, header_h, scale_f, gold, muted);
-        const list_body_y = content_top + header_h + gap;
-        const list_body_h = content_h - header_h - gap;
-        self.drawFileList(cr, list_x, list_body_y, list_w, list_body_h, scale_f, font_size, gold, muted, text);
+        // Layout: pills -> search -> file buttons -> preview.
+        const pills_y: f64 = pad;
+        const search_y: f64 = pills_y + pill_h + gap;
+        const files_y: f64 = search_y + search_h + gap;
+        const files_available_h: f64 = available_h - (files_y - pad) - min_preview_h - gap;
+        const desired_files_h = if (self.entries.items.len == 0)
+            button_h
+        else
+            @as(f64, @floatFromInt(self.entries.items.len)) * (button_h + gap) - gap;
+        var files_h: f64 = @min(desired_files_h, files_available_h);
+        if (files_h < button_h) files_h = button_h;
+        var preview_h: f64 = available_h - (files_y + files_h) - pad;
+        if (preview_h < min_preview_h) {
+            preview_h = min_preview_h;
+            files_h = available_h - (files_y + files_h - files_h) - preview_h - pad;
+        }
+        if (preview_h > max_preview_h) preview_h = max_preview_h;
+        const preview_y: f64 = h_d - pad - preview_h;
+        files_h = preview_y - files_y - gap;
 
-        // Right preview panel.
-        drawPanel(cr, preview_x, content_top, preview_w, content_h, style_, gold);
-        self.drawPreview(cr, preview_x, content_top, preview_w, content_h, scale_f, font_size, muted, text);
+        self.drawPills(cr, files_x, pills_y, files_w, pill_h, scale_f, headerSizeFor(font_size), gold, muted, text);
+        self.drawSearch(cr, files_x, search_y, files_w, search_h, scale_f, font_size, muted, text);
+        self.drawFileButtons(cr, files_x, files_y, files_w, files_h, scale_f, font_size, gold, muted, text);
+        self.drawPreview(cr, files_x, preview_y, files_w, preview_h, scale_f, font_size, muted, text);
     }
 
-    fn drawPanel(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, tstyle: style.Style, border: [4]f64) void {
-        switch (tstyle.corner_style) {
-            .round => roundedRect(cr, x, y, w, h, 12.0),
-            .chamfer => chamferedRect(cr, x, y, w, h, 12.0),
-            .square => c.cairo_rectangle(cr, x, y, w, h),
+    fn drawPills(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, header_size: f64, gold: [4]f64, muted: [4]f64, text_color: [4]f64) void {
+        c.cairo_set_font_size(cr, header_size);
+        var total_w: f64 = 0.0;
+        for (self.drives.items) |drive| {
+            const ext = textExtents(cr, drive.label);
+            total_w += ext.width + 24.0 * scale_f;
         }
-        c.cairo_set_source_rgba(cr, 0.04, 0.04, 0.04, 0.70);
+        if (self.drives.items.len > 0) total_w += (@as(f64, @floatFromInt(self.drives.items.len)) - 1.0) * 10.0 * scale_f;
+        var start_x = x + (w - total_w) * 0.5;
+        if (start_x < x) start_x = x;
+        var pill_x = start_x;
+        for (self.drives.items, 0..) |drive, i| {
+            const ext = textExtents(cr, drive.label);
+            const pill_w = ext.width + 24.0 * scale_f;
+            const is_focused = (self.focus == .pills and i == self.selected_drive);
+            const is_current = std.mem.eql(u8, self.current_path, drive.mount);
+            if (is_focused) {
+                drawShadedButton(cr, pill_x, y, pill_w, h, h * 0.25, gold, 0.55);
+            } else if (is_current) {
+                drawShadedButton(cr, pill_x, y, pill_w, h, h * 0.25, gold, 0.35);
+            } else {
+                drawShadedButton(cr, pill_x, y, pill_w, h, h * 0.25, gold, 0.20);
+            }
+            c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], if (is_focused or is_current) text_color[3] else muted[3]);
+            c.cairo_move_to(cr, pill_x + (pill_w - ext.width) * 0.5, y + (h + ext.height) * 0.5 - 4.0 * scale_f);
+            showTextZ(cr, drive.label);
+            pill_x += pill_w + 10.0 * scale_f;
+        }
+    }
+
+    fn drawSearch(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, font_size: f64, muted: [4]f64, text_color: [4]f64) void {
+        // Background panel.
+        roundedRect(cr, x, y, w, h, 8.0);
+        c.cairo_set_source_rgba(cr, 0.04, 0.04, 0.04, 0.60);
         c.cairo_fill_preserve(cr);
-        c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35);
+        c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.25);
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
-    }
-
-    fn drawBreadcrumbs(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, gold: [4]f64, muted: [4]f64) void {
-        _ = w;
-        var parts_buf: [16][]const u8 = undefined;
-        const parts = breadcrumbParts(self.current_path, &parts_buf);
-        var bx: f64 = x + 8.0 * scale_f;
-        const by = y + h * 0.5;
-        c.cairo_set_font_size(cr, 14.0 * scale_f);
-        for (parts, 0..) |part, i| {
-            const extents = textExtents(cr, part);
-            const is_last = i == parts.len - 1;
-            c.cairo_set_source_rgba(cr, if (is_last) gold[0] else muted[0], if (is_last) gold[1] else muted[1], if (is_last) gold[2] else muted[2], if (is_last) gold[3] else muted[3]);
-            c.cairo_move_to(cr, bx, by + extents.height * 0.35);
-            showTextZ(cr, part);
-            bx += extents.width + 8.0 * scale_f;
-            if (!is_last) {
-                c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-                c.cairo_move_to(cr, bx, by + extents.height * 0.35);
-                showTextZ(cr, "/");
-                bx += extents.width + 8.0 * scale_f;
-            }
-        }
-    }
-
-    fn drawFileList(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, font_size: f64, gold: [4]f64, muted: [4]f64, text_color: [4]f64) void {
         c.cairo_set_font_size(cr, font_size);
-        const row_h = 34.0 * scale_f;
-        const visible_rows = @as(usize, @intFromFloat(@floor(h / row_h)));
-        if (visible_rows == 0) return;
+        const label = if (self.search_len > 0) self.search_buf[0..self.search_len] else "search";
+        const ext = textExtents(cr, label);
+        c.cairo_set_source_rgba(cr, if (self.search_len > 0) text_color[0] else muted[0], if (self.search_len > 0) text_color[1] else muted[1], if (self.search_len > 0) text_color[2] else muted[2], if (self.search_len > 0) text_color[3] else muted[3]);
+        c.cairo_move_to(cr, x + 12.0 * scale_f, y + (h + ext.height) * 0.5 - 4.0 * scale_f);
+        showTextZ(cr, label);
+    }
 
+    fn drawFileButtons(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, font_size: f64, gold: [4]f64, muted: [4]f64, text_color: [4]f64) void {
+        c.cairo_set_font_size(cr, font_size);
+        const row_h = 44.0 * scale_f;
+        const visible_rows = @as(usize, @intFromFloat(@max(1.0, @floor(h / row_h))));
         const count = self.entries.items.len;
+
+        const target = @min(self.selected_index, if (count > 0) count - 1 else 0);
+        var start: usize = 0;
+        if (count > visible_rows) {
+            const half = visible_rows / 2;
+            if (target >= half) start = target - half;
+            if (start + visible_rows > count) start = count - visible_rows;
+        }
+        self.scroll_offset = start;
+
         if (count == 0) {
             c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
             const empty = "empty";
@@ -395,45 +549,30 @@ pub const FilesWidget = struct {
             return;
         }
 
-        const target = @min(self.selected_index, count - 1);
-        var start: usize = 0;
-        if (count > visible_rows) {
-            const half = visible_rows / 2;
-            if (target >= half) start = target - half;
-            if (start + visible_rows > count) start = count - visible_rows;
-        }
-        self.scroll_offset = start;
-
-        const margin = 8.0 * scale_f;
-        const text_inset = 28.0 * scale_f;
+        const margin: f64 = 8.0 * scale_f;
+        const selected_push: f64 = 18.0 * scale_f;
 
         var i: usize = 0;
         while (i < visible_rows and start + i < count) : (i += 1) {
             const idx = start + i;
             const entry = self.entries.items[idx];
             const row_y = y + @as(f64, @floatFromInt(i)) * row_h;
-            const is_selected = idx == self.selected_index;
+            const is_selected = (idx == self.selected_index and self.focus == .files);
 
-            // Row background only on selected/hovered lines.
             if (is_selected) {
-                roundedRect(cr, x + margin, row_y + 2.0 * scale_f, w - margin * 2.0, row_h - 4.0 * scale_f, 8.0 * scale_f);
-                c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.15);
+                roundedRect(cr, x + margin + selected_push, row_y + 4.0 * scale_f, w - margin * 2.0 - selected_push, row_h - 8.0 * scale_f, 8.0 * scale_f);
+                c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.20);
                 c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.55);
+                c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.60);
                 c.cairo_set_line_width(cr, 1.0);
                 c.cairo_stroke(cr);
             }
 
-            // Glyph: folder or file.
-            const glyph = if (entry.is_dir) ">" else "-";
-            c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], if (is_selected) gold[3] else muted[3]);
-            c.cairo_move_to(cr, x + margin + 8.0 * scale_f, row_y + row_h * 0.5 + font_size * 0.35);
-            showTextZ(cr, glyph);
-
-            // Name, left-aligned.
             const name_color = if (entry.name[0] == '.') muted else text_color;
-            c.cairo_set_source_rgba(cr, name_color[0], name_color[1], name_color[2], if (is_selected) text_color[3] else name_color[3]);
-            c.cairo_move_to(cr, x + text_inset, row_y + row_h * 0.5 + font_size * 0.35);
+            c.cairo_set_source_rgba(cr, name_color[0], name_color[1], name_color[2], name_color[3]);
+            const name_ext = textExtents(cr, entry.name);
+            const text_x = x + (w - name_ext.width) * 0.5 + (if (is_selected) selected_push else 0.0);
+            c.cairo_move_to(cr, text_x, row_y + row_h * 0.5 + font_size * 0.35);
             showTextZ(cr, entry.name);
         }
 
@@ -453,17 +592,23 @@ pub const FilesWidget = struct {
         const margin: f64 = 16.0 * scale_f;
         const title_size = font_size;
         const body_size = font_size;
+
+        // Border/separator to distinguish preview from files above.
+        c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], 0.25);
+        c.cairo_set_line_width(cr, 1.0);
+        c.cairo_move_to(cr, x + margin, y);
+        c.cairo_line_to(cr, x + w - margin, y);
+        c.cairo_stroke(cr);
+
         c.cairo_set_font_size(cr, title_size);
         if (self.preview_path) |pp| {
             const name = std.fs.path.basename(pp);
             const title = if (name.len > 0) name else "...";
             const ext = textExtents(cr, title);
             c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
-            // Center title.
             c.cairo_move_to(cr, x + (w - ext.width) * 0.5, y + margin + ext.height);
             showTextZ(cr, title);
 
-            // Preview content for text files.
             const preview = self.readPreviewText(pp, 1024) catch null;
             if (preview) |p| {
                 defer self.allocator.free(p);
@@ -477,7 +622,6 @@ pub const FilesWidget = struct {
                     const truncated = if (line.len > 80) line[0..80] else line;
                     const line_extent = textExtents(cr, truncated);
                     if (line_extent.width > wrap_w) {
-                        // Simple truncation by character count estimate.
                         const chars = truncated.len;
                         const avg_w = line_extent.width / @as(f64, @floatFromInt(chars));
                         const max_chars: usize = @intFromFloat(wrap_w / avg_w);
@@ -506,7 +650,7 @@ pub const FilesWidget = struct {
             }
         } else {
             c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-            const hint = "select a file";
+            const hint = if (self.focus == .preview) "preview" else "select a file";
             const ext = textExtents(cr, hint);
             c.cairo_move_to(cr, x + (w - ext.width) * 0.5, y + h * 0.5 + ext.height * 0.35);
             showTextZ(cr, hint);
@@ -531,6 +675,10 @@ pub const FilesWidget = struct {
         return try buf.toOwnedSlice(self.allocator);
     }
 };
+
+fn headerSizeFor(font_size: f64) f64 {
+    return font_size * 0.82;
+}
 
 fn isDir(path: []const u8) bool {
     var path_z: [1024]u8 = undefined;
@@ -605,37 +753,6 @@ fn showTextZ(cr: *c.cairo_t, text: []const u8) void {
         break :blk buf[0..len :0];
     };
     c.cairo_show_text(cr, nt.ptr);
-}
-
-fn breadcrumbParts(path: []const u8, buf: *[16][]const u8) []const []const u8 {
-    var it = std.mem.splitAny(u8, path, "/");
-    if (path.len == 0 or std.mem.eql(u8, path, "/")) {
-        buf[0] = "root";
-        return buf[0..1];
-    }
-    var i: usize = 0;
-    if (std.mem.eql(u8, path[0..1], "/") and i == 0) {
-        buf[i] = "root";
-        i += 1;
-    }
-    while (it.next()) |seg| {
-        if (seg.len == 0) continue;
-        if (i >= buf.len) break;
-        buf[i] = seg;
-        i += 1;
-    }
-    return buf[0..i];
-}
-
-fn friendlyLabelFor(path: []const u8) []const u8 {
-    if (std.mem.eql(u8, path, "/")) return "root";
-    if (std.mem.startsWith(u8, path, "/home/")) {
-        return path[6..];
-    }
-    if (std.mem.lastIndexOfScalar(u8, path, '/')) |idx| {
-        if (idx + 1 < path.len) return path[idx + 1 ..];
-    }
-    return path;
 }
 
 fn driveLabelFor(mount: []const u8) []const u8 {
