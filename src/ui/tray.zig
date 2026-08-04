@@ -384,8 +384,8 @@ pub const Tray = struct {
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
         const items = try allocator.alloc(TrayItem, 8);
             items[0] = .{ .id = "assistant", .label = "Assistant", .action = .none };
-            items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "/usr/local/bin/launch-kidul-browser.sh" } };
-            items[2] = .{ .id = "files", .label = "Files", .action = .files_card };
+            items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "/usr/local/bin/launch-kbrowser.sh" } };
+            items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "/usr/local/bin/kfiles" } };
             items[3] = .{ .id = "games", .label = "Games", .action = .none };
             items[4] = .{ .id = "maps", .label = "Maps", .action = .none };
             items[5] = .{ .id = "media", .label = "Media", .action = .media_card };
@@ -867,31 +867,15 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn spawnKfiles(self: *Self) void {
+        _ = self;
+        var buf: [1024]u8 = undefined;
+        const script = std.fmt.bufPrintZ(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 /usr/local/bin/launch-kfiles.sh &", .{}) catch return;
+        _ = c_std.system(script.ptr);
+    }
+
     pub fn toggleFilesCard(self: *Self) void {
-        if (self.calendar_card_open) {
-            self.calendar_card_open = false;
-        }
-        if (self.weather_card_open) {
-            self.weather_card_open = false;
-            self.weather.card.open = false;
-        }
-        if (self.media_card_open) {
-            self.media_card_open = false;
-            self.media.setCardOpen(false);
-        }
-        if (self.network_card_open) {
-            self.network_card_open = false;
-            self.network.card.close();
-        }
-        self.files_card_open = !self.files_card_open;
-        self.files.card.open = self.files_card_open;
-        if (self.files_card_open) {
-            self.card_mode = .files;
-            self.setCardCloseDirection(.files);
-            self.files.refresh();
-        }
-        self.requestUpdate();
-        self.host.request_frame(self.host.ctx);
+        self.spawnKfiles();
     }
 
     fn anyCardOpen(self: *const Self) bool {

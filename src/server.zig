@@ -818,7 +818,7 @@ pub const Server = struct {
         }
     }
 
-    fn applyLayout(self: *Server) void {
+    pub fn applyLayout(self: *Server) void {
         self.layout_requested.store(false, .monotonic);
 
         const active_deck = self.currentDeck();
@@ -873,8 +873,8 @@ pub const Server = struct {
                     _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                 }
                 if (is_focused) {
-                    window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
-                    window.setSurfaceOffset(0, 0);
+                    std.log.info("KidulWM: applyLayout focused window id={d} target={d}x{d} buffer={d}x{d} geom={d}x{d}", .{ window.id, target.width, target.height, window.toplevel.base.surface.current.width, window.toplevel.base.surface.current.height, window.toplevel.base.geometry.width, window.toplevel.base.geometry.height });
+                    window.setSurfaceOffsetForFocus();
                 } else {
                     window.setSurfaceOffsetForPeek(peek_edges);
                 }
@@ -921,8 +921,7 @@ pub const Server = struct {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
                     if (is_focused) {
-                        window.setSurfaceDestSize(@intCast(target.width), @intCast(target.height));
-                        window.setSurfaceOffset(0, 0);
+                        window.setSurfaceOffsetForFocus();
                     } else {
                         const edges = if (slide_idx < self.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                         window.setSurfaceOffsetForPeek(edges);

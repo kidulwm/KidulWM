@@ -377,14 +377,28 @@ pub const Window = struct {
     /// chrome border ring, eliminating the inner gap.
     pub fn setSurfaceOffsetForFocus(self: *Window) void {
         const surface = self.toplevel.base.surface;
-        if (!surface.mapped) return;
+        if (!surface.mapped) {
+            std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} skipped (not mapped)", .{self.id});
+            return;
+        }
 
         const geom = self.toplevel.base.geometry;
         const target_w: f64 = self.animation.target_w;
         const target_h: f64 = self.animation.target_h;
 
-        // Avoid division by zero: if geometry reports zero, fall back to no-op.
-        if (geom.width <= 0 or geom.height <= 0) return;
+        std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} target={d}x{d} geom={d}x{d}@{d},{d} buffer={d}x{d}", .{ self.id, @as(i32, @intFromFloat(target_w)), @as(i32, @intFromFloat(target_h)), geom.width, geom.height, geom.x, geom.y, surface.current.width, surface.current.height });
+
+        // Avoid division by zero: if geometry or committed buffer is not yet
+        // known, fall back to no-op. handleCommit will re-run this once the
+        // first buffer arrives.
+        if (geom.width <= 0 or geom.height <= 0) {
+            std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} skipped (bad geometry)", .{self.id});
+            return;
+        }
+        if (surface.current.width <= 0 or surface.current.height <= 0) {
+            std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} skipped (no buffer)", .{self.id});
+            return;
+        }
 
         // Buffer size (full client buffer including CSD padding).
         const buf_w: f64 = @floatFromInt(surface.current.width);
@@ -488,11 +502,18 @@ pub const Window = struct {
 
     fn handleMap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("map", listener);
-        std.log.info("KidulWM: window mapped", .{});
+        const app_id_slice = window.app_id.asSlice();
+        std.log.info("KidulWM: window mapped id={d} app_id='{s}'", .{ window.id, app_id_slice });
         window.server.assignOutput(window);
-        window.server.deckForWindow(window).addWindow(window.id);
+        const deck = window.server.deckForWindow(window);
+        deck.addWindow(window.id);
+        std.log.info("KidulWM: added window id={d} to deck slides={d} focused_index={d}", .{ window.id, deck.slides.items.len, deck.focused_index });
         window.server.focusWindow(window);
         if (window.output) |output| window.server.focused_output = output;
+        // Run layout synchronously so the slide target is set before the client
+        // commits its first buffer. Otherwise handleCommit sees target_w == 0 and
+        // cannot scale the surface.
+        window.server.applyLayout();
         window.server.requestLayout();
     }
 
@@ -514,13 +535,6 @@ pub const Window = struct {
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
-        // Detach all listeners now; wlroots asserts signal lists are empty
-        // when the toplevel/surface objects are later destroyed.
-        window.set_title.link.remove();
-        window.set_app_id.link.remove();
-        window.map.link.remove();
-        window.unmap.link.remove();
-        window.commit.link.remove();
         window.server.requestLayout();
     }
 
@@ -530,6 +544,13 @@ pub const Window = struct {
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
+        // Detach all listeners; wlroots asserts signal lists are empty when the
+        // toplevel/surface objects are later destroyed.
+        window.set_title.link.remove();
+        window.set_app_id.link.remove();
+        window.map.link.remove();
+        window.unmap.link.remove();
+        window.commit.link.remove();
         window.server.deckForWindow(window).removeWindow(window.id);
         window.link.remove();
         window.server.allocator.destroy(window);
@@ -537,13 +558,21 @@ pub const Window = struct {
 
     fn handleCommit(listener: *wl.Listener(*wlr.Surface), surface: *wlr.Surface) void {
         const window: *Window = @fieldParentPtr("commit", listener);
-        _ = surface;
         if (window.toplevel.base.initial_commit) {
             // Send the initial configure now that the XDG surface role is initialized.
             _ = window.toplevel.setSize(0, 0);
         }
 
-        // Do not request a layout pass here: map/unmap already trigger layout,
+        // If this window is focused, re-apply the slide scaling now that a buffer
+        // has been committed. The first layout pass often runs before the client
+        // has committed, so the scene buffer did not exist when applyLayout ran.
+        if (window.server.focused_window == window) {
+            const target = window.animation;
+            std.log.info("KidulWM: handleCommit focused id={d} target={d:.0}x{d:.0} buffer={d}x{d} geom={d}x{d}", .{ window.id, target.target_w, target.target_h, surface.current.width, surface.current.height, window.toplevel.base.geometry.width, window.toplevel.base.geometry.height });
+            window.setSurfaceOffsetForFocus();
+        }
+
+        // Do not request a full layout pass here: map/unmap already trigger layout,
         // and running a full layout pass on every surface commit causes a
         // configure storm once multiple XDG toplevels are mapped.
         //
