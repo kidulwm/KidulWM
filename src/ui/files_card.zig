@@ -5,6 +5,7 @@ const c_std = @cImport({
     @cInclude("stdio.h");
     @cInclude("dirent.h");
     @cInclude("sys/stat.h");
+    @cInclude("time.h");
 });
 const style = @import("../core/style.zig");
 
@@ -117,7 +118,7 @@ pub const FilesWidget = struct {
                 }
                 return true;
             },
-            .Escape => return false, // let tray close card
+            .Escape => return false,
             else => return false,
         }
     }
@@ -158,7 +159,7 @@ pub const FilesWidget = struct {
                 if (parent != null and !std.mem.eql(u8, self.current_path, "/home/kidul")) {
                     self.goUp();
                 } else {
-                    return false; // let tray handle back-to-tray/close
+                    return false;
                 }
                 return true;
             },
@@ -416,8 +417,15 @@ pub const FilesWidget = struct {
             const full_path = std.fs.path.join(self.allocator, &.{ path, name }) catch continue;
             defer self.allocator.free(full_path);
             const is_dir = isDir(full_path);
+            var stat_buf: c_std.struct_stat = undefined;
+            var size: u64 = 0;
+            var mtime: i64 = 0;
+            if (c_std.stat(full_path.ptr, &stat_buf) == 0) {
+                size = @intCast(stat_buf.st_size);
+                mtime = stat_buf.st_mtim.tv_sec;
+            }
             const name_copy = self.allocator.dupe(u8, name) catch continue;
-            self.entries.append(self.allocator, .{ .name = name_copy, .is_dir = is_dir }) catch {
+            self.entries.append(self.allocator, .{ .name = name_copy, .is_dir = is_dir, .size = size, .mtime = mtime }) catch {
                 self.allocator.free(name_copy);
             };
         }
@@ -442,15 +450,9 @@ pub const FilesWidget = struct {
         const max_preview_h: f64 = 260.0 * scale_f;
         const content_w: f64 = w_d - 2.0 * pad;
 
-        // Compute focused pane width from longest file name + buffer.
-        c.cairo_set_font_size(cr, font_size);
-        var max_name_w: f64 = 0.0;
-        for (self.entries.items) |entry| {
-            const ext = textExtents(cr, entry.name);
-            if (ext.width > max_name_w) max_name_w = ext.width;
-        }
-        const files_w = @min(@max(max_name_w + font_size * 4.0, content_w * 0.35), content_w * 0.75);
-        const files_x = (content_w - files_w) * 0.5 + pad;
+        // Focused pane spans the full card width.
+        const files_w = content_w;
+        const files_x = pad;
         const available_h: f64 = h_d - pad - pad;
 
         // Layout: pills -> search -> file buttons -> preview.
@@ -475,6 +477,17 @@ pub const FilesWidget = struct {
 
         self.drawPills(cr, files_x, pills_y, files_w, pill_h, scale_f, headerSizeFor(font_size), gold, muted, text);
         self.drawSearch(cr, files_x, search_y, files_w, search_h, scale_f, font_size, muted, text);
+
+        // Card-like background + focused border for the file list.
+        const border_color = gold;
+        const fill_color = [_]f64{ 0.04, 0.04, 0.04, 0.90 };
+        roundedRect(cr, files_x, files_y, files_w, files_h, 12.0);
+        c.cairo_set_source_rgba(cr, fill_color[0], fill_color[1], fill_color[2], fill_color[3]);
+        c.cairo_fill_preserve(cr);
+        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], if (self.focus == .files) 0.70 else 0.35);
+        c.cairo_set_line_width(cr, 1.5);
+        c.cairo_stroke(cr);
+
         self.drawFileButtons(cr, files_x, files_y, files_w, files_h, scale_f, font_size, gold, muted, text);
         self.drawPreview(cr, files_x, preview_y, files_w, preview_h, scale_f, font_size, muted, text);
     }
@@ -510,7 +523,6 @@ pub const FilesWidget = struct {
     }
 
     fn drawSearch(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, font_size: f64, muted: [4]f64, text_color: [4]f64) void {
-        // Background panel.
         roundedRect(cr, x, y, w, h, 8.0);
         c.cairo_set_source_rgba(cr, 0.04, 0.04, 0.04, 0.60);
         c.cairo_fill_preserve(cr);
@@ -532,7 +544,7 @@ pub const FilesWidget = struct {
         const count = self.entries.items.len;
 
         const target = @min(self.selected_index, if (count > 0) count - 1 else 0);
-        var start: usize = 0;
+        var start = self.scroll_offset;
         if (count > visible_rows) {
             const half = visible_rows / 2;
             if (target >= half) start = target - half;
@@ -549,8 +561,10 @@ pub const FilesWidget = struct {
             return;
         }
 
-        const margin: f64 = 8.0 * scale_f;
+        const row_margin: f64 = 8.0 * scale_f;
         const selected_push: f64 = 18.0 * scale_f;
+        const highlight_right_buffer: f64 = 10.0 * scale_f;
+        const meta_inset_chars: f64 = 2.0 * font_size;
 
         var i: usize = 0;
         while (i < visible_rows and start + i < count) : (i += 1) {
@@ -558,9 +572,12 @@ pub const FilesWidget = struct {
             const entry = self.entries.items[idx];
             const row_y = y + @as(f64, @floatFromInt(i)) * row_h;
             const is_selected = (idx == self.selected_index and self.focus == .files);
+            const highlight_left = x + row_margin + selected_push;
+            const highlight_right = x + w - highlight_right_buffer;
+            const highlight_w = highlight_right - highlight_left;
 
             if (is_selected) {
-                roundedRect(cr, x + margin + selected_push, row_y + 4.0 * scale_f, w - margin * 2.0 - selected_push, row_h - 8.0 * scale_f, 8.0 * scale_f);
+                roundedRect(cr, highlight_left, row_y + 4.0 * scale_f, highlight_w, row_h - 8.0 * scale_f, 8.0 * scale_f);
                 c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.20);
                 c.cairo_fill_preserve(cr);
                 c.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.60);
@@ -570,10 +587,30 @@ pub const FilesWidget = struct {
 
             const name_color = if (entry.name[0] == '.') muted else text_color;
             c.cairo_set_source_rgba(cr, name_color[0], name_color[1], name_color[2], name_color[3]);
+            c.cairo_set_font_size(cr, font_size);
             const name_ext = textExtents(cr, entry.name);
             const text_x = x + (w - name_ext.width) * 0.5 + (if (is_selected) selected_push else 0.0);
             c.cairo_move_to(cr, text_x, row_y + row_h * 0.5 + font_size * 0.35);
             showTextZ(cr, entry.name);
+
+            // Date on the left, extension badge on the right, only on the highlighted line.
+            if (is_selected) {
+                c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
+                const date_str = formatDate(@intCast(entry.mtime));
+                const date_x = highlight_left + meta_inset_chars;
+                c.cairo_move_to(cr, date_x, row_y + row_h * 0.5 + font_size * 0.35);
+                showTextZ(cr, date_str);
+
+                if (!entry.is_dir) {
+                    const ext = extensionOf(entry.name);
+                    if (ext.len > 0) {
+                        const ext_ext = textExtents(cr, ext);
+                        const ext_x = highlight_right - meta_inset_chars - ext_ext.width;
+                        c.cairo_move_to(cr, ext_x, row_y + row_h * 0.5 + font_size * 0.35);
+                        showTextZ(cr, ext);
+                    }
+                }
+            }
         }
 
         // Scrollbar.
@@ -592,13 +629,6 @@ pub const FilesWidget = struct {
         const margin: f64 = 16.0 * scale_f;
         const title_size = font_size;
         const body_size = font_size;
-
-        // Border/separator to distinguish preview from files above.
-        c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], 0.25);
-        c.cairo_set_line_width(cr, 1.0);
-        c.cairo_move_to(cr, x + margin, y);
-        c.cairo_line_to(cr, x + w - margin, y);
-        c.cairo_stroke(cr);
 
         c.cairo_set_font_size(cr, title_size);
         if (self.preview_path) |pp| {
@@ -678,6 +708,30 @@ pub const FilesWidget = struct {
 
 fn headerSizeFor(font_size: f64) f64 {
     return font_size * 0.82;
+}
+
+var date_buf: [32]u8 = undefined;
+var size_buf: [32]u8 = undefined;
+
+fn extensionOf(name: []const u8) []const u8 {
+    const idx = std.mem.lastIndexOfScalar(u8, name, '.') orelse return "";
+    if (idx == 0 or idx + 1 >= name.len) return "";
+    return name[idx + 1 ..];
+}
+
+fn formatDate(mtime: i64) []const u8 {
+    const t: c_std.time_t = @intCast(mtime);
+    const tm = c_std.localtime(&t) orelse return "-";
+    const len = c_std.strftime(&date_buf, date_buf.len, "%b %d", tm);
+    if (len == 0) return "-";
+    return date_buf[0..len];
+}
+
+fn formatSize(size: u64) []const u8 {
+    if (size < 1024) return std.fmt.bufPrint(&size_buf, "{d}B", .{size}) catch "?";
+    if (size < 1024 * 1024) return std.fmt.bufPrint(&size_buf, "{d:.1}K", .{@as(f64, @floatFromInt(size)) / 1024.0}) catch "?";
+    if (size < 1024 * 1024 * 1024) return std.fmt.bufPrint(&size_buf, "{d:.1}M", .{@as(f64, @floatFromInt(size)) / (1024.0 * 1024.0)}) catch "?";
+    return std.fmt.bufPrint(&size_buf, "{d:.1}G", .{@as(f64, @floatFromInt(size)) / (1024.0 * 1024.0 * 1024.0)}) catch "?";
 }
 
 fn isDir(path: []const u8) bool {
