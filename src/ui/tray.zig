@@ -765,6 +765,19 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn close(self: *Self) void {
+        if (!self.open) return;
+        self.open = false;
+        self.pinned = false;
+        self.hovered = false;
+        self.close_after_us = 0;
+        self.selected_index = 0;
+        self.hover_index = null;
+        self.bobChangedState(.laying);
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     pub fn closeAllCards(self: *Self) void {
         if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open and !self.network_card_open and !self.files_card_open) return;
         self.calendar_card_open = false;
@@ -933,9 +946,10 @@ pub const Tray = struct {
         if (idx >= self.items.len) return;
         const it = self.activeItemAt(idx);
         std.log.info("KidulWM: tray activate {s}", .{it.id});
-        switch (it.action) {
-            .cycle_animation => self.host.cycle_animation(self.host.ctx),
+        const action = it.action;
+        switch (action) {
             .toggle_tray => self.toggle(),
+            .cycle_animation => self.host.cycle_animation(self.host.ctx),
             .media_card => {
                 self.toggleMediaCard();
             },
@@ -945,12 +959,19 @@ pub const Tray = struct {
             .spawn => |cmd| {
                 if (cmd.len > 0) {
                     var buf: [1024]u8 = undefined;
-                    const script = std.fmt.bufPrint(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 {s} &", .{cmd}) catch cmd;
+                    const script = std.fmt.bufPrintZ(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 {s} &", .{cmd}) catch return;
                     _ = c_std.system(script.ptr);
                 }
             },
             .settings_page => {},
             .none => {},
+        }
+        // When a card/slide/app is opened, close the tray and any cards so the
+        // new surface owns the visual space and keyboard focus. The tray-toggle
+        // action itself is the only exception.
+        if (action != .toggle_tray) {
+            self.close();
+            self.closeAllCards();
         }
     }
 
