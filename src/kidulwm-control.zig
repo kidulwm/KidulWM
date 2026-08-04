@@ -88,6 +88,14 @@ pub fn main(init: std.process.Init.Minimal) !void {
             } };
         }
         if (std.mem.eql(u8, cmd, "notification_clear")) break :blk .{ .notification_clear = {} };
+        if (std.mem.eql(u8, cmd, "get_windows")) break :blk .{ .get_windows = {} };
+        if (std.mem.eql(u8, cmd, "kfiles_navigate")) {
+            const path = it.next() orelse {
+                std.log.err("kfiles_navigate requires a path argument", .{});
+                return error.MissingArgument;
+            };
+            break :blk .{ .kfiles_navigate = .{ .path = path } };
+        }
         if (std.mem.eql(u8, cmd, "set_theme")) {
             const key = it.next() orelse {
                 std.log.err("set_theme requires a key argument", .{});

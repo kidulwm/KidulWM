@@ -18,6 +18,10 @@ const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const ui = @import("./ui/tray.zig");
 const keybinds = @import("config/keybinds.zig");
+const c = @cImport({
+    @cInclude("stdio.h");
+});
+
 
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn unsetenv(name: [*:0]const u8) c_int;
@@ -178,6 +182,23 @@ pub const Server = struct {
     },
     outputs: wl.list.Head(Output, .link),
 
+
+    fn getWindowsResponse(self: *Server) ipc.message.Response {
+        var list = std.ArrayList(ipc.message.WindowInfo).initCapacity(self.allocator, 16) catch return .{ .ok = true, .windows = &[_]ipc.message.WindowInfo{} };
+        defer list.deinit(self.allocator);
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            const info = ipc.message.WindowInfo{
+                .window_id = window.id,
+                .app_id = if (window.app_id.len > 0) self.allocator.dupe(u8, window.app_id.buf[0..window.app_id.len]) catch null else null,
+                .title = if (window.title.len > 0) self.allocator.dupe(u8, window.title.buf[0..window.title.len]) catch null else null,
+                .mapped = window.toplevel.base.surface.mapped,
+            };
+            list.append(self.allocator, info) catch continue;
+        }
+        return .{ .ok = true, .windows = list.toOwnedSlice(self.allocator) catch &[_]ipc.message.WindowInfo{} };
+    }
+
     fn handleRequest(self: *Server, req: ipc.message.Request) ipc.message.Response {
         switch (req) {
             .quit => self.requestQuit(),
@@ -276,6 +297,18 @@ pub const Server = struct {
                 self.tray.notifications.clear();
                 return .{ .ok = true, .message = "notifications cleared" };
             },
+            .kfiles_navigate => |p| {
+                // Write navigation target to a file kfiles polls. This avoids
+                // adding a server socket inside the standalone client.
+                const f = c.fopen("/tmp/kfiles-navigate", "w");
+                if (f == null) {
+                    return .{ .ok = false, .message = "failed to create navigate file" };
+                }
+                defer _ = c.fclose(f.?);
+                _ = c.fprintf(f.?, "%s\n", p.path.ptr);
+                return .{ .ok = true, .message = "navigate queued" };
+            },
+            .get_windows => return self.getWindowsResponse(),
             else => return self.handleStateRequest(req),
         }
         return self.handleStateRequest(req);
@@ -332,7 +365,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .quit => {},
+            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };

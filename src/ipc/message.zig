@@ -30,6 +30,8 @@ pub const RequestTag = enum {
     media_seek,
     notification_test,
     notification_clear,
+    kfiles_navigate,
+    get_windows,
     quit,
 };
 
@@ -86,6 +88,10 @@ pub const Request = union(RequestTag) {
         display_mode: ?[]const u8 = null,
     },
     notification_clear: void,
+    kfiles_navigate: struct {
+        path: []const u8,
+    },
+    get_windows: void,
     quit: void,
 };
 
@@ -100,11 +106,19 @@ pub const LayoutResponse = struct {
     slide_count: usize = 0,
 };
 
+pub const WindowInfo = struct {
+    window_id: u32,
+    app_id: ?[]const u8 = null,
+    title: ?[]const u8 = null,
+    mapped: bool = false,
+};
+
 pub const Response = struct {
     ok: bool,
     message: ?[]const u8 = null,
     data: ?[]const u8 = null,
     layout: ?LayoutResponse = null,
+    windows: ?[]const WindowInfo = null,
 
     pub fn toJson(self: Response, allocator: std.mem.Allocator) ![]const u8 {
         return std.fmt.allocPrint(allocator, "{f}", .{std.json.fmt(self, .{})});
