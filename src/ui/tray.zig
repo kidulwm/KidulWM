@@ -343,6 +343,7 @@ pub const Tray = struct {
     card_last_generation: u32 = 0,
     card_last_mode: CardMode = .calendar,
     media_state_generation: u32 = 0,
+    files_state_generation: usize = 0,
     card_mode: CardMode = .calendar,
     card_close_dx: f32 = -1.0,
     card_close_dy: f32 = -1.0,
@@ -1963,9 +1964,22 @@ pub const Tray = struct {
             .Escape => { self.closeAllCards(); return true; },
             .Up => { self.files.moveSelection(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
             .Down => { self.files.moveSelection(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Return, .KP_Enter => { self.files.activateSelected(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Return, .KP_Enter, .Right => { self.files.activateSelected(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
             .BackSpace => { self.files.goUp(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Left => { self.backToTray(); return true; },
+            .Left => {
+                const parent = std.fs.path.dirname(self.files.current_path);
+                const at_home = std.mem.eql(u8, self.files.current_path, "/home/kidul");
+                if (parent != null and !at_home) {
+                    self.files.goUp();
+                } else {
+                    if (self.open) {
+                        self.backToTray();
+                    } else {
+                        self.closeAllCards();
+                    }
+                }
+                return true;
+            },
             else => return false,
         }
     }
@@ -3272,6 +3286,7 @@ pub const Tray = struct {
             self.card_last_w != w or
             self.card_last_h != h or
             self.card_last_mode != current_mode or
+            self.files.state_generation != self.files_state_generation or
             self.media.state_generation != self.media_state_generation or
             self.network_card_last_state != self.network.state;
 
@@ -3301,6 +3316,7 @@ pub const Tray = struct {
             self.card_last_open = self.card_anim.value;
             self.card_last_generation = self.host.theme.generation;
             self.card_last_mode = current_mode;
+            self.files_state_generation = self.files.state_generation;
             self.media_state_generation = self.media.state_generation;
             self.network_card_last_state = self.network.state;
             const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);

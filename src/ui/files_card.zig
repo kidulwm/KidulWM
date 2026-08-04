@@ -39,6 +39,7 @@ pub const FilesWidget = struct {
     selected_index: usize = 0,
     scroll_offset: usize = 0,
     preview_path: ?[]const u8 = null,
+    state_generation: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) FilesWidget {
         const current_path = allocator.dupe(u8, "/home/kidul") catch "/home/kidul";
@@ -132,6 +133,7 @@ pub const FilesWidget = struct {
         if (next >= @as(isize, @intCast(count))) next = @as(isize, @intCast(count)) - 1;
         self.selected_index = @intCast(next);
         self.updatePreview();
+        self.state_generation +|= 1;
     }
 
     pub fn activateSelected(self: *FilesWidget) void {
@@ -143,11 +145,13 @@ pub const FilesWidget = struct {
         } else {
             self.updatePreview();
         }
+        self.state_generation +|= 1;
     }
 
     pub fn goUp(self: *FilesWidget) void {
         const parent = std.fs.path.dirname(self.current_path) orelse return;
         self.navigateTo(parent);
+        self.state_generation +|= 1;
     }
 
     pub fn navigateBack(self: *FilesWidget) void {
@@ -155,6 +159,7 @@ pub const FilesWidget = struct {
             self.history_index -= 1;
             self.setCurrentPath(self.path_history.items[self.history_index]);
         }
+        self.state_generation +|= 1;
     }
 
     pub fn navigateForward(self: *FilesWidget) void {
@@ -162,6 +167,7 @@ pub const FilesWidget = struct {
             self.history_index += 1;
             self.setCurrentPath(self.path_history.items[self.history_index]);
         }
+        self.state_generation +|= 1;
     }
 
     fn navigateTo(self: *FilesWidget, path: []const u8) void {
@@ -177,6 +183,7 @@ pub const FilesWidget = struct {
         };
         self.history_index = self.path_history.items.len - 1;
         self.setCurrentPath(path_copy);
+        self.state_generation +|= 1;
     }
 
     fn setCurrentPath(self: *FilesWidget, path: []const u8) void {
@@ -188,6 +195,7 @@ pub const FilesWidget = struct {
         self.scroll_offset = 0;
         self.loadDirectory(self.current_path) catch {};
         self.updatePreview();
+        self.state_generation +|= 1;
     }
 
     fn updatePreview(self: *FilesWidget) void {

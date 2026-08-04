@@ -39,7 +39,7 @@ All cards now support `Left` arrow to return to the tray from the card's leftmos
 
 ## Known issues / next steps
 
-1. Files card Up/Down arrow keys may not move selection for some users; verify whether the card receives key events. If still broken, add tracing in `handleFilesCardKey` and `keyboard.zig` card block.
+1. Files card key navigation updated: Up/Down move selection, Right/Return activate, BackSpace goes up, Escape closes. Left now returns to tray when tray is open, or closes the card when tray is closed.
 2. Click inside the card should no longer close it (any click inside card bounds is consumed).
 3. Card outer border/corners now follow the system `corner_style`; inner panes also follow it.
 4. Polish: drive pill interaction, directory history, larger click targets, sorting options, etc.
