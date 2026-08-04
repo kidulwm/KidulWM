@@ -313,9 +313,21 @@ pub const FilesWidget = struct {
         const content_h: f64 = h_d - content_top - pad;
         const content_w: f64 = w_d - 2.0 * pad;
 
-        // Two panes: left file list ~55%, right preview ~45%.
-        const list_w = content_w * 0.55;
-        const preview_w = content_w * 0.45 - gap;
+        // Measure longest file name to size the left pane.
+        c.cairo_set_font_size(cr, font_size);
+        var max_name_w: f64 = 0.0;
+        for (self.entries.items) |entry| {
+            const ext = textExtents(cr, entry.name);
+            if (ext.width > max_name_w) max_name_w = ext.width;
+        }
+        const text_inset: f64 = 28.0 * scale_f;
+        const list_margin: f64 = 8.0 * scale_f;
+        const scrollbar_w: f64 = 12.0 * scale_f;
+        const min_list_w = content_w * 0.25;
+        const max_list_w = content_w * 0.55;
+        const desired_list_w = text_inset + max_name_w + list_margin + scrollbar_w;
+        const list_w = @min(@max(desired_list_w, min_list_w), max_list_w);
+        const preview_w = content_w - list_w - gap;
         const list_x = pad;
         const preview_x = list_x + list_w + gap;
 
@@ -439,23 +451,26 @@ pub const FilesWidget = struct {
 
     fn drawPreview(self: *FilesWidget, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, scale_f: f64, font_size: f64, muted: [4]f64, text_color: [4]f64) void {
         const margin: f64 = 16.0 * scale_f;
-        c.cairo_set_font_size(cr, font_size);
+        const title_size = font_size;
+        const body_size = font_size;
+        c.cairo_set_font_size(cr, title_size);
         if (self.preview_path) |pp| {
             const name = std.fs.path.basename(pp);
             const title = if (name.len > 0) name else "...";
             const ext = textExtents(cr, title);
             c.cairo_set_source_rgba(cr, text_color[0], text_color[1], text_color[2], text_color[3]);
-            c.cairo_move_to(cr, x + margin, y + margin + ext.height);
+            // Center title.
+            c.cairo_move_to(cr, x + (w - ext.width) * 0.5, y + margin + ext.height);
             showTextZ(cr, title);
 
             // Preview content for text files.
             const preview = self.readPreviewText(pp, 1024) catch null;
             if (preview) |p| {
                 defer self.allocator.free(p);
-                c.cairo_set_font_size(cr, 13.0 * scale_f);
+                c.cairo_set_font_size(cr, body_size);
                 const wrap_w = w - margin * 2.0;
                 var lines = std.mem.splitAny(u8, p, "\n");
-                var ly: f64 = y + margin + ext.height + 16.0 * scale_f;
+                var ly: f64 = y + margin + ext.height + 24.0 * scale_f;
                 var line_count: usize = 0;
                 while (lines.next()) |line| {
                     if (line_count >= 20) break;
@@ -468,22 +483,25 @@ pub const FilesWidget = struct {
                         const max_chars: usize = @intFromFloat(wrap_w / avg_w);
                         const safe_len = if (max_chars > 3) max_chars - 3 else 0;
                         const safe_text = if (safe_len < truncated.len) truncated[0..safe_len] else truncated;
-                        c.cairo_move_to(cr, x + margin, ly + 13.0 * scale_f);
+                        const safe_extent = textExtents(cr, safe_text);
+                        const ellipsis_extent = textExtents(cr, "...");
+                        const block_w = safe_extent.width + ellipsis_extent.width;
+                        c.cairo_move_to(cr, x + (w - block_w) * 0.5, ly + body_size);
                         showTextZ(cr, safe_text);
-                        c.cairo_move_to(cr, x + margin + textExtents(cr, safe_text).width, ly + 13.0 * scale_f);
+                        c.cairo_move_to(cr, x + (w - block_w) * 0.5 + safe_extent.width, ly + body_size);
                         showTextZ(cr, "...");
                     } else {
-                        c.cairo_move_to(cr, x + margin, ly + 13.0 * scale_f);
+                        c.cairo_move_to(cr, x + (w - line_extent.width) * 0.5, ly + body_size);
                         showTextZ(cr, truncated);
                     }
-                    ly += 16.0 * scale_f;
+                    ly += body_size + 4.0 * scale_f;
                     line_count += 1;
                 }
             } else {
                 c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
                 const nope = "no preview";
                 const ne = textExtents(cr, nope);
-                c.cairo_move_to(cr, x + margin, y + h * 0.5 + ne.height * 0.35);
+                c.cairo_move_to(cr, x + (w - ne.width) * 0.5, y + h * 0.5 + ne.height * 0.35);
                 showTextZ(cr, nope);
             }
         } else {
