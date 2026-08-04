@@ -8,17 +8,28 @@
 - Build: passing (`zig build -Doptimize=ReleaseSafe`)
 - Deployed: `fresh-one` VM via scp/ssh
 
-## Files card GUI
+## Direction change: standalone Kidul Files client
 
-`src/ui/files_card.zig` now provides a full-featured Cairo file manager card:
+The in-process files card has reached the limits of what an overlay card can do cleanly. The flagship file manager will become a standalone Wayland client (`kidul-files`), launched from the tray, mirroring the architecture of `kidul-browser`.
+
+Goals:
+- Own Wayland surface / event loop (no more card overlay)
+- GPU-friendly rendering for large directories and smooth scrolling
+- Async directory enumeration with caching
+- Fast-scroll preview deferral (preview only when scrolling is slow/stable)
+- Browser-pill shape for drive/category pills with file-manager colors
+- Same KidulWM visual language (dark glass, gold borders, Fantasque Sans Mono)
+
+## Files card GUI (legacy in-process card)
+
+`src/ui/files_card.zig` provides a full-featured Cairo file manager card:
 - Two-pane layout: left file list (~55%), right preview pane (~45%).
 - Drive pills at top from `/proc/self/mounts`.
 - Breadcrumb path bar, folder/file glyphs, dotfile dimming, selected-row highlight.
 - Scrollbar when list overflows.
-- Preview pane shows filename and text-file preview.
 - Click inside the list selects/activates entries; clicks inside the preview pane are consumed.
 - Inner panels follow system `corner_style` (round/chamfer/square).
-- Outer card now uses the shared `card_frame` mat with system border/corners.
+- Outer card uses the shared `card_frame` mat with system border/corners.
 
 `src/ui/tray.zig` wiring:
 - `files_card_open` flag and `files.card.open` kept in sync.
@@ -33,16 +44,7 @@ Keyboard routing (`src/input/keyboard.zig`):
 
 ## Back-to-tray behavior
 
-All cards now support `Left` arrow to return to the tray from the card's leftmost focus:
-- Calendar, Weather, Files: `Left` → `backToTray()`.
-- Media card: `Left` while focused on the category pills → `backToTray()`.
-
-## Known issues / next steps
-
-1. Files card key navigation updated: Up/Down move selection, Right/Return activate, BackSpace goes up, Escape closes. Left now returns to tray when tray is open, or closes the card when tray is closed.
-2. Click inside the card should no longer close it (any click inside card bounds is consumed).
-3. Card outer border/corners now follow the system `corner_style`; inner panes also follow it.
-4. Polish: drive pill interaction, directory history, larger click targets, sorting options, etc.
+All cards support `Left` arrow to return to the tray from the card's leftmost focus.
 
 ## Build/deploy workflow
 
@@ -50,10 +52,10 @@ All cards now support `Left` arrow to return to the tray from the card's leftmos
 cd /home/dad/dev/KidulWM
 zig build -Doptimize=ReleaseSafe
 
-scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \
-  zig-out/bin/kidulwm zig-out/bin/kidulwm-control \
+scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \\
+  zig-out/bin/kidulwm zig-out/bin/kidulwm-control \\
   kidul@127.0.0.1:/tmp/
 
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \
+ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \\
   'sudo systemctl stop kidulwm && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm'
 ```
