@@ -43,13 +43,12 @@ pub const OutputCurtains = struct {
         has_left_peek: bool,
         has_right_peek: bool,
     ) void {
-        _ = style;
         _ = left_peek;
         _ = right_peek;
         _ = has_left_peek;
         _ = has_right_peek;
-        self.left.update(style_generation, scale, output_box, false);
-        self.right.update(style_generation, scale, output_box, true);
+        self.left.update(style, style_generation, scale, output_box, false);
+        self.right.update(style, style_generation, scale, output_box, true);
     }
 };
 
@@ -63,8 +62,8 @@ const Panel = struct {
     style_generation: u32,
     last_right_side: bool,
 
-    const asset_width = 160;
-    const asset_height = 1397;
+    const asset_width = 190;
+    const asset_height = 1440;
     const edge_nudge: i32 = 13;
 
     fn create(allocator: std.mem.Allocator, parent: *wlr.SceneTree, right_side: bool) !*Panel {
@@ -93,6 +92,7 @@ const Panel = struct {
 
     fn update(
         self: *Panel,
+        style: Style,
         style_generation: u32,
         scale: u32,
         output_box: wlr.Box,
@@ -137,10 +137,10 @@ const Panel = struct {
         self.scale = s;
         self.style_generation = style_generation;
         self.last_right_side = right_side;
-        self.regenerate(s, panel_w, panel_h, right_side);
+        self.regenerate(style, s, panel_w, panel_h, right_side);
     }
 
-    fn regenerate(self: *Panel, scale: u32, width: i32, height: i32, right_side: bool) void {
+    fn regenerate(self: *Panel, style: Style, scale: u32, width: i32, height: i32, right_side: bool) void {
         if (self.buffer) |buf| {
             buf.node.destroy();
             self.buffer = null;
@@ -148,7 +148,7 @@ const Panel = struct {
 
         const dest_w: i32 = width * @as(i32, @intCast(scale));
         const dest_h: i32 = height * @as(i32, @intCast(scale));
-        const surface = loadAndScaleAsset(dest_w, dest_h, right_side) orelse {
+        const surface = paintCurtain(style, dest_w, dest_h, right_side) orelse {
             self.tree.node.setEnabled(false);
             return;
         };
@@ -172,49 +172,131 @@ const Panel = struct {
     }
 };
 
-fn loadAndScaleAsset(dest_w: i32, dest_h: i32, right_side: bool) ?*c.cairo_surface_t {
-    var png_stream = PngStream{
-        .data = curtain_left_tied_png,
-        .offset = 0,
-    };
-    const source = c.cairo_image_surface_create_from_png_stream(
-        @ptrCast(&readPngStream),
-        @ptrCast(&png_stream),
-    ) orelse return null;
-    if (c.cairo_surface_status(source) != c.CAIRO_STATUS_SUCCESS) {
-        c.cairo_surface_destroy(source);
-        return null;
-    }
-
-    const surf = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, dest_w, dest_h) orelse {
-        c.cairo_surface_destroy(source);
-        return null;
-    };
+// Procedural "Kidul fold" curtain: straight black-velvet drop drawn in
+// Cairo. Vertical fold columns (soft gradient valleys/peaks with phase
+// jitter so they read organic), scalloped gather at the top, and a hem
+// that sweeps up toward the center-facing edge. Vector-crisp at any width.
+fn paintCurtain(style: Style, dest_w: i32, dest_h: i32, right_side: bool) ?*c.cairo_surface_t {
+    if (dest_w < 8 or dest_h < 8) return null;
+    const surf = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, dest_w, dest_h) orelse return null;
     const cr = c.cairo_create(surf) orelse {
         c.cairo_surface_destroy(surf);
-        c.cairo_surface_destroy(source);
         return null;
     };
     defer c.cairo_destroy(cr);
 
-    c.cairo_pattern_set_filter(c.cairo_get_source(cr), c.CAIRO_FILTER_BEST);
+    // Transparent base.
+    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+    c.cairo_set_source_rgba(cr, 0, 0, 0, 0);
+    c.cairo_paint(cr);
+    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-    const src_w = c.cairo_image_surface_get_width(source);
-    const src_h = c.cairo_image_surface_get_height(source);
-    const sx = @as(f64, @floatFromInt(dest_w)) / @as(f64, @floatFromInt(src_w));
-    const sy = @as(f64, @floatFromInt(dest_h)) / @as(f64, @floatFromInt(src_h));
+    const w: f64 = @floatFromInt(dest_w);
+    const h: f64 = @floatFromInt(dest_h);
 
+    const bg = style.tray_bg_color.toF64();
+    const border = style.color_border.toF64();
+
+    // Work in a normalized left-panel space; mirror for the right panel so
+    // the hem curve always sweeps up toward the screen center.
     c.cairo_save(cr);
     if (right_side) {
-        c.cairo_translate(cr, @as(f64, @floatFromInt(dest_w)), 0.0);
+        c.cairo_translate(cr, w, 0.0);
         c.cairo_scale(cr, -1.0, 1.0);
     }
-    c.cairo_scale(cr, sx, sy);
-    c.cairo_set_source_surface(cr, source, 0, 0);
-    c.cairo_paint(cr);
-    c.cairo_restore(cr);
 
-    c.cairo_surface_destroy(source);
+    // --- Silhouette ---------------------------------------------------------
+    // Straight drop along the outer (left) edge; the inner (right) edge has
+    // a slight inward taper near the bottom and the hem curves up toward it.
+    const inner_x = w; // inner edge at the panel's right side (center-facing)
+    const hem_rise = h * 0.035; // how far the hem lifts at the inner corner
+    const hem_curve_span = w * 0.85;
+
+    c.cairo_move_to(cr, 0.0, 0.0);
+    c.cairo_line_to(cr, inner_x, 0.0);
+    // Inner edge: straight down to just above the hem.
+    c.cairo_line_to(cr, inner_x, h - hem_rise);
+    // Hem: sweep up from outer bottom corner to the inner edge.
+    c.cairo_curve_to(cr,
+        inner_x - hem_curve_span * 0.35, h - hem_rise * 0.35,
+        hem_curve_span * 0.4, h,
+        0.0, h - hem_rise * 0.15);
+    c.cairo_close_path(cr);
+
+    // Base velvet fill.
+    c.cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], 1.0);
+    c.cairo_fill_preserve(cr);
+
+    // --- Fold columns ---------------------------------------------------------
+    c.cairo_save(cr);
+    c.cairo_clip(cr);
+
+    const fold_count = 6;
+    const fold_w = w / @as(f64, @floatFromInt(fold_count));
+    var f: usize = 0;
+    while (f < fold_count) : (f += 1) {
+        const fi = @as(f64, @floatFromInt(f));
+        // Deterministic phase jitter so folds don't look machined.
+        const jitter = std.math.sin(fi * 12.9898 + 78.233) * 0.5 + 0.5; // 0..1
+        const x0 = fi * fold_w + (jitter - 0.5) * fold_w * 0.3;
+
+        // Valley -> sheen peak -> valley, one gradient per fold.
+        const grad = c.cairo_pattern_create_linear(x0, 0.0, x0 + fold_w, 0.0).?;
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, 0.0, 0.0, 0.0, 0.30);
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.35 + jitter * 0.2, border[0], border[1], border[2], 0.10);
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.5 + jitter * 0.15, border[0], border[1], border[2], 0.16);
+        c.cairo_pattern_add_color_stop_rgba(grad, 0.75, 0.0, 0.0, 0.0, 0.22);
+        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.0, 0.0, 0.0, 0.32);
+        c.cairo_set_source(cr, grad);
+        c.cairo_rectangle(cr, x0 - 1.0, 0.0, fold_w + 2.0, h);
+        c.cairo_fill(cr);
+        c.cairo_pattern_destroy(grad);
+    }
+
+    // Deepen the outer edge (pinned side) slightly so the panel sits into the bezel.
+    const edge_grad = c.cairo_pattern_create_linear(0.0, 0.0, w * 0.25, 0.0).?;
+    c.cairo_pattern_add_color_stop_rgba(edge_grad, 0.0, 0.0, 0.0, 0.0, 0.35);
+    c.cairo_pattern_add_color_stop_rgba(edge_grad, 1.0, 0.0, 0.0, 0.0, 0.0);
+    c.cairo_set_source(cr, edge_grad);
+    c.cairo_rectangle(cr, 0.0, 0.0, w * 0.25, h);
+    c.cairo_fill(cr);
+    c.cairo_pattern_destroy(edge_grad);
+
+    // --- Scalloped gather at the top ----------------------------------------
+    const gather_h = @min(h * 0.06, 60.0);
+    var g: usize = 0;
+    while (g < fold_count) : (g += 1) {
+        const gi = @as(f64, @floatFromInt(g));
+        const gx = gi * fold_w + fold_w * 0.5;
+        const ggrad = c.cairo_pattern_create_radial(gx, -gather_h * 0.4, 2.0, gx, -gather_h * 0.4, gather_h * 1.6).?;
+        c.cairo_pattern_add_color_stop_rgba(ggrad, 0.0, border[0], border[1], border[2], 0.12);
+        c.cairo_pattern_add_color_stop_rgba(ggrad, 1.0, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_set_source(cr, ggrad);
+        c.cairo_rectangle(cr, gx - fold_w, 0.0, fold_w * 2.0, gather_h);
+        c.cairo_fill(cr);
+        c.cairo_pattern_destroy(ggrad);
+    }
+
+    // Hem shading: soft dark pooling just above the hem line.
+    const hem_grad = c.cairo_pattern_create_linear(0.0, h - hem_rise * 3.0, 0.0, h).?;
+    c.cairo_pattern_add_color_stop_rgba(hem_grad, 0.0, 0.0, 0.0, 0.0, 0.0);
+    c.cairo_pattern_add_color_stop_rgba(hem_grad, 1.0, 0.0, 0.0, 0.0, 0.30);
+    c.cairo_set_source(cr, hem_grad);
+    c.cairo_rectangle(cr, 0.0, h - hem_rise * 3.0, w, hem_rise * 3.0);
+    c.cairo_fill(cr);
+    c.cairo_pattern_destroy(hem_grad);
+
+    c.cairo_restore(cr); // unclip
+
+    // Inner edge rim light: a hairline of border color so the drop reads
+    // against the focused slide, matching the rest of the chrome.
+    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
+    c.cairo_set_line_width(cr, 1.0);
+    c.cairo_move_to(cr, inner_x - 0.5, 0.0);
+    c.cairo_line_to(cr, inner_x - 0.5, h - hem_rise);
+    c.cairo_stroke(cr);
+
+    c.cairo_restore(cr); // unmirror
     return surf;
 }
 
