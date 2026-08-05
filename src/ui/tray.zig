@@ -1739,21 +1739,46 @@ pub const Tray = struct {
 
         bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
 
-        // Glass fill: near-black with a vertical sheen.
+        // Reversed scheme: body is the unfocused border color, shading is black.
+        // Keep it muted so it reads as dark gold, not porcelain.
         const glass = c.cairo_pattern_create_linear(cx, lip_top, cx, belly_bot).?;
-        c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.10, 0.10, 0.11, 0.88);
-        c.cairo_pattern_add_color_stop_rgba(glass, 0.4, 0.04, 0.04, 0.05, 0.92);
-        c.cairo_pattern_add_color_stop_rgba(glass, 1.0, 0.02, 0.02, 0.03, 0.95);
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.0, border_color[0] * 0.92, border_color[1] * 0.92, border_color[2] * 0.92, 1.0);
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.4, border_color[0] * 0.72, border_color[1] * 0.72, border_color[2] * 0.72, 1.0);
+        c.cairo_pattern_add_color_stop_rgba(glass, 1.0, border_color[0] * 0.48, border_color[1] * 0.48, border_color[2] * 0.48, 1.0);
         c.cairo_set_source(cr, glass);
         c.cairo_fill_preserve(cr);
         c.cairo_pattern_destroy(glass);
 
-        // Black glass overlay to seat it in the theme.
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.55);
-        c.cairo_fill_preserve(cr);
+        // Black 3D shading, clipped to the vessel: shadow lower-right,
+        // soft occlusion at the bottom, gentle dark edge on the neck.
+        c.cairo_save(cr);
+        bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
+        c.cairo_clip(cr);
+        // Shadow side.
+        const shade = c.cairo_pattern_create_linear(cx + belly_rx, belly_bot, cx - belly_rx * 0.3, belly_cy).?;
+        c.cairo_pattern_add_color_stop_rgba(shade, 0.0, 0.0, 0.0, 0.0, 0.45);
+        c.cairo_pattern_add_color_stop_rgba(shade, 1.0, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_set_source(cr, shade);
+        c.cairo_paint(cr);
+        c.cairo_pattern_destroy(shade);
+        // Highlight side: gentle border-color lift, no white (avoids porcelain).
+        const light = c.cairo_pattern_create_linear(cx - belly_rx, belly_top, cx + belly_rx * 0.4, belly_cy).?;
+        c.cairo_pattern_add_color_stop_rgba(light, 0.0, border_color[0], border_color[1], border_color[2], 0.18);
+        c.cairo_pattern_add_color_stop_rgba(light, 1.0, border_color[0], border_color[1], border_color[2], 0.0);
+        c.cairo_set_source(cr, light);
+        c.cairo_paint(cr);
+        c.cairo_pattern_destroy(light);
+        // Bottom ambient occlusion.
+        const ao = c.cairo_pattern_create_linear(cx, belly_bot - belly_ry * 0.5, cx, belly_bot + belly_ry * 0.1).?;
+        c.cairo_pattern_add_color_stop_rgba(ao, 0.0, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_pattern_add_color_stop_rgba(ao, 1.0, 0.0, 0.0, 0.0, 0.40);
+        c.cairo_set_source(cr, ao);
+        c.cairo_paint(cr);
+        c.cairo_pattern_destroy(ao);
+        c.cairo_restore(cr);
 
-        // Gold rim stroke along the same silhouette.
-        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 1.0);
+        // Rim stroke in darkened border color so the edge reads on the light body.
+        c.cairo_set_source_rgba(cr, border_color[0] * 0.45, border_color[1] * 0.45, border_color[2] * 0.45, 1.0);
         c.cairo_set_line_width(cr, 2.6 * s);
         c.cairo_stroke(cr);
 
@@ -1773,26 +1798,26 @@ pub const Tray = struct {
         // Clip to the vessel silhouette so liquid respects the new shape.
         bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
         c.cairo_clip(cr);
-        // Liquid: quiet dark gold, no motion.
+        // Liquid: quiet black, no motion (reversed scheme on light body).
         const fill_top = belly_cy + belly_ry - 2.0 * belly_ry * level;
         const liquid = c.cairo_pattern_create_linear(cx, fill_top, cx, belly_cy + belly_ry).?;
-        c.cairo_pattern_add_color_stop_rgba(liquid, 0.0, border_color[0], border_color[1], border_color[2], 0.18);
-        c.cairo_pattern_add_color_stop_rgba(liquid, 1.0, border_color[0] * 0.6, border_color[1] * 0.6, border_color[2] * 0.6, 0.42);
+        c.cairo_pattern_add_color_stop_rgba(liquid, 0.0, 0.0, 0.0, 0.0, 0.25);
+        c.cairo_pattern_add_color_stop_rgba(liquid, 1.0, 0.0, 0.0, 0.0, 0.55);
         c.cairo_set_source(cr, liquid);
         c.cairo_rectangle(cr, cx - belly_rx, fill_top, belly_rx * 2.0, belly_cy + belly_ry - fill_top);
         c.cairo_fill(cr);
         c.cairo_pattern_destroy(liquid);
         // Hairline surface line.
-        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.55);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.65);
         c.cairo_set_line_width(cr, 1.0 * s);
         c.cairo_move_to(cr, cx - belly_rx * 0.8, fill_top);
         c.cairo_line_to(cr, cx + belly_rx * 0.8, fill_top);
         c.cairo_stroke(cr);
         c.cairo_restore(cr);
 
-        // --- Glass highlights --------------------------------------------------
+        // --- Glass highlights (border color, no white) --------------------------
         // Slim vertical highlight on the upper-left belly.
-        c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.07);
+        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.16);
         c.cairo_set_line_width(cr, 3.0 * s);
         c.cairo_move_to(cr, cx - belly_rx * 0.45, belly_cy - belly_ry * 0.55);
         c.cairo_curve_to(cr,
@@ -1801,7 +1826,7 @@ pub const Tray = struct {
             cx - belly_rx * 0.45, belly_cy + belly_ry * 0.45);
         c.cairo_stroke(cr);
         // Small specular dot near the neck shoulder.
-        c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.10);
+        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.22);
         c.cairo_arc(cr, cx - belly_rx * 0.30, belly_cy - belly_ry * 0.62, 1.6 * s, 0, 2.0 * std.math.pi);
         c.cairo_fill(cr);
 
