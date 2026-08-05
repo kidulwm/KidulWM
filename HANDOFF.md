@@ -3,76 +3,73 @@
 ## Current state
 
 - Branch: `main`
-- Last commit: `222bda0 feat: IPC get_windows + kfiles_navigate, tray auto-close on activate`
+- Last commit: `1851906` docs (KNOWN_CMDS backup/apocalypse + kmedia notes)
 - Build: passing (`zig build -Doptimize=ReleaseSafe`)
 - Deployed: `fresh-one` VM via scp/ssh
+- Backed up: LaCie-Apocalypse (`kidulwm-apocalypse-20260805_final.bundle` + `KidulWM-src/`)
 
-## Completed in this session
+## The day the desktop became a product (2026-08-05)
 
-### Phase 1 — Tray auto-hide + focus handoff
-- `src/ui/tray.zig`: `activateSelected()` now closes the tray and any open cards after launching a card/app/slide.
-- Exception: `.toggle_tray` action keeps old behavior.
+### kbottle — the new logo
+- Pet-button cauldron replaced by a **genie bottle** (`drawGenieBottle` in
+  `src/ui/tray.zig`): one continuous whispy vessel path shared by fill /
+  stroke / clip, reversed color scheme (muted unfocused-border body, black
+  shading = "Bob's extra special shading", border-color highlights, black
+  RAM liquid), anchored belly-bottom 17px above the screen edge, 3px left.
+- Golden wisp pours from the mouth only while `tray_anim` is mid-flight —
+  the tray appears to come out of / back into the bottle. Fully static at
+  rest. Zero idle animation.
 
-### Phase 2/3 foundation — IPC for dashboard ↔ kfiles
-- `src/ipc/message.zig`: added `kfiles_navigate` and `get_windows` requests; `WindowInfo` + `windows` field on `Response`.
-- `src/server.zig`: handler for `kfiles_navigate` writes target path to `/tmp/kfiles-navigate`; `getWindowsResponse()` returns all windows with id/app_id/title/mapped.
-- `src/kidulwm-control.zig`: added `get_windows` and `kfiles_navigate <path>` CLI commands.
-- Verified on VM: `kidulwm-control get_windows` returns kfiles as `com.kidulwm.kfiles`.
+### Peeks — landing-screen layout locked
+- Left peek: moon centered in a 34·s status band (level with the network
+  icon), temp + min/max + moon all +3px right, weather icon sized 48·s and
+  tucked up (0.62·r center offset), min/max at font_size_s×1.2, widget box
+  215·s. Clock/weather numbers matched at font_size_m×1.9, 10pt gap under
+  the bands.
+- Right peek: network icon −7px, clock numbers −9px, date block −4px net,
+  date block = weekday / day / month, widget box 185·s.
+- Left-peek gauges hidden by default behind `~/.config/kidulwm/gauges.toml`
+  (`kidulwm-control set-show-temp on|off`, `set-show-ram`, 
+  `set-temp-threshold`). `src/core/gauge_config.zig` reads it; Settings app
+  will toggle the same file later.
 
-### kfiles — drive discovery + navigation
-- `kfiles/src/Model.zig`:
-  - `discoverDrives()` reads `/proc/self/mounts` for mounted drives and `/proc/partitions` for all block devices.
-  - Unmounted block devices are stored as `.hidden = true` drives.
-  - `pollNavigateFile()` reads `/tmp/kfiles-navigate`, calls `navigateTo()`, then deletes the file.
-  - `goUp()` is blocked from going above `/home/kidul`.
-- `kfiles/src/Files.zig`: added `pollNavigateFile()` wrapper.
-- `kfiles/src/Wayland.zig`: calls `pollNavigateFile()` each frame.
-- New kfiles binary deployed to `/usr/local/bin/kfiles`.
+### kmedia Phase 1 — the helix (THE BUTTERFLY)
+- `src/core/kmedia.zig`: PipeWire monitor capture on a thread (hand-declared
+  extern surface + tiny C shim `kmedia_shim.c` for the SPA pod), radix-2 FFT
+  2048, **7 octave bands on the 432 Hz ladder** (A2..A8: 108..6912 Hz),
+  fast-attack/slow-release smoothing, lock-free band slots + RMS level.
+- `src/ui/media.zig` peek: vertical Lissajous **figure-8** as two interleaved
+  dot chains (56 dots each) precessing one full turn per 60s; 7 whispy 1px
+  octave rungs clipped to the loop walls ([x_inner, x_outer] per side),
+  thickening with band energy, ghost whisp above e>0.45.
+- Accidental magic: at full precession width it reads as a **butterfly**
+  mid-flap with the rungs as wing markings. Officially the brand.
+- mpv launched by the media card uses `--ao=pipewire,...` so playback is
+  visible to the monitor capture.
+- Media peek redraws every frame (animation); frame cadence is the
+  wlroots `handleFrame` callback — vsync-locked.
 
-### Left-peek polish (this session)
-- `src/core/gauge_data.zig`: `readCpuTemp()` now falls back to 45.0°C when `/sys/class/thermal/thermal_zone0/temp` is unreadable, matching `readGpuTemp()` fallback so the two gauges hide/show together.
-- `src/ui/gauge.zig`: RAM cauldron liquid and bubble colors shifted from Xbox-green (`0.2,1.0,0.3`) to turquoise (`0.10,0.85,0.75` / `0.45,1.0,0.9`). Cauldron outline/rim/legs already use theme border colors.
-- Rebuilt `kidulwm`/`kidulwm-control` and redeployed to `fresh-one` VM.
+### VM audio environment (fresh-one)
+- No audio hardware: null-sink config at
+  `~/.config/pipewire/pipewire.conf.d/kidul-sink.conf`
+  (`support.null-audio-sink` adapter, `Audio/Sink`, monitor.passthrough).
+- Installed: `wireplumber` (enabled user service), `pipewire-audio`.
+- Do NOT reference `libpipewire-module-null-sink` — not shipped.
+- `kmedia-test` binary prints live band levels for debugging.
 
-## Important correction
+## Pending / next
 
-The left-peek redesign target is **KidulWM's own internal Zig UI**, NOT the old Rust `rkt-dashboard` prototype. The live gauges/cauldron/drives are rendered in:
-- `src/ui/gauge.zig` — GPU/CPU temp gauges and RAM cauldron
-- `src/ui/drives.zig` — disk treasure chests
-- `src/ui/tray.zig` — owns `GaugeWidget`/`DrivesWidget`, pointer hit boxes (`pointInsideGaugeWidget`)
-
-## Pending work
-
-### Left-peek redesign (in `src/ui/gauge.zig` and `src/ui/drives.zig`)
-1. Hide the two top temp gauges by default; show only when value ≥ 76°F (configurable later). Add hotkey/toggle for gauge visibility.
-2. Move the RAM cauldron to the bottom of the left peek. Remove "ram" text. Keep it connected to RAM usage and animate more (bubbling/spitting bright green under black glass). Make the cauldron clickable as the rkt/tray button (open/close KidulWM tray).
-3. Replace the fixed `disk1_size`/`disk2_size` chest gauges with real drive icons from `discoverDrives()` logic (or share code with kfiles). Show drive icons/pills only when kfiles is open (detect via server's window list / app_id `com.kidulwm.kfiles`).
-4. Clicking a mounted drive sends kfiles to that path via `/tmp/kfiles-navigate` or direct IPC. Hidden/unmounted drives should be listed but not navigable until mounting is implemented.
-5. Add pointer hit boxes for cauldron and drive icons in `src/ui/tray.zig`.
-
-### Cleanup notes
-- The stray kfiles process on the VM may be in a broken state (`WaylandConnectFailed`); kill and relaunch from the tray after deploying the next KidulWM build.
-- kfiles debug logging to `/tmp/kfiles-debug.log` was added temporarily and should be removed before final polish.
+- Dogfood KidulSD on the host (real GPU/audio) — tune FFT sensitivity,
+  ghost threshold, attack/release against real music.
+- kmedia Phase 2+: per-app mixer, MPRIS over D-Bus from Zig, media IPC
+  (`media_bands subscribe`, `media_visual_mode`). Full plan + questions
+  for Andrew Kelley in `docs/kmedia-zig-audio-endgame.md`.
+- RAM gauge rejoins the temp group when the gauge redesign lands.
+- Media card "dicky" note: Left on the top category pills closes the card
+  (this is the locked back-to-tray gesture — intentional, but watch how
+  it feels in use).
 
 ## Build/deploy workflow
 
-```bash
-cd /home/dad/dev/KidulWM
-zig build -Doptimize=ReleaseSafe
-
-scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \\
-  zig-out/bin/kidulwm zig-out/bin/kidulwm-control \\
-  kidul@127.0.0.1:/tmp/
-
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \\
-  'sudo systemctl stop kidulwm && sleep 2 && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm'
-```
-
-For kfiles:
-```bash
-cd /home/dad/dev/kfiles
-zig build -Doptimize=ReleaseFast
-scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm zig-out/bin/kfiles kidul@127.0.0.1:/tmp/kfiles.new
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \\
-  'pkill -x kfiles 2>/dev/null || true; sleep 2; sudo mv /tmp/kfiles.new /usr/local/bin/kfiles && sudo chmod +x /usr/local/bin/kfiles'
-```
+See `KNOWN_CMDS.md` — build on host, scp to `kidul@127.0.0.1:2260`,
+systemctl restart. Apocalypse backup procedure also in KNOWN_CMDS.
