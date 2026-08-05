@@ -934,81 +934,74 @@ pub const MediaWidget = struct {
         const dt = if (self.last_helix_us == 0) 0.0 else @as(f64, @floatFromInt(now -% self.last_helix_us)) / 1_000_000.0;
         self.last_helix_us = now;
 
-        // kmedia band data: 7 log-spaced bands, bass at the bottom.
+        // kmedia band data: 7 octave bands on the 432 Hz ladder (A2..A8).
         const kmedia = @import("../core/kmedia.zig");
         const kb = kmedia.bands();
         const audio_level = kmedia.level();
         const audio_live = audio_level > 0.03;
 
-        // Strand energy: when audio is live, each strand follows its band;
-        // when silent, a slow crossfade wave passes down the strands (one
-        // brightens at a time, ~8.5s per strand for a 60s full cycle).
-        const phase_speed: f64 = if (audio_live) 2.2 else 0.6;
-        self.helix_phase += dt * phase_speed;
-        const strand_count = 7;
-        var strand_energy: [strand_count]f64 = undefined;
-        const cycle_pos = @mod(self.helix_phase * 0.6 / 8.5, 1.0) * strand_count;
-        for (0..strand_count) |i| {
-            if (audio_live) {
-                strand_energy[i] = @floatCast(@min(1.2, kb[i] * 1.4));
-            } else {
-                const d = @abs(@as(f64, @floatFromInt(i)) - cycle_pos);
-                const wrapped = @min(d, strand_count - d);
-                strand_energy[i] = 0.10 + 0.35 * @max(0.0, 1.0 - wrapped);
+        // Vertical infinity symbol: a Lissajous figure-8 (x=sin θ, y=sin 2θ)
+        // traced as two interleaved dot chains — one continuous line that
+        // reads as two snakes. The whole 8 precesses slowly about its
+        // vertical axis: one full turn per 60s, always moving, never loud.
+        const turn_speed: f64 = 2.0 * std.math.pi / 60.0; // rad/s
+        self.helix_phase += dt * turn_speed;
+        const precess = @cos(self.helix_phase);
+
+        const rung_count = 7;
+        const half_h = lane_h * 0.5;
+        const half_w = @min(band_w * 0.5, half_h * 0.55);
+
+        // --- Whispy octave rungs -------------------------------------------
+        // At each rung height, a 1px whisp spans between the two sides of
+        // the 8. Thickness follows the band's energy; a second ghost whisp
+        // appears beside it when the octave really hits. Rungs move as fast
+        // as the music; at 1px they never shout.
+        for (0..rung_count) |r| {
+            // Map rung r (0=bottom/A2) to a y on the 8, skipping the pinch.
+            const frac = (@as(f64, @floatFromInt(r)) + 0.75) / (@as(f64, rung_count) + 0.5);
+            const ry = cy + half_h - frac * lane_h;
+            // x-extent of the figure-8 at this height (solve sin2θ from y).
+            const ny = std.math.clamp((ry - cy) / half_h, -0.99, 0.99);
+            const theta = std.math.asin(ny) * 0.5;
+            const x_span = @abs(@sin(theta)) * half_w * @abs(precess);
+            if (x_span < 1.0) continue;
+
+            const e: f64 = @floatCast(@min(1.2, kb[r] * 1.4));
+            const base_alpha: f64 = if (audio_live) 0.18 + 0.45 * e else 0.10;
+            const lw = @max(1.0, 1.0 + 2.0 * e) * scale_f;
+            c.cairo_set_line_width(cr, lw);
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], base_alpha);
+            c.cairo_move_to(cr, cx - x_span, ry);
+            c.cairo_line_to(cr, cx + x_span, ry);
+            c.cairo_stroke(cr);
+
+            // Ghost whisp when the octave is loud.
+            if (audio_live and e > 0.45) {
+                const ghost_off = 1.8 * scale_f;
+                c.cairo_set_line_width(cr, 1.0 * scale_f);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35 * e);
+                c.cairo_move_to(cr, cx - x_span * 0.85, ry + ghost_off);
+                c.cairo_line_to(cr, cx + x_span * 0.85, ry + ghost_off);
+                c.cairo_stroke(cr);
             }
         }
 
-        const amp = lane_h * 0.30;
-        const marker_count: usize = 5;
-
-        c.cairo_set_line_width(cr, @max(1.0, 1.2 * scale_f));
-
-        // 7 strands, evenly phase-staggered, each with its own amplitude
-        // (band energy) and brightness.
-        for (0..strand_count) |strand| {
-            const e = strand_energy[strand];
-            const strand_offset: f64 = @as(f64, @floatFromInt(strand)) * (2.0 * std.math.pi / @as(f64, strand_count));
-            const strand_amp = @max(1.5 * scale_f, amp * (0.25 + 0.75 * e));
-            c.cairo_new_path(cr);
-            var t: f64 = 0;
-            const steps: usize = 60;
-            var first = true;
-            while (t <= 1.0001) : (t += 1.0 / @as(f64, @floatFromInt(steps))) {
-                const y = cy - lane_h * 0.5 + t * lane_h;
-                const wave = @sin(t * std.math.pi * 4.0 - self.helix_phase + strand_offset);
-                const x = cx + wave * strand_amp;
-                if (first) {
-                    c.cairo_move_to(cr, x, y);
-                    first = false;
-                } else {
-                    c.cairo_line_to(cr, x, y);
-                }
+        // --- Figure-8 outline as two interleaved dot chains -----------------
+        const dot_count: usize = 56;
+        const chain_dot_r: f64 = @max(1.0, 1.3 * scale_f);
+        for (0..2) |chain| {
+            const chain_off = @as(f64, @floatFromInt(chain)) * std.math.pi / @as(f64, @floatFromInt(dot_count));
+            for (0..dot_count) |i| {
+                const theta = @as(f64, @floatFromInt(i)) * 2.0 * std.math.pi / @as(f64, @floatFromInt(dot_count)) + chain_off;
+                const px = cx + @sin(theta) * half_w * precess;
+                const py = cy + @sin(2.0 * theta) * half_h;
+                // Fade dots near the "back" of the precession for depth.
+                const depth = 0.55 + 0.45 * @cos(theta + self.helix_phase);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.30 + 0.30 * depth);
+                c.cairo_arc(cr, px, py, chain_dot_r, 0, 2.0 * std.math.pi);
+                c.cairo_fill(cr);
             }
-            const base_alpha: f64 = if (audio_live) 0.25 else 0.18;
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], base_alpha + 0.65 * e);
-            c.cairo_stroke(cr);
-        }
-
-        // Ball markers ride strand 0, sized/pulsed by the overall level.
-        const alpha_pulse = 0.35 + 0.55 * @min(1.0, audio_level * 1.5);
-        const marker_r = @max(3.0 * scale_f, lane_h * 0.09);
-        var mi: usize = 0;
-        while (mi <= marker_count) : (mi += 1) {
-            const t = @as(f64, @floatFromInt(mi)) / @as(f64, @floatFromInt(marker_count));
-            const y = margin + t * lane_h;
-            const wave = @sin(t * std.math.pi * 4.0 - self.helix_phase);
-            const x = cx + wave * amp * 0.6;
-            c.cairo_new_path(cr);
-            c.cairo_arc(cr, x, y, marker_r, 0, std.math.pi * 2.0);
-            if (audio_live) {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], alpha_pulse);
-            } else {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.22);
-            }
-            c.cairo_fill_preserve(cr);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.55);
-            c.cairo_set_line_width(cr, @max(0.5, 0.7 * scale_f));
-            c.cairo_stroke(cr);
         }
 
         c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);

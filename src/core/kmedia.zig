@@ -194,7 +194,7 @@ fn fft(re: *[FFT_SIZE]f32, im: *[FFT_SIZE]f32) void {
 
 var smooth: [BAND_COUNT]f32 = .{0} ** BAND_COUNT;
 
-const band_edges = [BAND_COUNT + 1]usize{ 2, 5, 12, 30, 75, 186, 372, 558 };
+const band_edges = [BAND_COUNT + 1]usize{ 4, 7, 13, 25, 50, 100, 201, 402 };
 
 fn analyzeFrame() void {
     if (!hann_ready) initHann();

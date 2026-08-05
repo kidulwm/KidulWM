@@ -3499,14 +3499,8 @@ pub const Tray = struct {
 
         const title = std.mem.sliceTo(&self.media.cached.title, 0);
         const title_hash: u64 = std.hash.Crc32.hash(title);
-        const redraw = widget.scene_buffer == null or
-            widget.last_w != pill_w or
-            widget.last_h != pill_h or
-            widget.last_x != pill_x or
-            widget.last_y != pill_y or
-            widget.last_scale != scale or
-            widget.last_title_hash != title_hash or
-            widget.last_theme_generation != theme_gen;
+        // The helix animates every frame, so always redraw.
+        const redraw = true;
 
         if (!redraw) {
             widget.tree.node.setPosition(pill_x, pill_y);
