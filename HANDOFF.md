@@ -1,75 +1,104 @@
-# KidulWM Handoff
+# KidulWM Handoff — 2026-08-06 morning brief
 
-## Current state
+## Where we are
 
-- Branch: `main`
-- Last commit: `1851906` docs (KNOWN_CMDS backup/apocalypse + kmedia notes)
-- Build: passing (`zig build -Doptimize=ReleaseSafe`)
-- Deployed: `fresh-one` VM via scp/ssh
-- Backed up: LaCie-Apocalypse (`kidulwm-apocalypse-20260805_final.bundle` + `KidulWM-src/`)
+- Branch: `main`, last commit: docs + procedural curtain v1 (`docs/per-pixel-chrome-architecture.md` parked)
+- Build: passing (`zig build -Doptimize=ReleaseSafe`), deployed to `fresh-one`
+- Backed up to LaCie-Apocalypse (bundle + `KidulWM-src/`)
+- **Desktop status: essentially a finished product.** kbottle, aligned peeks,
+  butterfly helix, live kmedia bands, procedural curtains v1 on screen.
 
-## The day the desktop became a product (2026-08-05)
+## MORNING QUEUE (in order)
 
-### kbottle — the new logo
-- Pet-button cauldron replaced by a **genie bottle** (`drawGenieBottle` in
-  `src/ui/tray.zig`): one continuous whispy vessel path shared by fill /
-  stroke / clip, reversed color scheme (muted unfocused-border body, black
-  shading = "Bob's extra special shading", border-color highlights, black
-  RAM liquid), anchored belly-bottom 17px above the screen edge, 3px left.
-- Golden wisp pours from the mouth only while `tray_anim` is mid-flight —
-  the tray appears to come out of / back into the bottle. Fully static at
-  rest. Zero idle animation.
+### 1. Design-grid overlay (the tool that unblocks curtains)
+- `kidulwm-control grid_overlay on|off` → fullscreen 10px grid, heavier
+  lines every 100px, origin at screen corner (maybe second origin centered).
+- Scene-buffer overlay tree, above everything, toggleable at runtime.
+- Purpose: talk about curtain curves in grid cells, not vibes.
+  See docs/per-pixel-chrome-architecture.md — this grid is also step zero
+  of the long-term per-pixel chrome idea.
 
-### Peeks — landing-screen layout locked
-- Left peek: moon centered in a 34·s status band (level with the network
-  icon), temp + min/max + moon all +3px right, weather icon sized 48·s and
-  tucked up (0.62·r center offset), min/max at font_size_s×1.2, widget box
-  215·s. Clock/weather numbers matched at font_size_m×1.9, 10pt gap under
-  the bands.
-- Right peek: network icon −7px, clock numbers −9px, date block −4px net,
-  date block = weekday / day / month, widget box 185·s.
-- Left-peek gauges hidden by default behind `~/.config/kidulwm/gauges.toml`
-  (`kidulwm-control set-show-temp on|off`, `set-show-ram`, 
-  `set-temp-threshold`). `src/core/gauge_config.zig` reads it; Settings app
-  will toggle the same file later.
+### 2. Curtains — nail them with the grid
+Current state (v1, deployed): procedural straight drops, full-length to the
+bottom edge, matte black velvet (base 55% darkened), 6 jittered matte fold
+columns, 4 gloss slithers full-height (3× 2-3px wisps + 1× 5px hero, random
+x/meander/strength), scalloped gather at top, hairline inner rim light.
+User feedback so far: closer, but needs final tuning WITH the grid overlay —
+fold positions/curve talk in cells next session.
+File: `src/render/curtain.zig` (`paintCurtain()`). All numbers are single
+tweakable constants. Old PNG asset backed up:
+`src/render/assets/curtain_left_tied_20260805_bak.png`.
 
-### kmedia Phase 1 — the helix (THE BUTTERFLY)
-- `src/core/kmedia.zig`: PipeWire monitor capture on a thread (hand-declared
-  extern surface + tiny C shim `kmedia_shim.c` for the SPA pod), radix-2 FFT
-  2048, **7 octave bands on the 432 Hz ladder** (A2..A8: 108..6912 Hz),
-  fast-attack/slow-release smoothing, lock-free band slots + RMS level.
-- `src/ui/media.zig` peek: vertical Lissajous **figure-8** as two interleaved
-  dot chains (56 dots each) precessing one full turn per 60s; 7 whispy 1px
-  octave rungs clipped to the loop walls ([x_inner, x_outer] per side),
-  thickening with band energy, ghost whisp above e>0.45.
-- Accidental magic: at full precession width it reads as a **butterfly**
-  mid-flap with the rungs as wing markings. Officially the brand.
-- mpv launched by the media card uses `--ao=pipewire,...` so playback is
-  visible to the monitor capture.
-- Media peek redraws every frame (animation); frame cadence is the
-  wlroots `handleFrame` callback — vsync-locked.
+### 3. Media micro-player popover (the day's main build)
+Design (locked with user):
+- Appears ONLY when the media peek is hovered or hotkey'd — never ambient.
+- Pops out to the LEFT of the right-peek media widget (toward screen center).
+- A **micro version of the future ktunes player**: stop + play/pause +
+  maybe volume, nothing else. Simple, in line with everything else
+  (black glass, gold rim, shape-language from the card mat).
+- Content: now-playing title (if it fits), ⏯ toggle, ⏹ stop, tiny volume
+  slider/pill.
 
-### VM audio environment (fresh-one)
-- No audio hardware: null-sink config at
-  `~/.config/pipewire/pipewire.conf.d/kidul-sink.conf`
-  (`support.null-audio-sink` adapter, `Audio/Sink`, monitor.passthrough).
-- Installed: `wireplumber` (enabled user service), `pipewire-audio`.
-- Do NOT reference `libpipewire-module-null-sink` — not shipped.
-- `kmedia-test` binary prints live band levels for debugging.
+Must also fix (the reason this exists — two songs played at once tonight):
+- **Orphan reaping at startup**: on media widget init, kill any mpv still
+  holding `/run/user/1000/kidulwm-mpv.sock` (our socket path is unique;
+  `pkill -f kidulwm-mpv.sock` pattern or /proc scan). Compositor restarts
+  currently orphan mpvs that keep playing.
+- **Real stop**: wire `MediaWidget.ensureStopped()` to the popover ⏹ and
+  add `kidulwm-control media_stop` (IPC message exists? — check
+  src/ipc/message.zig; if missing, add `media_stop` request + server handler
+  + CLI, mirroring `media_toggle`).
+- Volume via mpv IPC: `{ "command": ["set_property", "volume", N] }` —
+  `sendSimpleCommand` pattern already in media.zig.
 
-## Pending / next
+Wiring notes:
+- Peek hover: tray already tracks pointer motion over widget click boxes
+  (`widget.click_box`); the popover should show after a short hover delay
+  (~400ms) and hide when the pointer leaves both widget AND popover, or on
+  Escape. Follow the card-open/close patterns in tray.zig (`updateCard`,
+  `closeAllCards`) — the popover can be a small new scene-buffer like
+  TrayCard, or reuse CardMode; judge in the morning which is cleaner.
+- Hotkey: bind something sane (e.g. Mod4+M) via `handleAction` → toggles
+  the popover. Check `src/input/keyboard.zig` action table.
+- mpv launch: already fixed to `--ao=pipewire,pulse,alsa,null` so kmedia
+  sees playback. The media card's Enter path works
+  (`tray.zig:2398` → `media.play(path)`).
 
-- Dogfood KidulSD on the host (real GPU/audio) — tune FFT sensitivity,
-  ghost threshold, attack/release against real music.
-- kmedia Phase 2+: per-app mixer, MPRIS over D-Bus from Zig, media IPC
-  (`media_bands subscribe`, `media_visual_mode`). Full plan + questions
-  for Andrew Kelley in `docs/kmedia-zig-audio-endgame.md`.
-- RAM gauge rejoins the temp group when the gauge redesign lands.
-- Media card "dicky" note: Left on the top category pills closes the card
-  (this is the locked back-to-tray gesture — intentional, but watch how
-  it feels in use).
+### 4. Parked ideas (do NOT start, recorded so they don't evaporate)
+- **Butterfly Easter egg**: when the helix figure-8 is at full width
+  (wings open), occasionally — random, rare — draw a few extra light dots &
+  whispy lines for a few seconds so it literally reads as a butterfly.
+  "Starer-entertainment." Not now.
+- **Per-pixel chrome architecture**: `docs/per-pixel-chrome-architecture.md`.
+- **kmedia Phase 2** (MPRIS over D-Bus from Zig, per-app mixer, media IPC
+  subscribe): `docs/kmedia-zig-audio-endgame.md` — also has the questions
+  for Andrew Kelley (user may chat with him; the file is ready to share).
+- RAM gauge rejoining the temp group (gauges.toml already has show_ram).
 
-## Build/deploy workflow
+## Key commands (verified, in KNOWN_CMDS.md)
 
-See `KNOWN_CMDS.md` — build on host, scp to `kidul@127.0.0.1:2260`,
-systemctl restart. Apocalypse backup procedure also in KNOWN_CMDS.
+```bash
+cd /home/dad/dev/KidulWM && zig build -Doptimize=ReleaseSafe
+scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm zig-out/bin/kidulwm kidul@127.0.0.1:/tmp/
+ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \
+  'sudo systemctl stop kidulwm && sleep 2 && sudo cp /tmp/kidulwm /usr/bin/ && sudo systemctl start kidulwm'
+
+# kill rogue audio on the VM:
+ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 'pkill -x mpv; rm -f /run/user/1000/kidulwm-mpv.sock'
+
+# apocalypse backup: see KNOWN_CMDS.md "Apocalypse drive backup (LaCie)"
+```
+
+## Traps to remember tomorrow
+
+- The media peek redraws EVERY FRAME (helix) — popover hover checks must
+  not fight that; pointer-hit logic only, no render-latch changes.
+- VM has no audio hardware: null-sink at
+  `~/.config/pipewire/pipewire.conf.d/kidul-sink.conf` on fresh-one.
+  If bands read 0.00, check wireplumber is running
+  (`systemctl --user status wireplumber`) and mpv uses `--ao=pipewire`.
+- `std.log` from the kmedia thread does NOT reach the systemd journal;
+  debug with the `kmedia-test` binary instead.
+- llvmpipe CPU burn (~300%) on the VM is NORMAL (software GL), not a bug.
+- Zig std on this box is trimmed: no `std.Thread.sleep`, no
+  `std.fs.cwd()` in some modules — see AGENTS.md + skill notes.
