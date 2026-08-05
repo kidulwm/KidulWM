@@ -155,6 +155,40 @@ kidulwm-control media_play <path>
 kidulwm-control quit
 ```
 
+## Gauge visibility toggles (gauges.toml)
+
+```bash
+kidulwm-control set-show-temp on|off      # cpu/gpu temp gauges (default off)
+kidulwm-control set-show-ram on|off       # reserved: ram gauge group
+kidulwm-control set-temp-threshold <F>    # hide temp gauges below this (default 88)
+```
+
+## Apocalypse drive backup (LaCie)
+
+The LaCie-Apocalypse drive mounts at `/mnt/lacie-apocalypse`.
+Backup = full-history git bundle + rsync'd source tree:
+
+```bash
+cd /home/dad/dev/KidulWM
+git bundle create /tmp/kidulwm-apocalypse-$(date +%Y%m%d_%H%M).bundle --all
+cp /tmp/kidulwm-apocalypse-*.bundle /mnt/lacie-apocalypse/
+rsync -a /home/dad/dev/KidulWM/ /mnt/lacie-apocalypse/KidulWM-src/ \
+  --exclude=.zig-cache --exclude=zig-out
+```
+
+Restore: `git clone kidulwm-apocalypse-<date>.bundle` gives the full repo.
+
+## kmedia / PipeWire notes (fresh-one)
+
+- The VM has no audio hardware. A null sink lives at
+  `~/.config/pipewire/pipewire.conf.d/kidul-sink.conf` (adapter factory
+  `support.null-audio-sink`, media.class `Audio/Sink`, monitor.passthrough).
+  Do NOT use `libpipewire-module-null-sink` — not shipped on this setup.
+- `pipewire-audio` package is required (pw-cat, SPA audio factories).
+- wireplumber is the session manager (installed + enabled as user service).
+- `kmedia-test` binary prints live band levels for debugging:
+  `XDG_RUNTIME_DIR=/run/user/1000 /tmp/kmedia-test`
+
 ## Commands that fail
 
 | Command | Why |
