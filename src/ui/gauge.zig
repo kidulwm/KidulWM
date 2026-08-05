@@ -7,6 +7,7 @@ const c_std = @cImport({
 const c = @import("dm").c;
 const style = @import("../core/style.zig");
 const gauge_data = @import("../core/gauge_data.zig");
+const gauge_config = @import("../core/gauge_config.zig");
 
 pub const GaugeWidget = struct {
     allocator: std.mem.Allocator,
@@ -328,11 +329,16 @@ pub const GaugeWidget = struct {
     }
 
     fn metricVisible(metric: gauge_data.Metric) !bool {
+        // Master switch: the temp gauge group stays hidden until the user
+        // enables it (set-show-temp / gauges.toml). RAM rejoins the group later.
+        const cfg = gauge_config.load(std.heap.page_allocator);
         return switch (metric) {
             .gpu_temp, .cpu_temp => blk: {
+                if (!cfg.show_temp) break :blk false;
                 const f = try metricFahrenheit(metric);
-                break :blk f >= 88.0;
+                break :blk f >= cfg.temp_threshold_f;
             },
+            .ram_usage => cfg.show_ram,
             else => true,
         };
     }

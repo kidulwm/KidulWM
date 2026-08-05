@@ -25,6 +25,32 @@ pub fn main(init: std.process.Init.Minimal) !void {
     _ = it.next(); // skip program name
     const cmd = if (it.next()) |arg| arg else "get_layout";
 
+    // Local config commands (no IPC needed): write ~/.config/kidulwm/gauges.toml.
+    if (std.mem.eql(u8, cmd, "set-show-temp")) {
+        const value = it.next() orelse {
+            std.log.err("set-show-temp requires on|off", .{});
+            return error.MissingArgument;
+        };
+        try setGaugeFlag(allocator, "show_temp", value);
+        return;
+    }
+    if (std.mem.eql(u8, cmd, "set-show-ram")) {
+        const value = it.next() orelse {
+            std.log.err("set-show-ram requires on|off", .{});
+            return error.MissingArgument;
+        };
+        try setGaugeFlag(allocator, "show_ram", value);
+        return;
+    }
+    if (std.mem.eql(u8, cmd, "set-temp-threshold")) {
+        const value = it.next() orelse {
+            std.log.err("set-temp-threshold requires a Fahrenheit value", .{});
+            return error.MissingArgument;
+        };
+        try setGaugeFlag(allocator, "temp_threshold_f", value);
+        return;
+    }
+
     const runtime = std.process.Environ.getPosix(init.environ, "XDG_RUNTIME_DIR") orelse "/run/user/1000";
     const socket_path = try std.fs.path.join(allocator, &.{ runtime, "kidulwm-control.sock" });
     defer allocator.free(socket_path);
@@ -122,4 +148,97 @@ pub fn main(init: std.process.Init.Minimal) !void {
     if (linux.errno(rc) == .SUCCESS and rc > 0) {
         _ = linux.write(linux.STDOUT_FILENO, &buf, @intCast(rc));
     }
+}
+
+/// Update (or create) a single key in ~/.config/kidulwm/gauges.toml.
+/// Boolean flags accept on/off/true/false/1/0; numeric keys are written raw.
+fn setGaugeFlag(allocator: std.mem.Allocator, key: []const u8, raw_value: []const u8) !void {
+    const home = std.c.getenv("HOME") orelse return error.NoHome;
+    const dir_path = try std.fs.path.join(allocator, &.{ std.mem.span(home), ".config", "kidulwm" });
+    defer allocator.free(dir_path);
+    const file_path = try std.fs.path.join(allocator, &.{ dir_path, "gauges.toml" });
+    defer allocator.free(file_path);
+
+    const is_bool_key = std.mem.eql(u8, key, "show_temp") or std.mem.eql(u8, key, "show_ram");
+    const value = if (is_bool_key)
+        if (std.mem.eql(u8, raw_value, "on") or std.mem.eql(u8, raw_value, "true") or std.mem.eql(u8, raw_value, "1")) "true" else "false"
+    else
+        raw_value;
+
+    // Read existing content (if any) and rewrite the key.
+    var lines = std.ArrayList([]const u8).empty;
+    defer {
+        for (lines.items) |l| allocator.free(l);
+        lines.deinit(allocator);
+    }
+    var replaced = false;
+    if (readFileAlloc(allocator, file_path)) |content| {
+        defer allocator.free(content);
+        var it2 = std.mem.splitScalar(u8, content, '\n');
+        while (it2.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t\r");
+            const is_target = trimmed.len > key.len and
+                std.mem.startsWith(u8, trimmed, key) and
+                (trimmed[key.len] == ' ' or trimmed[key.len] == '=' or trimmed[key.len] == '\t');
+            if (is_target and !replaced) {
+                const nl = try std.fmt.allocPrint(allocator, "{s} = {s}", .{ key, value });
+                try lines.append(allocator, nl);
+                replaced = true;
+            } else {
+                try lines.append(allocator, try allocator.dupe(u8, line));
+            }
+        }
+    } else |_| {}
+    if (!replaced) {
+        const nl = try std.fmt.allocPrint(allocator, "{s} = {s}", .{ key, value });
+        try lines.append(allocator, nl);
+    }
+
+    // Ensure config dir exists.
+    const dir_z = try allocator.dupeZ(u8, dir_path);
+    defer allocator.free(dir_z);
+    _ = linux.mkdir(dir_z, 0o755);
+
+    // Write file back with a [gauges] header if we created it.
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+    const has_header = blk: {
+        for (lines.items) |l| {
+            if (std.mem.startsWith(u8, std.mem.trim(u8, l, " \t"), "[gauges]")) break :blk true;
+        }
+        break :blk false;
+    };
+    if (!has_header) try out.appendSlice(allocator, "[gauges]\n");
+    for (lines.items) |l| {
+        if (l.len == 0) continue;
+        try out.appendSlice(allocator, l);
+        try out.append(allocator, '\n');
+    }
+
+    const path_z = try allocator.dupeZ(u8, file_path);
+    defer allocator.free(path_z);
+    const fd_i: i32 = @intCast(linux.open(path_z, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644));
+    if (fd_i < 0) return error.WriteFailed;
+    defer _ = linux.close(fd_i);
+    _ = linux.write(fd_i, out.items.ptr, out.items.len);
+    std.log.info("gauges.toml: {s} = {s}", .{ key, value });
+}
+
+fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file_fd = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);
+    if (@as(isize, @bitCast(file_fd)) < 0) return error.FileNotFound;
+    const fd: i32 = @intCast(file_fd);
+    defer _ = linux.close(fd);
+    var content = std.ArrayList(u8).empty;
+    errdefer content.deinit(allocator);
+    var read_buf: [4096]u8 = undefined;
+    while (true) {
+        const n = linux.read(fd, &read_buf, read_buf.len);
+        if (n < 0) return error.ReadFailed;
+        if (n == 0) break;
+        try content.appendSlice(allocator, read_buf[0..@as(usize, @intCast(n))]);
+    }
+    return content.toOwnedSlice(allocator);
 }
