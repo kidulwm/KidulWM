@@ -139,11 +139,13 @@ pub const WeatherWidget = struct {
         const state_ = self.state();
         const scale_f: f64 = @as(f64, scale);
 
-        // Moon phase stays at the very top, separate from the weather icon.
+        // Moon phase sits in the same 34*s status band as the network icon
+        // on the right peek, so the two icons align horizontally.
         const margin: f64 = 14.0 * scale_f;
+        const status_band_h: f64 = 34.0 * scale_f;
         const moon_r = @max(5.0 * scale_f, @min(w_d * 0.39, 12.0 * scale_f, (h_d - margin * 2.0) * 0.16));
-        const moon_cx = w_d * 0.5;
-        const moon_cy = margin + moon_r;
+        const moon_cx = w_d * 0.5 + 3.0 * scale_f;
+        const moon_cy = status_band_h * 0.5;
         const phase = moon.phaseForUnixSeconds(@intCast(c_std.time(null)));
         moon.renderMoon(cr, moon_cx, moon_cy, moon_r, phase, gold, bg);
 
@@ -153,7 +155,7 @@ pub const WeatherWidget = struct {
         @memset(&current_buf, 0);
         const current_str = std.fmt.bufPrintZ(&current_buf, "{d:.0}°", .{state_.current_temp}) catch "--°";
 
-        const big_font_base: f64 = @as(f64, style_.font_size_m) * 1.7 * scale_f;
+        const big_font_base: f64 = @as(f64, style_.font_size_m) * 1.9 * scale_f;
         var current_size = big_font_base;
         c_cairo.cairo_set_font_size(cr, current_size);
 
@@ -165,32 +167,35 @@ pub const WeatherWidget = struct {
             c_cairo.cairo_text_extents(cr, current_str, &ext);
         }
 
-        const tmp_y = moon_cy + moon_r + 10.0 * scale_f + current_size * 0.85;
+        const tmp_y = status_band_h + 10.0 * scale_f + current_size * 0.85;
         c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_move_to(cr, (w_d - ext.width) * 0.5, tmp_y);
+        c_cairo.cairo_move_to(cr, (w_d - ext.width) * 0.5 + 3.0 * scale_f, tmp_y);
         c_cairo.cairo_show_text(cr, current_str);
 
         var minmax_buf: [32:0]u8 = undefined;
         @memset(&minmax_buf, 0);
         const minmax_str = std.fmt.bufPrintZ(&minmax_buf, "{d:.0}° / {d:.0}°", .{ state_.temp_min, state_.temp_max }) catch "-- / --";
 
-        const mm_size: f64 = @as(f64, style_.font_size_s) * 1.0 * scale_f;
+        const mm_size: f64 = @as(f64, style_.font_size_s) * 1.2 * scale_f;
         c_cairo.cairo_set_font_size(cr, mm_size);
         var mm_ext: c_cairo.cairo_text_extents_t = undefined;
         c_cairo.cairo_text_extents(cr, minmax_str, &mm_ext);
-        const mm_y = tmp_y + mm_size * 1.25;
+        const mm_y = tmp_y + mm_size * 1.75;
         c_cairo.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-        c_cairo.cairo_move_to(cr, (w_d - mm_ext.width) * 0.5, mm_y);
+        c_cairo.cairo_move_to(cr, (w_d - mm_ext.width) * 0.5 + 3.0 * scale_f, mm_y);
         c_cairo.cairo_show_text(cr, minmax_str);
 
         // Weather condition icon below the min/max line.
-        var icon_r: f64 = 96.0 * scale_f;
+        var icon_r: f64 = 48.0 * scale_f;
         const icon_bottom_margin: f64 = 1.0 * scale_f;
         const max_icon_r = @min(w_d * 0.5 - 2.0 * scale_f, (h_d - (mm_y + icon_bottom_margin)) * 0.5);
         icon_r = @min(icon_r, @max(0.0, max_icon_r));
         if (icon_r >= 8.0 * scale_f) {
             const icon_cx = w_d * 0.5 - 10.0 * scale_f;
-            const icon_cy = mm_y + icon_bottom_margin + icon_r;
+            // Pull the icon center down into its own bounding circle so the
+            // empty top of the circle overlaps the min/max line — the visible
+            // glyph moves up snug without shrinking the art.
+            const icon_cy = mm_y + icon_bottom_margin + icon_r * 0.62;
             renderConditionIcon(cr, icon_cx, icon_cy, icon_r, state_.weather_code, state_.is_day != 0, state_.wind_speed, gold);
         }
 

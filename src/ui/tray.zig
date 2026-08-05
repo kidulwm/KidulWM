@@ -2959,7 +2959,7 @@ pub const Tray = struct {
         // Content-sized widget, horizontally centered, filling the top of the right peek.
         const peek_hmargin = 2;
         const peek_vmargin = 20;
-        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
+        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 185.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
         const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
@@ -3048,7 +3048,7 @@ pub const Tray = struct {
         @memset(&combined_buf, 0);
         const num_str = std.fmt.bufPrintZ(&combined_buf, "{s}:{s}", .{ hour_str, minute_str }) catch "00:00";
 
-        const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 2.2 * scale;
+        const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 1.9 * scale;
 
         const gold4 = tstyle.color_border_focused.toF64();
 
@@ -3064,9 +3064,9 @@ pub const Tray = struct {
             c.cairo_text_extents(cr, num_str, &num_ext);
         }
 
-        // Top buffer so the date block sits just below the status band and
-        // the clock digits read as close to the network icon as possible.
-        const top_pad: f64 = status_band_h + 1.0 * scale;
+        // Top buffer: 10pt gap between the status band and the clock digits,
+        // matching the weather side.
+        const top_pad: f64 = status_band_h + 10.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
         const time_x = (w_d - num_ext.width) * 0.5;
 
@@ -3083,14 +3083,16 @@ pub const Tray = struct {
 
         var date_font_size: f64 = @as(f64, tstyle.font_size_s) * 1.3 * scale;
         var line_gap = date_font_size * 1.25;
-        while (num_baseline_y + line_gap * 2.6 + date_font_size * 0.3 > h_d and date_font_size > 6.0) {
+        while (num_baseline_y + line_gap * 3.6 + date_font_size * 0.3 > h_d and date_font_size > 6.0) {
             date_font_size *= 0.92;
             line_gap *= 0.92;
         }
-        const date_block_top = num_baseline_y + line_gap * 1.0;
+        const date_block_top = num_baseline_y + line_gap * 1.5;
 
-        const date_lines = [_][]const u8{ weekday_name, day_str };
+        const month_name = monthName(tm.*.tm_mon);
+        const date_lines = [_][]const u8{ weekday_name, day_str, month_name };
         const date_weights = [_]c.cairo_font_weight_t{
+            c.CAIRO_FONT_WEIGHT_NORMAL,
             c.CAIRO_FONT_WEIGHT_NORMAL,
             c.CAIRO_FONT_WEIGHT_NORMAL,
         };
@@ -3155,7 +3157,7 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 8;
-        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 153.0) * @as(f64, scale))));
+        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 215.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
         const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
@@ -3254,7 +3256,7 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 8;
-        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 153.0) * @as(f64, scale))));
+        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 215.0) * @as(f64, scale))));
         // Split the remaining left-peek area: gauges at the top, drives below.
         const total_h = @max(0, full_box.height - weather_height - peek_vmargin * 2);
         const gauge_h_i: i32 = @max(40, total_h);
@@ -3357,7 +3359,7 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 8;
-        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 153.0) * @as(f64, scale))));
+        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 215.0) * @as(f64, scale))));
         const total_h = @max(0, full_box.height - weather_height - peek_vmargin * 2);
         const gauge_h_i: i32 = @max(40, @divTrunc(total_h * 4, 10));
         const drives_h_i: i32 = @max(40, total_h - gauge_h_i);
