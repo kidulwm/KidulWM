@@ -953,37 +953,45 @@ pub const MediaWidget = struct {
         const half_w = @min(band_w * 0.5, half_h * 0.55);
 
         // --- Whispy octave rungs -------------------------------------------
-        // At each rung height, a 1px whisp spans between the two sides of
-        // the 8. Thickness follows the band's energy; a second ghost whisp
-        // appears beside it when the octave really hits. Rungs move as fast
-        // as the music; at 1px they never shout.
+        // Each rung sits inside BOTH loops of the 8. At a given height the
+        // loop wall crosses at x = ±x_inner (pinch side) and x = ±x_outer,
+        // so we draw two segments per loop [x_inner, x_outer] and
+        // [-x_outer, -x_inner] — never across the empty center gap.
         for (0..rung_count) |r| {
-            // Map rung r (0=bottom/A2) to a y on the 8, skipping the pinch.
+            // Original even spread across the full figure-8, bottom to top,
+            // now clipped to the loop walls at each height.
             const frac = (@as(f64, @floatFromInt(r)) + 0.75) / (@as(f64, rung_count) + 0.5);
             const ry = cy + half_h - frac * lane_h;
-            // x-extent of the figure-8 at this height (solve sin2θ from y).
-            const ny = std.math.clamp((ry - cy) / half_h, -0.99, 0.99);
-            const theta = std.math.asin(ny) * 0.5;
-            const x_span = @abs(@sin(theta)) * half_w * @abs(precess);
-            if (x_span < 1.0) continue;
-
             const e: f64 = @floatCast(@min(1.2, kb[r] * 1.4));
             const base_alpha: f64 = if (audio_live) 0.18 + 0.45 * e else 0.10;
             const lw = @max(1.0, 1.0 + 2.0 * e) * scale_f;
-            c.cairo_set_line_width(cr, lw);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], base_alpha);
-            c.cairo_move_to(cr, cx - x_span, ry);
-            c.cairo_line_to(cr, cx + x_span, ry);
-            c.cairo_stroke(cr);
 
-            // Ghost whisp when the octave is loud.
-            if (audio_live and e > 0.45) {
-                const ghost_off = 1.8 * scale_f;
-                c.cairo_set_line_width(cr, 1.0 * scale_f);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35 * e);
-                c.cairo_move_to(cr, cx - x_span * 0.85, ry + ghost_off);
-                c.cairo_line_to(cr, cx + x_span * 0.85, ry + ghost_off);
+            const ny = std.math.clamp(@abs(ry - cy) / half_h, 0.0, 0.99);
+            const half_asin = std.math.asin(ny) * 0.5;
+            const x_inner = @sin(half_asin) * half_w * @abs(precess);
+            const x_outer = @cos(half_asin) * half_w * @abs(precess);
+            if (x_outer - x_inner < 1.5) continue;
+
+            for ([2]f64{ -1.0, 1.0 }) |seg_side| {
+                const xa = cx + seg_side * x_inner;
+                const xb = cx + seg_side * x_outer;
+                c.cairo_set_line_width(cr, lw);
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], base_alpha);
+                c.cairo_move_to(cr, @min(xa, xb), ry);
+                c.cairo_line_to(cr, @max(xa, xb), ry);
                 c.cairo_stroke(cr);
+
+                // Ghost whisp when the octave is loud.
+                if (audio_live and e > 0.45) {
+                    const ghost_off = 1.8 * scale_f;
+                    c.cairo_set_line_width(cr, 1.0 * scale_f);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.35 * e);
+                    const gx0 = @min(xa, xb) + (xb - xa) * 0.07 * seg_side;
+                    const gx1 = @max(xa, xb) - (xb - xa) * 0.07 * seg_side;
+                    c.cairo_move_to(cr, gx0, ry + ghost_off);
+                    c.cairo_line_to(cr, gx1, ry + ghost_off);
+                    c.cairo_stroke(cr);
+                }
             }
         }
 
