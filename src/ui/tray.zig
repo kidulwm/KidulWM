@@ -1613,11 +1613,16 @@ pub const Tray = struct {
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
         const icon_r = @min(avail_w, avail_h) * 0.35 * 1.63;
-        const center_x = x + w * 0.5 - 12.0 * s + 17.0 * s;
+        const center_x = x + w * 0.5 - 12.0 * s + 17.0 * s - 3.0 * s;
         const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 1.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
-        const raise_up: f64 = 17.0 * s + 17.0 * s;
-        const center_y = y + h + pet_bottom_pad - bottom_above_border - icon_r - raise_up;
+        _ = bottom_above_border;
+        // Anchor the belly bottom 17px above the screen edge. In drawGenieBottle
+        // the belly bottom sits at cy + body_h * 0.68, so place cy accordingly.
+        // (y + h + pet_bottom_pad == buffer bottom.)
+        const body_h = icon_r * 1.05;
+        const gap_above_screen: f64 = 17.0 * s;
+        const center_y = y + h + pet_bottom_pad - gap_above_screen - body_h * 0.68;
 
         // Genie bottle: static at rest; wisp animates only while the tray is moving.
         const open_amt: f64 = @floatCast(self.tray_anim.value);
