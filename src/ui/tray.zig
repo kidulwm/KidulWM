@@ -3023,9 +3023,10 @@ pub const Tray = struct {
         const status_band_h: f64 = 34.0 * @as(f64, scale);
 
         // Network icon is drawn first at the top of the same buffer,
-        // with the clock content sitting just underneath it.
+        // shifted 7px left with the clock content just underneath it.
         c.cairo_save(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+        c.cairo_translate(cr, -7.0 * @as(f64, scale), 0.0);
         self.network.renderPeek(cr, .{
             .x = 0,
             .y = 0,
@@ -3068,7 +3069,7 @@ pub const Tray = struct {
         // matching the weather side.
         const top_pad: f64 = status_band_h + 10.0 * scale;
         const num_baseline_y = num_ext.height + top_pad;
-        const time_x = (w_d - num_ext.width) * 0.5;
+        const time_x = (w_d - num_ext.width) * 0.5 - 9.0 * scale;
 
         c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 1.0);
         c.cairo_move_to(cr, time_x, num_baseline_y);
@@ -3113,7 +3114,8 @@ pub const Tray = struct {
             var ext2: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, @ptrCast(line_txt.ptr), &ext2);
             const y = date_block_top + @as(f64, @floatFromInt(i)) * line_gap;
-            c.cairo_move_to(cr, (w_d - ext2.width) * 0.5, y);
+            // Date sits 7px left with the clock, plus 3px back right.
+            c.cairo_move_to(cr, (w_d - ext2.width) * 0.5 - 4.0 * scale, y);
             c.cairo_show_text(cr, @ptrCast(line_txt.ptr));
         }
         c.cairo_restore(cr);
