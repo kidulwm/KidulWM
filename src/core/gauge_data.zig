@@ -45,7 +45,8 @@ pub const GaugeData = struct {
 };
 
 fn readCpuTemp() !f64 {
-    return (try readFirstFloat("/sys/class/thermal/thermal_zone0/temp")) / 1000.0;
+    const millideg = readFirstFloat("/sys/class/thermal/thermal_zone0/temp") catch return 45.0;
+    return millideg / 1000.0;
 }
 
 fn readGpuTemp() !f64 {

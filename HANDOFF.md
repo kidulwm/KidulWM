@@ -3,48 +3,56 @@
 ## Current state
 
 - Branch: `main`
-- Last commit: `a0b001b files card: full-featured file manager with click/key routing and shared card frame`
-- Working tree: clean
+- Last commit: `222bda0 feat: IPC get_windows + kfiles_navigate, tray auto-close on activate`
 - Build: passing (`zig build -Doptimize=ReleaseSafe`)
 - Deployed: `fresh-one` VM via scp/ssh
 
-## Direction change: standalone Kidul Files client
+## Completed in this session
 
-The in-process files card has reached the limits of what an overlay card can do cleanly. The flagship file manager will become a standalone Wayland client (`kidul-files`), launched from the tray, mirroring the architecture of `kidul-browser`.
+### Phase 1 — Tray auto-hide + focus handoff
+- `src/ui/tray.zig`: `activateSelected()` now closes the tray and any open cards after launching a card/app/slide.
+- Exception: `.toggle_tray` action keeps old behavior.
 
-Goals:
-- Own Wayland surface / event loop (no more card overlay)
-- GPU-friendly rendering for large directories and smooth scrolling
-- Async directory enumeration with caching
-- Fast-scroll preview deferral (preview only when scrolling is slow/stable)
-- Browser-pill shape for drive/category pills with file-manager colors
-- Same KidulWM visual language (dark glass, gold borders, Fantasque Sans Mono)
+### Phase 2/3 foundation — IPC for dashboard ↔ kfiles
+- `src/ipc/message.zig`: added `kfiles_navigate` and `get_windows` requests; `WindowInfo` + `windows` field on `Response`.
+- `src/server.zig`: handler for `kfiles_navigate` writes target path to `/tmp/kfiles-navigate`; `getWindowsResponse()` returns all windows with id/app_id/title/mapped.
+- `src/kidulwm-control.zig`: added `get_windows` and `kfiles_navigate <path>` CLI commands.
+- Verified on VM: `kidulwm-control get_windows` returns kfiles as `com.kidulwm.kfiles`.
 
-## Files card GUI (legacy in-process card)
+### kfiles — drive discovery + navigation
+- `kfiles/src/Model.zig`:
+  - `discoverDrives()` reads `/proc/self/mounts` for mounted drives and `/proc/partitions` for all block devices.
+  - Unmounted block devices are stored as `.hidden = true` drives.
+  - `pollNavigateFile()` reads `/tmp/kfiles-navigate`, calls `navigateTo()`, then deletes the file.
+  - `goUp()` is blocked from going above `/home/kidul`.
+- `kfiles/src/Files.zig`: added `pollNavigateFile()` wrapper.
+- `kfiles/src/Wayland.zig`: calls `pollNavigateFile()` each frame.
+- New kfiles binary deployed to `/usr/local/bin/kfiles`.
 
-`src/ui/files_card.zig` provides a full-featured Cairo file manager card:
-- Two-pane layout: left file list (~55%), right preview pane (~45%).
-- Drive pills at top from `/proc/self/mounts`.
-- Breadcrumb path bar, folder/file glyphs, dotfile dimming, selected-row highlight.
-- Scrollbar when list overflows.
-- Click inside the list selects/activates entries; clicks inside the preview pane are consumed.
-- Inner panels follow system `corner_style` (round/chamfer/square).
-- Outer card uses the shared `card_frame` mat with system border/corners.
+### Left-peek polish (this session)
+- `src/core/gauge_data.zig`: `readCpuTemp()` now falls back to 45.0°C when `/sys/class/thermal/thermal_zone0/temp` is unreadable, matching `readGpuTemp()` fallback so the two gauges hide/show together.
+- `src/ui/gauge.zig`: RAM cauldron liquid and bubble colors shifted from Xbox-green (`0.2,1.0,0.3`) to turquoise (`0.10,0.85,0.75` / `0.45,1.0,0.9`). Cauldron outline/rim/legs already use theme border colors.
+- Rebuilt `kidulwm`/`kidulwm-control` and redeployed to `fresh-one` VM.
 
-`src/ui/tray.zig` wiring:
-- `files_card_open` flag and `files.card.open` kept in sync.
-- `toggleFilesCard()` opens/closes the card and refreshes state.
-- `handleFilesCardClick()` routes clicks to the card.
-- `handleFilesCardKey()` maps Up/Down/Return/BackSpace/Escape/Left.
-- `backToTray()` closes any card and returns focus to the tray.
+## Important correction
 
-Keyboard routing (`src/input/keyboard.zig`):
-- Card key block dispatches to the active card.
-- Fixed inverted `tray_select_next`/`tray_select_prev` mapping in `handleAction`.
+The left-peek redesign target is **KidulWM's own internal Zig UI**, NOT the old Rust `rkt-dashboard` prototype. The live gauges/cauldron/drives are rendered in:
+- `src/ui/gauge.zig` — GPU/CPU temp gauges and RAM cauldron
+- `src/ui/drives.zig` — disk treasure chests
+- `src/ui/tray.zig` — owns `GaugeWidget`/`DrivesWidget`, pointer hit boxes (`pointInsideGaugeWidget`)
 
-## Back-to-tray behavior
+## Pending work
 
-All cards support `Left` arrow to return to the tray from the card's leftmost focus.
+### Left-peek redesign (in `src/ui/gauge.zig` and `src/ui/drives.zig`)
+1. Hide the two top temp gauges by default; show only when value ≥ 76°F (configurable later). Add hotkey/toggle for gauge visibility.
+2. Move the RAM cauldron to the bottom of the left peek. Remove "ram" text. Keep it connected to RAM usage and animate more (bubbling/spitting bright green under black glass). Make the cauldron clickable as the rkt/tray button (open/close KidulWM tray).
+3. Replace the fixed `disk1_size`/`disk2_size` chest gauges with real drive icons from `discoverDrives()` logic (or share code with kfiles). Show drive icons/pills only when kfiles is open (detect via server's window list / app_id `com.kidulwm.kfiles`).
+4. Clicking a mounted drive sends kfiles to that path via `/tmp/kfiles-navigate` or direct IPC. Hidden/unmounted drives should be listed but not navigable until mounting is implemented.
+5. Add pointer hit boxes for cauldron and drive icons in `src/ui/tray.zig`.
+
+### Cleanup notes
+- The stray kfiles process on the VM may be in a broken state (`WaylandConnectFailed`); kill and relaunch from the tray after deploying the next KidulWM build.
+- kfiles debug logging to `/tmp/kfiles-debug.log` was added temporarily and should be removed before final polish.
 
 ## Build/deploy workflow
 
@@ -57,5 +65,14 @@ scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \\
   kidul@127.0.0.1:/tmp/
 
 ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \\
-  'sudo systemctl stop kidulwm && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm'
+  'sudo systemctl stop kidulwm && sleep 2 && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm'
+```
+
+For kfiles:
+```bash
+cd /home/dad/dev/kfiles
+zig build -Doptimize=ReleaseFast
+scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm zig-out/bin/kfiles kidul@127.0.0.1:/tmp/kfiles.new
+ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \\
+  'pkill -x kfiles 2>/dev/null || true; sleep 2; sudo mv /tmp/kfiles.new /usr/local/bin/kfiles && sudo chmod +x /usr/local/bin/kfiles'
 ```

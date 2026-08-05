@@ -5,6 +5,8 @@ const c = @import("dm").c;
 const c_std = @cImport({
     @cInclude("stdlib.h");
     @cInclude("unistd.h");
+    @cInclude("stdio.h");
+    @cInclude("time.h");
 });
 const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
@@ -17,7 +19,11 @@ const FilesWidget = @import("./files_card.zig").FilesWidget;
 const NotificationWidget = @import("./notifications.zig").NotificationWidget;
 const notifications = @import("./notifications.zig");
 const GaugeWidget = @import("./gauge.zig").GaugeWidget;
+const DrivesWidget = @import("./drives.zig").DrivesWidget;
+const discoverDrives = @import("./drives.zig").discoverDrives;
+const DriveInfo = @import("./drives.zig").DriveInfo;
 const card_frame = @import("card_frame.zig");
+const gauge_data = @import("../core/gauge_data.zig");
 
 // Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
 const bob_logo_png = @embedFile("assets/bob/logo.png");
@@ -108,6 +114,7 @@ pub const TrayHost = struct {
     request_frame: *const fn (ctx: *anyopaque) void,
     is_transition_active: *const fn (ctx: *anyopaque) bool,
     focused_window_box: *const fn (ctx: *anyopaque) ?wlr.Box,
+    is_kfiles_open: *const fn (ctx: *anyopaque) bool,
     theme: *const theme_mod.Theme,
 };
 
@@ -186,8 +193,24 @@ const PerOutputGauge = struct {
     last_x: i32 = 0,
     last_y: i32 = 0,
     click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
-    chest0_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
-    chest1_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    cauldron_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    last_scale: f32 = 0.0,
+    last_theme_generation: u32 = 0,
+};
+
+const PerOutputDrives = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    drive_count: usize = 0,
+    drive_boxes: [8]wlr.Box = undefined,
     last_scale: f32 = 0.0,
     last_theme_generation: u32 = 0,
 };
@@ -318,10 +341,12 @@ pub const Tray = struct {
     weather_widgets: std.ArrayList(PerOutputWeather),
     // Left peek widget (gauges), stacked below weather.
     gauge_widgets: std.ArrayList(PerOutputGauge),
+    drives_widgets: std.ArrayList(PerOutputDrives),
     media_widgets: std.ArrayList(PerOutputMedia),
     network_widgets: std.ArrayList(PerOutputNetwork),
     weather: WeatherWidget,
     gauge: GaugeWidget,
+    drives: DrivesWidget,
     network: NetworkWidget,
     media: MediaWidget,
     files: FilesWidget,
@@ -370,7 +395,7 @@ pub const Tray = struct {
     bob_emblem_mask: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
-    const barry_button_height: i32 = 84;
+    const barry_button_height: i32 = 95;
     const button_gap: i32 = 8;
     const hmargin: i32 = 8;
     const bottom_margin: i32 = 10;
@@ -433,11 +458,13 @@ pub const Tray = struct {
             .widgets = .empty,
             .weather_widgets = .empty,
             .gauge_widgets = .empty,
+            .drives_widgets = .empty,
             .media_widgets = .empty,
             .network_widgets = .empty,
             .notification_widgets = .empty,
             .weather = WeatherWidget.init(allocator),
             .gauge = GaugeWidget.init(allocator),
+            .drives = DrivesWidget.init(allocator),
             .media = MediaWidget.init(allocator),
             .network = NetworkWidget.init(allocator),
             .files = FilesWidget.init(allocator),
@@ -471,11 +498,13 @@ pub const Tray = struct {
         for (self.widgets.items) |*w| self.destroyWidget(w);
         for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
         for (self.gauge_widgets.items) |*w| self.destroyGaugeWidget(w);
+        for (self.drives_widgets.items) |*w| self.destroyDrivesWidget(w);
         for (self.media_widgets.items) |*w| self.destroyMediaWidget(w);
         for (self.network_widgets.items) |*w| self.destroyNetworkWidget(w);
         for (self.notification_widgets.items) |*w| self.destroyNotificationWidget(w);
         self.weather.deinit();
         self.gauge.deinit();
+        self.drives.deinit();
         self.media.deinit();
         self.network.deinit();
         self.files.deinit();
@@ -484,6 +513,8 @@ pub const Tray = struct {
         self.barry_pets.deinit(self.allocator);
         self.widgets.deinit(self.allocator);
         self.weather_widgets.deinit(self.allocator);
+        self.gauge_widgets.deinit(self.allocator);
+        self.drives_widgets.deinit(self.allocator);
         self.media_widgets.deinit(self.allocator);
         self.network_widgets.deinit(self.allocator);
         var it = self.icon_cache.iterator();
@@ -580,6 +611,21 @@ pub const Tray = struct {
             std.log.err("KidulWM: failed to append gauge widget: {}", .{err});
             gauge_tree.node.destroy();
         };
+        const drives_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create drives widget scene tree: {}", .{err});
+            return;
+        };
+        const drives_widget = PerOutputDrives{
+            .output_ctx = output_ctx,
+            .tree = drives_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.drives_widgets.append(self.allocator, drives_widget) catch |err| {
+            std.log.err("KidulWM: failed to append drives widget: {}", .{err});
+            drives_tree.node.destroy();
+        };
         const media_tree = self.root.createSceneTree() catch |err| {
             std.log.err("KidulWM: failed to create media widget scene tree: {}", .{err});
             return;
@@ -670,6 +716,13 @@ pub const Tray = struct {
                 break;
             }
         }
+        for (self.drives_widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyDrivesWidget(w);
+                _ = self.drives_widgets.orderedRemove(i);
+                break;
+            }
+        }
         for (self.media_widgets.items, 0..) |*w, i| {
             if (w.output_ctx == output_ctx) {
                 self.destroyMediaWidget(w);
@@ -726,6 +779,14 @@ pub const Tray = struct {
     }
 
     fn destroyGaugeWidget(_: *Self, widget: *PerOutputGauge) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
+    }
+
+    fn destroyDrivesWidget(_: *Self, widget: *PerOutputDrives) void {
         if (widget.scene_buffer) |sb| sb.node.destroy();
         if (widget.buffer) |buf| wlr.Buffer.drop(buf);
         widget.tree.node.destroy();
@@ -1261,6 +1322,12 @@ pub const Tray = struct {
             self.drawGaugeWidget(gauge_widget);
         }
 
+        // Draw drives widget below gauges.
+        for (self.drives_widgets.items) |*drives_widget| {
+            drives_widget.info = self.host.output_info(self.host.ctx, drivesWidgetIndex(self, drives_widget));
+            self.drawDrivesWidget(drives_widget);
+        }
+
         // Update media backend and draw bottom-right peek widget.
         self.media.update();
         for (self.media_widgets.items) |*media_widget| {
@@ -1542,93 +1609,211 @@ pub const Tray = struct {
         self.drawPet(cr, x, y, w, h, s);
     }
     fn drawPet(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const surf = self.bob_emblem_mask;
-        const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
-        const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
-        if (img_w <= 0.0 or img_h <= 0.0) return;
-
         const margin: f64 = 18.0 * s;
         const avail_w = w - 2.0 * margin;
         const avail_h = h - 2.0 * margin;
-        const scale = @min(avail_w / img_w, avail_h / img_h) * 1.00;
-        const draw_x = x + (w - img_w * scale) / 2.0 - 12.0 * s;
+        const icon_r = @min(avail_w, avail_h) * 0.35 * 1.63;
+        const center_x = x + w * 0.5 - 12.0 * s + 17.0 * s;
         const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 1.0) * s;
         const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
-        const raise_up: f64 = 17.0 * s;
-        const draw_y = y + h + pet_bottom_pad - bottom_above_border - img_h * scale - raise_up;
+        const raise_up: f64 = 17.0 * s + 17.0 * s;
+        const center_y = y + h + pet_bottom_pad - bottom_above_border - icon_r - raise_up;
 
-        const center_x = draw_x + img_w * scale / 2.0;
-        const center_y = draw_y + img_h * scale / 2.0;
-        const img_half = @min(img_w, img_h) / 2.0;
-        const icon_r = img_half * scale;
-        const outer_r = icon_r * 0.95;
-        const shade_px: f64 = 3.0 * s;
+        // Genie bottle: static at rest; wisp animates only while the tray is moving.
+        const open_amt: f64 = @floatCast(self.tray_anim.value);
+        const moving = !self.tray_anim.isSettled();
+        self.drawGenieBottle(cr, center_x, center_y, icon_r, s, self.host.theme.style.color_border.toF64(), open_amt, moving);
+    }
 
-        const c1 = self.host.theme.style.color_border_focused.toF64();
-        const c2 = self.host.theme.style.color_border.toF64();
+    fn drawGenieBottle(self: *const Self, cr: *c.cairo_t, cx: f64, cy: f64, icon_r: f64, s: f64, border_color: [4]f64, open_amt: f64, moving: bool) void {
+        _ = self;
+        const body_w = icon_r * 1.30;
+        const body_h = icon_r * 1.05;
+        const neck_w = icon_r * 0.34;
+        const neck_h = icon_r * 0.42;
+        const lip_w = icon_r * 0.52;
+        const lip_h = icon_r * 0.10;
 
-        // Button base: soft circular shadow for depth.
+        // Geometry: belly sits at cy; neck rises above; stopper crowns it.
+        const belly_cy = cy + body_h * 0.18;
+        const belly_rx = body_w * 0.5;
+        const belly_ry = body_h * 0.5;
+        const neck_top = belly_cy - belly_ry - neck_h;
+        const stopper_r = neck_w * 0.62;
+
         c.cairo_save(cr);
-        c.cairo_arc(cr, center_x + 1.0 * s, center_y + 2.0 * s, outer_r, 0.0, 2.0 * std.math.pi);
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
+
+        // --- Wisp (only while tray is moving) -------------------------------
+        if (moving) {
+            var ts: c.timespec = undefined;
+            _ = c.clock_gettime(c.CLOCK_MONOTONIC, &ts);
+            const t: f64 = @as(f64, @floatFromInt(ts.tv_sec)) + @as(f64, @floatFromInt(ts.tv_nsec)) / 1.0e9;
+            const mouth_y = neck_top - lip_h - stopper_r;
+            const rise = icon_r * 2.4 * open_amt;
+            const wisps = 3;
+            var wi: usize = 0;
+            while (wi < wisps) : (wi += 1) {
+                const fwi = @as(f64, @floatFromInt(wi));
+                const phase = @mod(t * 0.9 + fwi * 0.33, 1.0);
+                const wy = mouth_y - rise * phase;
+                const curl = std.math.sin(phase * 6.0 + fwi * 2.4) * icon_r * 0.28 * phase;
+                const wx = cx + curl;
+                const wr = (1.4 + 2.6 * phase) * s;
+                const fade = (1.0 - phase) * 0.55 * open_amt;
+                c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], fade);
+                c.cairo_arc(cr, wx, wy, wr, 0, 2.0 * std.math.pi);
+                c.cairo_fill(cr);
+            }
+            // Bright thread of smoke connecting mouth to the wisp field.
+            c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.45 * open_amt);
+            c.cairo_set_line_width(cr, 1.2 * s);
+            c.cairo_move_to(cr, cx, mouth_y);
+            c.cairo_curve_to(cr,
+                cx + std.math.sin(t * 2.0) * icon_r * 0.10, mouth_y - rise * 0.33,
+                cx - std.math.sin(t * 1.6) * icon_r * 0.14, mouth_y - rise * 0.66,
+                cx + std.math.sin(t * 1.2) * icon_r * 0.10, mouth_y - rise);
+            c.cairo_stroke(cr);
+        }
+
+        // --- Stopper ---------------------------------------------------------
+        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 1.0);
+        c.cairo_set_line_width(cr, 2.2 * s);
+        // Dome.
+        c.cairo_arc(cr, cx, neck_top - lip_h - stopper_r * 0.4, stopper_r, std.math.pi, 0);
+        c.cairo_stroke(cr);
+        // Knob.
+        c.cairo_arc(cr, cx, neck_top - lip_h - stopper_r * 1.1, stopper_r * 0.28, 0, 2.0 * std.math.pi);
         c.cairo_fill(cr);
-        c.cairo_restore(cr);
 
-        // Glassy button disc behind the icon.
-        c.cairo_save(cr);
-        c.cairo_arc(cr, center_x, center_y, outer_r, 0.0, 2.0 * std.math.pi);
-        const glass = c.cairo_pattern_create_radial(center_x, center_y, 0.0, center_x, center_y, outer_r);
-        c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.12, 0.12, 0.13, 0.90);
-        c.cairo_pattern_add_color_stop_rgba(glass, 1.0, 0.04, 0.04, 0.05, 0.82);
+        // --- One continuous vessel silhouette ----------------------------------
+        // Right lip tip -> flare into neck -> S-curve down the neck -> sweep out
+        // around the belly -> back up the left side in mirror image. Single path
+        // so the glass fill and gold stroke share the same whispy outline.
+        const belly_top = belly_cy - belly_ry;
+        const belly_bot = belly_cy + belly_ry;
+        const lip_top = neck_top - lip_h;
+
+        // One continuous vessel silhouette, shared by fill, stroke and clips.
+        const bottlePath = struct {
+            fn trace(cr2: *c.cairo_t, cx2: f64, lip_w2: f64, lip_h2: f64, lip_top2: f64, neck_w2: f64, neck_top2: f64, neck_h2: f64, belly_rx2: f64, belly_ry2: f64, belly_top2: f64, belly_cy2: f64, belly_bot2: f64) void {
+                c.cairo_move_to(cr2, cx2 + lip_w2 * 0.5, lip_top2 + lip_h2 * 0.5);
+                c.cairo_curve_to(cr2,
+                    cx2 + lip_w2 * 0.52, lip_top2 + lip_h2,
+                    cx2 + neck_w2 * 0.55, neck_top2 + neck_h2 * 0.08,
+                    cx2 + neck_w2 * 0.42, neck_top2 + neck_h2 * 0.30);
+                c.cairo_curve_to(cr2,
+                    cx2 + neck_w2 * 0.38, neck_top2 + neck_h2 * 0.55,
+                    cx2 + neck_w2 * 0.42, neck_top2 + neck_h2 * 0.85,
+                    cx2 + belly_rx2 * 0.62, belly_top2 + belly_ry2 * 0.12);
+                c.cairo_curve_to(cr2,
+                    cx2 + belly_rx2 * 0.85, belly_top2 + belly_ry2 * 0.32,
+                    cx2 + belly_rx2 * 1.05, belly_top2 + belly_ry2 * 0.50,
+                    cx2 + belly_rx2 * 1.05, belly_cy2);
+                c.cairo_curve_to(cr2,
+                    cx2 + belly_rx2 * 1.05, belly_bot2 - belly_ry2 * 0.28,
+                    cx2 + belly_rx2 * 0.70, belly_bot2 + belly_ry2 * 0.02,
+                    cx2 + belly_rx2 * 0.38, belly_bot2 + belly_ry2 * 0.04);
+                c.cairo_curve_to(cr2,
+                    cx2 + belly_rx2 * 0.14, belly_bot2 + belly_ry2 * 0.07,
+                    cx2 - belly_rx2 * 0.14, belly_bot2 + belly_ry2 * 0.07,
+                    cx2 - belly_rx2 * 0.38, belly_bot2 + belly_ry2 * 0.04);
+                c.cairo_curve_to(cr2,
+                    cx2 - belly_rx2 * 0.70, belly_bot2 + belly_ry2 * 0.02,
+                    cx2 - belly_rx2 * 1.05, belly_bot2 - belly_ry2 * 0.28,
+                    cx2 - belly_rx2 * 1.05, belly_cy2);
+                c.cairo_curve_to(cr2,
+                    cx2 - belly_rx2 * 1.05, belly_top2 + belly_ry2 * 0.50,
+                    cx2 - belly_rx2 * 0.85, belly_top2 + belly_ry2 * 0.32,
+                    cx2 - belly_rx2 * 0.62, belly_top2 + belly_ry2 * 0.12);
+                c.cairo_curve_to(cr2,
+                    cx2 - neck_w2 * 0.42, neck_top2 + neck_h2 * 0.85,
+                    cx2 - neck_w2 * 0.38, neck_top2 + neck_h2 * 0.55,
+                    cx2 - neck_w2 * 0.42, neck_top2 + neck_h2 * 0.30);
+                c.cairo_curve_to(cr2,
+                    cx2 - neck_w2 * 0.55, neck_top2 + neck_h2 * 0.08,
+                    cx2 - lip_w2 * 0.52, lip_top2 + lip_h2,
+                    cx2 - lip_w2 * 0.5, lip_top2 + lip_h2 * 0.5);
+                c.cairo_close_path(cr2);
+            }
+        }.trace;
+
+        bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
+
+        // Glass fill: near-black with a vertical sheen.
+        const glass = c.cairo_pattern_create_linear(cx, lip_top, cx, belly_bot).?;
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.10, 0.10, 0.11, 0.88);
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.4, 0.04, 0.04, 0.05, 0.92);
+        c.cairo_pattern_add_color_stop_rgba(glass, 1.0, 0.02, 0.02, 0.03, 0.95);
         c.cairo_set_source(cr, glass);
         c.cairo_fill_preserve(cr);
         c.cairo_pattern_destroy(glass);
-        c.cairo_set_source_rgba(cr, c1[0], c1[1], c1[2], 0.45);
-        c.cairo_set_line_width(cr, 1.0 * s);
-        c.cairo_stroke(cr);
-        c.cairo_restore(cr);
 
-        // Icon: rotated, clipped to a smaller perfect circle, and tinted with
-        // the theme border gradient.
+        // Black glass overlay to seat it in the theme.
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.55);
+        c.cairo_fill_preserve(cr);
+
+        // Gold rim stroke along the same silhouette.
+        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 1.0);
+        c.cairo_set_line_width(cr, 2.6 * s);
+        c.cairo_stroke(cr);
+
+        // Lip mouth line (the opening the wisp pours from).
+        c.cairo_set_line_width(cr, 1.6 * s);
+        c.cairo_move_to(cr, cx - lip_w * 0.42, lip_top + lip_h * 0.5);
+        c.cairo_curve_to(cr,
+            cx - lip_w * 0.15, lip_top + lip_h * 0.15,
+            cx + lip_w * 0.15, lip_top + lip_h * 0.15,
+            cx + lip_w * 0.42, lip_top + lip_h * 0.5);
+        c.cairo_stroke(cr);
+
+        // --- Static contents: thin gold crescent at RAM level -----------------
+        const ram_value = ramUsageFraction() catch 0.0;
+        const level = @max(0.05, @min(1.0, ram_value));
         c.cairo_save(cr);
-        c.cairo_translate(cr, draw_x, draw_y);
-        c.cairo_scale(cr, scale, scale);
-        const cx = img_w / 2.0;
-        const cy = img_h / 2.0;
-        c.cairo_translate(cr, cx, cy);
-        c.cairo_rotate(cr, -17.0 * std.math.pi / 180.0);
-        c.cairo_translate(cr, -cx, -cy);
-        c.cairo_arc(cr, cx, cy, img_half, 0.0, 2.0 * std.math.pi);
+        // Clip to the vessel silhouette so liquid respects the new shape.
+        bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
         c.cairo_clip(cr);
-
-        const grad = c.cairo_pattern_create_linear(0.0, 0.0, 0.0, img_h);
-        defer c.cairo_pattern_destroy(grad);
-        c.cairo_pattern_add_color_stop_rgba(grad, 0.0, c1[0], c1[1], c1[2], 1.0);
-        c.cairo_pattern_add_color_stop_rgba(grad, 1.0, c2[0], c2[1], c2[2], 1.0);
-        c.cairo_set_source(cr, grad);
-        c.cairo_mask_surface(cr, surf, 0.0, 0.0);
-        c.cairo_restore(cr);
-
-        // Bob's special shading: soft inner ring just inside the outer edge.
-        c.cairo_save(cr);
-        const shade_grad = c.cairo_pattern_create_radial(center_x, center_y, @max(0.0, outer_r - shade_px), center_x, center_y, outer_r);
-        defer c.cairo_pattern_destroy(shade_grad);
-        c.cairo_pattern_add_color_stop_rgba(shade_grad, 0.0, c1[0], c1[1], c1[2], 0.0);
-        c.cairo_pattern_add_color_stop_rgba(shade_grad, 1.0, c1[0], c1[1], c1[2], 0.55);
-        c.cairo_set_source(cr, shade_grad);
-        c.cairo_arc(cr, center_x, center_y, outer_r, 0.0, 2.0 * std.math.pi);
+        // Liquid: quiet dark gold, no motion.
+        const fill_top = belly_cy + belly_ry - 2.0 * belly_ry * level;
+        const liquid = c.cairo_pattern_create_linear(cx, fill_top, cx, belly_cy + belly_ry).?;
+        c.cairo_pattern_add_color_stop_rgba(liquid, 0.0, border_color[0], border_color[1], border_color[2], 0.18);
+        c.cairo_pattern_add_color_stop_rgba(liquid, 1.0, border_color[0] * 0.6, border_color[1] * 0.6, border_color[2] * 0.6, 0.42);
+        c.cairo_set_source(cr, liquid);
+        c.cairo_rectangle(cr, cx - belly_rx, fill_top, belly_rx * 2.0, belly_cy + belly_ry - fill_top);
         c.cairo_fill(cr);
+        c.cairo_pattern_destroy(liquid);
+        // Hairline surface line.
+        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.55);
+        c.cairo_set_line_width(cr, 1.0 * s);
+        c.cairo_move_to(cr, cx - belly_rx * 0.8, fill_top);
+        c.cairo_line_to(cr, cx + belly_rx * 0.8, fill_top);
+        c.cairo_stroke(cr);
         c.cairo_restore(cr);
 
-        // Final neat outer ring.
-        c.cairo_save(cr);
-        c.cairo_arc(cr, center_x, center_y, outer_r, 0.0, 2.0 * std.math.pi);
-        c.cairo_set_source_rgba(cr, c1[0], c1[1], c1[2], 1.0);
-        c.cairo_set_line_width(cr, 1.0 * s);
+        // --- Glass highlights --------------------------------------------------
+        // Slim vertical highlight on the upper-left belly.
+        c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.07);
+        c.cairo_set_line_width(cr, 3.0 * s);
+        c.cairo_move_to(cr, cx - belly_rx * 0.45, belly_cy - belly_ry * 0.55);
+        c.cairo_curve_to(cr,
+            cx - belly_rx * 0.62, belly_cy - belly_ry * 0.15,
+            cx - belly_rx * 0.60, belly_cy + belly_ry * 0.15,
+            cx - belly_rx * 0.45, belly_cy + belly_ry * 0.45);
         c.cairo_stroke(cr);
+        // Small specular dot near the neck shoulder.
+        c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.10);
+        c.cairo_arc(cr, cx - belly_rx * 0.30, belly_cy - belly_ry * 0.62, 1.6 * s, 0, 2.0 * std.math.pi);
+        c.cairo_fill(cr);
+
         c.cairo_restore(cr);
     }
 
+
+    fn ramUsageFraction() !f64 {
+        var data = gauge_data.GaugeData.init(std.heap.page_allocator);
+        const v = try data.sample(.ram_usage);
+        return @max(0.0, @min(1.0, v.value));
+    }
 
     fn drawStackButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, stack_index: usize, focused: bool, hovered: bool, alpha: f64, s: f64) void {
         const it = self.activeItemAt(stack_index);
@@ -1789,6 +1974,13 @@ pub const Tray = struct {
 
     fn gaugeWidgetIndex(self: *const Self, widget: *PerOutputGauge) usize {
         for (self.gauge_widgets.items, 0..) |*w, i| {
+            if (w == widget) return i;
+        }
+        return 0;
+    }
+
+    fn drivesWidgetIndex(self: *const Self, widget: *PerOutputDrives) usize {
+        for (self.drives_widgets.items, 0..) |*w, i| {
             if (w == widget) return i;
         }
         return 0;
@@ -2270,7 +2462,11 @@ pub const Tray = struct {
         return false;
     }
 
-    fn pointInsideGaugeWidget(self: *const Self, px: f64, py: f64) ?usize {
+    const GaugeHit = enum {
+        cauldron,
+    };
+
+    fn pointInsideGaugeWidget(self: *const Self, px: f64, py: f64) ?GaugeHit {
         for (self.gauge_widgets.items) |w| {
             if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
             const b = w.click_box;
@@ -2280,25 +2476,52 @@ pub const Tray = struct {
                 py >= @as(f64, @floatFromInt(b.y - oh)) and
                 py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh)))
             {
-                if (w.chest0_box.width > 0 and w.chest0_box.height > 0 and
-                    px >= @as(f64, @floatFromInt(w.chest0_box.x)) and
-                    px < @as(f64, @floatFromInt(w.chest0_box.x + w.chest0_box.width)) and
-                    py >= @as(f64, @floatFromInt(w.chest0_box.y)) and
-                    py < @as(f64, @floatFromInt(w.chest0_box.y + w.chest0_box.height)))
+                if (w.cauldron_box.width > 0 and w.cauldron_box.height > 0 and
+                    px >= @as(f64, @floatFromInt(w.cauldron_box.x)) and
+                    px < @as(f64, @floatFromInt(w.cauldron_box.x + w.cauldron_box.width)) and
+                    py >= @as(f64, @floatFromInt(w.cauldron_box.y)) and
+                    py < @as(f64, @floatFromInt(w.cauldron_box.y + w.cauldron_box.height)))
                 {
-                    return 0;
-                }
-                if (w.chest1_box.width > 0 and w.chest1_box.height > 0 and
-                    px >= @as(f64, @floatFromInt(w.chest1_box.x)) and
-                    px < @as(f64, @floatFromInt(w.chest1_box.x + w.chest1_box.width)) and
-                    py >= @as(f64, @floatFromInt(w.chest1_box.y)) and
-                    py < @as(f64, @floatFromInt(w.chest1_box.y + w.chest1_box.height)))
-                {
-                    return 1;
+                    return .cauldron;
                 }
             }
         }
         return null;
+    }
+
+    fn pointInsideDrivesWidget(self: *const Self, px: f64, py: f64) ?usize {
+        for (self.drives_widgets.items) |w| {
+            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+            const b = w.click_box;
+            const oh: i32 = widget_hit_overhang;
+            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
+                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
+                py >= @as(f64, @floatFromInt(b.y - oh)) and
+                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh)))
+            {
+                var i: usize = 0;
+                while (i < w.drive_count) : (i += 1) {
+                    const db = w.drive_boxes[i];
+                    if (db.width > 0 and db.height > 0 and
+                        px >= @as(f64, @floatFromInt(db.x)) and
+                        px < @as(f64, @floatFromInt(db.x + db.width)) and
+                        py >= @as(f64, @floatFromInt(db.y)) and
+                        py < @as(f64, @floatFromInt(db.y + db.height)))
+                    {
+                        return i;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    fn sendKfilesNavigatePath(self: *Self, path: []const u8) void {
+        _ = self;
+        const f = c_std.fopen("/tmp/kfiles-navigate", "w");
+        if (f == null) return;
+        defer _ = c_std.fclose(f.?);
+        _ = c_std.fprintf(f.?, "%s\n", path.ptr);
     }
 
     fn launchKidulFiles(self: *Self, path: []const u8) void {
@@ -2478,9 +2701,22 @@ pub const Tray = struct {
             self.toggleMediaCard();
             return true;
         }
-        // Click on a disk chest gauge opens the files card.
-        if (self.pointInsideGaugeWidget(px, py)) |_| {
-            self.toggleFilesCard();
+        // Click on the RAM cauldron toggles the tray.
+        if (self.pointInsideGaugeWidget(px, py)) |hit| {
+            switch (hit) {
+                .cauldron => {
+                    self.toggle();
+                    return true;
+                },
+            }
+        }
+        // Click on a drive pill navigates kfiles to that mount.
+        if (self.pointInsideDrivesWidget(px, py)) |idx| {
+            var drives_buf: [8]DriveInfo = undefined;
+            const count = discoverDrives(&drives_buf);
+            if (idx < count) {
+                self.sendKfilesNavigatePath(if (drives_buf[idx].path_len > 0) drives_buf[idx].path[0..drives_buf[idx].path_len] else "/home/kidul");
+            }
             return true;
         }
         // Click inside the currently open card:
@@ -2989,13 +3225,13 @@ pub const Tray = struct {
         const peek_hmargin = 2;
         const peek_vmargin = 8;
         const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 153.0) * @as(f64, scale))));
-        const bottom_reserve: i32 = @max(90, @as(i32, @intFromFloat(@as(f64, 94.0) * @as(f64, scale)))); // button + margin
+        // Split the remaining left-peek area: gauges at the top, drives below.
+        const total_h = @max(0, full_box.height - weather_height - peek_vmargin * 2);
+        const gauge_h_i: i32 = @max(40, total_h);
         const pill_w: i32 = @max(20, full_box.width - 2 * peek_hmargin);
         const pill_x = full_box.x + peek_hmargin + @divTrunc(full_box.width - 2 * peek_hmargin - pill_w, 2);
-        const top_y = full_box.y + weather_height + peek_vmargin + 4;
-        const bottom_y = full_box.y + full_box.height - bottom_reserve;
-        const pill_h: i32 = @max(40, bottom_y - top_y);
-        const pill_y = top_y;
+        const pill_y = full_box.y + weather_height + peek_vmargin + 4;
+        const pill_h = gauge_h_i;
 
         const redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or
@@ -3019,28 +3255,8 @@ pub const Tray = struct {
         widget.last_scale = scale;
         widget.last_theme_generation = theme_gen;
 
-        // Compute sub-click-boxes for the two disk chest gauges.
-        // These mirror the layout in gauge.zig renderChestGauges().
-        const s_f = @as(f64, scale);
-        const chest_w: f64 = 48.6 * s_f;
-        const chest_h: f64 = 34.2 * s_f;
-        const gap: f64 = 67.0 * s_f;
-        const top0: f64 = 473.0 * s_f;
-        const top1: f64 = top0 + (chest_h + gap);
-        const cx = @as(f64, @floatFromInt(pill_x)) + @as(f64, @floatFromInt(pill_w)) * 0.5;
-        const left = cx - chest_w * 0.5;
-        widget.chest0_box = .{
-            .x = @intFromFloat(left),
-            .y = @intFromFloat(@as(f64, @floatFromInt(pill_y)) + top0),
-            .width = @intFromFloat(chest_w),
-            .height = @intFromFloat(chest_h),
-        };
-        widget.chest1_box = .{
-            .x = @intFromFloat(left),
-            .y = @intFromFloat(@as(f64, @floatFromInt(pill_y)) + top1),
-            .width = @intFromFloat(chest_w),
-            .height = @intFromFloat(chest_h),
-        };
+        // Clickable cauldron box removed: cauldron is now the bottom pet button icon.
+        widget.cauldron_box = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
 
         const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
         const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
@@ -3087,6 +3303,136 @@ pub const Tray = struct {
         if (widget.scene_buffer) |old| old.node.destroy();
         const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
             std.log.err("KidulWM: failed to create gauge widget scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            widget.buffer = null;
+            return;
+        };
+        sb.setDestSize(pill_w, pill_h);
+        widget.scene_buffer = sb;
+        widget.tree.node.setPosition(pill_x, pill_y);
+        widget.tree.node.raiseToTop();
+    }
+
+    fn drawDrivesWidget(self: *Self, widget: *PerOutputDrives) void {
+        const full_box = self.host.left_peek_box(self.host.ctx, drivesWidgetIndex(self, widget)) orelse {
+            return;
+        };
+        if (full_box.width <= 0 or full_box.height <= 0) {
+            return;
+        }
+
+        const style_ = self.host.theme.style;
+        const theme_gen = self.host.theme.generation;
+        const scale = widget.info.scale;
+
+        const peek_hmargin = 2;
+        const peek_vmargin = 8;
+        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 153.0) * @as(f64, scale))));
+        const total_h = @max(0, full_box.height - weather_height - peek_vmargin * 2);
+        const gauge_h_i: i32 = @max(40, @divTrunc(total_h * 4, 10));
+        const drives_h_i: i32 = @max(40, total_h - gauge_h_i);
+        const pill_w: i32 = @max(20, full_box.width - 2 * peek_hmargin);
+        const pill_x = full_box.x + peek_hmargin + @divTrunc(full_box.width - 2 * peek_hmargin - pill_w, 2);
+        const pill_y = full_box.y + weather_height + peek_vmargin + 4 + gauge_h_i;
+        const pill_h = drives_h_i;
+
+        const kfiles_open = self.host.is_kfiles_open(self.host.ctx);
+
+        const redraw = widget.scene_buffer == null or
+            widget.last_w != pill_w or
+            widget.last_h != pill_h or
+            widget.last_x != pill_x or
+            widget.last_y != pill_y or
+            widget.last_scale != scale or
+            widget.last_theme_generation != theme_gen;
+
+        if (!redraw) {
+            widget.tree.node.setPosition(pill_x, pill_y);
+            widget.tree.node.raiseToTop();
+            return;
+        }
+
+        widget.last_w = pill_w;
+        widget.last_h = pill_h;
+        widget.last_x = pill_x;
+        widget.last_y = pill_y;
+        widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
+        widget.last_scale = scale;
+        widget.last_theme_generation = theme_gen;
+
+        // Compute per-drive click boxes based on the same layout used in drives.zig.
+        const s_f = @as(f64, scale);
+        const pad: f64 = 6.0 * s_f;
+        const item_h: f64 = 28.0 * s_f;
+        const gap: f64 = 4.0 * s_f;
+        const top: f64 = 10.0 * s_f;
+        widget.drive_count = 0;
+        for (0..widget.drive_boxes.len) |i| {
+            widget.drive_boxes[i] = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
+        }
+        if (kfiles_open) {
+            // Discover drives to know how many boxes to expose.
+            var drives_buf: [8]DriveInfo = undefined;
+            const count = discoverDrives(&drives_buf);
+            const max_visible = @min(count, widget.drive_boxes.len);
+            widget.drive_count = max_visible;
+            var i: usize = 0;
+            while (i < max_visible) : (i += 1) {
+                const y = top + @as(f64, @floatFromInt(i)) * (item_h + gap);
+                widget.drive_boxes[i] = .{
+                    .x = @intFromFloat(@as(f64, @floatFromInt(pill_x)) + pad),
+                    .y = @intFromFloat(@as(f64, @floatFromInt(pill_y)) + y),
+                    .width = @intFromFloat(@as(f64, @floatFromInt(pill_w)) - 2.0 * pad),
+                    .height = @intFromFloat(item_h),
+                };
+            }
+        }
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
+            std.log.err("KidulWM: drives widget buffer alloc failed: {}", .{err});
+            return;
+        };
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse {
+            std.log.err("KidulWM: failed to create cairo context for drives widget", .{});
+            return;
+        };
+        defer c.cairo_destroy(cr);
+
+        c.cairo_save(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        self.drives.renderPeek(cr, .{
+            .x = pill_x,
+            .y = pill_y,
+            .width = dev_w,
+            .height = dev_h,
+        }, style_, scale, kfiles_open);
+
+        c.cairo_restore(cr);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
+            std.log.err("KidulWM: failed to create drives widget buffer: {}", .{err});
+            return;
+        };
+        if (widget.buffer) |old| wlr.Buffer.drop(old);
+        widget.buffer = buffer;
+        if (widget.scene_buffer) |old| old.node.destroy();
+        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create drives widget scene buffer: {}", .{err});
             wlr.Buffer.drop(buffer);
             widget.buffer = null;
             return;

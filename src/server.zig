@@ -1330,6 +1330,18 @@ pub const Server = struct {
                     };
                 }
             }.f,
+            .is_kfiles_open = struct {
+                fn f(ctx: *anyopaque) bool {
+                    const s: *Server = @ptrCast(@alignCast(ctx));
+                    var it = s.windows.iterator(.forward);
+                    while (it.next()) |window| {
+                        if (window.app_id.len > 0 and std.mem.eql(u8, window.app_id.buf[0..window.app_id.len], "com.kidulwm.kfiles")) {
+                            return window.toplevel.base.surface.mapped;
+                        }
+                    }
+                    return false;
+                }
+            }.f,
             .theme = &self.theme_runtime,
         };
     }
