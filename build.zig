@@ -91,6 +91,15 @@ pub fn build(b: *std.Build) void {
     root_mod.linkSystemLibrary("pixman-1", .{});
     root_mod.linkSystemLibrary("libinput", .{});
     root_mod.linkSystemLibrary("cairo", .{});
+    root_mod.linkSystemLibrary("pipewire-0.3", .{});
+    root_mod.addCSourceFile(.{
+        .file = b.path("src/core/kmedia_shim.c"),
+        .flags = &.{
+            "-I/usr/include/pipewire-0.3",
+            "-I/usr/include/spa-0.2",
+            "-D_REENTRANT",
+        },
+    });
 
     const dm_mod = b.createModule(.{
         .root_source_file = b.path("src/dm/main.zig"),
@@ -170,6 +179,24 @@ pub fn build(b: *std.Build) void {
     });
     const files_exe = b.addExecutable(.{ .name = "kidul-files", .root_module = files_mod });
     b.installArtifact(files_exe);
+
+    const kmedia_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/test_kmedia.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    kmedia_test_mod.linkSystemLibrary("pipewire-0.3", .{});
+    kmedia_test_mod.addCSourceFile(.{
+        .file = b.path("src/core/kmedia_shim.c"),
+        .flags = &.{
+            "-I/usr/include/pipewire-0.3",
+            "-I/usr/include/spa-0.2",
+            "-D_REENTRANT",
+        },
+    });
+    const kmedia_test_exe = b.addExecutable(.{ .name = "kmedia-test", .root_module = kmedia_test_mod });
+    b.installArtifact(kmedia_test_exe);
 
     const layout_tests = b.addTest(.{
         .name = "layout-test",

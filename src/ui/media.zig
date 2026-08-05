@@ -713,7 +713,7 @@ pub const MediaWidget = struct {
                 "--really-quiet".ptr,
                 "--idle=no".ptr,
                 "--force-window=no".ptr,
-                "--ao=alsa,pulse,null".ptr,
+                "--ao=pipewire,pulse,alsa,null".ptr,
                 "--input-ipc-server=/run/user/1000/kidulwm-mpv.sock".ptr,
                 "--".ptr,
                 @ptrCast(&path_z[0]),
@@ -933,18 +933,42 @@ pub const MediaWidget = struct {
         const now = animationNowUs();
         const dt = if (self.last_helix_us == 0) 0.0 else @as(f64, @floatFromInt(now -% self.last_helix_us)) / 1_000_000.0;
         self.last_helix_us = now;
-        const helix_speed: f64 = if (playing) 1.8 else 0.35;
-        self.helix_phase += dt * helix_speed;
-        const energy = if (playing) 0.6 + 0.4 * @sin(self.helix_phase * 2.0) else 0.12;
-        self.last_energy = self.last_energy * 0.92 + energy * 0.08;
 
-        const amp = @max(2.0 * scale_f, lane_h * 0.28 * self.last_energy);
+        // kmedia band data: 7 log-spaced bands, bass at the bottom.
+        const kmedia = @import("../core/kmedia.zig");
+        const kb = kmedia.bands();
+        const audio_level = kmedia.level();
+        const audio_live = audio_level > 0.03;
+
+        // Strand energy: when audio is live, each strand follows its band;
+        // when silent, a slow crossfade wave passes down the strands (one
+        // brightens at a time, ~8.5s per strand for a 60s full cycle).
+        const phase_speed: f64 = if (audio_live) 2.2 else 0.6;
+        self.helix_phase += dt * phase_speed;
+        const strand_count = 7;
+        var strand_energy: [strand_count]f64 = undefined;
+        const cycle_pos = @mod(self.helix_phase * 0.6 / 8.5, 1.0) * strand_count;
+        for (0..strand_count) |i| {
+            if (audio_live) {
+                strand_energy[i] = @floatCast(@min(1.2, kb[i] * 1.4));
+            } else {
+                const d = @abs(@as(f64, @floatFromInt(i)) - cycle_pos);
+                const wrapped = @min(d, strand_count - d);
+                strand_energy[i] = 0.10 + 0.35 * @max(0.0, 1.0 - wrapped);
+            }
+        }
+
+        const amp = lane_h * 0.30;
         const marker_count: usize = 5;
 
-        c.cairo_set_line_width(cr, @max(1.0, 1.4 * scale_f));
+        c.cairo_set_line_width(cr, @max(1.0, 1.2 * scale_f));
 
-        for (0..2) |strand| {
-            const strand_offset: f64 = @as(f64, @floatFromInt(strand)) * std.math.pi;
+        // 7 strands, evenly phase-staggered, each with its own amplitude
+        // (band energy) and brightness.
+        for (0..strand_count) |strand| {
+            const e = strand_energy[strand];
+            const strand_offset: f64 = @as(f64, @floatFromInt(strand)) * (2.0 * std.math.pi / @as(f64, strand_count));
+            const strand_amp = @max(1.5 * scale_f, amp * (0.25 + 0.75 * e));
             c.cairo_new_path(cr);
             var t: f64 = 0;
             const steps: usize = 60;
@@ -952,7 +976,7 @@ pub const MediaWidget = struct {
             while (t <= 1.0001) : (t += 1.0 / @as(f64, @floatFromInt(steps))) {
                 const y = cy - lane_h * 0.5 + t * lane_h;
                 const wave = @sin(t * std.math.pi * 4.0 - self.helix_phase + strand_offset);
-                const x = cx + wave * amp;
+                const x = cx + wave * strand_amp;
                 if (first) {
                     c.cairo_move_to(cr, x, y);
                     first = false;
@@ -960,21 +984,23 @@ pub const MediaWidget = struct {
                     c.cairo_line_to(cr, x, y);
                 }
             }
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], if (playing) 0.85 else 0.55);
+            const base_alpha: f64 = if (audio_live) 0.25 else 0.18;
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], base_alpha + 0.65 * e);
             c.cairo_stroke(cr);
         }
 
-        const alpha_pulse = 0.45 + 0.55 * self.last_energy;
+        // Ball markers ride strand 0, sized/pulsed by the overall level.
+        const alpha_pulse = 0.35 + 0.55 * @min(1.0, audio_level * 1.5);
         const marker_r = @max(3.0 * scale_f, lane_h * 0.09);
         var mi: usize = 0;
         while (mi <= marker_count) : (mi += 1) {
             const t = @as(f64, @floatFromInt(mi)) / @as(f64, @floatFromInt(marker_count));
             const y = margin + t * lane_h;
             const wave = @sin(t * std.math.pi * 4.0 - self.helix_phase);
-            const x = cx + wave * amp;
+            const x = cx + wave * amp * 0.6;
             c.cairo_new_path(cr);
             c.cairo_arc(cr, x, y, marker_r, 0, std.math.pi * 2.0);
-            if (playing) {
+            if (audio_live) {
                 c.cairo_set_source_rgba(cr, border[0], border[1], border[2], alpha_pulse);
             } else {
                 c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.22);

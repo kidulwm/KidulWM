@@ -1,5 +1,6 @@
 const std = @import("std");
 const Server = @import("server.zig").Server;
+const kmedia = @import("core/kmedia.zig");
 
 pub fn main(init: std.process.Init.Minimal) !void {
     std.log.info("KidulWM boot", .{});
@@ -30,6 +31,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     try server.createIpcSocket(socket_path);
     std.log.info("KidulWM: IPC control socket at {s}", .{socket_path});
+
+    // Start the kmedia audio capture thread (PipeWire monitor of the default
+    // sink → FFT bands for widgets). Silently no-ops if PipeWire is absent.
+    kmedia.start();
 
     const no_backend = std.process.Environ.getPosix(init.environ, "KIDULWM_NO_BACKEND") != null;
     const maybe_wayland_display = std.process.Environ.getPosix(init.environ, "KIDULWM_WAYLAND_DISPLAY");
