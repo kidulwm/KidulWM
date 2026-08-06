@@ -12,8 +12,6 @@ const theme_mod = @import("core/theme.zig");
 const Theme = theme_mod.Theme;
 const slidedeck = @import("core/slidedeck.zig");
 const animation = @import("core/animation.zig");
-const chrome_renderer = @import("render/chrome.zig");
-const curtain_renderer = @import("render/curtain.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const ui = @import("./ui/tray.zig");
@@ -50,7 +48,6 @@ pub const Output = struct {
     frame: wl.Listener(*wlr.Output),
     destroy: wl.Listener(*wlr.Output),
     deck: slidedeck.SlideDeck,
-    curtains: ?*curtain_renderer.OutputCurtains,
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -61,7 +58,6 @@ pub const Output = struct {
             .frame = wl.Listener(*wlr.Output).init(handleFrame),
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
             .deck = slidedeck.SlideDeck.init(server.allocator),
-            .curtains = null,
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -72,10 +68,6 @@ pub const Output = struct {
         self.server.tray.removeOutput(self);
         self.frame.link.remove();
         self.destroy.link.remove();
-        if (self.curtains) |curtains| {
-            curtains.destroy();
-            self.curtains = null;
-        }
         self.deck.deinit();
     }
 
@@ -89,17 +81,6 @@ pub const Output = struct {
         }
         self.server.tray.update();
 
-        // Advance cinema mask animations.
-        var mask_animating = false;
-        var mask_it = self.server.outputs.iterator(.forward);
-        while (mask_it.next()) |output| {
-            if (output.curtains) |curtains| {
-                if (curtains.tickAnimation(now_us)) {
-                    mask_animating = true;
-                }
-            }
-        }
-
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
         const ok = self.scene_output.commit(null);
@@ -108,9 +89,6 @@ pub const Output = struct {
             return;
         }
         self.scene_output.sendFrameDone(@ptrCast(&ts));
-        if (mask_animating) {
-            self.wlr_output.scheduleFrame();
-        }
     }
 
     fn handleDestroy(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -885,15 +863,6 @@ pub const Server = struct {
             const height = @as(u32, @intCast(wlr_output.height));
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
-            if (output.curtains) |curtains| {
-                var box: wlr.Box = undefined;
-                self.output_layout.getBox(wlr_output, &box);
-                const scale: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
-                const has_left_peek = output.deck.focused_index > 0;
-                const has_right_peek = output.deck.focused_index + 1 < output.deck.slides.items.len;
-                curtains.update(self.theme, self.theme_runtime.generation, scale, box, self.deck_split.left_peek, self.deck_split.right_peek, has_left_peek, has_right_peek);
-            }
-
             if (output.deck.slides.items.len == 0) continue;
             any_slides = true;
 
@@ -905,7 +874,6 @@ pub const Server = struct {
 
                 const target = output.deck.targetForSlide(slide_idx);
                 const is_focused = slide_idx == output.deck.focused_index;
-                const peek_edges = if (slide_idx < output.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
                 const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
@@ -913,30 +881,21 @@ pub const Server = struct {
                 if (focus_changed) {
                     window.startTransition(self.current_transition_kind);
                 }
-                // Only reconfigure and scale the actual client surface for the focused
-                // slide. Side peeks keep their full-window scene tree (so the chrome
-                // overlay masks the entire bounds), but the surface buffer itself is
-                // left at its natural size and only offset within that tree.
-                if (is_focused and size_changed) {
-                    _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
-                }
                 if (is_focused) {
-                    std.log.info("KidulWM: applyLayout focused window id={d} target={d}x{d} buffer={d}x{d} geom={d}x{d}", .{ window.id, target.width, target.height, window.toplevel.base.surface.current.width, window.toplevel.base.surface.current.height, window.toplevel.base.geometry.width, window.toplevel.base.geometry.height });
+                    // Focused slide: full screen, chrome border, surface scaled to fit.
+                    window.scene_tree.node.setEnabled(true);
+                    if (size_changed) {
+                        _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+                    }
                     window.setSurfaceOffsetForFocus();
-                } else {
-                    window.setSurfaceOffsetForPeek(peek_edges);
-                }
-                window.applyContainment();
-
-                if (is_focused) {
+                    window.applyContainment();
                     focused_slide_window = window;
-                    window.updateDim(true);
                     window.updateChrome(true, .all);
                     window.scene_tree.node.raiseToTop();
                     self.overlay_tree.node.raiseToTop();
                 } else {
-                    window.updateDim(false);
-                    window.updateChrome(false, peek_edges);
+                    // Non-focused slides: disabled, no rendering, no chrome.
+                    window.scene_tree.node.setEnabled(false);
                 }
             }
 
@@ -962,21 +921,17 @@ pub const Server = struct {
                     const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
-                window.setLayoutTarget(target.x, target.y, target.width, target.height);
-                if (focus_changed) {
-                    window.startTransition(self.current_transition_kind);
-                }
-                    if (is_focused and size_changed) {
-                        _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+                    window.setLayoutTarget(target.x, target.y, target.width, target.height);
+                    if (focus_changed) {
+                        window.startTransition(self.current_transition_kind);
                     }
                     if (is_focused) {
+                        window.scene_tree.node.setEnabled(true);
+                        if (size_changed) {
+                            _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+                        }
                         window.setSurfaceOffsetForFocus();
-                    } else {
-                        const edges = if (slide_idx < self.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
-                        window.setSurfaceOffsetForPeek(edges);
-                    }
-                    if (is_focused) {
-                        window.updateDim(true);
+                        window.applyContainment();
                         window.updateChrome(true, .all);
                         window.scene_tree.node.raiseToTop();
                         self.overlay_tree.node.raiseToTop();
@@ -984,9 +939,7 @@ pub const Server = struct {
                             self.focusWindow(window);
                         }
                     } else {
-                        const edges = if (slide_idx < self.deck.focused_index) chrome_renderer.EdgeMode.left_peek else chrome_renderer.EdgeMode.right_peek;
-                        window.updateDim(false);
-                        window.updateChrome(false, edges);
+                        window.scene_tree.node.setEnabled(false);
                     }
                 }
             }
@@ -1082,10 +1035,6 @@ pub const Server = struct {
         };
         output.init(self, wlr_output, scene_output);
         std.log.info("KidulWM: output added to layout", .{});
-        output.curtains = curtain_renderer.OutputCurtains.create(self.allocator, self.overlay_tree) catch |err| blk: {
-            std.log.err("failed to create curtains: {}", .{err});
-            break :blk null;
-        };
         self.tray.addOutput(output);
         // Compute layout immediately so window panels appear on the first frame,
         // instead of waiting for the asynchronous layout-event loop tick.

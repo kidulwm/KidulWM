@@ -40,9 +40,6 @@ pub const Window = struct {
 
     animation: animation.WindowAnimation,
 
-    dim_rect: ?*wlr.SceneRect,
-    dim_color: [4]f32,
-
     chrome_tree: ?*wlr.SceneTree,
     chrome_scale: u32,
     chrome_style_generation: u32,
@@ -81,8 +78,6 @@ pub const Window = struct {
             .id = id,
             .link = undefined,
             .animation = .{},
-            .dim_rect = null,
-            .dim_color = .{ 0.0, 0.0, 0.0, 0.0 },
             .chrome_tree = null,
             .chrome_scale = 1,
             .chrome_style_generation = 0,
@@ -297,31 +292,6 @@ pub const Window = struct {
         return moved;
     }
 
-    /// Dim or undim the window overlay depending on focus. The overlay size
-    /// follows the surface buffer so rounded corners and client-side shading
-    /// stay intact.
-    pub fn updateDim(self: *Window, focused: bool) void {
-        const surface = self.toplevel.base.surface;
-        if (!surface.mapped) return;
-        const w: i32 = @intCast(surface.current.width);
-        const h: i32 = @intCast(surface.current.height);
-        if (w <= 0 or h <= 0) return;
-
-        if (focused) {
-            if (self.dim_rect) |rect| {
-                rect.setSize(0, 0);
-            }
-            return;
-        }
-
-        if (self.dim_rect == null) {
-            self.dim_rect = self.scene_tree.createSceneRect(w, h, &self.dim_color) catch return;
-        } else if (self.dim_rect) |rect| {
-            rect.setSize(w, h);
-            rect.setColor(&self.dim_color);
-        }
-    }
-
     /// Set the destination size of the client surface buffer. This ensures
     /// wlroots considers the surface visible (so it receives frame callbacks)
     /// even when the committed buffer has not yet caught up to the configured
@@ -361,37 +331,6 @@ pub const Window = struct {
             .width = geom.width,
             .height = geom.height,
         });
-    }
-
-    /// Set the internal surface offset for a peek window so the visible sliver
-    /// shows the correct edge of the surface content. The XDG scene tree already
-    /// accounts for geometry.x/y internally, so we only need to align the
-    /// content area (geom.width x geom.height) to the wrapper.
-    pub fn setSurfaceOffsetForPeek(self: *Window, edges: chrome_renderer.EdgeMode) void {
-        const surface = self.toplevel.base.surface;
-        if (!surface.mapped) return;
-
-        const geom = self.toplevel.base.geometry;
-        const target_w: i32 = @intFromFloat(self.animation.target_w);
-
-        // Position the XDG geometry top-left within the wrapper. The scene tree
-        // will render the actual buffer with its own geometry offset, so content
-        // (not CSD shadow) starts at this position.
-        //
-        // The visible sliver is the on-screen portion of the wrapper:
-        //   - A left peek is visible along the left edge of the wrapper, so show
-        //     the leftmost content pixels (x = 0).
-        //   - A right peek is visible along the right edge of the wrapper, so show
-        //     the rightmost content pixels (x = target_w - geom.width).
-        var x: i32 = 0;
-        if (edges.left) {
-            x = 0;
-        } else {
-            x = target_w - geom.width;
-        }
-        const y: i32 = 0;
-
-        self.setSurfaceOffset(x, y);
     }
 
     /// Focused window: scale and offset the surface so its content geometry
@@ -529,11 +468,6 @@ pub const Window = struct {
             window.chrome_tree = null;
         }
 
-        // Also destroy any dim overlay left behind.
-        if (window.dim_rect) |rect| {
-            rect.node.destroy();
-            window.dim_rect = null;
-        }
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
@@ -577,13 +511,6 @@ pub const Window = struct {
         // Do not request a full layout pass here: map/unmap already trigger layout,
         // and running a full layout pass on every surface commit causes a
         // configure storm once multiple XDG toplevels are mapped.
-        //
-        // However, when this window is a side peek, the surface buffer may have
-        // been committed/resized after the layout ran. Re-apply the peek offset
-        // so the visible sliver stays aligned to the correct edge of the buffer.
-        if (!window.chrome_edges.eql(chrome_renderer.EdgeMode.all)) {
-            window.setSurfaceOffsetForPeek(window.chrome_edges);
-        }
         window.applyContainment();
     }
 };
