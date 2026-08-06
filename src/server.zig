@@ -15,6 +15,7 @@ const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const ui = @import("./ui/tray.zig");
+const spyglass_mod = @import("./ui/spyglass.zig");
 const keybinds = @import("config/keybinds.zig");
 const c = @cImport({
     @cInclude("stdio.h");
@@ -154,6 +155,7 @@ pub const Server = struct {
     next_window_id: u32 = 1,
 
     tray: ui.Tray,
+    spyglass: ?*spyglass_mod.Spyglass = null,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
     chrome_style_generation: u32,
@@ -489,6 +491,10 @@ pub const Server = struct {
         server.overlay_tree = overlay_tree;
 
         server.tray = try ui.Tray.init(server.allocator, Server.makeTrayHost(server), overlay_tree);
+        server.spyglass = spyglass_mod.Spyglass.create(server.allocator, overlay_tree, server.theme) catch |err| blk: {
+            std.log.err("failed to create spyglass: {}", .{err});
+            break :blk null;
+        };
 
         const bg_rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
         server.background.rect = bg_rect;
@@ -593,6 +599,10 @@ pub const Server = struct {
         self.ipc_server.destroy();
 
         self.tray.deinit();
+        if (self.spyglass) |sg| {
+            sg.destroy();
+            self.spyglass = null;
+        }
         self.keybinds.deinit();
         self.overlay_tree.node.destroy();
 
@@ -862,6 +872,15 @@ pub const Server = struct {
             const width = @as(u32, @intCast(wlr_output.width));
             const height = @as(u32, @intCast(wlr_output.height));
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
+
+            // Update spyglass icon positions and neighbor availability.
+            if (self.spyglass) |sg| {
+                const scale: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
+                const has_left = output.deck.focused_index > 0;
+                const has_right = output.deck.focused_index + 1 < output.deck.slides.items.len;
+                sg.updateOutput(width, height, scale);
+                sg.setNeighbors(has_left, has_right);
+            }
 
             if (output.deck.slides.items.len == 0) continue;
             any_slides = true;
@@ -1368,11 +1387,29 @@ pub const Server = struct {
     }
 
     pub fn handlePointerMove(self: *Server, x: f64, y: f64) bool {
+        if (self.spyglass) |sg| {
+            if (sg.handlePointerMove(x, y)) return true;
+        }
         return self.tray.handlePointerMove(x, y);
     }
 
     pub fn handlePointerClick(self: *Server, x: f64, y: f64) bool {
+        if (self.spyglass) |sg| {
+            if (sg.handlePointerClick(x, y)) |side| {
+                self.activateSpyglass(side);
+                return true;
+            }
+        }
         return self.tray.handlePointerClick(x, y);
+    }
+
+    /// Spyglass click — navigate to the adjacent slide in the given direction.
+    fn activateSpyglass(self: *Server, side: spyglass_mod.Side) void {
+        std.log.info("KidulWM: spyglass click {s}", .{if (side == .left) "left" else "right"});
+        switch (side) {
+            .left => self.focusPrev(),
+            .right => self.focusNext(),
+        }
     }
 
     pub fn handlePointerAxis(self: *Server, x: f64, y: f64, delta: f64) bool {
