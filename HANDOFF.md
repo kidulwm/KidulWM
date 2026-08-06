@@ -1,104 +1,69 @@
-# KidulWM Handoff — 2026-08-06 morning brief
+# KidulWM HANDOFF — Aug 6 2026
 
-## Where we are
+## Session summary
 
-- Branch: `main`, last commit: docs + procedural curtain v1 (`docs/per-pixel-chrome-architecture.md` parked)
-- Build: passing (`zig build -Doptimize=ReleaseSafe`), deployed to `fresh-one`
-- Backed up to LaCie-Apocalypse (bundle + `KidulWM-src/`)
-- **Desktop status: essentially a finished product.** kbottle, aligned peeks,
-  butterfly helix, live kmedia bands, procedural curtains v1 on screen.
+Big day. Ghostbusted the window containment problem that's been plaguing
+the project since the Zig/Cairo rewrite. Windows now sit correctly inside
+their slide borders for the first time.
 
-## MORNING QUEUE (in order)
+## Key commits
 
-### 1. Design-grid overlay (the tool that unblocks curtains)
-- `kidulwm-control grid_overlay on|off` → fullscreen 10px grid, heavier
-  lines every 100px, origin at screen corner (maybe second origin centered).
-- Scene-buffer overlay tree, above everything, toggleable at runtime.
-- Purpose: talk about curtain curves in grid cells, not vibes.
-  See docs/per-pixel-chrome-architecture.md — this grid is also step zero
-  of the long-term per-pixel chrome idea.
+| Repo | Commit | Description |
+|---|---|---|
+| KidulWM | `b96ad8b` | GHOST GONE: chrome in overlay_tree, geometry clip crops CSD, no setSurfaceDestSize |
+| KidulWM | `b8eb492` | WINDOWS IN PLACE: zero surface offset, content sits at wrapper origin |
+| KidulWM | `247ceb7` | Keybinds: Mod+Q close focused, Mod+R reload compositor |
+| kfiles | `719d85b` | kfiles is alive: force-render on configure, accept non-zero resize |
+| kfiles | `fe2f009` | System border colors, centered scroll, short-wide layout, icon cap |
 
-### 2. Curtains — nail them with the grid
-Current state (v1, deployed): procedural straight drops, full-length to the
-bottom edge, matte black velvet (base 55% darkened), 6 jittered matte fold
-columns, 4 gloss slithers full-height (3× 2-3px wisps + 1× 5px hero, random
-x/meander/strength), scalloped gather at top, hairline inner rim light.
-User feedback so far: closer, but needs final tuning WITH the grid overlay —
-fold positions/curve talk in cells next session.
-File: `src/render/curtain.zig` (`paintCurtain()`). All numbers are single
-tweakable constants. Old PNG asset backed up:
-`src/render/assets/curtain_left_tied_20260805_bak.png`.
+## What's working
 
-### 3. Media micro-player popover (the day's main build)
-Design (locked with user):
-- Appears ONLY when the media peek is hovered or hotkey'd — never ambient.
-- Pops out to the LEFT of the right-peek media widget (toward screen center).
-- A **micro version of the future ktunes player**: stop + play/pause +
-  maybe volume, nothing else. Simple, in line with everything else
-  (black glass, gold rim, shape-language from the card mat).
-- Content: now-playing title (if it fits), ⏯ toggle, ⏹ stop, tiny volume
-  slider/pill.
+- Chrome overlay in `overlay_tree` (above client surface) — windows don't leak
+- `applyContainment()` clips surface to XDG geometry `(geom.x, geom.y, geom.width, geom.height)` — CSD padding cropped away
+- `setSurfaceOffsetForFocus` sets offset `(0, 0)` — wlroots handles geometry internally
+- NO `setSurfaceDestSize` — buffer renders at native size, clip does the cropping
+- `applyContainment()` is LAST call in `handleCommit` — survives setSurfaceOffset
+- Cinema masking panels in `curtain.zig` — black bars with 1px gold edge, animated entrance
+- Keybinds: Mod+Q close focused window, Mod+R reload compositor (systemd auto-restarts)
+- kfiles: resizes to fill slide (was stuck at 1280x800, now accepts configure)
+- kfiles: system border colors (#948e7b focused, #5e5a4c unfocused)
+- kfiles: centered scroll (selected line pinned to vertical center, 2-line edge relaxation)
+- kfiles: short-wide layout, file list centered on screen, big preview area
 
-Must also fix (the reason this exists — two songs played at once tonight):
-- **Orphan reaping at startup**: on media widget init, kill any mpv still
-  holding `/run/user/1000/kidulwm-mpv.sock` (our socket path is unique;
-  `pkill -f kidulwm-mpv.sock` pattern or /proc scan). Compositor restarts
-  currently orphan mpvs that keep playing.
-- **Real stop**: wire `MediaWidget.ensureStopped()` to the popover ⏹ and
-  add `kidulwm-control media_stop` (IPC message exists? — check
-  src/ipc/message.zig; if missing, add `media_stop` request + server handler
-  + CLI, mirroring `media_toggle`).
-- Volume via mpv IPC: `{ "command": ["set_property", "volume", N] }` —
-  `sendSimpleCommand` pattern already in media.zig.
+## What's NOT done / next steps
 
-Wiring notes:
-- Peek hover: tray already tracks pointer motion over widget click boxes
-  (`widget.click_box`); the popover should show after a short hover delay
-  (~400ms) and hide when the pointer leaves both widget AND popover, or on
-  Escape. Follow the card-open/close patterns in tray.zig (`updateCard`,
-  `closeAllCards`) — the popover can be a small new scene-buffer like
-  TrayCard, or reuse CardMode; judge in the morning which is cleaner.
-- Hotkey: bind something sane (e.g. Mod4+M) via `handleAction` → toggles
-  the popover. Check `src/input/keyboard.zig` action table.
-- mpv launch: already fixed to `--ao=pipewire,pulse,alsa,null` so kmedia
-  sees playback. The media card's Enter path works
-  (`tray.zig:2398` → `media.play(path)`).
+### kfiles needs work
+- **Navigation**: plain arrow keys can't navigate slides while kfiles is focused. Mod+J/Mod+K works. Need universal nav: boundary fallthrough to compositor.
+- **Inteliscroll**: centered scroll code is written but untested (can't navigate to verify)
+- **Pills**: drive pills need to be added/restored
+- **Layout tweaks**: still needs overall adjustments — icon size, spacing, text softening
+- **Preview**: needs actual file preview content (currently just folder icon or "press Enter" hint)
+- kfiles deploys to `/usr/local/bin/kfiles` NOT `/usr/bin/kfiles` — tray uses the local path
 
-### 4. Parked ideas (do NOT start, recorded so they don't evaporate)
-- **Butterfly Easter egg**: when the helix figure-8 is at full width
-  (wings open), occasionally — random, rare — draw a few extra light dots &
-  whispy lines for a few seconds so it literally reads as a butterfly.
-  "Starer-entertainment." Not now.
-- **Per-pixel chrome architecture**: `docs/per-pixel-chrome-architecture.md`.
-- **kmedia Phase 2** (MPRIS over D-Bus from Zig, per-app mixer, media IPC
-  subscribe): `docs/kmedia-zig-audio-endgame.md` — also has the questions
-  for Andrew Kelley (user may chat with him; the file is ready to share).
-- RAM gauge rejoining the temp group (gauges.toml already has show_ram).
+### KidulWM architecture
+- **Wallpaper slit design** (Barticus idea): copy wallpaper as overlay, cut hole for focused slide, peeks hidden behind wallpaper. Eliminates peek chrome, masks, CSD bleed on peeks. Not yet implemented — this is the next major architectural change.
+- **Universal navigation**: plain arrows must reach everywhere, never strand user. Left/Right = slides, Up/Down = within app. Boundary fallthrough to compositor. This is a `keyboard.zig` change.
+- **Cinema masks**: deployed but may need layering fix — `raiseAboveChrome()` after slide loop in `applyLayout`
+- **`renderChromePadded`** function exists in `chrome.zig` but is NOT used — `renderChrome` is the active function. The padded version was an attempt to mask CSD with opaque fill + DEST_OUT hole. Reverted. Don't use it unless needed.
 
-## Key commands (verified, in KNOWN_CMDS.md)
+### Deploy notes
+- kfiles: build on host, deploy to `/usr/local/bin/kfiles` (NOT /usr/bin)
+- KidulWM: build on host, deploy to `/usr/bin/kidulwm`
+- Always `rm -rf .zig-cache zig-out` before building kfiles — stale cache bit us
+- VM: `virsh -c qemu:///system start fresh-one`, then `hostfwd_add tcp::2260-:22`
+- Mod+R reloads KidulWM (systemd restarts it)
 
-```bash
-cd /home/dad/dev/KidulWM && zig build -Doptimize=ReleaseSafe
-scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm zig-out/bin/kidulwm kidul@127.0.0.1:/tmp/
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \
-  'sudo systemctl stop kidulwm && sleep 2 && sudo cp /tmp/kidulwm /usr/bin/ && sudo systemctl start kidulwm'
+## Apocalypse backup
 
-# kill rogue audio on the VM:
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 'pkill -x mpv; rm -f /run/user/1000/kidulwm-mpv.sock'
+Both repos backed up to `/mnt/lacie-apocalypse/`:
+- `kidulwm-apocalypse-20260806_1520.bundle` (git bundle, all history)
+- `KidulWM-src/` (rsync'd source tree)
+- `kfiles-src/` (rsync'd source tree)
 
-# apocalypse backup: see KNOWN_CMDS.md "Apocalypse drive backup (LaCie)"
-```
+## State of mind
 
-## Traps to remember tomorrow
+We went from "windows can't be contained, everything leaks" to "windows in place, ghost gone" in one session. The root cause was: chrome was in `scene_tree` (below the XDG surface), `setSurfaceDestSize` was rendering the full CSD buffer, and the surface offset was double-shifting the content. Fixed by: chrome in `overlay_tree`, no dest size, zero offset, geometry clip.
 
-- The media peek redraws EVERY FRAME (helix) — popover hover checks must
-  not fight that; pointer-hit logic only, no render-latch changes.
-- VM has no audio hardware: null-sink at
-  `~/.config/pipewire/pipewire.conf.d/kidul-sink.conf` on fresh-one.
-  If bands read 0.00, check wireplumber is running
-  (`systemctl --user status wireplumber`) and mpv uses `--ao=pipewire`.
-- `std.log` from the kmedia thread does NOT reach the systemd journal;
-  debug with the `kmedia-test` binary instead.
-- llvmpipe CPU burn (~300%) on the VM is NORMAL (software GL), not a bug.
-- Zig std on this box is trimmed: no `std.Thread.sleep`, no
-  `std.fs.cwd()` in some modules — see AGENTS.md + skill notes.
+The wallpaper slit design is the next big thing — it'll eliminate the peek/curtain/mask complexity entirely and maximize screen real estate for the focused slide and widgets.
+
+Good day. Team work and the dreamwork.
