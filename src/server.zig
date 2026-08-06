@@ -877,8 +877,13 @@ pub const Server = struct {
             // Update spyglass icon positions and neighbor availability.
             if (self.spyglass) |sg| {
                 const scale: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
-                const has_left = output.deck.empty_slot == .none and output.deck.focused_index > 0;
-                const has_right = output.deck.empty_slot == .none and output.deck.focused_index + 1 < output.deck.slides.items.len;
+                // In empty-slot state, the nearest real slide is on the
+                // side it sits: after_last -> neighbor is to the left,
+                // before_first -> neighbor is to the right.
+                const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
+                    (output.deck.empty_slot == .after_last and output.deck.slides.items.len > 0);
+                const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < output.deck.slides.items.len) or
+                    (output.deck.empty_slot == .before_first and output.deck.slides.items.len > 0);
                 sg.updateOutput(width, height, scale);
                 sg.setNeighbors(has_left, has_right);
             }
