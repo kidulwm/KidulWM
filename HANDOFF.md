@@ -2,68 +2,98 @@
 
 ## Session summary
 
-Big day. Ghostbusted the window containment problem that's been plaguing
-the project since the Zig/Cairo rewrite. Windows now sit correctly inside
-their slide borders for the first time.
+Theater deleted, spyglass born. We killed the entire peek/curtain/dim
+machinery and replaced it with EXIT dot-matrix signage — theater exit
+signs rendered as gold dot-matrix letters (5x6 grid) at the screen
+edges. Clean, minimal, cinematic.
 
 ## Key commits
 
 | Repo | Commit | Description |
 |---|---|---|
-| KidulWM | `b96ad8b` | GHOST GONE: chrome in overlay_tree, geometry clip crops CSD, no setSurfaceDestSize |
-| KidulWM | `b8eb492` | WINDOWS IN PLACE: zero surface offset, content sits at wrapper origin |
-| KidulWM | `247ceb7` | Keybinds: Mod+Q close focused, Mod+R reload compositor |
-| kfiles | `719d85b` | kfiles is alive: force-render on configure, accept non-zero resize |
-| kfiles | `fe2f009` | System border colors, centered scroll, short-wide layout, icon cap |
+| KidulWM | `082e906` | THEATER DELETED: kill curtains, peek chrome, dim overlays — focused slide full screen |
+| KidulWM | `adc8094` | spyglass: whispy magnifying glass icons for peek navigation |
+| KidulWM | `28f9c72` | fix: clearChrome + empty-slot guard — kill stale peek borders |
+| KidulWM | `4685eca` | spyglass: EXIT dot-matrix icons + empty-slot guard fixes |
+| KidulWM | `234e7a9` | spyglass: show EXIT signs on empty-slot sides |
 
 ## What's working
 
-- Chrome overlay in `overlay_tree` (above client surface) — windows don't leak
-- `applyContainment()` clips surface to XDG geometry `(geom.x, geom.y, geom.width, geom.height)` — CSD padding cropped away
-- `setSurfaceOffsetForFocus` sets offset `(0, 0)` — wlroots handles geometry internally
-- NO `setSurfaceDestSize` — buffer renders at native size, clip does the cropping
-- `applyContainment()` is LAST call in `handleCommit` — survives setSurfaceOffset
-- Cinema masking panels in `curtain.zig` — black bars with 1px gold edge, animated entrance
-- Keybinds: Mod+Q close focused window, Mod+R reload compositor (systemd auto-restarts)
-- kfiles: resizes to fill slide (was stuck at 1280x800, now accepts configure)
-- kfiles: system border colors (#948e7b focused, #5e5a4c unfocused)
-- kfiles: centered scroll (selected line pinned to vertical center, 2-line edge relaxation)
-- kfiles: short-wide layout, file list centered on screen, big preview area
+- Focused slide fills the screen (93%+ width), no peeks, no curtains, no dim
+- Non-focused slides: setEnabled(false) + clearChrome() — zero rendering
+- Empty-slot state: all slides disabled, clearFocus called
+- EXIT dot-matrix icons at vertical center of left/right screen edges
+  - 5x6 gold dot grid spelling E-X-I-T
+  - 20px tall, 72px wide, 17px from edge
+  - 54% opacity at rest, 70% on hover
+  - Shows on neighbor side only (hidden when no neighbor)
+  - Shows on empty-slot sides pointing back toward the row
+- Click EXIT: navigates to adjacent slide (focusPrev/focusNext)
+- Mod+Q close, Mod+R reload
 
 ## What's NOT done / next steps
 
-### kfiles needs work
-- **Navigation**: plain arrow keys can't navigate slides while kfiles is focused. Mod+J/Mod+K works. Need universal nav: boundary fallthrough to compositor.
-- **Inteliscroll**: centered scroll code is written but untested (can't navigate to verify)
-- **Pills**: drive pills need to be added/restored
-- **Layout tweaks**: still needs overall adjustments — icon size, spacing, text softening
-- **Preview**: needs actual file preview content (currently just folder icon or "press Enter" hint)
-- kfiles deploys to `/usr/local/bin/kfiles` NOT `/usr/bin/kfiles` — tray uses the local path
+### Spyglass / EXIT (immediate)
+- **Hover-triggered peek reveal**: icons brighten on hover but no peek
+  content shows yet. Need to temporarily enable adjacent slide at sliver width.
+- **2-option selector**: click should offer "focus this peek" vs "go to end of row"
+- **Hotkey bindings**: arrow keys for left/right peek (and up/down for rows)
+- **PNG icon**: user wants to find a PNG to use instead of Cairo-drawn dots
 
-### KidulWM architecture
-- **Wallpaper slit design** (Barticus idea): copy wallpaper as overlay, cut hole for focused slide, peeks hidden behind wallpaper. Eliminates peek chrome, masks, CSD bleed on peeks. Not yet implemented — this is the next major architectural change.
-- **Universal navigation**: plain arrows must reach everywhere, never strand user. Left/Right = slides, Up/Down = within app. Boundary fallthrough to compositor. This is a `keyboard.zig` change.
-- **Cinema masks**: deployed but may need layering fix — `raiseAboveChrome()` after slide loop in `applyLayout`
-- **`renderChromePadded`** function exists in `chrome.zig` but is NOT used — `renderChrome` is the active function. The padded version was an attempt to mask CSD with opaque fill + DEST_OUT hole. Reverted. Don't use it unless needed.
+### Architecture
+- **Wallpaper slit design** was abandoned in favor of simply disabling
+  non-focused slides. Simpler and cleaner.
+- **Universal navigation**: plain arrows reach everywhere, boundary fallthrough
+  to compositor. This is a `keyboard.zig` change.
+- **Sliders repurposed**: browser history sliders → deck navigation sliders.
+  Hover near edge, slider pops out showing all slides in row/layer. Separate
+  from spyglass (which is just the quick neighbor glance).
+
+### kfiles needs work
+- Navigation: plain arrow keys can't navigate slides while kfiles is focused
+- Inteliscroll: centered scroll code written but untested
+- Pills: drive pills need to be added/restored
+- Layout tweaks: icon size, spacing, text softening
+- Preview: needs actual file preview content
+- kfiles deploys to `/usr/local/bin/kfiles` NOT `/usr/bin/kfiles`
 
 ### Deploy notes
-- kfiles: build on host, deploy to `/usr/local/bin/kfiles` (NOT /usr/bin)
+- kfiles: build on host, deploy to `/usr/local/bin/kfiles` (NOT `/usr/bin`)
 - KidulWM: build on host, deploy to `/usr/bin/kidulwm`
 - Always `rm -rf .zig-cache zig-out` before building kfiles — stale cache bit us
 - VM: `virsh -c qemu:///system start fresh-one`, then `hostfwd_add tcp::2260-:22`
 - Mod+R reloads KidulWM (systemd restarts it)
 
+## Design decisions (locked)
+
+- NO peeks at rest. Focused slide fills screen. Theater is dead.
+- EXIT signs are the "peek at neighbor" affordance — theater signage, not buttons
+- Three navigation tiers, equal citizens:
+  1. Sliders (mouse users) — full deck map, hover edge to reveal
+  2. EXIT signs (quick glance) — hover to peek, click to navigate
+  3. Hotkeys (keyboard users) — arrow keys, direct flight
+- Sliders will be repurposed from browser history sliders (existing component)
+- We are the movie, not the theater. The UI moves so the user's head doesn't.
+
 ## Apocalypse backup
 
 Both repos backed up to `/mnt/lacie-apocalypse/`:
-- `kidulwm-apocalypse-20260806_1520.bundle` (git bundle, all history)
+- `kidulwm-apocalypse-20260806_1832.bundle` (git bundle, all history)
 - `KidulWM-src/` (rsync'd source tree)
 - `kfiles-src/` (rsync'd source tree)
 
 ## State of mind
 
-We went from "windows can't be contained, everything leaks" to "windows in place, ghost gone" in one session. The root cause was: chrome was in `scene_tree` (below the XDG surface), `setSurfaceDestSize` was rendering the full CSD buffer, and the surface offset was double-shifting the content. Fixed by: chrome in `overlay_tree`, no dest size, zero offset, geometry clip.
+From "everything leaks, windows can't be contained, 500 lines of peek
+machinery" to "focused slide fills screen, EXIT signs at the edges, -206
+lines net." One session. The root cause was old theater thinking —
+curtains, peeks, masks. The fix was to stop thinking like a theater and
+start thinking like the movie.
 
-The wallpaper slit design is the next big thing — it'll eliminate the peek/curtain/mask complexity entirely and maximize screen real estate for the focused slide and widgets.
+The wallpaper slit idea evolved into something simpler: just don't render
+what you don't want to see. setEnabled(false) + clearChrome(). Done.
 
-Good day. Team work and the dreamwork.
+EXIT signs are theater signage — the one theatrical element that survived
+the purge, because they're honest about what they are: a way out.
+
+Good day. Stage right. 🎭
