@@ -1197,7 +1197,7 @@ pub const Server = struct {
         return 0;
     }
 
-    fn requestQuit(self: *Server) void {
+    pub fn requestQuit(self: *Server) void {
         const event_loop = self.wl_server.getEventLoop();
         const source = event_loop.addTimer(*@This(), handleShutdownTimer, self) catch |err| {
             std.log.err("failed to schedule quit timer: {}", .{err});

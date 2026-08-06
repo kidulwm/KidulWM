@@ -159,6 +159,17 @@ const KeyboardDevice = struct {
                 server.nextAnimationKind();
                 return true;
             },
+            .close_focused => {
+                if (server.focused_window) |win| {
+                    win.toplevel.sendClose();
+                }
+                return true;
+            },
+            .reload => {
+                std.log.info("KidulWM: reload requested, restarting compositor", .{});
+                server.requestQuit();
+                return true;
+            },
             .none => return false,
         }
     }

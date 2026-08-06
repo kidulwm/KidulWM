@@ -11,6 +11,8 @@ pub const Action = union(enum) {
     tray_activate,
     media_card_toggle,
     next_animation,
+    close_focused,
+    reload,
     none,
 };
 
@@ -37,6 +39,8 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.c, .action = .{ .spawn = browser } }) catch {
         if (browser.len > 0) allocator.free(browser);
     };
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.q, .action = .close_focused }) catch {};
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.r, .action = .reload }) catch {};
     return list;
 }
 
@@ -243,6 +247,8 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "tray_activate")) return .tray_activate;
         if (std.mem.eql(u8, str, "media_card_toggle")) return .media_card_toggle;
         if (std.mem.eql(u8, str, "next_animation")) return .next_animation;
+        if (std.mem.eql(u8, str, "close_focused")) return .close_focused;
+        if (std.mem.eql(u8, str, "reload")) return .reload;
         if (std.mem.eql(u8, str, "open_slide")) {
             const cmd = allocator.dupe(u8, "/usr/bin/ghostty") catch return null;
             return .{ .spawn = cmd };
