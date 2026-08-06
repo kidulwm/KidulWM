@@ -856,6 +856,7 @@ pub const Server = struct {
 
     pub fn applyLayout(self: *Server) void {
         self.layout_requested.store(false, .monotonic);
+        std.log.info("KidulWM: applyLayout called", .{});
 
         const active_deck = self.currentDeck();
         const current_focused_slide_id: u32 = if (active_deck.empty_slot == .none and active_deck.slides.items.len > 0)
@@ -876,8 +877,8 @@ pub const Server = struct {
             // Update spyglass icon positions and neighbor availability.
             if (self.spyglass) |sg| {
                 const scale: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
-                const has_left = output.deck.focused_index > 0;
-                const has_right = output.deck.focused_index + 1 < output.deck.slides.items.len;
+                const has_left = output.deck.empty_slot == .none and output.deck.focused_index > 0;
+                const has_right = output.deck.empty_slot == .none and output.deck.focused_index + 1 < output.deck.slides.items.len;
                 sg.updateOutput(width, height, scale);
                 sg.setNeighbors(has_left, has_right);
             }
@@ -892,7 +893,9 @@ pub const Server = struct {
                 if (!window.toplevel.base.surface.mapped) continue;
 
                 const target = output.deck.targetForSlide(slide_idx);
-                const is_focused = slide_idx == output.deck.focused_index;
+                // When the deck is in an empty-slot state (past the ends of the
+                // row), no slide is focused — disable everything.
+                const is_focused = output.deck.empty_slot == .none and slide_idx == output.deck.focused_index;
                 const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
@@ -915,6 +918,7 @@ pub const Server = struct {
                 } else {
                     // Non-focused slides: disabled, no rendering, no chrome.
                     window.scene_tree.node.setEnabled(false);
+                    window.clearChrome();
                 }
             }
 
@@ -936,7 +940,7 @@ pub const Server = struct {
                     const window = self.windowById(slide.window_id) orelse continue;
                     if (!window.toplevel.base.surface.mapped) continue;
                     const target = self.deck.targetForSlide(slide_idx);
-                    const is_focused = slide_idx == self.deck.focused_index;
+                    const is_focused = self.deck.empty_slot == .none and slide_idx == self.deck.focused_index;
                     const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
@@ -959,12 +963,13 @@ pub const Server = struct {
                         }
                     } else {
                         window.scene_tree.node.setEnabled(false);
+                        window.clearChrome();
                     }
                 }
             }
         }
 
-        if (!any_slides) {
+        if (!any_slides or active_deck.empty_slot != .none) {
             self.clearFocus();
         }
 

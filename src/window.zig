@@ -283,7 +283,12 @@ pub const Window = struct {
                     @intFromFloat(@round(self.animation.cur_y)),
                 );
             }
-            self.updateChrome(self.chrome_focused, self.chrome_edges);
+            // Only regenerate chrome if this window already HAS chrome
+            // (i.e. it's the focused slide). Non-focused slides have their
+            // chrome cleared by applyLayout and should stay chromeless.
+            if (self.chrome_tree != null) {
+                self.updateChrome(self.chrome_focused, self.chrome_edges);
+            }
         } else {
             // Transition finished; reset so future layouts snap.
             self.animation.last_us = 0;
@@ -372,6 +377,22 @@ pub const Window = struct {
     /// Regenerate the compositor-drawn chrome overlay for this window.
     /// The overlay follows the layout target size and focus state, ensuring
     /// KidulWM owns the signature corner look regardless of client CSD.
+    /// Destroy the compositor-drawn chrome overlay for this window.
+    /// Called when the slide becomes non-focused so no border ring lingers.
+    pub fn clearChrome(self: *Window) void {
+        if (self.chrome_tree) |tree| {
+            std.log.info("KidulWM: clearChrome id={d}", .{self.id});
+            tree.node.destroy();
+            self.chrome_tree = null;
+        }
+        // Reset cached state so tickAnimation doesn't recreate the chrome
+        // with stale focused/edges values.
+        self.chrome_focused = false;
+        self.chrome_edges = .all;
+        self.chrome_width = 0;
+        self.chrome_height = 0;
+    }
+
     pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
         const w: i32 = @intFromFloat(@round(self.animation.cur_w));
         const h: i32 = @intFromFloat(@round(self.animation.cur_h));
