@@ -422,12 +422,10 @@ pub const Window = struct {
             return;
         }
 
-        // Scale so the content area maps to the wrapper.
-        const sx = target_w / @as(f64, @floatFromInt(geom.width));
-        const sy = target_h / @as(f64, @floatFromInt(geom.height));
-
-        const off_x: i32 = @intFromFloat(@round(-@as(f64, @floatFromInt(geom.x)) * sx));
-        const off_y: i32 = @intFromFloat(@round(-@as(f64, @floatFromInt(geom.y)) * sy));
+        // No offset — wlroots handles XDG geometry internally.
+        // The clip at (geom.x, geom.y, geom.width, geom.height) crops CSD.
+        const off_x: i32 = 0;
+        const off_y: i32 = 0;
 
         self.setSurfaceOffset(off_x, off_y);
     }
