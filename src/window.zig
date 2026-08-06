@@ -281,7 +281,13 @@ pub const Window = struct {
                 @intFromFloat(@round(self.animation.cur_x)),
                 @intFromFloat(@round(self.animation.cur_y)),
             );
-            // Chrome follows scene_tree automatically.
+            // Chrome lives in overlay_tree — track position explicitly.
+            if (self.chrome_tree) |chrome| {
+                chrome.node.setPosition(
+                    @intFromFloat(@round(self.animation.cur_x)),
+                    @intFromFloat(@round(self.animation.cur_y)),
+                );
+            }
             self.updateChrome(self.chrome_focused, self.chrome_edges);
         } else {
             // Transition finished; reset so future layouts snap.
@@ -339,6 +345,22 @@ pub const Window = struct {
     /// right peeks it stays left-aligned; focused windows are top-left aligned.
     pub fn setSurfaceOffset(self: *Window, x: i32, y: i32) void {
         self.surface_tree.node.setPosition(x, y);
+    }
+
+    /// MANDATORY containment rule: clip the client surface to the content
+    /// geometry so CSD padding is cropped away.  Called on every window
+    /// in applyLayout and on every surface commit.
+    pub fn applyContainment(self: *Window) void {
+        const surface = self.toplevel.base.surface;
+        if (!surface.mapped) return;
+        const geom = self.toplevel.base.geometry;
+        if (geom.width <= 0 or geom.height <= 0) return;
+        self.surface_tree.node.subsurfaceTreeSetClip(&wlr.Box{
+            .x = geom.x,
+            .y = geom.y,
+            .width = geom.width,
+            .height = geom.height,
+        });
     }
 
     /// Set the internal surface offset for a peek window so the visible sliver
@@ -400,21 +422,13 @@ pub const Window = struct {
             return;
         }
 
-        // Buffer size (full client buffer including CSD padding).
-        const buf_w: f64 = @floatFromInt(surface.current.width);
-        const buf_h: f64 = @floatFromInt(surface.current.height);
-
         // Scale so the content area maps to the wrapper.
         const sx = target_w / @as(f64, @floatFromInt(geom.width));
         const sy = target_h / @as(f64, @floatFromInt(geom.height));
 
-        const dest_w: i32 = @intFromFloat(@round(buf_w * sx));
-        const dest_h: i32 = @intFromFloat(@round(buf_h * sy));
-
         const off_x: i32 = @intFromFloat(@round(-@as(f64, @floatFromInt(geom.x)) * sx));
         const off_y: i32 = @intFromFloat(@round(-@as(f64, @floatFromInt(geom.y)) * sy));
 
-        self.setSurfaceDestSize(dest_w, dest_h);
         self.setSurfaceOffset(off_x, off_y);
     }
 
@@ -449,13 +463,13 @@ pub const Window = struct {
             self.chrome_tree = null;
         }
 
-        // Put the chrome inside the window's own scene tree so it always stays
-        // in front of the client surface. The chrome is translated by the
-        // wrapper tree, so it is positioned at (0, 0) inside it.
-        const tree = self.scene_tree.createSceneTree() catch return;
-        tree.node.setPosition(0, 0);
-        // Raise above the surface tree so rounded-corner and border drawing hide
-        // any client pixels that extend past the chrome shape.
+        // Chrome must live in overlay_tree so it renders ABOVE the client
+        // surface.  See docs/KIDULWM_CHROME_LAYERS.md.
+        const tree = self.server.overlay_tree.createSceneTree() catch return;
+        tree.node.setPosition(
+            @intFromFloat(@round(self.animation.cur_x)),
+            @intFromFloat(@round(self.animation.cur_y)),
+        );
         tree.node.raiseToTop();
         self.chrome_tree = tree;
         self.chrome_width = w;
@@ -464,16 +478,6 @@ pub const Window = struct {
         self.chrome_edges = edges;
         self.chrome_scale = scale;
         self.chrome_style_generation = style_gen;
-
-        // Clip the client surface to the full window bounds. The chrome overlay
-        // already masks the border/corner ring, so the surface does not need to
-        // be inset by the border width here.
-        self.surface_tree.node.subsurfaceTreeSetClip(&wlr.Box{
-            .x = 0,
-            .y = 0,
-            .width = w,
-            .height = h,
-        });
 
         const style = self.server.theme;
         const surface = chrome_renderer.renderChrome(style, w, h, focused, scale, edges, label) orelse {
@@ -582,5 +586,6 @@ pub const Window = struct {
         if (!window.chrome_edges.eql(chrome_renderer.EdgeMode.all)) {
             window.setSurfaceOffsetForPeek(window.chrome_edges);
         }
+        window.applyContainment();
     }
 };

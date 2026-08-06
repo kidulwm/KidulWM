@@ -88,6 +88,18 @@ pub const Output = struct {
             _ = window.tickAnimation(now_us);
         }
         self.server.tray.update();
+
+        // Advance cinema mask animations.
+        var mask_animating = false;
+        var mask_it = self.server.outputs.iterator(.forward);
+        while (mask_it.next()) |output| {
+            if (output.curtains) |curtains| {
+                if (curtains.tickAnimation(now_us)) {
+                    mask_animating = true;
+                }
+            }
+        }
+
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
         const ok = self.scene_output.commit(null);
@@ -96,6 +108,9 @@ pub const Output = struct {
             return;
         }
         self.scene_output.sendFrameDone(@ptrCast(&ts));
+        if (mask_animating) {
+            self.wlr_output.scheduleFrame();
+        }
     }
 
     fn handleDestroy(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -911,6 +926,7 @@ pub const Server = struct {
                 } else {
                     window.setSurfaceOffsetForPeek(peek_edges);
                 }
+                window.applyContainment();
 
                 if (is_focused) {
                     focused_slide_window = window;
