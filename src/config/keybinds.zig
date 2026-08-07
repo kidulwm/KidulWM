@@ -18,6 +18,7 @@ pub const Action = union(enum) {
 
 const Keybind = struct {
     mod4: bool,
+    ctrl: bool = false,
     sym: xkb.Keysym,
     action: Action,
 };
@@ -40,6 +41,7 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
         if (browser.len > 0) allocator.free(browser);
     };
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.q, .action = .close_focused }) catch {};
+    list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.q, .action = .close_focused }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.r, .action = .reload }) catch {};
     return list;
 }
@@ -141,6 +143,7 @@ pub const Keybinds = struct {
             }
 
             var mod4 = false;
+            var ctrl = false;
             var key_part: []const u8 = left;
             if (std.mem.startsWith(u8, left, "Mod4+")) {
                 mod4 = true;
@@ -148,6 +151,10 @@ pub const Keybinds = struct {
             } else if (std.mem.startsWith(u8, left, "Mod+")) {
                 mod4 = true;
                 key_part = left[4..];
+            }
+            if (std.mem.startsWith(u8, key_part, "Ctrl+")) {
+                ctrl = true;
+                key_part = key_part[5..];
             }
 
             const sym = parseKeysym(key_part) orelse {
@@ -160,7 +167,7 @@ pub const Keybinds = struct {
                 return defaults(allocator);
             };
 
-            list.append(allocator, .{ .mod4 = mod4, .sym = sym, .action = action }) catch {
+            list.append(allocator, .{ .mod4 = mod4, .ctrl = ctrl, .sym = sym, .action = action }) catch {
                 std.log.warn("KidulWM: failed to append keybind; using built-in defaults", .{});
                 switch (action) {
                     .spawn => |cmd| allocator.free(cmd),
@@ -193,9 +200,9 @@ pub const Keybinds = struct {
         self.binds.deinit(self.allocator);
     }
 
-    pub fn match(self: *const Self, mod4_active: bool, sym: xkb.Keysym) ?Action {
+    pub fn match(self: *const Self, mod4_active: bool, ctrl_active: bool, sym: xkb.Keysym) ?Action {
         for (self.binds.items) |bind| {
-            if (bind.mod4 == mod4_active and bind.sym == sym) {
+            if (bind.mod4 == mod4_active and bind.ctrl == ctrl_active and bind.sym == sym) {
                 return bind.action;
             }
         }

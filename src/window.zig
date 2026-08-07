@@ -508,6 +508,7 @@ pub const Window = struct {
         window.map.link.remove();
         window.unmap.link.remove();
         window.commit.link.remove();
+        window.destroy.link.remove(); // remove self before toplevel is destroyed
         window.server.deckForWindow(window).removeWindow(window.id);
         window.link.remove();
         window.server.allocator.destroy(window);

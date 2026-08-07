@@ -74,14 +74,28 @@ const KeyboardDevice = struct {
             return;
         };
         const sym = xkb.State.keyGetOneSym(state, event.keycode + 8);
+        // For keybind matching with Ctrl, we need the base keysym without Ctrl applied.
+        // keyGetOneSym with Ctrl held returns a control char (e.g. Ctrl+Q = 0x11), not the letter.
+        // Map control chars back to their letter for keybind matching.
+        var base_sym = sym;
+        const sym_val: u32 = @intFromEnum(sym);
+        if (sym_val >= 0x01 and sym_val <= 0x1a) {
+            // Ctrl+A..Z maps to 0x01..0x1a — convert back to letter keysym.
+            base_sym = @enumFromInt(@as(u32, @intCast('a')) + (sym_val - 0x01));
+        }
         const mod4_active = xkb.State.modNameIsActive(
             state,
             "Mod4",
             @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
         ) > 0;
+        const ctrl_active = xkb.State.modNameIsActive(
+            state,
+            "Control",
+            @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
+        ) > 0;
 
-        if (mod4_active) {
-            const action = server.keybinds.match(true, sym);
+        if (mod4_active or ctrl_active) {
+            const action = server.keybinds.match(mod4_active, ctrl_active, base_sym);
             if (action) |a| {
                 if (handleAction(server, a)) return;
             }
@@ -166,7 +180,6 @@ const KeyboardDevice = struct {
                 return true;
             },
             .reload => {
-                std.log.info("KidulWM: reload requested, restarting compositor", .{});
                 server.requestQuit();
                 return true;
             },
