@@ -1376,8 +1376,10 @@ pub const Tray = struct {
     fn underlineTarget(self: *const Self) f32 {
         const stack_sel = if (self.selected_index == 0) 0 else self.selected_index;
         const item_size: f32 = @floatFromInt(button_height + button_gap);
-        const stack_origin_offset: f32 = @floatFromInt(barry_button_height + bottom_margin + button_gap);
-        return stack_origin_offset + @as(f32, @floatFromInt(stack_sel)) * item_size;
+        // Center the stack in the panel, then shift up by one button height.
+        const stack_content_h: f32 = @as(f32, @floatFromInt(self.items.len)) * item_size - @as(f32, @floatFromInt(button_gap));
+        const stack_origin: f32 = (@as(f32, @floatFromInt(petHeight())) - stack_content_h) * 0.5;
+        return stack_origin + @as(f32, @floatFromInt(stack_sel)) * item_size;
     }
 
     fn panelWidth(self: *const Self, info: OutputInfo) i32 {
@@ -1398,7 +1400,8 @@ pub const Tray = struct {
             @as(i32, @intCast(visible_items)) * item_size - button_gap + stack_buffer,
         );
         const actual_stack_h: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(max_stack_h)) * self.tray_anim.value));
-        return barry_button_height + bottom_margin + actual_stack_h;
+        // Panel height is just the stack — no barry button padding.
+        return actual_stack_h;
     }
 
     fn petWidth(self: *const Self, info: OutputInfo) i32 {
@@ -1481,7 +1484,9 @@ pub const Tray = struct {
         const w = self.panelWidth(info);
         const h = self.panelHeightFor(info);
         const x: i32 = info.x;
-        const y: i32 = info.y + top_margin;
+        // Center the panel vertically on the peek.
+        const peek_center: i32 = @divTrunc(info.height, 2);
+        const y: i32 = info.y + peek_center - @divTrunc(h, 2);
 
         po.tree.node.setPosition(x, y);
 
@@ -1523,13 +1528,15 @@ pub const Tray = struct {
         // const by: f64 = bmargin;
         // self.drawBarryButton(cr, 0.0, by, bw, bh, scale_d);
 
-        // Stack starts at the top now that the Barry lozenge is gone.
+        // Stack is centered vertically in the panel buffer, shifted up by one button height.
         if (self.tray_anim.value > 0.001 and self.items.len > 0) {
             const gap: f64 = @as(f64, button_gap) * scale_d;
             const item_h: f64 = @as(f64, button_height) * scale_d;
             const item_size = item_h + gap;
             const scroll_px: f64 = @floor(@as(f64, self.scroll_offset) * scale_d);
-            const stack_origin: f64 = gap;
+            // Center the stack in the buffer, then shift up by one button height.
+            const stack_content_h: f64 = @as(f64, @floatFromInt(self.items.len)) * item_size - gap;
+            const stack_origin: f64 = (@as(f64, dev_h) - stack_content_h) * 0.5;
             const stagger_delay: f32 = 0.05;
 
             for (0..self.items.len) |raw_idx| {
@@ -2657,17 +2664,17 @@ pub const Tray = struct {
                 inside_panel = true;
 
                 const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
-                const local_y = py - @as(f64, @floatFromInt(info.y + top_margin));
-                const by: f64 = bottom_margin;
-                const bh: f64 = barry_button_height;
+                const peek_center: f64 = @as(f64, @floatFromInt(info.height)) * 0.5;
+                const panel_y: f64 = @as(f64, @floatFromInt(info.y)) + peek_center - panel_h * 0.5;
+                const local_y = py - panel_y;
                 const gap: f64 = button_gap;
                 const item_h: f64 = button_height;
-                const stack_origin: f64 = by + bh + gap;
+                const item_size = item_h + gap;
+                const stack_content_h: f64 = @as(f64, @floatFromInt(self.items.len)) * item_size - gap;
+                const stack_origin: f64 = (panel_h - stack_content_h) * 0.5;
                 const scroll_px: f64 = self.scroll_offset;
 
-                if (local_y >= by and local_y < by + bh) {
-                    new_hover = 0;
-                } else if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
+                if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
                     const dist = local_y - stack_origin + scroll_px;
                     const idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
                     if (idx <= self.items.len) new_hover = idx;
@@ -2828,12 +2835,14 @@ pub const Tray = struct {
         // the click but do not toggle the tray.
         const info = self.host.output_info(self.host.ctx, output_index);
         const panel_h = @as(f64, @floatFromInt(self.panelHeightFor(info)));
-        const local_y = py - @as(f64, @floatFromInt(info.y + top_margin));
-        const by: f64 = bottom_margin;
-        const bh: f64 = barry_button_height;
+        const peek_center: f64 = @as(f64, @floatFromInt(info.height)) * 0.5;
+        const panel_y: f64 = @as(f64, @floatFromInt(info.y)) + peek_center - panel_h * 0.5;
+        const local_y = py - panel_y;
         const gap: f64 = button_gap;
         const item_h: f64 = button_height;
-        const stack_origin: f64 = by + bh + gap;
+        const item_size = item_h + gap;
+        const stack_content_h: f64 = @as(f64, @floatFromInt(self.items.len)) * item_size - gap;
+        const stack_origin: f64 = (panel_h - stack_content_h) * 0.5;
         const scroll_px: f64 = self.scroll_offset;
 
         if (local_y >= stack_origin and local_y < panel_h and self.items.len > 0) {
