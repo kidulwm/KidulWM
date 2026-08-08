@@ -956,6 +956,8 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    // Beacon click launches the ksignals satellite (full slide) — the old
+    // compositor signals card is dead. Pattern matches spawnKfiles.
     pub fn toggleSignalsCard(self: *Self) void {
         if (self.calendar_card_open) self.calendar_card_open = false;
         if (self.weather_card_open) {
@@ -971,11 +973,9 @@ pub const Tray = struct {
             self.network.card.close();
         }
         if (self.files_card_open) self.files_card_open = false;
-        self.signals_card_open = !self.signals_card_open;
-        if (self.signals_card_open) {
-            self.card_mode = .signals;
-            self.setCardCloseDirection(.signals);
-        }
+        var buf: [256]u8 = undefined;
+        const cmd = std.fmt.bufPrintZ(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 /usr/local/bin/ksignals &", .{}) catch return;
+        _ = c_std.system(cmd.ptr);
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
     }
