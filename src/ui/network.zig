@@ -279,7 +279,6 @@ pub const NetworkWidget = struct {
         // Larger network icon; smaller satellites stay subtle.
         const net_size: f64 = 16.0 * scale_f;
         const sat_size: f64 = 11.0 * scale_f;
-        const net_sat_gap: f64 = 14.0 * scale_f;
 
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
         c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
@@ -304,17 +303,19 @@ pub const NetworkWidget = struct {
         } else if (self.status.network != .connected) warning else gold;
         drawNetworkIcon(cr, net_cx, cy, net_size * 0.5, self.status.network, net_color);
 
-        // Known place to look: VPN always to the left of the network icon.
-        if (show_vpn) {
-            const cx = net_cx - net_size * 0.5 - net_sat_gap - sat_size * 0.5;
-            drawVpnIcon(cr, cx, cy, sat_size * 0.5, gold);
-        }
-
-        // Known place to look: battery always to the right of the network icon.
+        // Known place to look: battery to the LEFT of the beacon, VPN further left.
+        const bat_gap: f64 = 18.0 * scale_f;
+        var left_cx = net_cx - net_size * 0.5 - bat_gap;
         if (show_battery) {
-            const cx = net_cx + net_size * 0.5 + net_sat_gap + sat_size * 0.5;
+            const cx = left_cx - sat_size * 0.5;
             const color = if (self.status.battery_level < 0.2 and !self.status.battery_charging) warning else gold;
-            drawBatteryIcon(cr, cx, cy, sat_size * 0.5, self.status.battery_level, self.status.battery_charging, color);
+            // 2px up-nudge: posts+body read lower than the math suggests at this size.
+            drawBatteryIcon(cr, cx, cy - 2.0 * scale_f, sat_size * 0.5, self.status.battery_level, self.status.battery_charging, color);
+            left_cx = cx - sat_size * 0.5 - bat_gap;
+        }
+        if (show_vpn) {
+            const cx = left_cx - sat_size * 0.5;
+            drawVpnIcon(cr, cx, cy, sat_size * 0.5, gold);
         }
     }
 
