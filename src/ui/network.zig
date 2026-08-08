@@ -422,11 +422,11 @@ pub const NetworkWidget = struct {
         const w = r * 3.9;
         const h = r * 2.4;
         const nub_h = r * 0.45;
-        // Shift the body down by half the nub so the whole glyph (nub + body)
-        // is optically centered on cy.
-        const body_cy = cy + nub_h * 0.5;
+        // Total glyph = posts + body. Center the WHOLE glyph on cy so it
+        // rides the same centerline as the beacon, not below it.
+        const total_h = nub_h + h;
+        const y = cy - total_h * 0.5 + nub_h;
         const x = cx - w * 0.5;
-        const y = body_cy - h * 0.5;
 
         // Whispy body outline.
         c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
@@ -446,12 +446,13 @@ pub const NetworkWidget = struct {
         }
 
         if (charging) {
-            // Bolt wisp inside.
+            // Bolt wisp inside — centered on the body, not the glyph.
+            const body_cy = y + h * 0.5;
             c.cairo_new_path(cr);
-            c.cairo_move_to(cr, cx + r * 0.30, cy - r * 0.68);
-            c.cairo_line_to(cr, cx - r * 0.18, cy + r * 0.03);
-            c.cairo_line_to(cr, cx + r * 0.21, cy + r * 0.03);
-            c.cairo_line_to(cr, cx - r * 0.30, cy + r * 0.68);
+            c.cairo_move_to(cr, cx + r * 0.30, body_cy - r * 0.68);
+            c.cairo_line_to(cr, cx - r * 0.18, body_cy + r * 0.03);
+            c.cairo_line_to(cr, cx + r * 0.21, body_cy + r * 0.03);
+            c.cairo_line_to(cr, cx - r * 0.30, body_cy + r * 0.68);
             c.cairo_set_line_width(cr, 1.4);
             c.cairo_stroke(cr);
             return;
