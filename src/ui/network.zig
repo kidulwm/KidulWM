@@ -413,14 +413,15 @@ pub const NetworkWidget = struct {
     }
 
     // Kidul battery: landscape "car battery" — whispy rounded body with two
-    // terminal posts on top, 6 waved cell-rungs inside (a real 12V car
-    // battery = 6 cells; lit cells = charge). Bolt wisp when charging.
+    // terminal posts on top, 6 waved cell-bars inside (a real 12V car
+    // battery = 6 cells). Bars rise from the bottom with charge — a fill
+    // level, not a gauge. Bolt wisp when charging.
     fn drawBatteryIcon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, level: f64, charging: bool, color: [4]f64) void {
         c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
 
-        const w = r * 2.6;
-        const h = r * 1.6;
-        const nub_h = r * 0.30;
+        const w = r * 3.9;
+        const h = r * 2.4;
+        const nub_h = r * 0.45;
         // Shift the body down by half the nub so the whole glyph (nub + body)
         // is optically centered on cy.
         const body_cy = cy + nub_h * 0.5;
@@ -429,13 +430,13 @@ pub const NetworkWidget = struct {
 
         // Whispy body outline.
         c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
-        c.cairo_set_line_width(cr, 1.0);
+        c.cairo_set_line_width(cr, 1.2);
         c.cairo_new_path(cr);
         roundedRect(cr, x, y, w, h, h * 0.22);
         c.cairo_stroke(cr);
 
         // Two terminal posts on the top edge.
-        const post_w = r * 0.42;
+        const post_w = r * 0.63;
         const post_h = nub_h;
         for ([2]f64{ 0.18, 0.82 }) |fx| {
             const px = x + w * fx - post_w * 0.5;
@@ -447,37 +448,52 @@ pub const NetworkWidget = struct {
         if (charging) {
             // Bolt wisp inside.
             c.cairo_new_path(cr);
-            c.cairo_move_to(cr, cx + r * 0.20, cy - r * 0.45);
-            c.cairo_line_to(cr, cx - r * 0.12, cy + r * 0.02);
-            c.cairo_line_to(cr, cx + r * 0.14, cy + r * 0.02);
-            c.cairo_line_to(cr, cx - r * 0.20, cy + r * 0.45);
-            c.cairo_set_line_width(cr, 1.1);
+            c.cairo_move_to(cr, cx + r * 0.30, cy - r * 0.68);
+            c.cairo_line_to(cr, cx - r * 0.18, cy + r * 0.03);
+            c.cairo_line_to(cr, cx + r * 0.21, cy + r * 0.03);
+            c.cairo_line_to(cr, cx - r * 0.30, cy + r * 0.68);
+            c.cairo_set_line_width(cr, 1.4);
             c.cairo_stroke(cr);
             return;
         }
 
-        // 6 waved cell-rungs (vertical bars, one per cell), lit left-to-right.
+        // 6 waved cell-bars. Ghost bars full height; lit portion rises from
+        // the bottom with charge — the fill level is the top of the lit part.
         const cell_count = 6;
-        const lit: i32 = @intFromFloat(@round(level * @as(f64, cell_count)));
-        const pad_x = r * 0.35;
+        const pad_x = r * 0.5;
         const inner_w = w - pad_x * 2.0;
-        const top_y = y + r * 0.30;
-        const bot_y = y + h - r * 0.30;
+        const top_y = y + r * 0.45;
+        const bot_y = y + h - r * 0.45;
+        const full_h = bot_y - top_y;
+        const fill_h = full_h * std.math.clamp(level, 0.0, 1.0);
         var i: i32 = 0;
         while (i < cell_count) : (i += 1) {
             const frac = (@as(f64, @floatFromInt(i)) + 0.5) / @as(f64, cell_count);
             const rx = x + pad_x + frac * inner_w;
-            const is_lit = i < lit;
-            const alpha: f64 = if (is_lit) 0.9 else 0.18;
-            c.cairo_set_source_rgba(cr, color[0], color[1], color[2], alpha);
-            c.cairo_set_line_width(cr, if (is_lit) 1.1 else 0.8);
             const mid_y = (top_y + bot_y) * 0.5;
-            const sway = r * 0.12;
+            const sway = r * 0.18;
+
+            // Ghost: full-height, barely there.
+            c.cairo_set_source_rgba(cr, color[0], color[1], color[2], 0.15);
+            c.cairo_set_line_width(cr, 0.9);
             c.cairo_new_path(cr);
             c.cairo_move_to(cr, rx, top_y);
-            c.cairo_curve_to(cr, rx - sway, top_y + (bot_y - top_y) * 0.3, rx + sway, mid_y - (bot_y - top_y) * 0.1, rx, mid_y);
-            c.cairo_curve_to(cr, rx - sway, mid_y + (bot_y - top_y) * 0.1, rx + sway, bot_y - (bot_y - top_y) * 0.3, rx, bot_y);
+            c.cairo_curve_to(cr, rx - sway, top_y + full_h * 0.3, rx + sway, mid_y - full_h * 0.1, rx, mid_y);
+            c.cairo_curve_to(cr, rx - sway, mid_y + full_h * 0.1, rx + sway, bot_y - full_h * 0.3, rx, bot_y);
             c.cairo_stroke(cr);
+
+            // Lit: from the bottom up to the fill line.
+            if (fill_h > 1.0) {
+                const fill_top = bot_y - fill_h;
+                const fmid_y = (fill_top + bot_y) * 0.5;
+                c.cairo_set_source_rgba(cr, color[0], color[1], color[2], 0.9);
+                c.cairo_set_line_width(cr, 1.4);
+                c.cairo_new_path(cr);
+                c.cairo_move_to(cr, rx, fill_top);
+                c.cairo_curve_to(cr, rx - sway, fill_top + fill_h * 0.3, rx + sway, fmid_y - fill_h * 0.1, rx, fmid_y);
+                c.cairo_curve_to(cr, rx - sway, fmid_y + fill_h * 0.1, rx + sway, bot_y - fill_h * 0.3, rx, bot_y);
+                c.cairo_stroke(cr);
+            }
         }
     }
 
