@@ -309,8 +309,9 @@ pub const NetworkWidget = struct {
         if (show_battery) {
             const cx = left_cx - sat_size * 0.5;
             const color = if (self.status.battery_level < 0.2 and !self.status.battery_charging) warning else gold;
-            // 2px up-nudge: posts+body read lower than the math suggests at this size.
-            drawBatteryIcon(cr, cx, cy - 2.0 * scale_f, sat_size * 0.5, self.status.battery_level, self.status.battery_charging, color);
+            // Optical nudge: glyph rides low vs the beacon — tune by eye.
+            const bat_y_nudge: f64 = 5.0 * scale_f;
+            drawBatteryIcon(cr, cx, cy - bat_y_nudge, sat_size * 0.5, self.status.battery_level, self.status.battery_charging, color);
             left_cx = cx - sat_size * 0.5 - bat_gap;
         }
         if (show_vpn) {
