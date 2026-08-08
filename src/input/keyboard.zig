@@ -169,6 +169,10 @@ const KeyboardDevice = struct {
                 server.tray.toggleMediaCard();
                 return true;
             },
+            .signals_card_toggle => {
+                server.spawnCommand("/usr/local/bin/ksignals");
+                return true;
+            },
             .next_animation => {
                 server.nextAnimationKind();
                 return true;

@@ -1215,13 +1215,12 @@ pub const MediaWidget = struct {
         const card_bg = style_.color_background.toF64();
         const scale_f: f64 = @as(f64, scale);
 
+        // Full slide: fill background, no card frame.
+        const bg4 = style_.color_card_mat.toF64();
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], 0.91);
         c.cairo_paint(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-
-        const card_frame_mod = @import("card_frame.zig");
-        card_frame_mod.Registry.default.drawNamed(cr, style_, w_d, h_d);
 
         c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
 

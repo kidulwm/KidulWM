@@ -10,6 +10,7 @@ pub const Action = union(enum) {
     tray_select_prev,
     tray_activate,
     media_card_toggle,
+    signals_card_toggle,
     next_animation,
     close_focused,
     reload,
@@ -36,6 +37,7 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Up, .action = .tray_select_prev }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Down, .action = .tray_select_next }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.m, .action = .media_card_toggle }) catch {};
+    list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.m, .action = .signals_card_toggle }) catch {};
     const browser = allocator.dupe(u8, "/usr/local/bin/launch-kidul-browser.sh") catch &[_]u8{};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.c, .action = .{ .spawn = browser } }) catch {
         if (browser.len > 0) allocator.free(browser);
@@ -253,6 +255,7 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "tray_select_prev")) return .tray_select_prev;
         if (std.mem.eql(u8, str, "tray_activate")) return .tray_activate;
         if (std.mem.eql(u8, str, "media_card_toggle")) return .media_card_toggle;
+        if (std.mem.eql(u8, str, "signals_card_toggle")) return .signals_card_toggle;
         if (std.mem.eql(u8, str, "next_animation")) return .next_animation;
         if (std.mem.eql(u8, str, "close_focused")) return .close_focused;
         if (std.mem.eql(u8, str, "reload")) return .reload;

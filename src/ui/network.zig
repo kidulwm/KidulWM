@@ -10,7 +10,6 @@ const c_std = @cImport({
 });
 const style = @import("../core/style.zig");
 const theme_mod = @import("../core/theme.zig");
-const card_frame = @import("card_frame.zig");
 
 pub const NetworkState = enum {
     none,
@@ -45,6 +44,11 @@ pub const NetworkWidget = struct {
     state: NetworkState = .none,
     last_scan_ms: u64 = 0,
     status: Status = .{},
+    /// Beacon override: when set, the peek icon uses this severity color
+    /// instead of the connected/disconnected color. Set by the tray after
+    /// scanning /tmp/kidul-signals/*.state for worst severity.
+    beacon_override: bool = false,
+    beacon_severity: u8 = 0, // 0=ok, 1=warning, 2=alert, 3=muted
 
     const scan_interval_ms: u64 = 2000;
     const brightness_step_ratio: f64 = 0.05;
@@ -203,11 +207,36 @@ pub const NetworkWidget = struct {
         }
     }
 
+    // Battery source of truth: the signal-battery satellite writes
+    // /tmp/kidul-signals/battery.detail ("pct charging minutes health profile").
+    // Fall back to /sys only when the satellite isn't running.
     fn scanBattery(self: *NetworkWidget) void {
-        const names = [_][]const u8{ "BAT0", "BAT1" };
         self.status.battery_present = false;
         self.status.battery_charging = false;
         self.status.battery_level = 1.0;
+
+        const f = c_std.fopen("/tmp/kidul-signals/battery.detail", "r");
+        if (f != null) {
+            defer _ = c_std.fclose(f);
+            var line_buf: [128:0]u8 = undefined;
+            @memset(&line_buf, 0);
+            if (c_std.fgets(&line_buf, @intCast(line_buf.len), f) != null) {
+                const line = std.mem.trim(u8, std.mem.sliceTo(&line_buf, 0), " \t\r\n");
+                var it = std.mem.tokenizeAny(u8, line, " \t");
+                const pct_s = it.next() orelse "";
+                const chg_s = it.next() orelse "0";
+                const pct = std.fmt.parseInt(i32, pct_s, 10) catch -1;
+                if (pct >= 0) {
+                    self.status.battery_present = true;
+                    self.status.battery_charging = std.mem.eql(u8, chg_s, "1");
+                    self.status.battery_level = @as(f64, @floatFromInt(std.math.clamp(pct, 0, 100))) / 100.0;
+                    return;
+                }
+            }
+        }
+
+        // Fallback: direct /sys read (satellite not running)
+        const names = [_][]const u8{ "BAT0", "BAT1" };
         for (names) |name| {
             var present_path: [256:0]u8 = undefined;
             @memset(&present_path, 0);
@@ -227,10 +256,10 @@ pub const NetworkWidget = struct {
             const status_z = std.fmt.bufPrintZ(&status_path, "/sys/class/power_supply/{s}/status", .{name}) catch continue;
             var status_buf: [32:0]u8 = undefined;
             @memset(&status_buf, 0);
-            const f = c_std.fopen(status_z, "r");
-            if (f == null) continue;
-            defer _ = c_std.fclose(f);
-            if (c_std.fgets(&status_buf, @intCast(status_buf.len), f) != null) {
+            const sf = c_std.fopen(status_z, "r");
+            if (sf == null) continue;
+            defer _ = c_std.fclose(sf);
+            if (c_std.fgets(&status_buf, @intCast(status_buf.len), sf) != null) {
                 const line = std.mem.sliceTo(&status_buf, 0);
                 const lower = std.ascii.lowerString(&status_buf, line);
                 self.status.battery_charging = std.mem.startsWith(u8, lower, "charging") or std.mem.startsWith(u8, lower, "full");
@@ -257,7 +286,8 @@ pub const NetworkWidget = struct {
         c.cairo_set_line_join(cr, c.CAIRO_LINE_JOIN_ROUND);
 
         const show_vpn = self.status.vpn_active;
-        const show_battery = self.status.battery_present and (!self.status.battery_charging or self.status.battery_level < 1.0);
+        // Battery glyph only appears on battery power — hidden on AC/charging.
+        const show_battery = self.status.battery_present and !self.status.battery_charging;
 
         // Vertically nudge the whole icon group down so it reads as part of the
         // tray immediately above the clock.
@@ -265,7 +295,13 @@ pub const NetworkWidget = struct {
         const net_cx = w_d * 0.5;
 
         // Draw the always-present network icon centered.
-        const net_color = if (self.status.network != .connected) warning else gold;
+        const net_color = if (self.beacon_override) switch (self.beacon_severity) {
+            0 => gold, // ok
+            1 => warning, // warning (amber)
+            2 => .{ 0.72, 0.18, 0.18, 0.85 }, // alert (red)
+            3 => style_.color_text_muted.toF64(), // muted (grey)
+            else => gold,
+        } else if (self.status.network != .connected) warning else gold;
         drawNetworkIcon(cr, net_cx, cy, net_size * 0.5, self.status.network, net_color);
 
         // Known place to look: VPN always to the left of the network icon.
@@ -461,12 +497,12 @@ pub const NetworkWidget = struct {
 
     pub fn renderCard(self: *const NetworkWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32) void {
         _ = scale;
+        // Full slide: fill background, no card frame.
+        const bg4 = style_.color_card_mat.toF64();
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], 0.91);
         c.cairo_paint(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-
-        card_frame.Registry.default.drawNamed(cr, style_, w_d, h_d);
 
         const gold = style_.color_border_focused.toF64();
         const muted = style_.color_text_muted.toF64();

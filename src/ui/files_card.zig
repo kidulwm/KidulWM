@@ -439,6 +439,13 @@ pub const FilesWidget = struct {
         const text = style_.tray_text_focused_color.toF64();
         const font_size = 22.0 * scale_f;
 
+        // Full slide: fill background with card mat color.
+        const bg4 = style_.color_card_mat.toF64();
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], 0.91);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
         c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
 
         const pad: f64 = 18.0 * scale_f;

@@ -211,13 +211,12 @@ pub const WeatherWidget = struct {
         const state_ = self.state();
         const scale_f: f64 = @as(f64, scale);
 
+        // Full slide: fill background, no card frame.
+        const bg4 = style_.color_card_mat.toF64();
         c_cairo.cairo_set_operator(cr, c_cairo.CAIRO_OPERATOR_SOURCE);
-        c_cairo.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c_cairo.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], 0.91);
         c_cairo.cairo_paint(cr);
         c_cairo.cairo_set_operator(cr, c_cairo.CAIRO_OPERATOR_OVER);
-
-        const card_frame = @import("card_frame.zig");
-        card_frame.Registry.default.drawNamed(cr, style_, w_d, h_d);
 
         c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
 

@@ -7,6 +7,8 @@ const c_std = @cImport({
     @cInclude("unistd.h");
     @cInclude("stdio.h");
     @cInclude("time.h");
+    @cInclude("dirent.h");
+    @cInclude("string.h");
 });
 const theme_mod = @import("../core/theme.zig");
 const style = @import("../core/style.zig");
@@ -262,6 +264,26 @@ const PerOutputNetwork = struct {
     last_theme_generation: u32 = 0,
 };
 
+// ── Signal pills ──────────────────────────────────────────────────
+// Reads /tmp/kidul-signals/*.state files. The beacon (former network
+// icon in the clock widget) changes color based on worst severity.
+// Full slide card shows signal pills + details. Nothing in the peek.
+// Format: "state_text severity icon_hint\n"
+
+const SignalSeverity = enum { ok, warning, alert, muted };
+
+const SignalEntry = struct {
+    name: [32]u8 = [_]u8{0} ** 32,
+    name_len: u8 = 0,
+    state_text: [64]u8 = [_]u8{0} ** 64,
+    state_len: u8 = 0,
+    severity: SignalSeverity = .ok,
+    icon_hint: [32]u8 = [_]u8{0} ** 32,
+    icon_len: u8 = 0,
+};
+
+const MAX_SIGNALS: usize = 8;
+
 const BarryPet = struct {
     output_ctx: *anyopaque,
     tree: *wlr.SceneTree,
@@ -285,6 +307,9 @@ pub const Tray = struct {
     open: bool = false,
     pinned: bool = false,
     hovered: bool = false,
+    /// Prevents handlePointerMove from re-opening the tray via hover after
+    /// a deliberate close (e.g. spawning an app). Cleared when pointer leaves panel.
+    close_lock: bool = false,
     tray_anim: animation.AnimatedFloat = .{ .preset = &animation.presets.tray },
     selected_index: usize = 0,
     hover_index: ?usize = null,
@@ -369,6 +394,7 @@ pub const Tray = struct {
     card_last_mode: CardMode = .calendar,
     media_state_generation: u32 = 0,
     files_state_generation: usize = 0,
+    signal_last_hash: u64 = 0,
     card_mode: CardMode = .calendar,
     card_close_dx: f32 = -1.0,
     card_close_dy: f32 = -1.0,
@@ -376,6 +402,12 @@ pub const Tray = struct {
     // Notification typewriter stream.
     notifications: NotificationWidget,
     notification_widgets: std.ArrayList(PerOutputNotifications),
+
+    // Signal pills — reads /tmp/kidul-signals/*.state, rendered in card slide
+    signals: [MAX_SIGNALS]SignalEntry = [_]SignalEntry{.{}} ** MAX_SIGNALS,
+    signal_count: usize = 0,
+    signal_last_scan_ms: u64 = 0,
+    signals_card_open: bool = false,
 
     outputs: std.ArrayList(PerOutput),
     barry_pets: std.ArrayList(BarryPet),
@@ -517,6 +549,7 @@ pub const Tray = struct {
         self.drives_widgets.deinit(self.allocator);
         self.media_widgets.deinit(self.allocator);
         self.network_widgets.deinit(self.allocator);
+        self.notification_widgets.deinit(self.allocator);
         var it = self.icon_cache.iterator();
         while (it.next()) |entry| {
             c.cairo_surface_destroy(entry.value_ptr.*);
@@ -840,12 +873,13 @@ pub const Tray = struct {
     }
 
     pub fn closeAllCards(self: *Self) void {
-        if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open and !self.network_card_open and !self.files_card_open) return;
+        if (!self.calendar_card_open and !self.weather_card_open and !self.media_card_open and !self.network_card_open and !self.files_card_open and !self.signals_card_open) return;
         self.calendar_card_open = false;
         self.weather_card_open = false;
         self.media_card_open = false;
         self.network_card_open = false;
         self.files_card_open = false;
+        self.signals_card_open = false;
         self.network.card.close();
         self.weather.card.open = false;
         self.media.setCardOpen(false);
@@ -922,6 +956,30 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    pub fn toggleSignalsCard(self: *Self) void {
+        if (self.calendar_card_open) self.calendar_card_open = false;
+        if (self.weather_card_open) {
+            self.weather_card_open = false;
+            self.weather.card.open = false;
+        }
+        if (self.media_card_open) {
+            self.media_card_open = false;
+            self.media.setCardOpen(false);
+        }
+        if (self.network_card_open) {
+            self.network_card_open = false;
+            self.network.card.close();
+        }
+        if (self.files_card_open) self.files_card_open = false;
+        self.signals_card_open = !self.signals_card_open;
+        if (self.signals_card_open) {
+            self.card_mode = .signals;
+            self.setCardCloseDirection(.signals);
+        }
+        self.requestUpdate();
+        self.host.request_frame(self.host.ctx);
+    }
+
     pub fn toggleMediaCard(self: *Self) void {
         if (self.calendar_card_open) {
             self.calendar_card_open = false;
@@ -953,7 +1011,7 @@ pub const Tray = struct {
     }
 
     fn anyCardOpen(self: *const Self) bool {
-        return self.calendar_card_open or self.weather_card_open or self.media_card_open or self.network_card_open or self.files_card_open;
+        return self.calendar_card_open or self.weather_card_open or self.media_card_open or self.network_card_open or self.files_card_open or self.signals_card_open;
     }
 
     pub fn selectNext(self: *Self) void {
@@ -1345,6 +1403,21 @@ pub const Tray = struct {
             network_widget.info = self.host.output_info(self.host.ctx, networkWidgetIndex(self, network_widget));
             self.drawNetworkWidget(network_widget);
         }
+
+        // Scan signal state files for beacon color + card rendering.
+        self.scanSignals();
+        const worst = self.worstSeverity();
+        self.network.beacon_override = (self.signal_count > 0);
+        self.network.beacon_severity = switch (worst) {
+            .ok => 0,
+            .warning => 1,
+            .alert => 2,
+            .muted => 3,
+        };
+        if (self.signals_card_open) {
+            needs_redraw = true;
+        }
+
         if (self.media_card_open or self.media.cached.playing) {
             needs_redraw = true;
         }
@@ -2713,11 +2786,12 @@ pub const Tray = struct {
 
     pub fn handlePointerClick(self: *Self, px: f64, py: f64) bool {
         
-        // Status icon sits on top of the clock, so check it first.
+        // Status icon (beacon) sits on top of the clock, so check it first.
         var need_close_card = false;
         if (self.pointInsideNetworkWidget(px, py)) {
             if (self.calendar_card_open or self.weather_card_open or self.media_card_open) self.closeAllCards();
-            self.toggleNetworkCard();
+            // The network icon is now the signal beacon — opens signals card.
+            self.toggleSignalsCard();
             return true;
         }
         // Click on the clock/date peek widget toggles the calendar card.
@@ -3604,6 +3678,305 @@ pub const Tray = struct {
         widget.last_theme_generation = self.host.theme.generation;
     }
 
+    // ── Signal pills ──────────────────────────────────────────────────
+
+    fn signalNowMs() u64 {
+        var ts: std.os.linux.timespec = undefined;
+        if (std.os.linux.clock_gettime(std.os.linux.CLOCK.MONOTONIC, &ts) != 0) {
+            return 0;
+        }
+        return @as(u64, @intCast(ts.sec)) * 1000 + @as(u64, @intCast(ts.nsec)) / 1_000_000;
+    }
+
+    fn scanSignals(self: *Self) void {
+        const now = signalNowMs();
+        const scan_interval: u64 = 500;
+        if (now -% self.signal_last_scan_ms < scan_interval) return;
+        self.signal_last_scan_ms = now;
+
+        self.signal_count = 0;
+        const dir = c_std.opendir("/tmp/kidul-signals");
+        if (dir == null) return;
+        defer _ = c_std.closedir(dir);
+
+        var entry: ?*c_std.dirent = null;
+        while (self.signal_count < MAX_SIGNALS) {
+            entry = c_std.readdir(dir);
+            if (entry == null) break;
+            const fname = std.mem.sliceTo(&entry.?.d_name, 0);
+            if (fname.len == 0 or fname[0] == '.') continue;
+
+            // Filename without .state extension is the signal name.
+            const sig_name = if (std.mem.endsWith(u8, fname, ".state"))
+                fname[0 .. fname.len - 6]
+            else
+                fname;
+
+            // Read the state file.
+            var path_buf: [256:0]u8 = undefined;
+            @memset(&path_buf, 0);
+            const path = std.fmt.bufPrintZ(&path_buf, "/tmp/kidul-signals/{s}", .{fname}) catch continue;
+            const f = c_std.fopen(path, "r");
+            if (f == null) continue;
+            defer _ = c_std.fclose(f);
+
+            var line_buf: [128:0]u8 = undefined;
+            @memset(&line_buf, 0);
+            if (c_std.fgets(&line_buf, @intCast(line_buf.len), f) == null) continue;
+            const line = std.mem.sliceTo(&line_buf, 0);
+            const trimmed = std.mem.trim(u8, line, " \t\r\n");
+            if (trimmed.len == 0) continue;
+
+            // Parse: "state_text severity icon_hint"
+            var it = std.mem.tokenizeAny(u8, trimmed, " \t");
+            const state_text = it.next() orelse continue;
+            const sev_str = it.next() orelse continue;
+            const icon_hint = it.next() orelse "";
+
+            const slot = &self.signals[self.signal_count];
+            slot.* = .{};
+
+            const name_copy = @min(sig_name.len, slot.name.len - 1);
+            @memcpy(slot.name[0..name_copy], sig_name[0..name_copy]);
+            slot.name_len = @intCast(name_copy);
+
+            const state_copy = @min(state_text.len, slot.state_text.len - 1);
+            @memcpy(slot.state_text[0..state_copy], state_text[0..state_copy]);
+            slot.state_len = @intCast(state_copy);
+
+            slot.severity = if (std.mem.eql(u8, sev_str, "warning"))
+                .warning
+            else if (std.mem.eql(u8, sev_str, "alert"))
+                .alert
+            else if (std.mem.eql(u8, sev_str, "muted"))
+                .muted
+            else
+                .ok;
+
+            const icon_copy = @min(icon_hint.len, slot.icon_hint.len - 1);
+            @memcpy(slot.icon_hint[0..icon_copy], icon_hint[0..icon_copy]);
+            slot.icon_len = @intCast(icon_copy);
+
+            self.signal_count += 1;
+        }
+    }
+
+    fn signalHash(self: *const Self) u64 {
+        var h: u64 = 14695981039346656037; // FNV-1a basis
+        for (0..self.signal_count) |i| {
+            const sig = self.signals[i];
+            const name = sig.name[0..sig.name_len];
+            const state = sig.state_text[0..sig.state_len];
+            for (name) |b| {
+                h = (h ^ b) *% 1099511628211;
+            }
+            for (state) |b| {
+                h = (h ^ b) *% 1099511628211;
+            }
+            h = (h ^ @intFromEnum(sig.severity)) *% 1099511628211;
+        }
+        return h;
+    }
+
+    fn severityColor(sev: SignalSeverity, style_: style.Style) [4]f64 {
+        return switch (sev) {
+            .ok => style_.color_gold.toF64(),
+            .warning => .{ 0.851, 0.447, 0.18, 1.0 }, // amber
+            .alert => .{ 0.72, 0.18, 0.18, 1.0 }, // red
+            .muted => style_.color_text_muted.toF64(), // grey
+        };
+    }
+
+    fn worstSeverity(self: *const Self) SignalSeverity {
+        var worst: SignalSeverity = .ok;
+        for (0..self.signal_count) |i| {
+            const sig = self.signals[i];
+            switch (sig.severity) {
+                .alert => return .alert,
+                .warning => worst = .warning,
+                .muted => if (worst == .ok) { worst = .muted; },
+                .ok => {},
+            }
+        }
+        return worst;
+    }
+
+    fn drawSignalsCard(self: *const Self, cr: *c.cairo_t, w: f64, h: f64) void {
+        const tstyle = self.host.theme.style;
+        const scale = outputScaleForCard(self);
+        const s_f: f64 = @as(f64, scale);
+        const card_font = "Fantasque Sans Mono";
+        const muted4 = tstyle.color_text_muted.toF64();
+        const gold4 = tstyle.color_gold.toF64();
+
+        // Full slide: fill background with card mat color, no card frame.
+        const bg4 = tstyle.color_card_mat.toF64();
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], 0.91);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        c.cairo_save(cr);
+
+        // Title at the top.
+        c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_BOLD);
+        c.cairo_set_font_size(cr, 20.0 * s_f);
+        var title_ext: c.cairo_text_extents_t = undefined;
+        const title_str = "Signals";
+        c.cairo_text_extents(cr, @ptrCast(title_str), &title_ext);
+        const title_x = (w - title_ext.width) * 0.5;
+        const title_y = 30.0 * s_f + title_ext.height;
+        c.cairo_move_to(cr, title_x + 1.0 * s_f, title_y + 1.0 * s_f);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.6);
+        c.cairo_show_text(cr, @ptrCast(title_str));
+        c.cairo_move_to(cr, title_x, title_y);
+        c.cairo_set_source_rgba(cr, gold4[0], gold4[1], gold4[2], 0.95);
+        c.cairo_show_text(cr, @ptrCast(title_str));
+
+        // Signal pills stacked below the title.
+        const item_h: f64 = 36.0 * s_f;
+        const item_gap: f64 = 8.0 * s_f;
+        const top_pad: f64 = 60.0 * s_f;
+        const pill_w: f64 = w - 40.0 * s_f;
+        const pill_x: f64 = 20.0 * s_f;
+        const depth: f64 = item_h / 2.0;
+
+        for (0..self.signal_count) |i| {
+            const sig = self.signals[i];
+            const y = top_pad + @as(f64, @floatFromInt(i)) * (item_h + item_gap);
+            if (y + item_h > h) break;
+            drawSignalPill(cr, pill_x, y, pill_w, item_h, depth, &sig, s_f, tstyle);
+        }
+
+        // Details section below pills — state text, severity, icon hint.
+        const details_y = top_pad + @as(f64, @floatFromInt(self.signal_count)) * (item_h + item_gap) + 20.0 * s_f;
+        if (details_y < h) {
+            c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+            c.cairo_set_font_size(cr, 13.0 * s_f);
+
+            for (0..self.signal_count) |i| {
+                const sig = self.signals[i];
+                const dy = details_y + @as(f64, @floatFromInt(i)) * 18.0 * s_f;
+                if (dy + 18.0 * s_f > h) break;
+
+                const sev_color = severityColor(sig.severity, tstyle);
+                const name = sig.name[0..sig.name_len];
+                const state = sig.state_text[0..sig.state_len];
+
+                // Name label
+                var line_buf: [128:0]u8 = undefined;
+                @memset(&line_buf, 0);
+                const line = std.fmt.bufPrintZ(&line_buf, "{s}: {s}", .{ name, state }) catch "";
+                c.cairo_set_source_rgba(cr, muted4[0], muted4[1], muted4[2], 0.8);
+                c.cairo_move_to(cr, pill_x, dy + 13.0 * s_f);
+                c.cairo_show_text(cr, @ptrCast(line));
+
+                // Severity dot
+                c.cairo_new_path(cr);
+                c.cairo_arc(cr, pill_x + pill_w - 12.0 * s_f, dy + 8.0 * s_f, 4.0 * s_f, 0, 2.0 * std.math.pi);
+                c.cairo_set_source_rgba(cr, sev_color[0], sev_color[1], sev_color[2], 0.9);
+                c.cairo_fill(cr);
+            }
+        }
+
+        c.cairo_restore(cr);
+    }
+
+    fn drawSignalPill(
+        cr: *c.cairo_t,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        depth: f64,
+        sig: *const SignalEntry,
+        s: f64,
+        tstyle: style.Style,
+    ) void {
+        const sev_color = severityColor(sig.severity, tstyle);
+        const margin: f64 = 2.0 * s;
+        const pill_x = x + margin;
+        const pill_w = w - margin * 2.0;
+        const r: f64 = h / 2.0;
+
+        c.cairo_save(cr);
+
+        // Shadow.
+        panelOutline(tstyle, cr, pill_x + 2.0 * s, y + 3.0 * s, pill_w, h, depth);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
+        c.cairo_fill(cr);
+
+        // Glass body — severity-tinted.
+        panelOutline(tstyle, cr, pill_x, y, pill_w, h, depth);
+        const glass = c.cairo_pattern_create_linear(pill_x, y, pill_x, y + h).?;
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.0, 0.09, 0.09, 0.10, 0.85);
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.5, 0.06, 0.06, 0.07, 0.82);
+        c.cairo_pattern_add_color_stop_rgba(glass, 0.5, sev_color[0], sev_color[1], sev_color[2], 0.15);
+        c.cairo_pattern_add_color_stop_rgba(glass, 1.0, 0.04, 0.04, 0.05, 0.78);
+        c.cairo_set_source(cr, glass);
+        c.cairo_fill_preserve(cr);
+        c.cairo_pattern_destroy(glass);
+
+        // Severity-colored rim.
+        c.cairo_set_source_rgba(cr, sev_color[0], sev_color[1], sev_color[2], 0.55);
+        c.cairo_set_line_width(cr, 1.0 * s);
+        c.cairo_stroke(cr);
+
+        // Severity dot on the left.
+        const dot_r: f64 = 4.0 * s;
+        const dot_cx = pill_x + r;
+        const dot_cy = y + r;
+        c.cairo_new_path(cr);
+        c.cairo_arc(cr, dot_cx, dot_cy, dot_r, 0, 2.0 * std.math.pi);
+        c.cairo_set_source_rgba(cr, sev_color[0], sev_color[1], sev_color[2], 0.9);
+        c.cairo_fill(cr);
+
+        // Signal name text.
+        const name = sig.name[0..sig.name_len];
+        const state = sig.state_text[0..sig.state_len];
+        const card_font = "Fantasque Sans Mono";
+        const font_size = 13.0 * s;
+        c.cairo_select_font_face(cr, card_font, c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+        c.cairo_set_font_size(cr, font_size);
+
+        var name_buf: [40:0]u8 = undefined;
+        @memset(&name_buf, 0);
+        const name_z = std.fmt.bufPrintZ(&name_buf, "{s}", .{name}) catch "";
+        var name_ext: c.cairo_text_extents_t = undefined;
+        c.cairo_text_extents(cr, @ptrCast(name_z), &name_ext);
+
+        const text_x = dot_cx + dot_r + 8.0 * s;
+        const text_y = y + (h + name_ext.height) / 2.0;
+
+        c.cairo_move_to(cr, text_x + 1.0 * s, text_y + 1.0 * s);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.7);
+        c.cairo_show_text(cr, @ptrCast(name_z));
+
+        const muted4 = tstyle.color_text_muted.toF64();
+        c.cairo_move_to(cr, text_x, text_y);
+        c.cairo_set_source_rgba(cr, muted4[0], muted4[1], muted4[2], 0.9);
+        c.cairo_show_text(cr, @ptrCast(name_z));
+
+        // State text (right-aligned, severity colored).
+        var state_buf: [70:0]u8 = undefined;
+        @memset(&state_buf, 0);
+        const state_z = std.fmt.bufPrintZ(&state_buf, "{s}", .{state}) catch "";
+        var state_ext: c.cairo_text_extents_t = undefined;
+        c.cairo_text_extents(cr, @ptrCast(state_z), &state_ext);
+        const state_x = pill_x + pill_w - r - 8.0 * s - state_ext.width;
+        const state_y = text_y;
+
+        c.cairo_move_to(cr, state_x + 1.0 * s, state_y + 1.0 * s);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.7);
+        c.cairo_show_text(cr, @ptrCast(state_z));
+
+        c.cairo_move_to(cr, state_x, state_y);
+        c.cairo_set_source_rgba(cr, sev_color[0], sev_color[1], sev_color[2], 0.9);
+        c.cairo_show_text(cr, @ptrCast(state_z));
+
+        c.cairo_restore(cr);
+    }
+
     fn updateCard(self: *Self) void {
         const now_us = animation.nowUs();
         const prev = self.last_update_us;
@@ -3633,48 +4006,36 @@ pub const Tray = struct {
         };
         self.card_box = box;
 
-        var w = box.width;
-        var h = box.height;
-        if (w <= 260 or h <= 260) {
-            w = @min(w, 320);
-            h = @min(h, 220);
-        } else {
-            w -= 140;
-            h -= 120;
-        }
+        // Full slide: fill the entire focused window box, no shrinking.
+        const w = box.width;
+        const h = box.height;
         if (w <= 0 or h <= 0) {
             if (self.card_tree) |tree| tree.node.setEnabled(false);
             return;
         }
-        const card_x = box.x + @divTrunc(box.width - w, 2);
-        const card_y = box.y + @divTrunc(box.height - h, 2);
+        const card_x = box.x;
+        const card_y = box.y;
 
         const current_mode = self.card_mode;
-        const shadow_needs_redraw = self.card_shadow_last_box.x != box.x or
-            self.card_shadow_last_box.y != box.y or
-            self.card_shadow_last_box.width != box.width or
-            self.card_shadow_last_box.height != box.height or
-            self.card_last_generation != self.host.theme.generation or
-            @abs(self.card_last_open - self.card_anim.value) > 0.0001 or
-            more;
-        const needs_redraw = shadow_needs_redraw or
-            self.card_last_w != w or
+        const needs_redraw = self.card_last_w != w or
             self.card_last_h != h or
             self.card_last_mode != current_mode or
+            self.card_last_generation != self.host.theme.generation or
+            @abs(self.card_last_open - self.card_anim.value) > 0.0001 or
+            more or
             self.files.state_generation != self.files_state_generation or
             self.media.state_generation != self.media_state_generation or
-            self.network_card_last_state != self.network.state;
+            self.network_card_last_state != self.network.state or
+            (self.signals_card_open and self.signalHash() != self.signal_last_hash);
 
         const closing = self.card_anim.isClosing();
         const slide_t: f32 = if (closing) (1.0 - self.card_anim.value) else 0.0;
         const slide_x: i32 = @intFromFloat(@round(@as(f64, @floatCast(slide_t * self.card_close_dx))));
         const slide_y: i32 = @intFromFloat(@round(@as(f64, @floatCast(slide_t * self.card_close_dy))));
 
+        // No shadow for full slides.
         if (self.card_shadow_tree) |shadow_tree| {
-            shadow_tree.node.setPosition(box.x + slide_x, box.y + slide_y);
-            if (self.anyCardOpen()) {
-                shadow_tree.node.setEnabled(true);
-            }
+            shadow_tree.node.setEnabled(false);
         }
 
         if (self.card_tree) |tree| {
@@ -3694,11 +4055,12 @@ pub const Tray = struct {
             self.files_state_generation = self.files.state_generation;
             self.media_state_generation = self.media.state_generation;
             self.network_card_last_state = self.network.state;
+            self.signal_last_hash = self.signalHash();
             const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);
             if (stride <= 0) return;
             const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(h));
             const temp = self.allocator.alloc(u8, buf_size) catch |err| {
-                std.log.err("KidulWM: card buffer alloc failed: {}", .{err});
+                std.log.err("KidulWM: slide buffer alloc failed: {}", .{err});
                 return;
             };
             defer self.allocator.free(temp);
@@ -3706,7 +4068,7 @@ pub const Tray = struct {
             const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, w, h, stride);
             defer c.cairo_surface_destroy(surface);
             const cr = c.cairo_create(surface) orelse {
-                std.log.err("KidulWM: failed to create cairo context for card", .{});
+                std.log.err("KidulWM: failed to create cairo context for slide", .{});
                 return;
             };
             defer c.cairo_destroy(cr);
@@ -3715,6 +4077,7 @@ pub const Tray = struct {
                 .weather => self.weather.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
                 .network => self.network.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
                 .files => self.files.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
+                .signals => self.drawSignalsCard(cr, @floatFromInt(w), @floatFromInt(h)),
                 .media => blk: {
                     var click: MediaWidget.CardClick = .{};
                     self.media.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self), &click);
@@ -3724,7 +4087,7 @@ pub const Tray = struct {
             }
             const DataBuffer = @import("../render/buffer.zig").DataBuffer;
             const buffer = DataBuffer.create(temp, w, h, @intCast(stride)) catch |err| {
-                std.log.err("KidulWM: failed to create card buffer: {}", .{err});
+                std.log.err("KidulWM: failed to create slide buffer: {}", .{err});
                 return;
             };
             if (self.card_buffer) |old| wlr.Buffer.drop(old);
@@ -3732,43 +4095,7 @@ pub const Tray = struct {
             if (self.card_scene_buffer) |old| old.node.destroy();
             const tree = self.card_tree orelse return;
             self.card_scene_buffer = tree.createSceneBuffer(buffer) catch |err| {
-                std.log.err("KidulWM: failed to create card scene buffer: {}", .{err});
-                return;
-            };
-
-            // Render shadow on focused slide behind the card.
-            self.card_shadow_last_box = box;
-            if (self.card_shadow_scene_buffer) |old| old.node.destroy();
-            if (self.card_shadow_buffer) |old| wlr.Buffer.drop(old);
-            const box_w = box.width;
-            const box_h = box.height;
-            const shadow_stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, box_w);
-            if (shadow_stride <= 0) return;
-            const shadow_buf_size = @as(usize, @intCast(shadow_stride)) * @as(usize, @intCast(box_h));
-            const shadow_temp = self.allocator.alloc(u8, shadow_buf_size) catch |err| {
-                std.log.err("KidulWM: card shadow buffer alloc failed: {}", .{err});
-                return;
-            };
-            defer self.allocator.free(shadow_temp);
-            @memset(shadow_temp, 0);
-            const shadow_surface = c.cairo_image_surface_create_for_data(shadow_temp.ptr, c.CAIRO_FORMAT_ARGB32, box_w, box_h, shadow_stride);
-            defer c.cairo_surface_destroy(shadow_surface);
-            const shadow_cr = c.cairo_create(shadow_surface) orelse {
-                std.log.err("KidulWM: failed to create shadow cairo", .{});
-                return;
-            };
-            defer c.cairo_destroy(shadow_cr);
-            card_frame.drawCardShadow(shadow_cr, self.host.theme.style, @floatFromInt(box_w), @floatFromInt(box_h), @floatFromInt(w), @floatFromInt(h));
-            const shadow_buffer = DataBuffer.create(shadow_temp, box_w, box_h, @intCast(shadow_stride)) catch |err| {
-                std.log.err("KidulWM: failed to create card shadow buffer: {}", .{err});
-                return;
-            };
-            self.card_shadow_buffer = shadow_buffer;
-            const shadow_tree = self.card_shadow_tree orelse return;
-            self.card_shadow_scene_buffer = shadow_tree.createSceneBuffer(shadow_buffer) catch |err| {
-                std.log.err("KidulWM: failed to create card shadow scene buffer: {}", .{err});
-                wlr.Buffer.drop(shadow_buffer);
-                self.card_shadow_buffer = null;
+                std.log.err("KidulWM: failed to create slide scene buffer: {}", .{err});
                 return;
             };
         }
@@ -3779,19 +4106,17 @@ pub const Tray = struct {
             else
                 1.0;
             sb.setOpacity(alpha);
-            if (self.card_shadow_scene_buffer) |ssb| {
-                ssb.setOpacity(alpha);
-            }
         }
     }
 
-    const CardMode = enum { calendar, weather, media, network, files };
+    const CardMode = enum { calendar, weather, media, network, files, signals };
 
     fn activeCardMode(self: *const Self) CardMode {
         if (self.weather_card_open) return .weather;
         if (self.media_card_open) return .media;
         if (self.network_card_open) return .network;
         if (self.files_card_open) return .files;
+        if (self.signals_card_open) return .signals;
         return .calendar;
     }
 
@@ -3822,6 +4147,11 @@ pub const Tray = struct {
                 // Files card is opened from the disk gauge (left peek); close back toward it.
                 self.card_close_dx = -mag;
                 self.card_close_dy = mag;
+            },
+            .signals => {
+                // Signals beacon is top-right; close back toward it.
+                self.card_close_dx = mag;
+                self.card_close_dy = -mag;
             },
         }
     }
@@ -3954,13 +4284,12 @@ pub const Tray = struct {
             const date_font_size = tstyle.font_size_m;
             const day_font_size = tstyle.font_size_s;
 
-            // Clear; draw 3D black-glass frame, then crop all content inside.
+            // Full slide: fill background, no card frame.
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
-            c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+            const bg4 = tstyle.color_card_mat.toF64();
+            c.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], 0.91);
             c.cairo_paint(cr);
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-
-            card_frame.Registry.default.drawNamed(cr, tstyle, w, h);
 
             const gold4 = gold.toF64();
 
