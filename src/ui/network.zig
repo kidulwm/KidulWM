@@ -438,8 +438,8 @@ pub const NetworkWidget = struct {
         c.cairo_stroke(cr);
 
         // Two terminal posts on the top edge.
-        const post_w = r * 0.63;
-        const post_h = nub_h;
+        const post_w = r * 0.85;
+        const post_h = nub_h * 1.3;
         for ([2]f64{ 0.18, 0.82 }) |fx| {
             const px = x + w * fx - post_w * 0.5;
             c.cairo_new_path(cr);
