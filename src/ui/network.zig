@@ -412,46 +412,66 @@ pub const NetworkWidget = struct {
         c.cairo_fill(cr);
     }
 
+    // Kidul battery: slim vertical capsule, 5 whispy rungs inside —
+    // lit rungs = charge. Same language as the battery slide's 50-line
+    // butterfly, shrunk to tray size. Charging shows the bolt instead.
     fn drawBatteryIcon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, level: f64, charging: bool, color: [4]f64) void {
         c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
-        c.cairo_set_line_width(cr, 1.2);
-        const w = r * 1.35;
-        const h = r * 0.75;
+        c.cairo_set_line_width(cr, 1.0);
+        c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
+
+        const w = r * 0.95;
+        const h = r * 1.7;
         const x = cx - w * 0.5;
         const y = cy - h * 0.5;
-        // Body.
+
+        // Whispy capsule outline.
         c.cairo_new_path(cr);
-        roundedRect(cr, x, y, w, h, r * 0.12);
+        roundedRect(cr, x, y, w, h, w * 0.45);
         c.cairo_stroke(cr);
-        // Positive nub.
+
+        // Tiny nub on top.
+        const nub_w = w * 0.4;
+        const nub_h = r * 0.14;
         c.cairo_new_path(cr);
-        const nub_w = r * 0.18;
-        const nub_h = h * 0.45;
-        c.cairo_rectangle(cr, x + w, cy - nub_h * 0.5, nub_w, nub_h);
+        roundedRect(cr, cx - nub_w * 0.5, y - nub_h - 0.5, nub_w, nub_h, nub_h * 0.5);
         c.cairo_fill(cr);
 
-        // Fill level.
-        const pad = r * 0.18;
-        const fill_w = (w - pad * 2.0) * std.math.clamp(level, 0.0, 1.0);
-        if (fill_w > 0.5) {
+        if (charging) {
+            // Bolt wisp inside.
             c.cairo_new_path(cr);
-            c.cairo_rectangle(cr, x + pad, y + pad, fill_w, h - pad * 2.0);
-            c.cairo_fill_preserve(cr);
+            c.cairo_move_to(cr, cx + r * 0.16, cy - r * 0.5);
+            c.cairo_line_to(cr, cx - r * 0.08, cy - r * 0.02);
+            c.cairo_line_to(cr, cx + r * 0.10, cy - r * 0.02);
+            c.cairo_line_to(cr, cx - r * 0.16, cy + r * 0.5);
+            c.cairo_set_line_width(cr, 1.1);
             c.cairo_stroke(cr);
+            return;
         }
 
-        if (charging) {
-            // Tiny bolt inside.
+        // 5 whispy rungs, bottom-up; lit = charge. Each rung is a gentle
+        // two-segment wave so it shimmers instead of sitting rigid.
+        const rung_count = 5;
+        const lit: i32 = @intFromFloat(@round(level * @as(f64, rung_count)));
+        const pad_x = r * 0.16;
+        const inner_w = w - pad_x * 2.0;
+        const top_y = y + r * 0.22;
+        const bot_y = y + h - r * 0.22;
+        var i: i32 = 0;
+        while (i < rung_count) : (i += 1) {
+            const frac = (@as(f64, @floatFromInt(i)) + 0.5) / @as(f64, rung_count);
+            const ry = bot_y - frac * (bot_y - top_y);
+            const is_lit = i < lit;
+            const alpha: f64 = if (is_lit) 0.9 else 0.18;
+            c.cairo_set_source_rgba(cr, color[0], color[1], color[2], alpha);
+            c.cairo_set_line_width(cr, if (is_lit) 1.1 else 0.8);
+            const mid_x = x + pad_x + inner_w * 0.5;
+            const dip = r * 0.10;
             c.cairo_new_path(cr);
-            const bx = cx;
-            const by = cy;
-            c.cairo_move_to(cr, bx + r * 0.18, by - r * 0.35);
-            c.cairo_line_to(cr, bx - r * 0.05, by);
-            c.cairo_line_to(cr, bx + r * 0.12, by);
-            c.cairo_line_to(cr, bx - r * 0.18, by + r * 0.35);
-            c.cairo_close_path(cr);
-            c.cairo_set_source_rgba(cr, color[0], color[1], color[2], 1.0);
-            c.cairo_fill(cr);
+            c.cairo_move_to(cr, x + pad_x, ry);
+            c.cairo_curve_to(cr, x + pad_x + inner_w * 0.25, ry + dip, mid_x - inner_w * 0.1, ry + dip, mid_x, ry);
+            c.cairo_curve_to(cr, mid_x + inner_w * 0.1, ry - dip, x + pad_x + inner_w * 0.75, ry - dip, x + pad_x + inner_w, ry);
+            c.cairo_stroke(cr);
         }
     }
 
