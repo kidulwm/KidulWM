@@ -1,6 +1,74 @@
-# KidulWM HANDOFF — Aug 7 2026
+# KidulWM HANDOFF — Aug 8 2026 (session 5)
 
 ## Session summary
+
+Battery arc complete, end to end: satellite → slide → tray glyph. Also
+installed power-profiles-daemon on fresh-one for real power mode control.
+
+## What was built this session
+
+### signal-battery satellite (kbrain repo, src/signal-battery.zig)
+- Reads /sys/class/power_supply/BAT* (capacity, status, energy_full OR
+  charge_full for health) + `powerprofilesctl get`
+- Writes /tmp/kidul-signals/battery.state ("85% ok battery") and
+  battery.detail ("pct charging minutes health profile") every 2s,
+  atomic via .tmp+rename
+- No BAT* (VMs): simulates perpetual discharge 95→15, snap back to 95.
+  NEVER simulates charging — tray glyph hides when charging and VMs exist
+  to look at the glyph
+- Severity: alert ≤15%, warning ≤30% (when not charging)
+
+### ksignals battery slide (ksignals repo)
+- 50 whispy lines on the butterfly wings, 1 per 2% — wing density IS the
+  charge (decorative for Granny, real digits beside it: 44px % readout)
+- Soul dot breathes faster when charging
+- Stats: charge, state, time remaining, health, profile
+- Power profile pills: "Long lasting / Balanced / Fast" — ←→ move focus,
+  Enter applies via `powerprofilesctl set` (optimistic UI, satellite
+  confirms). power-profiles-daemon installed+enabled on fresh-one
+- battery.detail parsed in App.zig scanBatteryDetail()
+
+### Tray battery glyph (KidulWM network.zig drawBatteryIcon) — DONE & SET
+- Landscape car-battery, whispy stroke, 2 terminal posts (w=0.63r,
+  h=1.3×nub) at 18%/82% of top edge
+- 6 waved cell-bars (real 12V anatomy = 6 cells) — lit portion rises
+  from the BOTTOM with charge; ghost bars full height show the scale
+- LEFT of the beacon (VPN further left), gap 18px×scale
+- y-nudge: cy − 4.5px×scale (beacon's visual mass sits above centerline)
+- Visible ONLY when discharging — hidden on AC/charging
+- Data: battery.detail via compositor scanBattery (falls back to /sys
+  when satellite absent). Amber < 20%
+- LOCKED commit 79c71a3
+
+## Key commits
+
+| Repo | Commit | Description |
+|---|---|---|
+| KidulWM | `79c71a3` | battery icon DONE & SET |
+| ksignals | `59d7095` | battery slide: 50-line charge butterfly + power profile pills |
+| kbrain | `6e8838d` | signal-battery satellite + sim |
+
+## Next up
+
+1. Network slide: available networks (scan), saved networks, current —
+   connect/disconnect/forget via nmcli. "Disguise this device" MAC-spoof
+   toggle (wifi.cloned-mac-address random), off by default, gold when on,
+   no MAC addresses shown on the Granny side
+2. Bluetooth slide LAST (BlueZ D-Bus: scan/pair/remove/trust)
+3. Beacon click launches ksignals (currently Ctrl+S only)
+4. Rip dead card code from compositor (drawSignalsCard/drawSignalPill etc.)
+5. Later: sacred healing frequencies on butterfly rungs (432Hz + Solfeggio)
+
+## Design rule locked this session
+
+Butterfly geometry IS the data, never decoration. If a slide's butterfly
+looks identical regardless of state, we failed.
+
+---
+
+# KidulWM HANDOFF — Aug 8 2026 (session 4, archived)
+
+## Session summary (previous)
 
 Big kfiles redesign session. Moved kfiles from an in-compositor card to a
 standalone Wayland satellite that fills the focused slide. Full visual
