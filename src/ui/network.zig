@@ -310,7 +310,7 @@ pub const NetworkWidget = struct {
             const cx = left_cx - sat_size * 0.5;
             const color = if (self.status.battery_level < 0.2 and !self.status.battery_charging) warning else gold;
             // Optical nudge: glyph rides low vs the beacon — tune by eye.
-            const bat_y_nudge: f64 = 4.0 * scale_f;
+            const bat_y_nudge: f64 = 4.5 * scale_f;
             drawBatteryIcon(cr, cx, cy - bat_y_nudge, sat_size * 0.5, self.status.battery_level, self.status.battery_charging, color);
             left_cx = cx - sat_size * 0.5 - bat_gap;
         }
