@@ -420,8 +420,8 @@ pub const NetworkWidget = struct {
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
 
-        const w = r * 0.95;
-        const h = r * 1.7;
+        const w = r * 1.1;
+        const h = r * 3.4;
         const x = cx - w * 0.5;
         const y = cy - h * 0.5;
 
@@ -440,10 +440,10 @@ pub const NetworkWidget = struct {
         if (charging) {
             // Bolt wisp inside.
             c.cairo_new_path(cr);
-            c.cairo_move_to(cr, cx + r * 0.16, cy - r * 0.5);
-            c.cairo_line_to(cr, cx - r * 0.08, cy - r * 0.02);
-            c.cairo_line_to(cr, cx + r * 0.10, cy - r * 0.02);
-            c.cairo_line_to(cr, cx - r * 0.16, cy + r * 0.5);
+            c.cairo_move_to(cr, cx + r * 0.18, cy - r * 1.1);
+            c.cairo_line_to(cr, cx - r * 0.10, cy);
+            c.cairo_line_to(cr, cx + r * 0.12, cy);
+            c.cairo_line_to(cr, cx - r * 0.18, cy + r * 1.1);
             c.cairo_set_line_width(cr, 1.1);
             c.cairo_stroke(cr);
             return;
@@ -453,10 +453,10 @@ pub const NetworkWidget = struct {
         // two-segment wave so it shimmers instead of sitting rigid.
         const rung_count = 5;
         const lit: i32 = @intFromFloat(@round(level * @as(f64, rung_count)));
-        const pad_x = r * 0.16;
+        const pad_x = r * 0.18;
         const inner_w = w - pad_x * 2.0;
-        const top_y = y + r * 0.22;
-        const bot_y = y + h - r * 0.22;
+        const top_y = y + r * 0.45;
+        const bot_y = y + h - r * 0.45;
         var i: i32 = 0;
         while (i < rung_count) : (i += 1) {
             const frac = (@as(f64, @floatFromInt(i)) + 0.5) / @as(f64, rung_count);
