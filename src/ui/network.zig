@@ -412,65 +412,71 @@ pub const NetworkWidget = struct {
         c.cairo_fill(cr);
     }
 
-    // Kidul battery: slim vertical capsule, 5 whispy rungs inside —
-    // lit rungs = charge. Same language as the battery slide's 50-line
-    // butterfly, shrunk to tray size. Charging shows the bolt instead.
+    // Kidul battery: landscape "car battery" — whispy rounded body with two
+    // terminal posts on top, 6 waved cell-rungs inside (a real 12V car
+    // battery = 6 cells; lit cells = charge). Bolt wisp when charging.
     fn drawBatteryIcon(cr: *c.cairo_t, cx: f64, cy: f64, r: f64, level: f64, charging: bool, color: [4]f64) void {
-        c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
-        c.cairo_set_line_width(cr, 1.0);
         c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
 
-        const w = r * 1.1;
-        const h = r * 3.4;
+        const w = r * 2.6;
+        const h = r * 1.6;
+        const nub_h = r * 0.30;
+        // Shift the body down by half the nub so the whole glyph (nub + body)
+        // is optically centered on cy.
+        const body_cy = cy + nub_h * 0.5;
         const x = cx - w * 0.5;
-        const y = cy - h * 0.5;
+        const y = body_cy - h * 0.5;
 
-        // Whispy capsule outline.
+        // Whispy body outline.
+        c.cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+        c.cairo_set_line_width(cr, 1.0);
         c.cairo_new_path(cr);
-        roundedRect(cr, x, y, w, h, w * 0.45);
+        roundedRect(cr, x, y, w, h, h * 0.22);
         c.cairo_stroke(cr);
 
-        // Tiny nub on top.
-        const nub_w = w * 0.4;
-        const nub_h = r * 0.14;
-        c.cairo_new_path(cr);
-        roundedRect(cr, cx - nub_w * 0.5, y - nub_h - 0.5, nub_w, nub_h, nub_h * 0.5);
-        c.cairo_fill(cr);
+        // Two terminal posts on the top edge.
+        const post_w = r * 0.42;
+        const post_h = nub_h;
+        for ([2]f64{ 0.18, 0.82 }) |fx| {
+            const px = x + w * fx - post_w * 0.5;
+            c.cairo_new_path(cr);
+            roundedRect(cr, px, y - post_h + 0.5, post_w, post_h, post_h * 0.4);
+            c.cairo_fill(cr);
+        }
 
         if (charging) {
             // Bolt wisp inside.
             c.cairo_new_path(cr);
-            c.cairo_move_to(cr, cx + r * 0.18, cy - r * 1.1);
-            c.cairo_line_to(cr, cx - r * 0.10, cy);
-            c.cairo_line_to(cr, cx + r * 0.12, cy);
-            c.cairo_line_to(cr, cx - r * 0.18, cy + r * 1.1);
+            c.cairo_move_to(cr, cx + r * 0.20, cy - r * 0.45);
+            c.cairo_line_to(cr, cx - r * 0.12, cy + r * 0.02);
+            c.cairo_line_to(cr, cx + r * 0.14, cy + r * 0.02);
+            c.cairo_line_to(cr, cx - r * 0.20, cy + r * 0.45);
             c.cairo_set_line_width(cr, 1.1);
             c.cairo_stroke(cr);
             return;
         }
 
-        // 5 whispy rungs, bottom-up; lit = charge. Each rung is a gentle
-        // two-segment wave so it shimmers instead of sitting rigid.
-        const rung_count = 5;
-        const lit: i32 = @intFromFloat(@round(level * @as(f64, rung_count)));
-        const pad_x = r * 0.18;
+        // 6 waved cell-rungs (vertical bars, one per cell), lit left-to-right.
+        const cell_count = 6;
+        const lit: i32 = @intFromFloat(@round(level * @as(f64, cell_count)));
+        const pad_x = r * 0.35;
         const inner_w = w - pad_x * 2.0;
-        const top_y = y + r * 0.45;
-        const bot_y = y + h - r * 0.45;
+        const top_y = y + r * 0.30;
+        const bot_y = y + h - r * 0.30;
         var i: i32 = 0;
-        while (i < rung_count) : (i += 1) {
-            const frac = (@as(f64, @floatFromInt(i)) + 0.5) / @as(f64, rung_count);
-            const ry = bot_y - frac * (bot_y - top_y);
+        while (i < cell_count) : (i += 1) {
+            const frac = (@as(f64, @floatFromInt(i)) + 0.5) / @as(f64, cell_count);
+            const rx = x + pad_x + frac * inner_w;
             const is_lit = i < lit;
             const alpha: f64 = if (is_lit) 0.9 else 0.18;
             c.cairo_set_source_rgba(cr, color[0], color[1], color[2], alpha);
             c.cairo_set_line_width(cr, if (is_lit) 1.1 else 0.8);
-            const mid_x = x + pad_x + inner_w * 0.5;
-            const dip = r * 0.10;
+            const mid_y = (top_y + bot_y) * 0.5;
+            const sway = r * 0.12;
             c.cairo_new_path(cr);
-            c.cairo_move_to(cr, x + pad_x, ry);
-            c.cairo_curve_to(cr, x + pad_x + inner_w * 0.25, ry + dip, mid_x - inner_w * 0.1, ry + dip, mid_x, ry);
-            c.cairo_curve_to(cr, mid_x + inner_w * 0.1, ry - dip, x + pad_x + inner_w * 0.75, ry - dip, x + pad_x + inner_w, ry);
+            c.cairo_move_to(cr, rx, top_y);
+            c.cairo_curve_to(cr, rx - sway, top_y + (bot_y - top_y) * 0.3, rx + sway, mid_y - (bot_y - top_y) * 0.1, rx, mid_y);
+            c.cairo_curve_to(cr, rx - sway, mid_y + (bot_y - top_y) * 0.1, rx + sway, bot_y - (bot_y - top_y) * 0.3, rx, bot_y);
             c.cairo_stroke(cr);
         }
     }
