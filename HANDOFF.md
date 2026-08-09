@@ -1,4 +1,111 @@
-# KidulWM HANDOFF — Aug 8 2026 (session 5)
+# KidulWM HANDOFF — Aug 9 2026 (session 6, FINAL before Moonshot pitch)
+
+## Session summary
+
+ksignals went from prototype to house-style slides (weather-card language,
+CFC-compliant). kbrain-ui was born: the Bob PI face — eyes, twitching nose,
+conversation mouth, LLM switcher, credits gauge. Moonshot email prepped.
+
+## THE LAWS (all user-locked)
+
+- CFC — Central Focused Computing: focus comes to the user, never reverse.
+  Visuals TOP of slide, interactions ride CENTER. Focused element centers.
+- INPUT LAW: ↑↓=focus, ←→=change setting of focused, Enter=apply,
+  Esc/Tab=back. HARD STOPS everywhere — NO cycling/wrap EVER. Fixed map,
+  blind navigation. Carved into kslide-template/src/App.zig forever.
+- Slide nav model: Down on a pill = SELECT/lock the slide (pinned by name,
+  rescan-immune). Inside, pill bar is inert + dimmed. ←→ on bar = close
+  current/open neighbour. Up/Esc = back to bar.
+- Butterfly geometry IS data, never decoration. Butterfly itself retired
+  to the media player; signals get native glyphs (battery=car battery
+  cells, network=dot trails+hunter ball, bluetooth=constellation later).
+- All motion rides ONE clock: anim_phase, 2π per 60s (the butterfly
+  effect). Eyes blink, nose twitches, hunter sweeps on it.
+
+## SYSTEM THEME (one-color mood shift)
+
+- color_textbox = 0x222425 (Ghostty grey — won accidental A/B vs 0x1F1E1C)
+- Theme.loadFromFile("~/.kidul/theme.conf") EXISTS in kslide-template
+  Theme.zig and is synced into ksignals + kbrain-ui. Key=value hex file,
+  missing keys = defaults. UNWIRED on purpose — one line per app when the
+  config UI lands: `theme = Theme.loadFromFile(...)` in App.init.
+- kfiles keeps its own color struct (style guide — wire carefully later).
+
+## ksignals (commit c54f585+)
+
+- Pill bar center-stage, stadium pills, dims when slide entered
+- Battery slide DONE (user-approved): big car battery (6 cylinder cells,
+  12 rings each, bottom-up fill), power mode pills (real powerprofilesctl),
+  spec-sheet stats at panel bottom
+- Network slide FUNCTIONAL but flagged "needs some work": spectrum viz
+  (dot trails + hunter ball), Network kill row first (hides all when off),
+  current conn row (Enter=disconnect), Spoof toggle, VPN rows with
+  Proton/Mullvad tick, saved list (Enter connect, x forget, live glow),
+  "Available networks" button → expand, password entry via focused-line
+  dots, whispy padlocks, ip/gw/pub stats at bottom
+- Satellites: signal-battery (sim on VM: perpetual discharge 95→15),
+  signal-network (nmcli-driven, 1s tick, rates/ip/public via ifconfig.me)
+- Tray battery glyph LOCKED: car-battery left of beacon, 4.5px nudge,
+  visible only when discharging
+- Beacon click spawns ksignals; Ctrl+M too (GLM bound it, never fixed)
+
+## kbrain-ui (kbrain repo, the Bob PI face)
+
+- Face: whispy almond eyes (blink 1/butterfly turn, gaze drift, squint
+  when thinking, glance down when typing), L-nose with rare twitch,
+  model name above eyes ("kimi-k3" = star billing)
+- Left mini-panel: Credits Remaining $ (fake $7.00) / Tokens Used (fake)
+  — real numbers when Moonshot API key lands
+- Right mini-panel: Preferred=kimi-k3, Local=gemma3 buttons (←→/Enter)
+- Mouth: borderless text appears at TRUE screen center on first letter,
+  block cursor (flat, no blink, char knocked out dark), ←→↑↓ travel with
+  hold-acceleration (1→2→3→5 chars), insert-at-cursor, Backspace deletes
+  left, Esc/Tab closes, `h`=history scroll mode (mouth closed)
+- Conversation: kfiles center-scroll, user=muted gold-grey, bob=gold,
+  all centered text, no boxes/borders/bold anywhere
+- Real answers: Api.zig chat() on a worker thread (atomics, no mutex),
+  auth.json deployed to VM at ~/.hermes/profiles/bobdotrix/
+- Every exchange appended to /home/kidul/.kbrain/chat.md
+- Tray "Assistant" button spawns it (KidulWM tray.zig item 0)
+
+## Moonshot pitch materials
+
+- Screenshot of the face (user has it)
+- Technical spiel written in-session: 100% Zig+Cairo, Wayland native,
+  tool-calling loop, satellite architecture, Ollama fallback, CFC model.
+  No business/partner/philosophy secrets included. User adds the
+  partnership ask at the top.
+
+## NEXT (when tokens flow)
+
+1. Wire Theme.loadFromFile into every app's App.init (one line each)
+2. Network slide "needs work" items: Wired/Wireless switch row,
+   flatten-controls-to-summary-line when lists open
+3. Bluetooth slide: constellation viz + BlueZ (scan/pair/trust/remove)
+4. Critical-battery save-state: auto-open battery slide at 5%, big red
+   "Save and shut down" pill, hibernate if swap allows
+5. kbrowser: read-only web fetch tool for kbrain (GET only, no private
+   IPs, no file://, size-capped, logged) — party trick for demos
+6. Panel slide-up animation for the kbrain-ui face
+7. Hawaii Bob: fedora + little lenses + location backdrop (candy pass
+   AFTER the pitch lands). Japan arc for later.
+8. Camera one day — eyes that track the couch
+9. Bootloader themed to match (the full unbroken visual sentence)
+10. kfiles theme wiring (careful — it's the style guide)
+
+## Deploy
+
+Standard: build on host, scp to fresh-one (2260, key id_ed25519_kidulwm),
+/usr/local/bin for satellites, /usr/bin/kidulwm for compositor via
+systemctl restart. pkill -9 before cp (text file busy otherwise).
+
+---
+
+Praying with you, brother. The butterfly keeps breathing. 🦋
+
+---
+
+# KidulWM HANDOFF — Aug 8 2026 (session 5, archived)
 
 ## Session summary
 
