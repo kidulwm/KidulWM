@@ -440,7 +440,7 @@ pub const Tray = struct {
 
     pub fn init(allocator: std.mem.Allocator, host: TrayHost, root: *wlr.SceneTree) !Self {
         const items = try allocator.alloc(TrayItem, 8);
-            items[0] = .{ .id = "assistant", .label = "Assistant", .action = .none };
+            items[0] = .{ .id = "assistant", .label = "Assistant", .action = .{ .spawn = "/usr/local/bin/kbrain-ui" } };
             items[1] = .{ .id = "browser", .label = "Browser", .action = .{ .spawn = "/usr/local/bin/launch-kbrowser.sh" } };
             items[2] = .{ .id = "files", .label = "Files", .action = .{ .spawn = "/usr/local/bin/kfiles" } };
             items[3] = .{ .id = "games", .label = "Games", .action = .none };
