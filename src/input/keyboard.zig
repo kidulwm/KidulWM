@@ -5,6 +5,10 @@ const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 const Server = @import("../server.zig").Server;
 
+const c_std = @cImport({
+    @cInclude("stdlib.h");
+});
+
 const KeyboardDevice = struct {
     manager: *KeyboardManager,
     keyboard: *wlr.Keyboard,
@@ -170,6 +174,8 @@ const KeyboardDevice = struct {
                 return true;
             },
             .signals_card_toggle => {
+                // Kill orphans from a previous compositor session, then spawn
+                _ = c_std.system("pkill -9 ksignals 2>/dev/null; sleep 0.2");
                 server.spawnCommand("/usr/local/bin/ksignals");
                 return true;
             },

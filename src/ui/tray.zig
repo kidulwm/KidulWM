@@ -973,6 +973,10 @@ pub const Tray = struct {
             self.network.card.close();
         }
         if (self.files_card_open) self.files_card_open = false;
+        // Kill any orphaned ksignals from a previous compositor session,
+        // then spawn fresh. Prevents duplicate slides on compositor restart.
+        // NOTE: pkill without -f — -f matches the shell executing pkill too.
+        _ = c_std.system("pkill -9 ksignals 2>/dev/null; sleep 0.2");
         var buf: [256]u8 = undefined;
         const cmd = std.fmt.bufPrintZ(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 /usr/local/bin/ksignals &", .{}) catch return;
         _ = c_std.system(cmd.ptr);
