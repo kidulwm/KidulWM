@@ -327,8 +327,10 @@ pub const SlideDeck = struct {
 
     /// Grid geometry for the overview lens: minis live INSIDE the focused
     /// slide area (the split.focus band — peeks stay clear, per Barticus
-    /// 2026-08-19). 3 columns, 16px padding, parked slides in a bottom row.
-    pub const overview_cols = 3;
+    /// 2026-08-19). 2 columns (lounge view trial), 16px padding, parked
+    /// slides in a bottom row. Rows continue past the screen bottom for
+    /// now; scrolling/clamping arrives with Task 3 interaction.
+    pub const overview_cols = 2;
     pub const overview_pad = 16;
 
     /// Return the mini grid rect for slide `slide_index` in overview mode.
@@ -598,27 +600,28 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     try std.testing.expectEqual(saved_focus, deck.focused_index);
 
     // 1000x500, gap 8, split .15/.7/.15: focus band x=158, y=8, w=684, h=484.
-    // 3 cols -> cell 228, mini_w=228-32=196, mini_h=196*500/1000=98.
+    // 2 cols -> cell 342, mini_w=342-32=310, mini_h=310*500/1000=155.
     // Unparked order (deck order): idx0 (win1), idx1 (win4), idx3 (win2).
     const m0 = deck.overviewTargetForSlide(0);
     try std.testing.expectEqual(@as(i32, 158 + 16), m0.x);
     try std.testing.expectEqual(@as(i32, 8 + 16), m0.y);
-    try std.testing.expectEqual(@as(u32, 196), m0.width);
-    try std.testing.expectEqual(@as(u32, 98), m0.height);
+    try std.testing.expectEqual(@as(u32, 310), m0.width);
+    try std.testing.expectEqual(@as(u32, 155), m0.height);
 
     const m1 = deck.overviewTargetForSlide(1);
-    try std.testing.expectEqual(@as(i32, 158 + 228 + 16), m1.x);
+    try std.testing.expectEqual(@as(i32, 158 + 342 + 16), m1.x);
     try std.testing.expectEqual(@as(i32, 24), m1.y);
 
+    // Third unparked wraps to row 1: y = 8 + 1*(155+16)+16 = 195.
     const m3 = deck.overviewTargetForSlide(3);
-    try std.testing.expectEqual(@as(i32, 158 + 456 + 16), m3.x);
-    try std.testing.expectEqual(@as(i32, 24), m3.y);
+    try std.testing.expectEqual(@as(i32, 158 + 16), m3.x);
+    try std.testing.expectEqual(@as(i32, 195), m3.y);
 
-    // Parked slide (idx2) goes to the row below the unparked rows:
-    // unparked=3 -> 1 row, so parked row = 1, y = 8 + 1*(98+16)+16 = 138.
+    // Parked slide (idx2): unparked=3 -> 2 rows at 2 cols, parked row = 2,
+    // y = 8 + 2*(155+16)+16 = 366.
     const m2 = deck.overviewTargetForSlide(2);
     try std.testing.expectEqual(@as(i32, 158 + 16), m2.x);
-    try std.testing.expectEqual(@as(i32, 138), m2.y);
+    try std.testing.expectEqual(@as(i32, 366), m2.y);
 
     // Exit restores normal mode, focus still unchanged.
     deck.exitOverview();
