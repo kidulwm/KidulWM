@@ -16,6 +16,8 @@ const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
 const chrome_renderer = @import("render/chrome.zig");
 const cairo = @import("dm").c;
+const overview_card = @import("render/overview_card.zig");
+const overview_slide_mod = @import("ui/overview_slide.zig");
 const ui = @import("./ui/tray.zig");
 const spyglass_mod = @import("./ui/spyglass.zig");
 const keybinds = @import("config/keybinds.zig");
@@ -50,8 +52,8 @@ pub const Output = struct {
     frame: wl.Listener(*wlr.Output),
     destroy: wl.Listener(*wlr.Output),
     deck: slidedeck.SlideDeck,
-    /// Overview lens ring node for THIS output's deck (per-output by ruling).
-    overview_ring: ?*wlr.SceneBuffer = null,
+    /// Sentinel overview slide for THIS output's deck (per-output by ruling).
+    overview: overview_slide_mod.OverviewSlide = .{},
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -62,7 +64,7 @@ pub const Output = struct {
             .frame = wl.Listener(*wlr.Output).init(handleFrame),
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
             .deck = slidedeck.SlideDeck.init(server.allocator),
-            .overview_ring = null,
+            .overview = .{},
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -85,16 +87,6 @@ pub const Output = struct {
             _ = window.tickAnimation(now_us);
         }
         self.server.tray.update();
-        // The overview ring must track its mini per frame — tickAnimation moves
-        // the mini's scene node every frame while the spring settles, so a
-        // layout-pass-only ring position drifts off the moving mini. Scan ALL
-        // output decks: the lens may be open on a deck that isn't "current".
-        var lens_open = self.server.deck.view_mode == .overview;
-        var oit = self.server.outputs.iterator(.forward);
-        while (oit.next()) |output| {
-            if (output.deck.view_mode == .overview) lens_open = true;
-        }
-        if (lens_open) self.server.updateOverviewRing();
 
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
@@ -764,30 +756,52 @@ pub const Server = struct {
         return null;
     }
 
-    /// Toggle the overview lens on the current deck. The lens never changes
-    /// focused_index — it only swaps row layout for grid layout.
+    /// Toggle the sentinel overview slide on the current deck's output.
+    /// The lens machinery is gone; this is the whole mode switch.
     pub fn overviewToggle(self: *Server) void {
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
-        if (deck.view_mode == .normal) {
-            // Open with the virtual cursor on the top-left cell (recency 0).
-            self.overview_cursor = 0;
+        // Find the output that owns this deck.
+        var owner: ?*Output = null;
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (&output.deck == deck) owner = output;
         }
-        deck.toggleOverview();
-        if (deck.view_mode == .normal) self.destroyOverviewRing();
+        if (deck.overview_slide_open) {
+            if (owner) |output| self.overviewSlideClose(output);
+            deck.closeOverviewSlide();
+            self.focusReturnFromOverview(deck);
+        } else {
+            deck.openOverviewSlide();
+            self.overview_cursor = 0;
+            if (owner) |output| self.overviewSlideOpen(output);
+        }
         self.requestLayout();
     }
 
-    /// currentDeck, made public for input handlers (overview Esc/Enter routing).
+    fn focusReturnFromOverview(self: *Server, deck: *slidedeck.SlideDeck) void {
+        if (deck.slides.items.len == 0) {
+            self.clearFocus();
+            return;
+        }
+        const slide = deck.slides.items[deck.focused_index];
+        self.focused_window_id = slide.window_id;
+        if (self.windowById(slide.window_id)) |window| {
+            if (window.toplevel.base.surface.mapped) self.focusWindow(window);
+        }
+    }
+
+    /// currentDeck, made public for input handlers.
     pub fn currentDeckPub(self: *Server) *slidedeck.SlideDeck {
         return self.currentDeck();
     }
 
-    /// Move the overview virtual cursor one step. dir: -1 left/prev, +1
-    /// right/next, -2 up a row, +2 down a row. Wraps within the unparked set.
+    /// Move the overview virtual cursor one step (recomputes the card ring
+    /// on the next layout). dir: -1 left/prev, +1 right/next, -2 up, +2 down.
+    /// Wraps within the unparked set. Only meaningful with the sentinel open.
     pub fn overviewMoveCursor(self: *Server, dir: i32) void {
         const deck = self.currentDeck();
-        if (deck.view_mode != .overview) return;
+        if (!deck.overview_slide_open) return;
         const n = deck.unparkedCount();
         if (n == 0) return;
         const cols: usize = slidedeck.SlideDeck.overview_cols;
@@ -802,113 +816,149 @@ pub const Server = struct {
         const total: isize = @intCast(n);
         next = @mod(next, total);
         self.overview_cursor = @intCast(next);
+        // Redraw the card so the ring moves.
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (&output.deck == deck and output.overview.isOpen()) {
+                self.overviewSlideClose(output);
+                self.overviewSlideOpen(output);
+            }
+        }
         self.requestLayout();
     }
 
-    /// Draw (or redraw) the single-border debug ring around the cursor's mini.
-    /// Pairs with the 6% inflate as the second focus indicator; the double-
-    /// border language graduates once this plain ring is proven on screen.
-    /// Per-output state lives on the Output (lens is per-output by ruling).
-    pub fn updateOverviewRing(self: *Server) void {
-        // Destroy any stale ring on any output first.
-        var cit = self.outputs.iterator(.forward);
-        while (cit.next()) |output| {
-            if (output.overview_ring) |ring| {
-                ring.node.destroy();
-                output.overview_ring = null;
-            }
-        }
-        // Find the deck the lens is actually open on (per-output ownership).
-        var deck: ?*slidedeck.SlideDeck = null;
-        var lens_output: ?*Output = null;
-        var oit = self.outputs.iterator(.forward);
-        while (oit.next()) |output| {
-            if (output.deck.view_mode == .overview) {
-                deck = &output.deck;
-                lens_output = output;
-            }
-        }
-        if (self.deck.view_mode == .overview) deck = &self.deck;
-        const d = deck orelse return;
-        const idx = d.slideIndexAtRecency(self.overview_cursor) orelse {
-            std.log.info("KidulWM: overview ring: no slide at cursor {d} (unparked={d})", .{ self.overview_cursor, d.unparkedCount() });
-            return;
-        };
-        // Use the inflated target so the ring hugs the cursor mini, not the
-        // plain cell rect.
-        const r = d.overviewTargetForSlideInflated(idx, idx);
-        if (r.width == 0) return;
-        var scale: u32 = 1;
-        if (lens_output) |output| {
-            scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
-        } else if (self.outputs.first()) |output| {
-            scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
-        }
-        std.log.info("KidulWM: overview ring draw idx={d} rect={d},{d} {d}x{d} scale={d}", .{ idx, r.x, r.y, r.width, r.height, scale });
-        const surface = chrome_renderer.renderMiniRing(self.theme, @intCast(r.width), @intCast(r.height), scale) orelse return;
-        defer cairo.cairo_surface_destroy(surface);
-        const pixels = chrome_renderer.surfacePixels(surface);
-        const buffer = DataBuffer.create(pixels.pixels, pixels.width, pixels.height, pixels.stride) catch return;
-        const scene_buffer = self.overlay_tree.createSceneBuffer(buffer) catch return;
-        // Ring rect is output-local; add the output's position in the layout.
-        var ox: i32 = 0;
-        var oy: i32 = 0;
-        if (lens_output) |output| {
-            var box: wlr.Box = undefined;
-            self.output_layout.getBox(output.wlr_output, &box);
-            ox = box.x;
-            oy = box.y;
-        }
-        scene_buffer.node.setPosition(r.x + ox, r.y + oy);
-        scene_buffer.node.raiseToTop();
-        if (lens_output) |output| {
-            output.overview_ring = scene_buffer;
-        }
-    }
-
-    fn destroyOverviewRing(self: *Server) void {
-        var it = self.outputs.iterator(.forward);
-        while (it.next()) |output| {
-            if (output.overview_ring) |ring| {
-                ring.node.destroy();
-                output.overview_ring = null;
-            }
-        }
-    }
-
-    /// Public wrapper so the keyboard handler can drop the ring on Esc.
-    pub fn destroyOverviewRingPub(self: *Server) void {
-        self.destroyOverviewRing();
-    }
-
-    /// Enter in overview: accept the slide under the virtual cursor (unparking
-    /// if needed) and exit the lens.
+    /// Enter with the sentinel open: accept the slide under the virtual
+    /// cursor (unparking if needed), close the sentinel, focus it.
     pub fn overviewAcceptFocused(self: *Server) void {
         const deck = self.currentDeck();
-        if (deck.view_mode != .overview) return;
+        if (!deck.overview_slide_open) return;
         if (deck.slides.items.len == 0) {
-            deck.exitOverview();
-            self.destroyOverviewRing();
-            self.requestLayout();
+            self.overviewToggle();
             return;
         }
         const idx = deck.slideIndexAtRecency(self.overview_cursor) orelse blk: {
-            // Cursor on empty space (e.g. all parked) — fall back to focused.
-            break :blk @min(deck.focused_index, deck.slides.items.len - 1);
+            break :blk @min(deck.overview_return_index, deck.slides.items.len - 1);
         };
         _ = deck.unparkIndex(idx);
-        deck.focused_index = idx;
+        // Close first (restores reparented trees), then focus.
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (&output.deck == deck) self.overviewSlideClose(output);
+        }
+        deck.overview_slide_open = false;
         deck.empty_slot = .none;
+        deck.focused_index = idx;
         const win_id = deck.slides.items[idx].window_id;
-        deck.exitOverview();
-        self.destroyOverviewRing();
         self.focused_window_id = win_id;
         if (self.windowById(win_id)) |window| {
-            if (window.toplevel.base.surface.mapped) {
-                self.focusWindow(window);
-            }
+            if (window.toplevel.base.surface.mapped) self.focusWindow(window);
         }
         self.requestLayout();
+    }
+
+    /// Open the sentinel slide's scene: card background + reparented minis.
+    /// Tile rects and the card are both full-output-space, so reparented
+    /// slide trees position directly at tile coords — no offset needed.
+    fn overviewSlideOpen(self: *Server, output: *Output) void {
+        if (output.overview.isOpen()) return;
+        const deck = &output.deck;
+        const tree = self.scene.tree.createSceneTree() catch return;
+        output.overview.tree = tree;
+        tree.node.raiseToTop();
+
+        // Tile layout (cursor at recency 0 on open).
+        output.overview.tile_count = overview_card.layoutTiles(deck, &output.overview.tiles, self.overview_cursor);
+
+        // Card background sized to the FULL output (the slide fills the
+        // focused area via layout; the card is the whole slide).
+        const width = @as(i32, @intCast(output.wlr_output.width));
+        const height = @as(i32, @intCast(output.wlr_output.height));
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        deck.sync(@intCast(width), @intCast(height), self.state.gap, self.deck_split, self.deck_orientation);
+
+        const surface = overview_card.renderCard(self.theme, width, height, scale, output.overview.tiles[0..output.overview.tile_count]) orelse {
+            tree.node.destroy();
+            output.overview.tree = null;
+            return;
+        };
+        defer cairo.cairo_surface_destroy(surface);
+        const pixels = overview_card.surfacePixels(surface);
+        const buffer = DataBuffer.create(pixels.pixels, pixels.width, pixels.height, pixels.stride) catch {
+            tree.node.destroy();
+            output.overview.tree = null;
+            return;
+        };
+        const card = tree.createSceneBuffer(buffer) catch {
+            tree.node.destroy();
+            output.overview.tree = null;
+            return;
+        };
+        output.overview.card_buffer = card;
+
+        // Reparent each slide's scene tree into the card at its tile rect.
+        for (output.overview.tiles[0..output.overview.tile_count], 0..) |t, i| {
+            const slide = deck.slides.items[t.slide_index];
+            const window = self.windowById(slide.window_id) orelse continue;
+            output.overview.saved_parents[i] = &self.scene.tree;
+            output.overview.saved_x[i] = @intFromFloat(@round(window.animation.cur_x));
+            output.overview.saved_y[i] = @intFromFloat(@round(window.animation.cur_y));
+            output.overview.saved_w[i] = @intFromFloat(@round(window.animation.cur_w));
+            output.overview.saved_h[i] = @intFromFloat(@round(window.animation.cur_h));
+            output.overview.saved_enabled[i] = window.scene_tree.node.enabled;
+            window.scene_tree.node.reparent(tree);
+            window.scene_tree.node.setPosition(t.x, t.y);
+            window.scene_tree.node.setEnabled(true);
+            window.setLayoutTarget(t.x, t.y, t.w, t.h);
+            window.setSurfaceDestSize(@intCast(t.w), @intCast(t.h));
+            window.applyContainment();
+            window.clearChrome();
+        }
+        std.log.info("KidulWM: overview slide open on output, tiles={d}", .{output.overview.tile_count});
+    }
+
+    /// Close the sentinel: restore every reparented slide tree to the scene
+    /// root with its saved geometry, then destroy the card tree.
+    fn overviewSlideClose(self: *Server, output: *Output) void {
+        if (!output.overview.isOpen()) return;
+        const deck = &output.deck;
+        for (output.overview.tiles[0..output.overview.tile_count], 0..) |t, i| {
+            const slide = deck.slides.items[t.slide_index];
+            const window = self.windowById(slide.window_id) orelse continue;
+            if (output.overview.saved_parents[i]) |parent| {
+                window.scene_tree.node.reparent(parent);
+            }
+            window.scene_tree.node.setEnabled(output.overview.saved_enabled[i]);
+            window.setLayoutTarget(
+                output.overview.saved_x[i],
+                output.overview.saved_y[i],
+                @intCast(@max(1, output.overview.saved_w[i])),
+                @intCast(@max(1, output.overview.saved_h[i])),
+            );
+            window.scene_tree.node.setPosition(output.overview.saved_x[i], output.overview.saved_y[i]);
+            window.setSurfaceDestSize(0, 0);
+        }
+        output.overview.tree.?.node.destroy();
+        output.overview.tree = null;
+        output.overview.card_buffer = null;
+        output.overview.tile_count = 0;
+        std.log.info("KidulWM: overview slide closed", .{});
+    }
+
+    /// Hit-test a click in output-local coords against the sentinel's tiles.
+    /// Returns the deck slide index to focus, or null (empty card space).
+    pub fn overviewSlideHitTest(self: *Server, x: i32, y: i32) ?usize {
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (!output.overview.isOpen()) continue;
+            for (output.overview.tiles[0..output.overview.tile_count]) |t| {
+                if (x >= t.x and x < t.x + @as(i32, @intCast(t.w)) and
+                    y >= t.y and y < t.y + @as(i32, @intCast(t.h)))
+                {
+                    return t.slide_index;
+                }
+            }
+        }
+        return null;
     }
 
     /// Park (or unpark) the focused slide. Parked slides stay alive in the deck
@@ -1087,21 +1137,24 @@ pub const Server = struct {
 
             if (output.deck.slides.items.len == 0) continue;
             any_slides = true;
+            // While the sentinel overview slide is open on this output, the
+            // slides' scene trees are REPARENTED into the card with tile
+            // geometry — the row layout below must not touch them.
+            if (output.deck.overviewSlideOpen() and output.overview.isOpen()) {
+                if (self.spyglass) |sg| sg.setNeighbors(false, false);
+                continue;
+            }
 
             var focused_slide_window: ?*Window = null;
             const deck_ptr = &output.deck;
-            const in_overview = deck_ptr.view_mode == .overview;
-            const cursor_idx: ?usize = if (in_overview) deck_ptr.slideIndexAtRecency(self.overview_cursor) else null;
-            std.log.info("KidulWM: applyLayout overview={} cursor={} cursor_idx={?d} slides={d}", .{ in_overview, self.overview_cursor, cursor_idx, deck_ptr.slides.items.len });
             for (output.deck.slides.items, 0..) |slide, slide_idx| {
                 const window = self.windowById(slide.window_id) orelse continue;
                 if (!window.toplevel.base.surface.mapped) continue;
 
-                const target = if (in_overview) output.deck.overviewTargetForSlideInflated(slide_idx, cursor_idx) else output.deck.targetForSlide(slide_idx);
+                const target = output.deck.targetForSlide(slide_idx);
                 // When the deck is in an empty-slot state (past the ends of the
-                // row), no slide is focused — disable everything. In overview
-                // every slide is visible and none is "focused" for chrome.
-                const is_focused = !in_overview and output.deck.empty_slot == .none and slide_idx == output.deck.focused_index and !slide.parked;
+                // row), no slide is focused — disable everything.
+                const is_focused = output.deck.empty_slot == .none and slide_idx == output.deck.focused_index and !slide.parked;
                 const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
@@ -1109,13 +1162,7 @@ pub const Server = struct {
                 if (focus_changed) {
                     window.startTransition(self.current_transition_kind);
                 }
-                if (in_overview) {
-                    // Overview: every slide (parked included) is a live mini,
-                    // surface scaled into its grid cell. No chrome on minis.
-                    window.scene_tree.node.setEnabled(true);
-                    window.setSurfaceForMini();
-                    window.clearChrome();
-                } else if (is_focused) {
+                if (is_focused) {
                     // Focused slide: full screen, chrome border, surface scaled to fit.
                     window.scene_tree.node.setEnabled(true);
                     window.clearMiniScale();
@@ -1150,12 +1197,11 @@ pub const Server = struct {
             self.deck.sync(1024, 768, self.state.gap, self.deck_split, self.deck_orientation);
             if (self.deck.slides.items.len > 0) {
                 any_slides = true;
-                const headless_overview = self.deck.view_mode == .overview;
                 for (self.deck.slides.items, 0..) |slide, slide_idx| {
                     const window = self.windowById(slide.window_id) orelse continue;
                     if (!window.toplevel.base.surface.mapped) continue;
-                    const target = if (headless_overview) self.deck.overviewTargetForSlide(slide_idx) else self.deck.targetForSlide(slide_idx);
-                    const is_focused = !headless_overview and self.deck.empty_slot == .none and slide_idx == self.deck.focused_index and !slide.parked;
+                    const target = self.deck.targetForSlide(slide_idx);
+                    const is_focused = self.deck.empty_slot == .none and slide_idx == self.deck.focused_index and !slide.parked;
                     const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
@@ -1163,11 +1209,7 @@ pub const Server = struct {
                     if (focus_changed) {
                         window.startTransition(self.current_transition_kind);
                     }
-                    if (headless_overview) {
-                        window.scene_tree.node.setEnabled(true);
-                        window.setSurfaceForMini();
-                        window.clearChrome();
-                    } else if (is_focused) {
+                    if (is_focused) {
                         window.scene_tree.node.setEnabled(true);
                         window.clearMiniScale();
                         if (size_changed) {
@@ -1190,17 +1232,8 @@ pub const Server = struct {
             }
         }
 
-        if (!any_slides or (active_deck.empty_slot != .none and active_deck.view_mode == .normal)) {
+        if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen())) {
             self.clearFocus();
-        }
-
-        // Overview lens: redraw the (single-border, debug-step) ring around
-        // the cursor mini. The 6% inflate from overviewTargetForSlideInflated
-        // is the second indicator; ring is the one under test.
-        if (active_deck.view_mode == .overview) {
-            self.updateOverviewRing();
-        } else {
-            self.destroyOverviewRing();
         }
 
         self.last_focused_slide_id = current_focused_slide_id;
@@ -1628,28 +1661,28 @@ pub const Server = struct {
     }
 
     pub fn handlePointerClick(self: *Server, x: f64, y: f64) bool {
+        // Sentinel overview slide open: click a tile to focus that slide
+        // (unpark if needed), or click empty card space to close.
         const deck = self.currentDeck();
-        if (deck.view_mode == .overview) {
-            // Overview click: focus the mini under the cursor (unparking if
-            // needed) and exit the lens. Empty space just exits.
+        if (deck.overview_slide_open) {
             const xi: i32 = @intFromFloat(x);
             const yi: i32 = @intFromFloat(y);
-            if (deck.miniAtPoint(xi, yi)) |idx| {
+            if (self.overviewSlideHitTest(xi, yi)) |idx| {
                 _ = deck.unparkIndex(idx);
-                deck.focused_index = idx;
+                var it = self.outputs.iterator(.forward);
+                while (it.next()) |output| {
+                    if (&output.deck == deck) self.overviewSlideClose(output);
+                }
+                deck.overview_slide_open = false;
                 deck.empty_slot = .none;
+                deck.focused_index = idx;
                 const win_id = deck.slides.items[idx].window_id;
-                deck.exitOverview();
-                self.destroyOverviewRing();
                 self.focused_window_id = win_id;
                 if (self.windowById(win_id)) |window| {
-                    if (window.toplevel.base.surface.mapped) {
-                        self.focusWindow(window);
-                    }
+                    if (window.toplevel.base.surface.mapped) self.focusWindow(window);
                 }
             } else {
-                deck.exitOverview();
-                self.destroyOverviewRing();
+                self.overviewToggle(); // empty space = close, back to sender
             }
             self.requestLayout();
             return true;

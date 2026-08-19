@@ -48,10 +48,6 @@ pub const Slide = struct {
 
 pub const EmptySlot = enum { none, before_first, after_last };
 
-/// View mode: normal row layout vs. the overview lens. Overview is a lens,
-/// not a focus change — focused_index is preserved across the toggle.
-pub const ViewMode = enum { normal, overview };
-
 /// SlideDeck: a per-output stack of full-screen Slides.
 /// Only the focused Slide and its immediate neighbours are visible;
 /// deeper slides sit off-screen and animate into view when focused.
@@ -69,7 +65,13 @@ pub const SlideDeck = struct {
     empty_slot: EmptySlot,
     split: Split,
     orientation: Orientation,
-    view_mode: ViewMode,
+    /// Sentinel overview slide (PIVOT ruling 2026-08-19): when true, the
+    /// after_last empty slot is OCCUPIED by the compositor-owned place-card
+    /// grid instead of emptiness. Not a Slide in slides.items — window-count
+    /// invariants (slide_count == real client count) stay intact.
+    overview_slide_open: bool = false,
+    /// The slide index to return to when the overview slide closes.
+    overview_return_index: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) SlideDeck {
         return .{
@@ -86,7 +88,6 @@ pub const SlideDeck = struct {
                 .right_peek = style.layout.default_split.right_peek,
             },
             .orientation = .horizontal,
-            .view_mode = .normal,
         };
     }
 
@@ -303,12 +304,45 @@ pub const SlideDeck = struct {
         }
     }
 
-    /// Enter the overview lens. Focus is preserved; layout switches to grid.
-    pub fn enterOverview(self: *SlideDeck) void {
+    /// Open the sentinel overview slide at the end of the row. The focused
+    /// slide index is remembered for the return trip; focus moves onto the
+    /// virtual after_last slot, which now displays the card grid.
+    pub fn openOverviewSlide(self: *SlideDeck) void {
         if (self.slides.items.len == 0) return;
-        if (self.view_mode == .overview) return;
-        self.view_mode = .overview;
-        std.log.info("SlideDeck: overview entered (focused_index={d}, slides={d})", .{ self.focused_index, self.slides.items.len });
+        if (self.overview_slide_open) return;
+        self.overview_return_index = self.focused_index;
+        self.overview_slide_open = true;
+        self.empty_slot = .after_last;
+        std.log.info("SlideDeck: overview slide opened (return_index={d}, slides={d})", .{ self.overview_return_index, self.slides.items.len });
+    }
+
+    /// Close the sentinel and return focus to the slide that opened it
+    /// (clamped — the deck may have changed while the grid was open).
+    pub fn closeOverviewSlide(self: *SlideDeck) void {
+        if (!self.overview_slide_open) return;
+        self.overview_slide_open = false;
+        self.empty_slot = .none;
+        if (self.slides.items.len > 0) {
+            self.focused_index = @min(self.overview_return_index, self.slides.items.len - 1);
+            // Never land back on a parked slide.
+            if (self.slides.items[self.focused_index].parked) {
+                if (self.nextUnparked(self.focused_index + 1)) |n| {
+                    self.focused_index = n;
+                } else if (self.prevUnparked(self.focused_index)) |p| {
+                    self.focused_index = p;
+                }
+            }
+        }
+        std.log.info("SlideDeck: overview slide closed (focused_index={d})", .{self.focused_index});
+    }
+
+    pub fn toggleOverviewSlide(self: *SlideDeck) void {
+        if (self.overview_slide_open) self.closeOverviewSlide() else self.openOverviewSlide();
+    }
+
+    /// True while the sentinel occupies the end slot.
+    pub fn overviewSlideOpen(self: *const SlideDeck) bool {
+        return self.overview_slide_open and self.empty_slot == .after_last;
     }
 
     /// Recency position of a slide among unparked slides (0 = top-left).
@@ -357,25 +391,10 @@ pub const SlideDeck = struct {
         return null;
     }
 
-    /// Exit the overview lens back to normal row layout. Focus unchanged.
-    pub fn exitOverview(self: *SlideDeck) void {
-        if (self.view_mode == .normal) return;
-        self.view_mode = .normal;
-        std.log.info("SlideDeck: overview exited (focused_index={d})", .{self.focused_index});
-    }
-
-    pub fn toggleOverview(self: *SlideDeck) void {
-        switch (self.view_mode) {
-            .normal => self.enterOverview(),
-            .overview => self.exitOverview(),
-        }
-    }
-
-    /// Grid geometry for the overview lens: minis live INSIDE the focused
-    /// slide area (the split.focus band — peeks stay clear, per Barticus
-    /// 2026-08-19). 2 columns (lounge view trial), 16px padding, parked
-    /// slides in a bottom row. Rows continue past the screen bottom for
-    /// now; scrolling/clamping arrives with Task 3 interaction.
+    /// Grid geometry for the overview sentinel's card: minis live INSIDE the
+    /// focused slide area (the split.focus band — peeks stay clear, per
+    /// Barticus 2026-08-19). 2 columns (lounge view trial), 16px padding,
+    /// parked slides in a bottom row.
     pub const overview_cols = 2;
     pub const overview_pad = 16;
 
@@ -454,8 +473,9 @@ pub const SlideDeck = struct {
 
     /// Hit-test: which mini (deck index) contains output-local point (x, y)?
     /// Uses the same grid math as overviewTargetForSlide, so hit == visual.
+    /// Only meaningful while the sentinel overview slide is open.
     pub fn miniAtPoint(self: *SlideDeck, x: i32, y: i32) ?usize {
-        if (self.view_mode != .overview) return null;
+        if (!self.overview_slide_open) return null;
         for (self.slides.items, 0..) |_, i| {
             const r = self.overviewTargetForSlide(i);
             if (r.width == 0) continue;
@@ -671,10 +691,10 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     // Park the slide at index 2 (window 3).
     deck.slides.items[2].parked = true;
 
-    deck.enterOverview();
-    try std.testing.expectEqual(ViewMode.overview, deck.view_mode);
-    // Lens never moves focus.
-    try std.testing.expectEqual(saved_focus, deck.focused_index);
+    // Sentinel opened; focus moved onto the after_last slot. Grid math is
+    // lens-independent (pure functions), so targets compute the same.
+    deck.openOverviewSlide();
+    try std.testing.expect(deck.overviewSlideOpen());
 
     // 1000x500, gap 8, split .15/.7/.15: focus band x=158, y=8, w=684, h=484.
     // 2 cols -> cell 342, mini_w=342-32=310, mini_h=310*500/1000=155.
@@ -702,28 +722,30 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     try std.testing.expectEqual(@as(i32, 158 + 16), m2.x);
     try std.testing.expectEqual(@as(i32, 398), m2.y);
 
-    // Exit restores normal mode, focus still unchanged.
-    deck.exitOverview();
-    try std.testing.expectEqual(ViewMode.normal, deck.view_mode);
+    // Close restores the slide that opened it.
+    deck.closeOverviewSlide();
+    try std.testing.expect(!deck.overviewSlideOpen());
     try std.testing.expectEqual(saved_focus, deck.focused_index);
 }
 
-test "toggleOverview round-trips" {
+test "sentinel toggle round-trips" {
     const allocator = std.testing.allocator;
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
     deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
     deck.addWindow(1);
-    deck.toggleOverview();
-    try std.testing.expectEqual(ViewMode.overview, deck.view_mode);
-    deck.toggleOverview();
-    try std.testing.expectEqual(ViewMode.normal, deck.view_mode);
-    // Empty deck: enter is a no-op (guard).
+    deck.toggleOverviewSlide();
+    try std.testing.expect(deck.overview_slide_open);
+    try std.testing.expectEqual(EmptySlot.after_last, deck.empty_slot);
+    deck.toggleOverviewSlide();
+    try std.testing.expect(!deck.overview_slide_open);
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+    // Empty deck: open is a no-op (guard).
     var empty = SlideDeck.init(allocator);
     defer empty.deinit();
-    empty.enterOverview();
-    try std.testing.expectEqual(ViewMode.normal, empty.view_mode);
+    empty.openOverviewSlide();
+    try std.testing.expect(!empty.overview_slide_open);
 }
 
 test "miniAtPoint hit-tests the grid" {
@@ -739,7 +761,7 @@ test "miniAtPoint hit-tests the grid" {
     // Not in overview: no hits.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 50));
 
-    deck.enterOverview();
+    deck.openOverviewSlide();
     // Grid: band x=158,y=8,w=684,h=484; 2 cols; mini 310x155.
     // Slide order: 1, 3, 2, focused idx1. Recency: idx1=(174,24), idx2=(516,24), idx0=(174,211).
     try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(200, 50));

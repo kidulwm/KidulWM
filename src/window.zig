@@ -603,16 +603,9 @@ pub const Window = struct {
             window.setSurfaceOffsetForFocus();
         }
 
-        // Live minis in overview must re-apply their scale on every commit —
-        // a fresh buffer replaces the one setDestSize was applied to.
-        const deck = window.server.deckForWindow(window);
-        if (deck.view_mode == .overview) {
-            window.setSurfaceForMini();
-        } else {
-            // Do not request a full layout pass here: map/unmap already trigger layout,
-            // and running a full layout pass on every surface commit causes a
-            // configure storm once multiple XDG toplevels are mapped.
-            window.applyContainment();
-        }
+        // Do not request a full layout pass here: map/unmap already trigger layout,
+        // and running a full layout pass on every surface commit causes a
+        // configure storm once multiple XDG toplevels are mapped.
+        window.applyContainment();
     }
 };

@@ -12,6 +12,28 @@
 
 ---
 
+## PIVOT RULING (2026-08-19 ~23:30, Barticus): overview = end-of-row sentinel slide, NOT a lens mode
+
+Two days of lens debugging (deck identity, recency inversion, ring coordinate
+space, per-output ownership) proved the parallel-universe mode fights the
+compositor at every layer. New shape:
+
+- The overview is a real deck entry at the end (a compositor-owned
+  "place-card grid" slide), rendered like media-card placeholders: ONE
+  Cairo-drawn object with live minis composited inside.
+- Mod4+Tab = focus the overview slide (occupies the existing empty slot).
+- Click a tile = focus that slide (existing pointer/focus paths).
+- Esc/Mod4+Tab = return to the slide you came from.
+- Parked minis on the bottom row of the card.
+- Ring/swallow/cursor apparatus DELETED. Grid math + recency walk +
+  mini surface-scaling survive (pure functions + window.zig paths).
+
+Implementation order: (1) deck gains `overview_slide` sentinel at the end,
+(2) compositor renders the card grid into it, (3) keybind routes,
+(4) click-through, (5) delete the lens machinery.
+
+---
+
 ## Open decisions (resolve BEFORE Task 1)
 
 RULED 2026-08-19 ~19:40 by Barticus:

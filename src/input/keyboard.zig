@@ -104,22 +104,19 @@ const KeyboardDevice = struct {
                 if (handleAction(server, a)) return;
             }
         }
-        // Overview lens owns Esc and Enter while open. NOTE: view_mode is
-        // per-output deck, and currentDeckPub() follows keyboard focus — if
-        // the lens is open on an output whose deck isn't current, this check
-        // misses it. Scan every output's deck instead.
-        var lens_deck: ?*@import("../core/slidedeck.zig").SlideDeck = null;
+        // Overview sentinel owns Esc/Enter/arrows while open. Scan every
+        // output's deck — the sentinel may be open on a deck that isn't
+        // "current" by keyboard focus.
+        var sentinel_open = server.deck.overview_slide_open;
         var oit = server.outputs.iterator(.forward);
         while (oit.next()) |output| {
-            if (output.deck.view_mode == .overview) lens_deck = &output.deck;
+            if (output.deck.overview_slide_open) sentinel_open = true;
         }
-        if (server.deck.view_mode == .overview) lens_deck = &server.deck;
-        if (lens_deck != null) {
+        if (sentinel_open) {
             switch (sym) {
                 xkb.Keysym.Escape => {
-                    if (lens_deck) |d| d.exitOverview();
-                    server.destroyOverviewRingPub();
-                    server.requestLayout();
+                    // Esc = close, return to the slide that opened it.
+                    server.overviewToggle();
                     return;
                 },
                 xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
@@ -142,7 +139,7 @@ const KeyboardDevice = struct {
                     server.overviewMoveCursor(2);
                     return;
                 },
-                else => return, // swallow all other keys while the lens is open
+                else => return, // swallow all other keys while the grid is open
             }
         }
         // Cards consume arrow/navigation/typing before clients while open.
