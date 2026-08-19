@@ -193,6 +193,10 @@ const KeyboardDevice = struct {
                 server.requestQuit();
                 return true;
             },
+            .park_toggle => {
+                server.parkToggleFocused();
+                return true;
+            },
             .none => return false,
         }
     }
@@ -201,7 +205,6 @@ const KeyboardDevice = struct {
         const self: *KeyboardDevice = @fieldParentPtr("modifiers", listener);
         self.manager.server.seat.keyboardNotifyModifiers(&keyboard.modifiers);
     }
-
 };
 
 pub const KeyboardManager = struct {

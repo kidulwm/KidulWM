@@ -41,6 +41,9 @@ pub const Split = struct {
 
 pub const Slide = struct {
     window_id: u32,
+    /// Parked slides stay in the deck (the client is alive) but are hidden
+    /// from normal layout and navigation. Overview mode (Task 2) shows them.
+    parked: bool = false,
 };
 
 pub const EmptySlot = enum { none, before_first, after_last };
@@ -185,16 +188,82 @@ pub const SlideDeck = struct {
         }
     }
 
+    /// Park the focused slide: it stays in the deck but is skipped by normal
+    /// navigation and laid out as fully hidden (zero-width, off-screen).
+    /// Ruling (2026-08-19): refusing when it is the only slide in the deck.
+    pub fn parkFocused(self: *SlideDeck) bool {
+        if (self.slides.items.len <= 1) {
+            std.log.info("SlideDeck: refusing to park the only slide", .{});
+            return false;
+        }
+        if (self.empty_slot != .none) {
+            std.log.info("SlideDeck: nothing focused to park (empty slot)", .{});
+            return false;
+        }
+        const idx = self.focused_index;
+        if (self.slides.items[idx].parked) return false;
+        self.slides.items[idx].parked = true;
+        std.log.info("SlideDeck: parked slide {d} (window {d})", .{ idx, self.slides.items[idx].window_id });
+        // Move focus to the nearest unparked slide. Try right first, then left.
+        if (self.nextUnparked(idx + 1)) |next| {
+            self.focused_index = next;
+        } else if (self.prevUnparked(idx)) |prev| {
+            self.focused_index = prev;
+        } else {
+            // No unparked slides left (all others parked) — keep index; the
+            // empty-slot state will be forced by the caller.
+            std.log.info("SlideDeck: all slides now parked", .{});
+        }
+        return true;
+    }
+
+    /// Unpark a slide by index. It re-appears at its existing position
+    /// ("where I left it" — the index never moved while parked).
+    pub fn unparkIndex(self: *SlideDeck, index: usize) bool {
+        if (index >= self.slides.items.len) return false;
+        if (!self.slides.items[index].parked) return false;
+        self.slides.items[index].parked = false;
+        std.log.info("SlideDeck: unparked slide {d} (window {d})", .{ index, self.slides.items[index].window_id });
+        return true;
+    }
+
+    /// First unparked slide index at or after `from`, or null.
+    pub fn nextUnparked(self: *const SlideDeck, from: usize) ?usize {
+        var i = from;
+        while (i < self.slides.items.len) : (i += 1) {
+            if (!self.slides.items[i].parked) return i;
+        }
+        return null;
+    }
+
+    /// Last unparked slide index strictly before `from`, or null.
+    pub fn prevUnparked(self: *const SlideDeck, from: usize) ?usize {
+        var i = from;
+        while (i > 0) {
+            i -= 1;
+            if (!self.slides.items[i].parked) return i;
+        }
+        return null;
+    }
+
+    pub fn unparkedCount(self: *const SlideDeck) usize {
+        var n: usize = 0;
+        for (self.slides.items) |slide| {
+            if (!slide.parked) n += 1;
+        }
+        return n;
+    }
+
     pub fn focusNext(self: *SlideDeck) void {
         if (self.slides.items.len == 0) return;
         switch (self.empty_slot) {
             .before_first => {
                 self.empty_slot = .none;
-                self.focused_index = 0;
+                self.focused_index = self.nextUnparked(0) orelse 0;
             },
             .none => {
-                if (self.focused_index + 1 < self.slides.items.len) {
-                    self.focused_index += 1;
+                if (self.nextUnparked(self.focused_index + 1)) |next| {
+                    self.focused_index = next;
                 } else {
                     self.empty_slot = .after_last;
                 }
@@ -208,11 +277,11 @@ pub const SlideDeck = struct {
         switch (self.empty_slot) {
             .after_last => {
                 self.empty_slot = .none;
-                self.focused_index = self.slides.items.len - 1;
+                self.focused_index = self.prevUnparked(self.slides.items.len) orelse self.slides.items.len - 1;
             },
             .none => {
-                if (self.focused_index > 0) {
-                    self.focused_index -= 1;
+                if (self.prevUnparked(self.focused_index)) |prev| {
+                    self.focused_index = prev;
                 } else {
                     self.empty_slot = .before_first;
                 }
@@ -222,7 +291,7 @@ pub const SlideDeck = struct {
     }
 
     pub fn focusWindowByIndex(self: *SlideDeck, index: usize) void {
-        if (index < self.slides.items.len) {
+        if (index < self.slides.items.len and !self.slides.items[index].parked) {
             self.focused_index = index;
             self.empty_slot = .none;
         }
@@ -231,9 +300,14 @@ pub const SlideDeck = struct {
     /// Return the rectangle for the slide at `slide_index` relative to the
     /// currently focused slide.  Deeper slides are pushed one full screen-width
     /// (or height) off the edge so they can slide in cleanly.
+    /// Parked slides are fully hidden: zero-width rect parked off-screen, and
+    /// they never displace the positions of unparked slides.
     pub fn targetForSlide(self: *SlideDeck, slide_index: usize) Rect {
         if (slide_index >= self.slides.items.len) {
             return .{ .x = 0, .y = 0, .width = self.width, .height = self.height };
+        }
+        if (self.slides.items[slide_index].parked) {
+            return .{ .x = -@as(i32, @intCast(self.width)), .y = 0, .width = 0, .height = self.height };
         }
         const delta: isize = @as(isize, @intCast(slide_index)) - self.virtualFocus();
         const result = switch (self.orientation) {
@@ -320,6 +394,95 @@ test "insert at focused slide" {
     try std.testing.expectEqual(deck.slides.items[1].window_id, 30);
     try std.testing.expectEqual(deck.slides.items[2].window_id, 20);
     try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
+}
+
+test "park focused moves focus to next unparked" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(1000, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.addWindow(1);
+    deck.addWindow(2);
+    deck.addWindow(3);
+    // Deck order after center-out inserts: 1, 3, 2 — focused index 1 (window 3).
+    try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
+
+    // Park the focused slide (window 3 at index 1).
+    try std.testing.expect(deck.parkFocused());
+    try std.testing.expect(deck.slides.items[1].parked);
+    // Focus moves to the next unparked slide (index 2, window 2).
+    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
+    try std.testing.expectEqual(@as(usize, 2), deck.unparkedCount());
+
+    // focusPrev from index 2 must skip parked index 1 and land on index 0.
+    deck.focusPrev();
+    try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+
+    // focusNext from index 0 must skip parked index 1 and land on index 2.
+    deck.focusNext();
+    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+
+    // focusNext past the last unparked slide lands in the after_last slot.
+    deck.focusNext();
+    try std.testing.expectEqual(EmptySlot.after_last, deck.empty_slot);
+
+    // Unpark restores the slide at its old index.
+    try std.testing.expect(deck.unparkIndex(1));
+    try std.testing.expect(!deck.slides.items[1].parked);
+    try std.testing.expectEqual(@as(usize, 3), deck.unparkedCount());
+}
+
+test "park refuses on single-slide deck" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.addWindow(42);
+    try std.testing.expect(!deck.parkFocused());
+    try std.testing.expect(!deck.slides.items[0].parked);
+    try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
+}
+
+test "parked slide target is zero-width and hidden" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(1000, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.addWindow(1);
+    deck.addWindow(2);
+    deck.addWindow(3);
+    // Park the middle slide (index 1, currently focused).
+    _ = deck.parkFocused();
+
+    const parked = deck.targetForSlide(1);
+    try std.testing.expectEqual(@as(u32, 0), parked.width);
+    try std.testing.expect(parked.x < 0);
+
+    // Unparked slides keep normal targets: index 2 is now focused.
+    const focused = deck.targetForSlide(2);
+    try std.testing.expect(focused.width > 0);
+    try std.testing.expectEqual(@as(i32, 150), focused.x); // left_w = 1000*0.15, gap 0
+}
+
+test "focusWindowByIndex refuses parked slide" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.addWindow(1);
+    deck.addWindow(2);
+    deck.addWindow(3);
+    _ = deck.parkFocused(); // parks index 1
+    deck.focusWindowByIndex(0);
+    try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
+    deck.focusWindowByIndex(1); // parked — must not take focus
+    try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
 }
 
 fn expectApproxEq(a: f32, b: f32) !void {

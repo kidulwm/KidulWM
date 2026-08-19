@@ -21,7 +21,6 @@ const c = @cImport({
     @cInclude("stdio.h");
 });
 
-
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn unsetenv(name: [*:0]const u8) c_int;
 
@@ -176,7 +175,6 @@ pub const Server = struct {
         image_scene_buffer: ?*wlr.SceneBuffer,
     },
     outputs: wl.list.Head(Output, .link),
-
 
     fn getWindowsResponse(self: *Server) ipc.message.Response {
         var list = std.ArrayList(ipc.message.WindowInfo).initCapacity(self.allocator, 16) catch return .{ .ok = true, .windows = &[_]ipc.message.WindowInfo{} };
@@ -454,7 +452,7 @@ pub const Server = struct {
             .windows = undefined,
             .layout_requested = std.atomic.Value(bool).init(false),
             .keybinds = keybinds.Keybinds.load(allocator),
-        .deck = slidedeck.SlideDeck.init(allocator),
+            .deck = slidedeck.SlideDeck.init(allocator),
             .layout_pipe = undefined,
             .layout_source = undefined,
             .new_output = undefined,
@@ -679,7 +677,8 @@ pub const Server = struct {
                 .right_peek = self.deck_split.right_peek,
                 .focused_window = @intCast(deck.focused_index),
                 .window_count = window_count,
-                .slide_count = @intCast(deck.slides.items.len),            },
+                .slide_count = @intCast(deck.slides.items.len),
+            },
         };
     }
 
@@ -698,6 +697,7 @@ pub const Server = struct {
     pub fn focusWindowByIndex(self: *Server, idx: usize) void {
         const deck = self.currentDeck();
         if (idx >= deck.slides.items.len) return;
+        if (deck.slides.items[idx].parked) return;
         deck.focused_index = idx;
         self.focused_window_id = deck.slides.items[idx].window_id;
         const window = self.windowById(self.focused_window_id) orelse return;
@@ -706,8 +706,6 @@ pub const Server = struct {
             self.requestLayout();
         }
     }
-
-
 
     /// Return the deck that owns a window.  Windows created before any output
     /// exist fall back to the server-level deck so headless/smoke tests still run.
@@ -745,6 +743,39 @@ pub const Server = struct {
             if (window.id == id) return window;
         }
         return null;
+    }
+
+    /// Park (or unpark) the focused slide. Parked slides stay alive in the deck
+    /// but are hidden from normal layout and skipped by navigation. Parking the
+    /// only slide is refused (ruling 2026-08-19). When the last unparked slide
+    /// is parked, the deck drops into the existing empty-slot state.
+    pub fn parkToggleFocused(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.slides.items.len == 0) return;
+        if (deck.empty_slot != .none) return;
+        const idx = deck.focused_index;
+        if (deck.slides.items[idx].parked) {
+            // Already parked (only reachable via overview in Task 2+) — unpark.
+            _ = deck.unparkIndex(idx);
+            self.requestLayout();
+            return;
+        }
+        if (!deck.parkFocused()) return;
+        if (deck.unparkedCount() == 0) {
+            // Everything is parked: force the empty-slot state.
+            deck.empty_slot = .after_last;
+            self.clearFocus();
+            self.requestLayout();
+            return;
+        }
+        const slide = deck.slides.items[deck.focused_index];
+        self.focused_window_id = slide.window_id;
+        if (self.windowById(slide.window_id)) |window| {
+            if (window.toplevel.base.surface.mapped) {
+                self.focusWindow(window);
+            }
+        }
+        self.requestLayout();
     }
 
     /// Focus the next slide, pushing into the virtual empty slot past the end
@@ -900,7 +931,7 @@ pub const Server = struct {
                 const target = output.deck.targetForSlide(slide_idx);
                 // When the deck is in an empty-slot state (past the ends of the
                 // row), no slide is focused — disable everything.
-                const is_focused = output.deck.empty_slot == .none and slide_idx == output.deck.focused_index;
+                const is_focused = output.deck.empty_slot == .none and slide_idx == output.deck.focused_index and !slide.parked;
                 const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
@@ -945,7 +976,7 @@ pub const Server = struct {
                     const window = self.windowById(slide.window_id) orelse continue;
                     if (!window.toplevel.base.surface.mapped) continue;
                     const target = self.deck.targetForSlide(slide_idx);
-                    const is_focused = self.deck.empty_slot == .none and slide_idx == self.deck.focused_index;
+                    const is_focused = self.deck.empty_slot == .none and slide_idx == self.deck.focused_index and !slide.parked;
                     const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
@@ -982,7 +1013,6 @@ pub const Server = struct {
     }
 
     fn ipcThreadLoop(self: *Server) void {
-
         std.log.info("KidulWM: IPC thread started", .{});
         while (self.ipc_running.load(.monotonic)) {
             self.ipc_server.tick() catch |err| {
@@ -1454,7 +1484,6 @@ pub const Server = struct {
                 std.log.warn("invalid background color '{s}': {}", .{ value, err });
                 return;
             };
-
         } else if (std.mem.eql(u8, key, "border_width")) {
             const border_width = std.fmt.parseFloat(f32, value) catch |err| {
                 std.log.warn("invalid border_width '{s}': {}", .{ value, err });

@@ -14,6 +14,7 @@ pub const Action = union(enum) {
     next_animation,
     close_focused,
     reload,
+    park_toggle,
     none,
 };
 
@@ -45,6 +46,7 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.q, .action = .close_focused }) catch {};
     list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.q, .action = .close_focused }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.r, .action = .reload }) catch {};
+    list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.b, .action = .park_toggle }) catch {};
     return list;
 }
 
@@ -227,18 +229,41 @@ pub const Keybinds = struct {
             .{ "Right", xkb.Keysym.Right },
             .{ "space", xkb.Keysym.space },
             .{ "Tab", xkb.Keysym.Tab },
-            .{ "a", xkb.Keysym.a }, .{ "b", xkb.Keysym.b }, .{ "c", xkb.Keysym.c },
-            .{ "d", xkb.Keysym.d }, .{ "e", xkb.Keysym.e }, .{ "f", xkb.Keysym.f },
-            .{ "g", xkb.Keysym.g }, .{ "h", xkb.Keysym.h }, .{ "i", xkb.Keysym.i },
-            .{ "j", xkb.Keysym.j }, .{ "k", xkb.Keysym.k }, .{ "l", xkb.Keysym.l },
-            .{ "m", xkb.Keysym.m }, .{ "n", xkb.Keysym.n }, .{ "o", xkb.Keysym.o },
-            .{ "p", xkb.Keysym.p }, .{ "q", xkb.Keysym.q }, .{ "r", xkb.Keysym.r },
-            .{ "s", xkb.Keysym.s }, .{ "t", xkb.Keysym.t }, .{ "u", xkb.Keysym.u },
-            .{ "v", xkb.Keysym.v }, .{ "w", xkb.Keysym.w }, .{ "x", xkb.Keysym.x },
-            .{ "y", xkb.Keysym.y }, .{ "z", xkb.Keysym.z },
-            .{ "0", xkb.Keysym.@"0" }, .{ "1", xkb.Keysym.@"1" }, .{ "2", xkb.Keysym.@"2" },
-            .{ "3", xkb.Keysym.@"3" }, .{ "4", xkb.Keysym.@"4" }, .{ "5", xkb.Keysym.@"5" },
-            .{ "6", xkb.Keysym.@"6" }, .{ "7", xkb.Keysym.@"7" }, .{ "8", xkb.Keysym.@"8" },
+            .{ "a", xkb.Keysym.a },
+            .{ "b", xkb.Keysym.b },
+            .{ "c", xkb.Keysym.c },
+            .{ "d", xkb.Keysym.d },
+            .{ "e", xkb.Keysym.e },
+            .{ "f", xkb.Keysym.f },
+            .{ "g", xkb.Keysym.g },
+            .{ "h", xkb.Keysym.h },
+            .{ "i", xkb.Keysym.i },
+            .{ "j", xkb.Keysym.j },
+            .{ "k", xkb.Keysym.k },
+            .{ "l", xkb.Keysym.l },
+            .{ "m", xkb.Keysym.m },
+            .{ "n", xkb.Keysym.n },
+            .{ "o", xkb.Keysym.o },
+            .{ "p", xkb.Keysym.p },
+            .{ "q", xkb.Keysym.q },
+            .{ "r", xkb.Keysym.r },
+            .{ "s", xkb.Keysym.s },
+            .{ "t", xkb.Keysym.t },
+            .{ "u", xkb.Keysym.u },
+            .{ "v", xkb.Keysym.v },
+            .{ "w", xkb.Keysym.w },
+            .{ "x", xkb.Keysym.x },
+            .{ "y", xkb.Keysym.y },
+            .{ "z", xkb.Keysym.z },
+            .{ "0", xkb.Keysym.@"0" },
+            .{ "1", xkb.Keysym.@"1" },
+            .{ "2", xkb.Keysym.@"2" },
+            .{ "3", xkb.Keysym.@"3" },
+            .{ "4", xkb.Keysym.@"4" },
+            .{ "5", xkb.Keysym.@"5" },
+            .{ "6", xkb.Keysym.@"6" },
+            .{ "7", xkb.Keysym.@"7" },
+            .{ "8", xkb.Keysym.@"8" },
             .{ "9", xkb.Keysym.@"9" },
         };
         for (map) |entry| {
@@ -259,6 +284,7 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "next_animation")) return .next_animation;
         if (std.mem.eql(u8, str, "close_focused")) return .close_focused;
         if (std.mem.eql(u8, str, "reload")) return .reload;
+        if (std.mem.eql(u8, str, "park_toggle")) return .park_toggle;
         if (std.mem.eql(u8, str, "open_slide")) {
             const cmd = allocator.dupe(u8, "/usr/bin/ghostty") catch return null;
             return .{ .spawn = cmd };
