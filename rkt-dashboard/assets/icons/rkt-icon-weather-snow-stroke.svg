@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" aria-labelledby="weather-snowTitle" role="img">
-  <title id="weather-snowTitle">weather-snow</title>
-  <path d="M 8.975,12 A 3.0250000000000004,3.0 0 0 1 12,9.0 h 4.40 A 3.575,3.0 0 0 1 15.575,12 A 1.6500000000000001,1.6500000000000001 0 0 1 13.924999999999999,13.65 h -8.00 A 1.6500000000000001,1.6500000000000001 0 0 1 8.975,12 z" fill="none" stroke="white" stroke-width="0.8" stroke-linejoin="round"/>
-  <g transform="translate(8.5, 18.5) scale(0.55)"><path d="M0,-3 V3 M-2.6,-1.5 L2.6,1.5 M-2.6,1.5 L2.6,-1.5" stroke="white" stroke-width="1.1" stroke-linecap="round"/></g>
-  <g transform="translate(12, 18.5) scale(0.55)"><path d="M0,-3 V3 M-2.6,-1.5 L2.6,1.5 M-2.6,1.5 L2.6,-1.5" stroke="white" stroke-width="1.1" stroke-linecap="round"/></g>
-  <g transform="translate(15.5, 18.5) scale(0.55)"><path d="M0,-3 V3 M-2.6,-1.5 L2.6,1.5 M-2.6,1.5 L2.6,-1.5" stroke="white" stroke-width="1.1" stroke-linecap="round"/></g>
-<style>path,circle,polyline,rect{fill:none}</style></svg>

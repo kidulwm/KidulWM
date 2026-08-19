@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" aria-labelledby="logoTitle" role="img">
-  <title id="logoTitle">logo</title>
-  <path d="M12,2 V7 M12,9 V22" stroke="#7C3AED" stroke-width="2.4" stroke-linecap="round"/>
-  <path d="M12,7 L6.5,4 V9 L12,7 L17.5,4 V9 L12,7 Z" fill="#06B6D4"/>
-  <circle cx="12" cy="7" r="1.6" fill="#F8FAFC"/>
-</svg>

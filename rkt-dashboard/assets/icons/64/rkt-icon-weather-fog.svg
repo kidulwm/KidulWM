@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" aria-labelledby="weather-fogTitle" role="img">
-  <title id="weather-fogTitle">weather-fog</title>
-  <path d="M4,8 Q8,6 12,8 T20,8" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
-  <path d="M4,12 Q8,10 12,12 T20,12" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
-  <path d="M4,16 Q8,14 12,16 T20,16" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"/>
-</svg>
