@@ -312,23 +312,27 @@ pub const SlideDeck = struct {
     }
 
     /// Recency position of a slide among unparked slides (0 = top-left =
-    /// the focused slide). Returns null for parked slides or bad indices.
+    /// the focused slide). The deck's center-out insert leaves it ordered
+    /// [oldest .. newest] left-to-right with focus on the newest, so recency
+    /// walks focus -> tail (newest first), then focus-1 down to 0 (the older
+    /// tail), keeping the grid newest-first left-to-right, top row first.
     pub fn recencyPos(self: *const SlideDeck, slide_index: usize) ?usize {
         if (slide_index >= self.slides.items.len) return null;
         if (self.slides.items[slide_index].parked) return null;
         var pos: usize = 0;
-        var i: isize = @intCast(self.focused_index);
-        while (i >= 0) : (i -= 1) {
-            const idx: usize = @intCast(i);
-            if (self.slides.items[idx].parked) continue;
-            if (idx == slide_index) return pos;
+        // Walk focus .. tail (newest first).
+        var i: usize = self.focused_index;
+        while (i < self.slides.items.len) : (i += 1) {
+            if (self.slides.items[i].parked) continue;
+            if (i == slide_index) return pos;
             pos += 1;
         }
-        var j: usize = self.slides.items.len;
-        while (j > self.focused_index + 1) {
-            j -= 1;
-            if (self.slides.items[j].parked) continue;
-            if (j == slide_index) return pos;
+        // Then focus-1 down to 0 (older side, newest-of-the-old first).
+        var j: isize = @as(isize, @intCast(self.focused_index)) - 1;
+        while (j >= 0) : (j -= 1) {
+            const idx: usize = @intCast(j);
+            if (self.slides.items[idx].parked) continue;
+            if (idx == slide_index) return pos;
             pos += 1;
         }
         return null;
@@ -337,18 +341,17 @@ pub const SlideDeck = struct {
     /// Inverse of recencyPos: slide index at recency position pos, or null.
     pub fn slideIndexAtRecency(self: *const SlideDeck, pos: usize) ?usize {
         var p: usize = 0;
-        var i: isize = @intCast(self.focused_index);
-        while (i >= 0) : (i -= 1) {
-            const idx: usize = @intCast(i);
-            if (self.slides.items[idx].parked) continue;
-            if (p == pos) return idx;
+        var i: usize = self.focused_index;
+        while (i < self.slides.items.len) : (i += 1) {
+            if (self.slides.items[i].parked) continue;
+            if (p == pos) return i;
             p += 1;
         }
-        var j: usize = self.slides.items.len;
-        while (j > self.focused_index + 1) {
-            j -= 1;
-            if (self.slides.items[j].parked) continue;
-            if (p == pos) return j;
+        var j: isize = @as(isize, @intCast(self.focused_index)) - 1;
+        while (j >= 0) : (j -= 1) {
+            const idx: usize = @intCast(j);
+            if (self.slides.items[idx].parked) continue;
+            if (p == pos) return idx;
             p += 1;
         }
         return null;
@@ -417,30 +420,9 @@ pub const SlideDeck = struct {
         const grow_y: i32 = @intCast((this_h - mini_h) / 2);
         const slide = self.slides.items[slide_index];
         if (!slide.parked) {
-            // Position among unparked slides: focused slide = 0, then walk
-            // focus-1, focus-2 ... down to 0, then from the tail end down to
-            // focus+1 (recency order matching the deck's center-out insert).
-            var pos: usize = 0;
-            var found = false;
-            var i: isize = @intCast(self.focused_index);
-            while (i >= 0) : (i -= 1) {
-                const idx: usize = @intCast(i);
-                if (self.slides.items[idx].parked) continue;
-                if (idx == slide_index) {
-                    found = true;
-                    break;
-                }
-                pos += 1;
-            }
-            if (!found) {
-                var j: usize = self.slides.items.len;
-                while (j > self.focused_index + 1) {
-                    j -= 1;
-                    if (self.slides.items[j].parked) continue;
-                    if (j == slide_index) break;
-                    pos += 1;
-                }
-            }
+            // Recency order — identical walk to recencyPos(): focus .. tail
+            // first (newest), then focus-1 .. 0 (older side).
+            const pos: usize = self.recencyPos(slide_index) orelse 0;
             const col: i32 = @intCast(pos % overview_cols);
             const row: i32 = @intCast(pos / overview_cols);
             return .{
@@ -696,22 +678,23 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
 
     // 1000x500, gap 8, split .15/.7/.15: focus band x=158, y=8, w=684, h=484.
     // 2 cols -> cell 342, mini_w=342-32=310, mini_h=310*500/1000=155.
-    // Recency order: focused idx1 (win4) FIRST at top-left; then idx0 (win1);
-    // then tail down: idx3 (win2). Parked idx2 (win3) on the parked row.
+    // Deck [1,4,3,2], focused idx1 (win4). Recency (focus..tail, then down):
+    // idx1 (pos0, top-left), idx3? no — idx2 is PARKED so skipped: idx1, idx3, idx0.
     const m1 = deck.overviewTargetForSlide(1);
     try std.testing.expectEqual(@as(i32, 158 + 16), m1.x);
     try std.testing.expectEqual(@as(i32, 8 + 16), m1.y);
     try std.testing.expectEqual(@as(u32, 310), m1.width);
     try std.testing.expectEqual(@as(u32, 155), m1.height);
 
-    const m0 = deck.overviewTargetForSlide(0);
-    try std.testing.expectEqual(@as(i32, 158 + 342 + 16), m0.x);
-    try std.testing.expectEqual(@as(i32, 24), m0.y);
-
-    // Third in recency order (idx3) wraps to row 1: pitch = 187, y = 8+187+16 = 211.
+    // pos1 = idx3 (win2, tail).
     const m3 = deck.overviewTargetForSlide(3);
-    try std.testing.expectEqual(@as(i32, 158 + 16), m3.x);
-    try std.testing.expectEqual(@as(i32, 211), m3.y);
+    try std.testing.expectEqual(@as(i32, 158 + 342 + 16), m3.x);
+    try std.testing.expectEqual(@as(i32, 24), m3.y);
+
+    // pos2 = idx0 (win1, older side) wraps to row 1: pitch 187, y = 8+187+16 = 211.
+    const m0 = deck.overviewTargetForSlide(0);
+    try std.testing.expectEqual(@as(i32, 158 + 16), m0.x);
+    try std.testing.expectEqual(@as(i32, 211), m0.y);
 
     // Parked slide (idx2): unparked=3 -> 2 rows at 2 cols, parked row = 2,
     // y = 8 + 2*187 + 16 = 398.
@@ -758,10 +741,10 @@ test "miniAtPoint hit-tests the grid" {
 
     deck.enterOverview();
     // Grid: band x=158,y=8,w=684,h=484; 2 cols; mini 310x155.
-    // Slide order: 1, 3, 2, focused idx1. Recency: idx1=(174,24), idx0=(516,24), idx2=(174,211).
+    // Slide order: 1, 3, 2, focused idx1. Recency: idx1=(174,24), idx2=(516,24), idx0=(174,211).
     try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(200, 50));
-    try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(550, 50));
-    try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(200, 250));
+    try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(550, 50));
+    try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(200, 250));
     // Gap between minis: no hit.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(490, 50));
     // Outside band: no hit.

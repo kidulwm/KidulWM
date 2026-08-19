@@ -104,11 +104,20 @@ const KeyboardDevice = struct {
                 if (handleAction(server, a)) return;
             }
         }
-        // Overview lens owns Esc and Enter while open.
-        if (server.currentDeckPub().view_mode == .overview) {
+        // Overview lens owns Esc and Enter while open. NOTE: view_mode is
+        // per-output deck, and currentDeckPub() follows keyboard focus — if
+        // the lens is open on an output whose deck isn't current, this check
+        // misses it. Scan every output's deck instead.
+        var lens_deck: ?*@import("../core/slidedeck.zig").SlideDeck = null;
+        var oit = server.outputs.iterator(.forward);
+        while (oit.next()) |output| {
+            if (output.deck.view_mode == .overview) lens_deck = &output.deck;
+        }
+        if (server.deck.view_mode == .overview) lens_deck = &server.deck;
+        if (lens_deck != null) {
             switch (sym) {
                 xkb.Keysym.Escape => {
-                    server.currentDeckPub().exitOverview();
+                    if (lens_deck) |d| d.exitOverview();
                     server.destroyOverviewRingPub();
                     server.requestLayout();
                     return;

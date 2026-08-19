@@ -82,6 +82,16 @@ pub const Output = struct {
             _ = window.tickAnimation(now_us);
         }
         self.server.tray.update();
+        // The overview ring must track its mini per frame — tickAnimation moves
+        // the mini's scene node every frame while the spring settles, so a
+        // layout-pass-only ring position drifts off the moving mini. Scan ALL
+        // output decks: the lens may be open on a deck that isn't "current".
+        var lens_open = self.server.deck.view_mode == .overview;
+        var oit = self.server.outputs.iterator(.forward);
+        while (oit.next()) |output| {
+            if (output.deck.view_mode == .overview) lens_open = true;
+        }
+        if (lens_open) self.server.updateOverviewRing();
 
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
@@ -797,10 +807,24 @@ pub const Server = struct {
     /// border language graduates once this plain ring is proven on screen.
     pub fn updateOverviewRing(self: *Server) void {
         self.destroyOverviewRing();
-        const deck = self.currentDeck();
-        if (deck.view_mode != .overview) return;
-        const idx = deck.slideIndexAtRecency(self.overview_cursor) orelse return;
-        const r = deck.overviewTargetForSlide(idx);
+        // Find the deck the lens is actually open on (per-output ownership).
+        var deck: *slidedeck.SlideDeck = &self.deck;
+        var found = self.deck.view_mode == .overview;
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |output| {
+            if (output.deck.view_mode == .overview) {
+                deck = &output.deck;
+                found = true;
+            }
+        }
+        if (!found) return;
+        const idx = deck.slideIndexAtRecency(self.overview_cursor) orelse {
+            std.log.info("KidulWM: overview ring: no slide at cursor {d}", .{self.overview_cursor});
+            return;
+        };
+        // Use the inflated target so the ring hugs the cursor mini, not the
+        // plain cell rect.
+        const r = deck.overviewTargetForSlideInflated(idx, idx);
         if (r.width == 0) return;
         var scale: u32 = 1;
         if (self.focused_output) |output| {
@@ -1041,6 +1065,7 @@ pub const Server = struct {
             const deck_ptr = &output.deck;
             const in_overview = deck_ptr.view_mode == .overview;
             const cursor_idx: ?usize = if (in_overview) deck_ptr.slideIndexAtRecency(self.overview_cursor) else null;
+            std.log.info("KidulWM: applyLayout overview={} cursor={} cursor_idx={?d} slides={d}", .{ in_overview, self.overview_cursor, cursor_idx, deck_ptr.slides.items.len });
             for (output.deck.slides.items, 0..) |slide, slide_idx| {
                 const window = self.windowById(slide.window_id) orelse continue;
                 if (!window.toplevel.base.surface.mapped) continue;
