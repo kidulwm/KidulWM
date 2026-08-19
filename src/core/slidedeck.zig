@@ -356,14 +356,35 @@ pub const SlideDeck = struct {
         // horizontal gap between minis.
         const row_pitch: i32 = @intCast(mini_h + 2 * overview_pad);
 
-        // Build the unparked order (row-major from index 0) and the parked
-        // order separately; parked minis live on the last row.
+        // Build the unparked order (most-recently-focused FIRST — the grid
+        // fills from the top-left like a page, newest claims the first cell,
+        // per Barticus 2026-08-19) and the parked order separately; parked
+        // minis live on the last row.
         const slide = self.slides.items[slide_index];
         if (!slide.parked) {
-            // Position among unparked slides, in deck order.
+            // Position among unparked slides: focused slide = 0, then walk
+            // focus-1, focus-2 ... down to 0, then from the tail end down to
+            // focus+1 (recency order matching the deck's center-out insert).
             var pos: usize = 0;
-            for (self.slides.items[0..slide_index]) |s| {
-                if (!s.parked) pos += 1;
+            var found = false;
+            var i: isize = @intCast(self.focused_index);
+            while (i >= 0) : (i -= 1) {
+                const idx: usize = @intCast(i);
+                if (self.slides.items[idx].parked) continue;
+                if (idx == slide_index) {
+                    found = true;
+                    break;
+                }
+                pos += 1;
+            }
+            if (!found) {
+                var j: usize = self.slides.items.len;
+                while (j > self.focused_index + 1) {
+                    j -= 1;
+                    if (self.slides.items[j].parked) continue;
+                    if (j == slide_index) break;
+                    pos += 1;
+                }
             }
             const col: i32 = @intCast(pos % overview_cols);
             const row: i32 = @intCast(pos / overview_cols);
@@ -620,18 +641,19 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
 
     // 1000x500, gap 8, split .15/.7/.15: focus band x=158, y=8, w=684, h=484.
     // 2 cols -> cell 342, mini_w=342-32=310, mini_h=310*500/1000=155.
-    // Unparked order (deck order): idx0 (win1), idx1 (win4), idx3 (win2).
-    const m0 = deck.overviewTargetForSlide(0);
-    try std.testing.expectEqual(@as(i32, 158 + 16), m0.x);
-    try std.testing.expectEqual(@as(i32, 8 + 16), m0.y);
-    try std.testing.expectEqual(@as(u32, 310), m0.width);
-    try std.testing.expectEqual(@as(u32, 155), m0.height);
-
+    // Recency order: focused idx1 (win4) FIRST at top-left; then idx0 (win1);
+    // then tail down: idx3 (win2). Parked idx2 (win3) on the parked row.
     const m1 = deck.overviewTargetForSlide(1);
-    try std.testing.expectEqual(@as(i32, 158 + 342 + 16), m1.x);
-    try std.testing.expectEqual(@as(i32, 24), m1.y);
+    try std.testing.expectEqual(@as(i32, 158 + 16), m1.x);
+    try std.testing.expectEqual(@as(i32, 8 + 16), m1.y);
+    try std.testing.expectEqual(@as(u32, 310), m1.width);
+    try std.testing.expectEqual(@as(u32, 155), m1.height);
 
-    // Third unparked wraps to row 1: pitch = 155+32 = 187, y = 8+187+16 = 211.
+    const m0 = deck.overviewTargetForSlide(0);
+    try std.testing.expectEqual(@as(i32, 158 + 342 + 16), m0.x);
+    try std.testing.expectEqual(@as(i32, 24), m0.y);
+
+    // Third in recency order (idx3) wraps to row 1: pitch = 187, y = 8+187+16 = 211.
     const m3 = deck.overviewTargetForSlide(3);
     try std.testing.expectEqual(@as(i32, 158 + 16), m3.x);
     try std.testing.expectEqual(@as(i32, 211), m3.y);
@@ -680,10 +702,10 @@ test "miniAtPoint hit-tests the grid" {
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 50));
 
     deck.enterOverview();
-    // Grid: band x=158,y=8,w=684,h=484; 2 cols; mini 310x155 at (174,24) and (516,24).
-    // Slide order: 1, 3, 2 — idx0=(174,24), idx1=(516,24), idx2=(174,211).
-    try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(200, 50));
-    try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(550, 50));
+    // Grid: band x=158,y=8,w=684,h=484; 2 cols; mini 310x155.
+    // Slide order: 1, 3, 2, focused idx1. Recency: idx1=(174,24), idx0=(516,24), idx2=(174,211).
+    try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(200, 50));
+    try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(550, 50));
     try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(200, 250));
     // Gap between minis: no hit.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(490, 50));
