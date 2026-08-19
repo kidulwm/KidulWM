@@ -745,6 +745,15 @@ pub const Server = struct {
         return null;
     }
 
+    /// Toggle the overview lens on the current deck. The lens never changes
+    /// focused_index — it only swaps row layout for grid layout.
+    pub fn overviewToggle(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.slides.items.len == 0) return;
+        deck.toggleOverview();
+        self.requestLayout();
+    }
+
     /// Park (or unpark) the focused slide. Parked slides stay alive in the deck
     /// but are hidden from normal layout and skipped by navigation. Parking the
     /// only slide is refused (ruling 2026-08-19). When the last unparked slide
@@ -924,14 +933,16 @@ pub const Server = struct {
 
             var focused_slide_window: ?*Window = null;
             const deck_ptr = &output.deck;
+            const in_overview = deck_ptr.view_mode == .overview;
             for (output.deck.slides.items, 0..) |slide, slide_idx| {
                 const window = self.windowById(slide.window_id) orelse continue;
                 if (!window.toplevel.base.surface.mapped) continue;
 
-                const target = output.deck.targetForSlide(slide_idx);
+                const target = if (in_overview) output.deck.overviewTargetForSlide(slide_idx) else output.deck.targetForSlide(slide_idx);
                 // When the deck is in an empty-slot state (past the ends of the
-                // row), no slide is focused — disable everything.
-                const is_focused = output.deck.empty_slot == .none and slide_idx == output.deck.focused_index and !slide.parked;
+                // row), no slide is focused — disable everything. In overview
+                // every slide is visible and none is "focused" for chrome.
+                const is_focused = !in_overview and output.deck.empty_slot == .none and slide_idx == output.deck.focused_index and !slide.parked;
                 const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                 const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                 const size_changed = w_changed or h_changed;
@@ -939,7 +950,14 @@ pub const Server = struct {
                 if (focus_changed) {
                     window.startTransition(self.current_transition_kind);
                 }
-                if (is_focused) {
+                if (in_overview) {
+                    // Overview: every slide (parked included) is a live mini.
+                    // Containment clip still applies; no chrome on minis.
+                    window.scene_tree.node.setEnabled(true);
+                    window.setSurfaceOffsetForFocus();
+                    window.applyContainment();
+                    window.clearChrome();
+                } else if (is_focused) {
                     // Focused slide: full screen, chrome border, surface scaled to fit.
                     window.scene_tree.node.setEnabled(true);
                     if (size_changed) {
@@ -972,11 +990,12 @@ pub const Server = struct {
             self.deck.sync(1024, 768, self.state.gap, self.deck_split, self.deck_orientation);
             if (self.deck.slides.items.len > 0) {
                 any_slides = true;
+                const headless_overview = self.deck.view_mode == .overview;
                 for (self.deck.slides.items, 0..) |slide, slide_idx| {
                     const window = self.windowById(slide.window_id) orelse continue;
                     if (!window.toplevel.base.surface.mapped) continue;
-                    const target = self.deck.targetForSlide(slide_idx);
-                    const is_focused = self.deck.empty_slot == .none and slide_idx == self.deck.focused_index and !slide.parked;
+                    const target = if (headless_overview) self.deck.overviewTargetForSlide(slide_idx) else self.deck.targetForSlide(slide_idx);
+                    const is_focused = !headless_overview and self.deck.empty_slot == .none and slide_idx == self.deck.focused_index and !slide.parked;
                     const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
                     const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
                     const size_changed = w_changed or h_changed;
@@ -984,7 +1003,12 @@ pub const Server = struct {
                     if (focus_changed) {
                         window.startTransition(self.current_transition_kind);
                     }
-                    if (is_focused) {
+                    if (headless_overview) {
+                        window.scene_tree.node.setEnabled(true);
+                        window.setSurfaceOffsetForFocus();
+                        window.applyContainment();
+                        window.clearChrome();
+                    } else if (is_focused) {
                         window.scene_tree.node.setEnabled(true);
                         if (size_changed) {
                             _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
@@ -1005,7 +1029,7 @@ pub const Server = struct {
             }
         }
 
-        if (!any_slides or active_deck.empty_slot != .none) {
+        if (!any_slides or (active_deck.empty_slot != .none and active_deck.view_mode == .normal)) {
             self.clearFocus();
         }
 

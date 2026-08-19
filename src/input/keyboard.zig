@@ -197,6 +197,10 @@ const KeyboardDevice = struct {
                 server.parkToggleFocused();
                 return true;
             },
+            .overview_toggle => {
+                server.overviewToggle();
+                return true;
+            },
             .none => return false,
         }
     }

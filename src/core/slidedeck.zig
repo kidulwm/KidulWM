@@ -48,6 +48,10 @@ pub const Slide = struct {
 
 pub const EmptySlot = enum { none, before_first, after_last };
 
+/// View mode: normal row layout vs. the overview lens. Overview is a lens,
+/// not a focus change — focused_index is preserved across the toggle.
+pub const ViewMode = enum { normal, overview };
+
 /// SlideDeck: a per-output stack of full-screen Slides.
 /// Only the focused Slide and its immediate neighbours are visible;
 /// deeper slides sit off-screen and animate into view when focused.
@@ -65,6 +69,7 @@ pub const SlideDeck = struct {
     empty_slot: EmptySlot,
     split: Split,
     orientation: Orientation,
+    view_mode: ViewMode,
 
     pub fn init(allocator: std.mem.Allocator) SlideDeck {
         return .{
@@ -81,6 +86,7 @@ pub const SlideDeck = struct {
                 .right_peek = style.layout.default_split.right_peek,
             },
             .orientation = .horizontal,
+            .view_mode = .normal,
         };
     }
 
@@ -297,6 +303,86 @@ pub const SlideDeck = struct {
         }
     }
 
+    /// Enter the overview lens. Focus is preserved; layout switches to grid.
+    pub fn enterOverview(self: *SlideDeck) void {
+        if (self.slides.items.len == 0) return;
+        if (self.view_mode == .overview) return;
+        self.view_mode = .overview;
+        std.log.info("SlideDeck: overview entered (focused_index={d}, slides={d})", .{ self.focused_index, self.slides.items.len });
+    }
+
+    /// Exit the overview lens back to normal row layout. Focus unchanged.
+    pub fn exitOverview(self: *SlideDeck) void {
+        if (self.view_mode == .normal) return;
+        self.view_mode = .normal;
+        std.log.info("SlideDeck: overview exited (focused_index={d})", .{self.focused_index});
+    }
+
+    pub fn toggleOverview(self: *SlideDeck) void {
+        switch (self.view_mode) {
+            .normal => self.enterOverview(),
+            .overview => self.exitOverview(),
+        }
+    }
+
+    /// Grid geometry constants for the overview lens (Task 2 pass one):
+    /// 4 columns, minis at 1/4 output width, 16px padding, parked slides in
+    /// a separate bottom row.
+    pub const overview_cols = 4;
+    pub const overview_pad = 16;
+
+    /// Return the mini grid rect for slide `slide_index` in overview mode.
+    /// Unparked slides fill the top rows left-to-right; parked slides sit in
+    /// a separate row at the bottom of the grid area.
+    pub fn overviewTargetForSlide(self: *SlideDeck, slide_index: usize) Rect {
+        if (slide_index >= self.slides.items.len or self.width == 0) {
+            return .{ .x = 0, .y = 0, .width = 0, .height = 0 };
+        }
+        const pad: i32 = @intCast(overview_pad);
+        const cell_w_i: i32 = @intCast(self.width / overview_cols);
+        const cell_w: u32 = self.width / overview_cols;
+        // Preserve aspect ratio of the output for the mini height.
+        const mini_w: u32 = cell_w - 2 * overview_pad;
+        const mini_h: u32 = @intFromFloat(@as(f32, @floatFromInt(mini_w)) * @as(f32, @floatFromInt(self.height)) / @as(f32, @floatFromInt(self.width)));
+
+        // Build the unparked order (row-major from index 0) and the parked
+        // order separately; parked minis live on the last row.
+        const slide = self.slides.items[slide_index];
+        if (!slide.parked) {
+            // Position among unparked slides, in deck order.
+            var pos: usize = 0;
+            for (self.slides.items[0..slide_index]) |s| {
+                if (!s.parked) pos += 1;
+            }
+            const col: i32 = @intCast(pos % overview_cols);
+            const row: i32 = @intCast(pos / overview_cols);
+            return .{
+                .x = col * cell_w_i + pad,
+                .y = row * (@as(i32, @intCast(mini_h)) + pad) + pad,
+                .width = mini_w,
+                .height = mini_h,
+            };
+        } else {
+            // Position among parked slides, in deck order.
+            var pos: usize = 0;
+            for (self.slides.items[0..slide_index]) |s| {
+                if (s.parked) pos += 1;
+            }
+            const unparked_rows: i32 = blk: {
+                const n = self.unparkedCount();
+                break :blk @intCast((n + overview_cols - 1) / overview_cols);
+            };
+            const col: i32 = @intCast(pos % overview_cols);
+            const row: i32 = unparked_rows + @divTrunc(@as(i32, @intCast(pos)), overview_cols);
+            return .{
+                .x = col * cell_w_i + pad,
+                .y = row * (@as(i32, @intCast(mini_h)) + pad) + pad,
+                .width = mini_w,
+                .height = mini_h,
+            };
+        }
+    }
+
     /// Return the rectangle for the slide at `slide_index` relative to the
     /// currently focused slide.  Deeper slides are pushed one full screen-width
     /// (or height) off the edge so they can slide in cleanly.
@@ -483,6 +569,72 @@ test "focusWindowByIndex refuses parked slide" {
     try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
     deck.focusWindowByIndex(1); // parked — must not take focus
     try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
+}
+
+test "overview grid: unparked top row, parked bottom row, focus preserved" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(1000, 500, 8, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.addWindow(1);
+    deck.addWindow(2);
+    deck.addWindow(3);
+    deck.addWindow(4);
+    // Deck order: 1, 4, 3, 2 — focused index 1 (window 4).
+    const saved_focus = deck.focused_index;
+    // Park the slide at index 2 (window 3).
+    deck.slides.items[2].parked = true;
+
+    deck.enterOverview();
+    try std.testing.expectEqual(ViewMode.overview, deck.view_mode);
+    // Lens never moves focus.
+    try std.testing.expectEqual(saved_focus, deck.focused_index);
+
+    // 1000x500 output, 4 cols: cell_w=250, mini_w=250-32=218, mini_h=218*500/1000=109.
+    // Unparked order (deck order): idx0 (win1), idx1 (win4), idx3 (win2).
+    const m0 = deck.overviewTargetForSlide(0);
+    try std.testing.expectEqual(@as(i32, 16), m0.x);
+    try std.testing.expectEqual(@as(i32, 16), m0.y);
+    try std.testing.expectEqual(@as(u32, 218), m0.width);
+    try std.testing.expectEqual(@as(u32, 109), m0.height);
+
+    const m1 = deck.overviewTargetForSlide(1);
+    try std.testing.expectEqual(@as(i32, 250 + 16), m1.x);
+    try std.testing.expectEqual(@as(i32, 16), m1.y);
+
+    const m3 = deck.overviewTargetForSlide(3);
+    try std.testing.expectEqual(@as(i32, 500 + 16), m3.x);
+    try std.testing.expectEqual(@as(i32, 16), m3.y);
+
+    // Parked slide (idx2) goes to the row below the unparked rows:
+    // unparked=3 -> 1 row, so parked row = 1, y = 1*(109+16)+16 = 141.
+    const m2 = deck.overviewTargetForSlide(2);
+    try std.testing.expectEqual(@as(i32, 16), m2.x);
+    try std.testing.expectEqual(@as(i32, 141), m2.y);
+
+    // Exit restores normal mode, focus still unchanged.
+    deck.exitOverview();
+    try std.testing.expectEqual(ViewMode.normal, deck.view_mode);
+    try std.testing.expectEqual(saved_focus, deck.focused_index);
+}
+
+test "toggleOverview round-trips" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.addWindow(1);
+    deck.toggleOverview();
+    try std.testing.expectEqual(ViewMode.overview, deck.view_mode);
+    deck.toggleOverview();
+    try std.testing.expectEqual(ViewMode.normal, deck.view_mode);
+    // Empty deck: enter is a no-op (guard).
+    var empty = SlideDeck.init(allocator);
+    defer empty.deinit();
+    empty.enterOverview();
+    try std.testing.expectEqual(ViewMode.normal, empty.view_mode);
 }
 
 fn expectApproxEq(a: f32, b: f32) !void {
