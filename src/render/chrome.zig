@@ -132,11 +132,10 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     return surface;
 }
 
-/// Render the overview mini focus ring in the double-border language:
-/// light outer ring (gold) wrapping a dark inner ring, transparent interior.
-/// Non-focused minis get nothing — the ring IS the focus indicator.
-/// Rings are STROKED, not filled — an even-odd fill over two nested paths
-/// self-cancels and renders nothing.
+/// Render the overview mini focus ring: SINGLE border first (debug step —
+/// if a plain gold ring doesn't render, the problem is the node path, not
+/// the double-border geometry). The double-border language returns once a
+/// single ring is proven on screen.
 pub fn renderMiniRing(style: Style, width: i32, height: i32, scale: u32) ?*c.cairo_surface_t {
     if (width <= 0 or height <= 0) return null;
     const s: i32 = @max(1, @as(i32, @intCast(scale)));
@@ -152,9 +151,8 @@ pub fn renderMiniRing(style: Style, width: i32, height: i32, scale: u32) ?*c.cai
     const w: f64 = @floatFromInt(bw);
     const h: f64 = @floatFromInt(bh);
     const sf: f64 = @floatFromInt(s);
-    const outer_w: f64 = @max(1.0, @as(f64, style.double_border_outer_w) * sf);
-    const inner_w: f64 = @max(1.0, @as(f64, style.double_border_inner_w) * sf);
-    const depth: f64 = @max(0.0, @as(f64, style.corner_depth) * sf * 0.5); // tighter corners at mini scale
+    const line_w: f64 = @max(2.0, @as(f64, style.border_width) * sf * 2.0); // thick enough to read at mini scale
+    const depth: f64 = @max(0.0, @as(f64, style.corner_depth) * sf * 0.5);
 
     // Transparent start.
     c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
@@ -165,22 +163,11 @@ pub fn renderMiniRing(style: Style, width: i32, height: i32, scale: u32) ?*c.cai
     var ring_style = style;
     ring_style.corner_depth = @floatCast(depth);
 
-    // Outer light ring: stroke centered on the outer_w/2 inset path.
-    var outer_style = ring_style;
-    outer_style.corner_depth = @floatCast(@max(0.0, depth - outer_w * 0.5));
-    const oi = outer_w * 0.5;
-    windowPath(cr, oi, oi, w - outer_w, h - outer_w, outer_style);
-    setSource(cr, style.double_border_outer, 1.0);
-    c.cairo_set_line_width(cr, outer_w);
-    c.cairo_stroke(cr);
-
-    // Dark inner ring: stroke centered just inside it.
-    var inner_style = ring_style;
-    inner_style.corner_depth = @floatCast(@max(0.0, depth - outer_w - inner_w * 0.5));
-    const ii = outer_w + inner_w * 0.5;
-    windowPath(cr, ii, ii, w - ii * 2.0, h - ii * 2.0, inner_style);
-    setSource(cr, style.double_border_inner, 1.0);
-    c.cairo_set_line_width(cr, inner_w);
+    // Single gold ring: stroke centered on the line_w/2 inset path.
+    const inset = line_w * 0.5;
+    windowPath(cr, inset, inset, w - line_w, h - line_w, ring_style);
+    setSource(cr, style.color_gold, 1.0);
+    c.cairo_set_line_width(cr, line_w);
     c.cairo_stroke(cr);
 
     return surface;

@@ -792,7 +792,9 @@ pub const Server = struct {
         self.requestLayout();
     }
 
-    /// Draw (or redraw) the double-border ring around the cursor's mini.
+    /// Draw (or redraw) the single-border debug ring around the cursor's mini.
+    /// Pairs with the 6% inflate as the second focus indicator; the double-
+    /// border language graduates once this plain ring is proven on screen.
     pub fn updateOverviewRing(self: *Server) void {
         self.destroyOverviewRing();
         const deck = self.currentDeck();
@@ -1038,11 +1040,12 @@ pub const Server = struct {
             var focused_slide_window: ?*Window = null;
             const deck_ptr = &output.deck;
             const in_overview = deck_ptr.view_mode == .overview;
+            const cursor_idx: ?usize = if (in_overview) deck_ptr.slideIndexAtRecency(self.overview_cursor) else null;
             for (output.deck.slides.items, 0..) |slide, slide_idx| {
                 const window = self.windowById(slide.window_id) orelse continue;
                 if (!window.toplevel.base.surface.mapped) continue;
 
-                const target = if (in_overview) output.deck.overviewTargetForSlide(slide_idx) else output.deck.targetForSlide(slide_idx);
+                const target = if (in_overview) output.deck.overviewTargetForSlideInflated(slide_idx, cursor_idx) else output.deck.targetForSlide(slide_idx);
                 // When the deck is in an empty-slot state (past the ends of the
                 // row), no slide is focused — disable everything. In overview
                 // every slide is visible and none is "focused" for chrome.
@@ -1139,7 +1142,9 @@ pub const Server = struct {
             self.clearFocus();
         }
 
-        // Overview lens: redraw the double-border ring around the cursor mini.
+        // Overview lens: redraw the (single-border, debug-step) ring around
+        // the cursor mini. The 6% inflate from overviewTargetForSlideInflated
+        // is the second indicator; ring is the one under test.
         if (active_deck.view_mode == .overview) {
             self.updateOverviewRing();
         } else if (self.overview_ring != null) {

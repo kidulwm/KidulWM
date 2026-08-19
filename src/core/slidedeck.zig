@@ -377,9 +377,15 @@ pub const SlideDeck = struct {
     pub const overview_pad = 16;
 
     /// Return the mini grid rect for slide `slide_index` in overview mode.
-    /// Unparked slides fill the top rows left-to-right; parked slides sit in
-    /// a separate row at the bottom of the grid area.
+    /// Unparked slides fill the top rows left-to-right (recency order);
+    /// parked slides sit in a separate row at the bottom of the grid area.
+    /// The slide under the virtual cursor is inflated slightly (1.06x) so
+    /// keyboard focus is visible without any border chrome.
     pub fn overviewTargetForSlide(self: *SlideDeck, slide_index: usize) Rect {
+        return self.overviewTargetForSlideInflated(slide_index, null);
+    }
+
+    pub fn overviewTargetForSlideInflated(self: *SlideDeck, slide_index: usize, cursor_index: ?usize) Rect {
         if (slide_index >= self.slides.items.len or self.width == 0) {
             return .{ .x = 0, .y = 0, .width = 0, .height = 0 };
         }
@@ -403,6 +409,12 @@ pub const SlideDeck = struct {
         // fills from the top-left like a page, newest claims the first cell,
         // per Barticus 2026-08-19) and the parked order separately; parked
         // minis live on the last row.
+        const inflate = cursor_index != null and cursor_index.? == slide_index;
+        const scale_up: f32 = if (inflate) 1.06 else 1.0;
+        const this_w: u32 = @intFromFloat(@round(@as(f32, @floatFromInt(mini_w)) * scale_up));
+        const this_h: u32 = @intFromFloat(@round(@as(f32, @floatFromInt(mini_h)) * scale_up));
+        const grow_x: i32 = @intCast((this_w - mini_w) / 2);
+        const grow_y: i32 = @intCast((this_h - mini_h) / 2);
         const slide = self.slides.items[slide_index];
         if (!slide.parked) {
             // Position among unparked slides: focused slide = 0, then walk
@@ -432,10 +444,10 @@ pub const SlideDeck = struct {
             const col: i32 = @intCast(pos % overview_cols);
             const row: i32 = @intCast(pos / overview_cols);
             return .{
-                .x = area.x + col * cell_w_i + pad,
-                .y = area.y + row * row_pitch + pad,
-                .width = mini_w,
-                .height = mini_h,
+                .x = area.x + col * cell_w_i + pad - grow_x,
+                .y = area.y + row * row_pitch + pad - grow_y,
+                .width = this_w,
+                .height = this_h,
             };
         } else {
             // Position among parked slides, in deck order.
@@ -450,10 +462,10 @@ pub const SlideDeck = struct {
             const col: i32 = @intCast(pos % overview_cols);
             const row: i32 = unparked_rows + @divTrunc(@as(i32, @intCast(pos)), overview_cols);
             return .{
-                .x = area.x + col * cell_w_i + pad,
-                .y = area.y + row * row_pitch + pad,
-                .width = mini_w,
-                .height = mini_h,
+                .x = area.x + col * cell_w_i + pad - grow_x,
+                .y = area.y + row * row_pitch + pad - grow_y,
+                .width = this_w,
+                .height = this_h,
             };
         }
     }

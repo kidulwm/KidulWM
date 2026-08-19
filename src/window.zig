@@ -110,12 +110,14 @@ pub const Window = struct {
         toplevel.base.surface.events.map.add(&window.map);
         toplevel.base.surface.events.unmap.add(&window.unmap);
         toplevel.base.events.destroy.add(&window.destroy);
+        std.log.info("KidulWM: TRACE create id={d} adding toplevel_destroy listener={*}", .{ window.id, &window.toplevel_destroy });
         // wlroots asserts every toplevel signal's listener_list is empty at the
         // END of the TOPLEVEL destroy emission (destroy_xdg_toplevel), which
         // runs BEFORE the base xdg_surface destroy signal. The detach must be
         // complete by the time toplevel.events.destroy finishes — so listen on
         // the toplevel destroy itself and do the teardown there.
         toplevel.events.destroy.add(&window.toplevel_destroy);
+        std.log.info("KidulWM: TRACE create id={d} added; link.prev={*}", .{ window.id, window.toplevel_destroy.link.prev });
         toplevel.base.surface.events.commit.add(&window.commit);
         toplevel.events.set_title.add(&window.set_title);
         toplevel.events.set_app_id.add(&window.set_app_id);
@@ -520,6 +522,8 @@ pub const Window = struct {
     /// toplevel destroy emission, so the detach must happen inside a listener
     /// on toplevel.events.destroy — not base.events.destroy, which runs later.
     fn detachListeners(window: *Window) void {
+        const st = window.set_title.link.prev != null;
+        const sa = window.set_app_id.link.prev != null;
         if (window.set_title.link.prev != null) window.set_title.link.remove();
         if (window.set_app_id.link.prev != null) window.set_app_id.link.remove();
         if (window.map.link.prev != null) window.map.link.remove();
@@ -527,6 +531,7 @@ pub const Window = struct {
         if (window.commit.link.prev != null) window.commit.link.remove();
         if (window.destroy.link.prev != null) window.destroy.link.remove();
         if (window.toplevel_destroy.link.prev != null) window.toplevel_destroy.link.remove();
+        std.log.info("KidulWM: detachListeners id={d} set_title_attached={} app_id_attached={}", .{ window.id, st, sa });
     }
 
     /// wlroots 0.20 teardown order on client disconnect:
@@ -541,7 +546,7 @@ pub const Window = struct {
     /// us once the Window is gone (we've already removed from the deck).
     fn handleToplevelDestroy(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("toplevel_destroy", listener);
-        std.log.info("KidulWM: toplevel destroyed", .{});
+        std.log.info("KidulWM: toplevel destroy fired id={d}", .{window.id});
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
