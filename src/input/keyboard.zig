@@ -109,12 +109,28 @@ const KeyboardDevice = struct {
             switch (sym) {
                 xkb.Keysym.Escape => {
                     server.currentDeckPub().exitOverview();
+                    server.destroyOverviewRingPub();
                     server.requestLayout();
                     return;
                 },
                 xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
-                    // Enter = focus the previously focused mini (Task 3 pass one).
                     server.overviewAcceptFocused();
+                    return;
+                },
+                xkb.Keysym.Left => {
+                    server.overviewMoveCursor(-1);
+                    return;
+                },
+                xkb.Keysym.Right => {
+                    server.overviewMoveCursor(1);
+                    return;
+                },
+                xkb.Keysym.Up => {
+                    server.overviewMoveCursor(-2);
+                    return;
+                },
+                xkb.Keysym.Down => {
+                    server.overviewMoveCursor(2);
                     return;
                 },
                 else => return, // swallow all other keys while the lens is open

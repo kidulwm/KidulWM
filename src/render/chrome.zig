@@ -132,6 +132,64 @@ pub fn renderChrome(style: Style, width: i32, height: i32, focused: bool, scale:
     return surface;
 }
 
+/// Render the overview mini focus ring in the double-border language:
+/// light outer ring (gold) wrapping a dark inner ring, transparent interior.
+/// Non-focused minis get nothing — the ring IS the focus indicator.
+pub fn renderMiniRing(style: Style, width: i32, height: i32, scale: u32) ?*c.cairo_surface_t {
+    if (width <= 0 or height <= 0) return null;
+    const s: i32 = @max(1, @as(i32, @intCast(scale)));
+    const bw: i32 = width * s;
+    const bh: i32 = height * s;
+    const surface = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, bw, bh) orelse return null;
+    const cr = c.cairo_create(surface) orelse {
+        c.cairo_surface_destroy(surface);
+        return null;
+    };
+    defer c.cairo_destroy(cr);
+
+    const w: f64 = @floatFromInt(bw);
+    const h: f64 = @floatFromInt(bh);
+    const sf: f64 = @floatFromInt(s);
+    const outer_w: f64 = @max(1.0, @as(f64, style.double_border_outer_w) * sf);
+    const inner_w: f64 = @max(1.0, @as(f64, style.double_border_inner_w) * sf);
+    const depth: f64 = @max(0.0, @as(f64, style.corner_depth) * sf * 0.5); // tighter corners at mini scale
+
+    // Transparent start.
+    c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+    c.cairo_paint(cr);
+    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+    c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_EVEN_ODD);
+
+    var ring_style = style;
+    ring_style.corner_depth = @floatCast(depth);
+
+    // Outer light ring: full rect minus rect inset by outer_w.
+    windowPath(cr, 0.0, 0.0, w, h, ring_style);
+    if (w > outer_w * 3.0 and h > outer_w * 3.0) {
+        var inner = ring_style;
+        inner.corner_depth = @floatCast(@max(0.0, depth - outer_w));
+        windowPath(cr, outer_w, outer_w, w - outer_w * 2.0, h - outer_w * 2.0, inner);
+    }
+    setSource(cr, style.double_border_outer, 1.0);
+    c.cairo_fill(cr);
+
+    // Dark inner ring: rect inset by outer_w minus rect inset by outer_w+inner_w.
+    const oi = outer_w;
+    windowPath(cr, oi, oi, w - oi * 2.0, h - oi * 2.0, ring_style);
+    const ii = outer_w + inner_w;
+    if (w > ii * 3.0 and h > ii * 3.0) {
+        var inner2 = ring_style;
+        inner2.corner_depth = @floatCast(@max(0.0, depth - ii));
+        windowPath(cr, ii, ii, w - ii * 2.0, h - ii * 2.0, inner2);
+    }
+    setSource(cr, style.double_border_inner, 1.0);
+    c.cairo_fill(cr);
+
+    c.cairo_set_fill_rule(cr, c.CAIRO_FILL_RULE_WINDING);
+    return surface;
+}
+
 /// Return the raw ARGB32 pixel slice and stride for a Cairo surface.
 pub fn surfacePixels(surface: *c.cairo_surface_t) struct { pixels: []const u8, width: i32, height: i32, stride: i32 } {
     const stride = c.cairo_image_surface_get_stride(surface);

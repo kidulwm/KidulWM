@@ -311,6 +311,49 @@ pub const SlideDeck = struct {
         std.log.info("SlideDeck: overview entered (focused_index={d}, slides={d})", .{ self.focused_index, self.slides.items.len });
     }
 
+    /// Recency position of a slide among unparked slides (0 = top-left =
+    /// the focused slide). Returns null for parked slides or bad indices.
+    pub fn recencyPos(self: *const SlideDeck, slide_index: usize) ?usize {
+        if (slide_index >= self.slides.items.len) return null;
+        if (self.slides.items[slide_index].parked) return null;
+        var pos: usize = 0;
+        var i: isize = @intCast(self.focused_index);
+        while (i >= 0) : (i -= 1) {
+            const idx: usize = @intCast(i);
+            if (self.slides.items[idx].parked) continue;
+            if (idx == slide_index) return pos;
+            pos += 1;
+        }
+        var j: usize = self.slides.items.len;
+        while (j > self.focused_index + 1) {
+            j -= 1;
+            if (self.slides.items[j].parked) continue;
+            if (j == slide_index) return pos;
+            pos += 1;
+        }
+        return null;
+    }
+
+    /// Inverse of recencyPos: slide index at recency position pos, or null.
+    pub fn slideIndexAtRecency(self: *const SlideDeck, pos: usize) ?usize {
+        var p: usize = 0;
+        var i: isize = @intCast(self.focused_index);
+        while (i >= 0) : (i -= 1) {
+            const idx: usize = @intCast(i);
+            if (self.slides.items[idx].parked) continue;
+            if (p == pos) return idx;
+            p += 1;
+        }
+        var j: usize = self.slides.items.len;
+        while (j > self.focused_index + 1) {
+            j -= 1;
+            if (self.slides.items[j].parked) continue;
+            if (p == pos) return j;
+            p += 1;
+        }
+        return null;
+    }
+
     /// Exit the overview lens back to normal row layout. Focus unchanged.
     pub fn exitOverview(self: *SlideDeck) void {
         if (self.view_mode == .normal) return;

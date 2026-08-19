@@ -14,6 +14,8 @@ const slidedeck = @import("core/slidedeck.zig");
 const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
+const chrome_renderer = @import("render/chrome.zig");
+const cairo = @import("dm").c;
 const ui = @import("./ui/tray.zig");
 const spyglass_mod = @import("./ui/spyglass.zig");
 const keybinds = @import("config/keybinds.zig");
@@ -155,6 +157,10 @@ pub const Server = struct {
 
     tray: ui.Tray,
     spyglass: ?*spyglass_mod.Spyglass = null,
+    // Overview lens: virtual cursor (recency position among unparked minis)
+    // and the double-border ring node drawn around the cursor's mini.
+    overview_cursor: usize = 0,
+    overview_ring: ?*wlr.SceneBuffer = null,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
     chrome_style_generation: u32,
@@ -750,7 +756,12 @@ pub const Server = struct {
     pub fn overviewToggle(self: *Server) void {
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
+        if (deck.view_mode == .normal) {
+            // Open with the virtual cursor on the top-left cell (recency 0).
+            self.overview_cursor = 0;
+        }
         deck.toggleOverview();
+        if (deck.view_mode == .normal) self.destroyOverviewRing();
         self.requestLayout();
     }
 
@@ -759,22 +770,85 @@ pub const Server = struct {
         return self.currentDeck();
     }
 
-    /// Enter in overview: accept the currently focused slide (unparking if
-    /// needed) and exit the lens.
+    /// Move the overview virtual cursor one step. dir: -1 left/prev, +1
+    /// right/next, -2 up a row, +2 down a row. Wraps within the unparked set.
+    pub fn overviewMoveCursor(self: *Server, dir: i32) void {
+        const deck = self.currentDeck();
+        if (deck.view_mode != .overview) return;
+        const n = deck.unparkedCount();
+        if (n == 0) return;
+        const cols: usize = slidedeck.SlideDeck.overview_cols;
+        const cur: isize = @intCast(self.overview_cursor);
+        var next: isize = switch (dir) {
+            -1 => cur - 1,
+            1 => cur + 1,
+            -2 => cur - @as(isize, @intCast(cols)),
+            2 => cur + @as(isize, @intCast(cols)),
+            else => cur,
+        };
+        const total: isize = @intCast(n);
+        next = @mod(next, total);
+        self.overview_cursor = @intCast(next);
+        self.requestLayout();
+    }
+
+    /// Draw (or redraw) the double-border ring around the cursor's mini.
+    pub fn updateOverviewRing(self: *Server) void {
+        self.destroyOverviewRing();
+        const deck = self.currentDeck();
+        if (deck.view_mode != .overview) return;
+        const idx = deck.slideIndexAtRecency(self.overview_cursor) orelse return;
+        const r = deck.overviewTargetForSlide(idx);
+        if (r.width == 0) return;
+        var scale: u32 = 1;
+        if (self.focused_output) |output| {
+            scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        } else if (self.outputs.first()) |output| {
+            scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        }
+        const surface = chrome_renderer.renderMiniRing(self.theme, @intCast(r.width), @intCast(r.height), scale) orelse return;
+        defer cairo.cairo_surface_destroy(surface);
+        const pixels = chrome_renderer.surfacePixels(surface);
+        const buffer = DataBuffer.create(pixels.pixels, pixels.width, pixels.height, pixels.stride) catch return;
+        const scene_buffer = self.overlay_tree.createSceneBuffer(buffer) catch return;
+        scene_buffer.node.setPosition(r.x, r.y);
+        scene_buffer.node.raiseToTop();
+        self.overview_ring = scene_buffer;
+    }
+
+    fn destroyOverviewRing(self: *Server) void {
+        if (self.overview_ring) |ring| {
+            ring.node.destroy();
+            self.overview_ring = null;
+        }
+    }
+
+    /// Public wrapper so the keyboard handler can drop the ring on Esc.
+    pub fn destroyOverviewRingPub(self: *Server) void {
+        self.destroyOverviewRing();
+    }
+
+    /// Enter in overview: accept the slide under the virtual cursor (unparking
+    /// if needed) and exit the lens.
     pub fn overviewAcceptFocused(self: *Server) void {
         const deck = self.currentDeck();
         if (deck.view_mode != .overview) return;
         if (deck.slides.items.len == 0) {
             deck.exitOverview();
+            self.destroyOverviewRing();
             self.requestLayout();
             return;
         }
-        const idx = @min(deck.focused_index, deck.slides.items.len - 1);
+        const idx = deck.slideIndexAtRecency(self.overview_cursor) orelse blk: {
+            // Cursor on empty space (e.g. all parked) — fall back to focused.
+            break :blk @min(deck.focused_index, deck.slides.items.len - 1);
+        };
         _ = deck.unparkIndex(idx);
         deck.focused_index = idx;
         deck.empty_slot = .none;
         const win_id = deck.slides.items[idx].window_id;
         deck.exitOverview();
+        self.destroyOverviewRing();
         self.focused_window_id = win_id;
         if (self.windowById(win_id)) |window| {
             if (window.toplevel.base.surface.mapped) {
@@ -1063,6 +1137,13 @@ pub const Server = struct {
 
         if (!any_slides or (active_deck.empty_slot != .none and active_deck.view_mode == .normal)) {
             self.clearFocus();
+        }
+
+        // Overview lens: redraw the double-border ring around the cursor mini.
+        if (active_deck.view_mode == .overview) {
+            self.updateOverviewRing();
+        } else if (self.overview_ring != null) {
+            self.destroyOverviewRing();
         }
 
         self.last_focused_slide_id = current_focused_slide_id;
@@ -1502,6 +1583,7 @@ pub const Server = struct {
                 deck.empty_slot = .none;
                 const win_id = deck.slides.items[idx].window_id;
                 deck.exitOverview();
+                self.destroyOverviewRing();
                 self.focused_window_id = win_id;
                 if (self.windowById(win_id)) |window| {
                     if (window.toplevel.base.surface.mapped) {
@@ -1510,6 +1592,7 @@ pub const Server = struct {
                 }
             } else {
                 deck.exitOverview();
+                self.destroyOverviewRing();
             }
             self.requestLayout();
             return true;

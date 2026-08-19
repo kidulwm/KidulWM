@@ -32,6 +32,15 @@ pub const Style = struct {
     peek_label_font_size: f32 = 15.0,
     peek_label_inset: i32 = 10,
 
+    // Double-border language (locked 2026-08-19, Disney pattern trial on the
+    // overview mini): light outer ring, dark inner ring, no border at all on
+    // non-focused tiles. If it reads clean at mini scale it graduates to the
+    // house style for cards/placeholders in a later coordinated pass.
+    double_border_outer: Color = Color.fromHex(0x948e7b), // gold — the light ring
+    double_border_inner: Color = Color.fromHex(0x0a0a0b), // near-black — the dark ring
+    double_border_outer_w: f32 = 2.0,
+    double_border_inner_w: f32 = 3.0,
+
     tray_font_size: f32 = 16.0,
     tray_text_color: Color = Color.fromHex(0x948e7b),
     tray_text_focused_color: Color = Color.fromHex(0xb8b09b),
