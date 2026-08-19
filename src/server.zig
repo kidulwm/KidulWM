@@ -754,6 +754,36 @@ pub const Server = struct {
         self.requestLayout();
     }
 
+    /// currentDeck, made public for input handlers (overview Esc/Enter routing).
+    pub fn currentDeckPub(self: *Server) *slidedeck.SlideDeck {
+        return self.currentDeck();
+    }
+
+    /// Enter in overview: accept the currently focused slide (unparking if
+    /// needed) and exit the lens.
+    pub fn overviewAcceptFocused(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.view_mode != .overview) return;
+        if (deck.slides.items.len == 0) {
+            deck.exitOverview();
+            self.requestLayout();
+            return;
+        }
+        const idx = @min(deck.focused_index, deck.slides.items.len - 1);
+        _ = deck.unparkIndex(idx);
+        deck.focused_index = idx;
+        deck.empty_slot = .none;
+        const win_id = deck.slides.items[idx].window_id;
+        deck.exitOverview();
+        self.focused_window_id = win_id;
+        if (self.windowById(win_id)) |window| {
+            if (window.toplevel.base.surface.mapped) {
+                self.focusWindow(window);
+            }
+        }
+        self.requestLayout();
+    }
+
     /// Park (or unpark) the focused slide. Parked slides stay alive in the deck
     /// but are hidden from normal layout and skipped by navigation. Parking the
     /// only slide is refused (ruling 2026-08-19). When the last unparked slide
@@ -1460,6 +1490,30 @@ pub const Server = struct {
     }
 
     pub fn handlePointerClick(self: *Server, x: f64, y: f64) bool {
+        const deck = self.currentDeck();
+        if (deck.view_mode == .overview) {
+            // Overview click: focus the mini under the cursor (unparking if
+            // needed) and exit the lens. Empty space just exits.
+            const xi: i32 = @intFromFloat(x);
+            const yi: i32 = @intFromFloat(y);
+            if (deck.miniAtPoint(xi, yi)) |idx| {
+                _ = deck.unparkIndex(idx);
+                deck.focused_index = idx;
+                deck.empty_slot = .none;
+                const win_id = deck.slides.items[idx].window_id;
+                deck.exitOverview();
+                self.focused_window_id = win_id;
+                if (self.windowById(win_id)) |window| {
+                    if (window.toplevel.base.surface.mapped) {
+                        self.focusWindow(window);
+                    }
+                }
+            } else {
+                deck.exitOverview();
+            }
+            self.requestLayout();
+            return true;
+        }
         if (self.spyglass) |sg| {
             if (sg.handlePointerClick(x, y)) |side| {
                 self.activateSpyglass(side);

@@ -394,6 +394,22 @@ pub const SlideDeck = struct {
         }
     }
 
+    /// Hit-test: which mini (deck index) contains output-local point (x, y)?
+    /// Uses the same grid math as overviewTargetForSlide, so hit == visual.
+    pub fn miniAtPoint(self: *SlideDeck, x: i32, y: i32) ?usize {
+        if (self.view_mode != .overview) return null;
+        for (self.slides.items, 0..) |_, i| {
+            const r = self.overviewTargetForSlide(i);
+            if (r.width == 0) continue;
+            if (x >= r.x and x < r.x + @as(i32, @intCast(r.width)) and
+                y >= r.y and y < r.y + @as(i32, @intCast(r.height)))
+            {
+                return i;
+            }
+        }
+        return null;
+    }
+
     /// Return the rectangle for the slide at `slide_index` relative to the
     /// currently focused slide.  Deeper slides are pushed one full screen-width
     /// (or height) off the edge so they can slide in cleanly.
@@ -648,6 +664,33 @@ test "toggleOverview round-trips" {
     defer empty.deinit();
     empty.enterOverview();
     try std.testing.expectEqual(ViewMode.normal, empty.view_mode);
+}
+
+test "miniAtPoint hit-tests the grid" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(1000, 500, 8, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.addWindow(1);
+    deck.addWindow(2);
+    deck.addWindow(3);
+
+    // Not in overview: no hits.
+    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 50));
+
+    deck.enterOverview();
+    // Grid: band x=158,y=8,w=684,h=484; 2 cols; mini 310x155 at (174,24) and (516,24).
+    // Slide order: 1, 3, 2 — idx0=(174,24), idx1=(516,24), idx2=(174,211).
+    try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(200, 50));
+    try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(550, 50));
+    try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(200, 250));
+    // Gap between minis: no hit.
+    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(490, 50));
+    // Outside band: no hit.
+    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(50, 50));
+    // Below the grid: no hit.
+    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 499));
 }
 
 fn expectApproxEq(a: f32, b: f32) !void {

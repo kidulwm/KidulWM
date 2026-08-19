@@ -104,6 +104,22 @@ const KeyboardDevice = struct {
                 if (handleAction(server, a)) return;
             }
         }
+        // Overview lens owns Esc and Enter while open.
+        if (server.currentDeckPub().view_mode == .overview) {
+            switch (sym) {
+                xkb.Keysym.Escape => {
+                    server.currentDeckPub().exitOverview();
+                    server.requestLayout();
+                    return;
+                },
+                xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
+                    // Enter = focus the previously focused mini (Task 3 pass one).
+                    server.overviewAcceptFocused();
+                    return;
+                },
+                else => return, // swallow all other keys while the lens is open
+            }
+        }
         // Cards consume arrow/navigation/typing before clients while open.
         if (server.tray.calendar_card_open or server.tray.weather_card_open or server.tray.media_card_open or server.tray.files_card_open) {
             if (server.tray.handleMediaCardKey(sym)) return;
