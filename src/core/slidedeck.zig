@@ -311,16 +311,16 @@ pub const SlideDeck = struct {
         std.log.info("SlideDeck: overview entered (focused_index={d}, slides={d})", .{ self.focused_index, self.slides.items.len });
     }
 
-    /// Recency position of a slide among unparked slides (0 = top-left =
-    /// the focused slide). The deck's center-out insert leaves it ordered
-    /// [oldest .. newest] left-to-right with focus on the newest, so recency
-    /// walks focus -> tail (newest first), then focus-1 down to 0 (the older
-    /// tail), keeping the grid newest-first left-to-right, top row first.
+    /// Recency position of a slide among unparked slides (0 = top-left).
+    /// The walk starts at the focused slide if unparked, else the nearest
+    /// unparked slide to its right, then left — the raw focused_index may
+    /// point at a parked slide, and a null cursor position breaks the whole
+    /// lens (no inflate, no ring).
     pub fn recencyPos(self: *const SlideDeck, slide_index: usize) ?usize {
         if (slide_index >= self.slides.items.len) return null;
         if (self.slides.items[slide_index].parked) return null;
         var pos: usize = 0;
-        // Walk focus .. tail (newest first).
+        // Walk focus .. tail (newest first), skipping parked.
         var i: usize = self.focused_index;
         while (i < self.slides.items.len) : (i += 1) {
             if (self.slides.items[i].parked) continue;

@@ -50,6 +50,8 @@ pub const Output = struct {
     frame: wl.Listener(*wlr.Output),
     destroy: wl.Listener(*wlr.Output),
     deck: slidedeck.SlideDeck,
+    /// Overview lens ring node for THIS output's deck (per-output by ruling).
+    overview_ring: ?*wlr.SceneBuffer = null,
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -60,6 +62,7 @@ pub const Output = struct {
             .frame = wl.Listener(*wlr.Output).init(handleFrame),
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
             .deck = slidedeck.SlideDeck.init(server.allocator),
+            .overview_ring = null,
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -167,10 +170,10 @@ pub const Server = struct {
 
     tray: ui.Tray,
     spyglass: ?*spyglass_mod.Spyglass = null,
-    // Overview lens: virtual cursor (recency position among unparked minis)
-    // and the double-border ring node drawn around the cursor's mini.
+    // Overview lens: virtual cursor (recency position among unparked minis).
+    // The ring node lives per-output (Output.overview_ring) — the lens is
+    // per-output by ruling.
     overview_cursor: usize = 0,
-    overview_ring: ?*wlr.SceneBuffer = null,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
     chrome_style_generation: u32,
@@ -805,47 +808,71 @@ pub const Server = struct {
     /// Draw (or redraw) the single-border debug ring around the cursor's mini.
     /// Pairs with the 6% inflate as the second focus indicator; the double-
     /// border language graduates once this plain ring is proven on screen.
+    /// Per-output state lives on the Output (lens is per-output by ruling).
     pub fn updateOverviewRing(self: *Server) void {
-        self.destroyOverviewRing();
+        // Destroy any stale ring on any output first.
+        var cit = self.outputs.iterator(.forward);
+        while (cit.next()) |output| {
+            if (output.overview_ring) |ring| {
+                ring.node.destroy();
+                output.overview_ring = null;
+            }
+        }
         // Find the deck the lens is actually open on (per-output ownership).
-        var deck: *slidedeck.SlideDeck = &self.deck;
-        var found = self.deck.view_mode == .overview;
+        var deck: ?*slidedeck.SlideDeck = null;
+        var lens_output: ?*Output = null;
         var oit = self.outputs.iterator(.forward);
         while (oit.next()) |output| {
             if (output.deck.view_mode == .overview) {
                 deck = &output.deck;
-                found = true;
+                lens_output = output;
             }
         }
-        if (!found) return;
-        const idx = deck.slideIndexAtRecency(self.overview_cursor) orelse {
-            std.log.info("KidulWM: overview ring: no slide at cursor {d}", .{self.overview_cursor});
+        if (self.deck.view_mode == .overview) deck = &self.deck;
+        const d = deck orelse return;
+        const idx = d.slideIndexAtRecency(self.overview_cursor) orelse {
+            std.log.info("KidulWM: overview ring: no slide at cursor {d} (unparked={d})", .{ self.overview_cursor, d.unparkedCount() });
             return;
         };
         // Use the inflated target so the ring hugs the cursor mini, not the
         // plain cell rect.
-        const r = deck.overviewTargetForSlideInflated(idx, idx);
+        const r = d.overviewTargetForSlideInflated(idx, idx);
         if (r.width == 0) return;
         var scale: u32 = 1;
-        if (self.focused_output) |output| {
+        if (lens_output) |output| {
             scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
         } else if (self.outputs.first()) |output| {
             scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
         }
+        std.log.info("KidulWM: overview ring draw idx={d} rect={d},{d} {d}x{d} scale={d}", .{ idx, r.x, r.y, r.width, r.height, scale });
         const surface = chrome_renderer.renderMiniRing(self.theme, @intCast(r.width), @intCast(r.height), scale) orelse return;
         defer cairo.cairo_surface_destroy(surface);
         const pixels = chrome_renderer.surfacePixels(surface);
         const buffer = DataBuffer.create(pixels.pixels, pixels.width, pixels.height, pixels.stride) catch return;
         const scene_buffer = self.overlay_tree.createSceneBuffer(buffer) catch return;
-        scene_buffer.node.setPosition(r.x, r.y);
+        // Ring rect is output-local; add the output's position in the layout.
+        var ox: i32 = 0;
+        var oy: i32 = 0;
+        if (lens_output) |output| {
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            ox = box.x;
+            oy = box.y;
+        }
+        scene_buffer.node.setPosition(r.x + ox, r.y + oy);
         scene_buffer.node.raiseToTop();
-        self.overview_ring = scene_buffer;
+        if (lens_output) |output| {
+            output.overview_ring = scene_buffer;
+        }
     }
 
     fn destroyOverviewRing(self: *Server) void {
-        if (self.overview_ring) |ring| {
-            ring.node.destroy();
-            self.overview_ring = null;
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (output.overview_ring) |ring| {
+                ring.node.destroy();
+                output.overview_ring = null;
+            }
         }
     }
 
@@ -1172,7 +1199,7 @@ pub const Server = struct {
         // is the second indicator; ring is the one under test.
         if (active_deck.view_mode == .overview) {
             self.updateOverviewRing();
-        } else if (self.overview_ring != null) {
+        } else {
             self.destroyOverviewRing();
         }
 
