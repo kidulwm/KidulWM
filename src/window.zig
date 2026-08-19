@@ -55,6 +55,7 @@ pub const Window = struct {
     map: wl.Listener(void),
     unmap: wl.Listener(void),
     destroy: wl.Listener(void),
+    toplevel_destroy: wl.Listener(void),
     commit: wl.Listener(*wlr.Surface),
     set_title: wl.Listener(void),
     set_app_id: wl.Listener(void),
@@ -91,6 +92,7 @@ pub const Window = struct {
             .map = wl.Listener(void).init(handleMap),
             .unmap = wl.Listener(void).init(handleUnmap),
             .destroy = wl.Listener(void).init(handleDestroy),
+            .toplevel_destroy = wl.Listener(void).init(handleToplevelDestroy),
             .commit = wl.Listener(*wlr.Surface).init(handleCommit),
             .set_title = wl.Listener(void).init(handleSetTitle),
             .set_app_id = wl.Listener(void).init(handleSetAppId),
@@ -99,6 +101,7 @@ pub const Window = struct {
         window.map.link.init();
         window.unmap.link.init();
         window.destroy.link.init();
+        window.toplevel_destroy.link.init();
         window.commit.link.init();
         window.set_title.link.init();
         window.set_app_id.link.init();
@@ -107,6 +110,12 @@ pub const Window = struct {
         toplevel.base.surface.events.map.add(&window.map);
         toplevel.base.surface.events.unmap.add(&window.unmap);
         toplevel.base.events.destroy.add(&window.destroy);
+        // wlroots asserts every toplevel signal's listener_list is empty at the
+        // END of the TOPLEVEL destroy emission (destroy_xdg_toplevel), which
+        // runs BEFORE the base xdg_surface destroy signal. The detach must be
+        // complete by the time toplevel.events.destroy finishes — so listen on
+        // the toplevel destroy itself and do the teardown there.
+        toplevel.events.destroy.add(&window.toplevel_destroy);
         toplevel.base.surface.events.commit.add(&window.commit);
         toplevel.events.set_title.add(&window.set_title);
         toplevel.events.set_app_id.add(&window.set_app_id);
@@ -479,6 +488,49 @@ pub const Window = struct {
         window.server.requestLayout();
     }
 
+    /// Detach every listener attached to the toplevel/surface. Safe to call
+    /// more than once: the wayland-zig Link.remove() nulls prev/next, so a
+    /// second call would null-deref — guard on prev != null.
+    /// Must run before wlroots teardown (wl_client_destroy -> destroy_xdg_toplevel)
+    /// asserts the signal lists are empty; the assert fires at the END of the
+    /// toplevel destroy emission, so the detach must happen inside a listener
+    /// on toplevel.events.destroy — not base.events.destroy, which runs later.
+    fn detachListeners(window: *Window) void {
+        if (window.set_title.link.prev != null) window.set_title.link.remove();
+        if (window.set_app_id.link.prev != null) window.set_app_id.link.remove();
+        if (window.map.link.prev != null) window.map.link.remove();
+        if (window.unmap.link.prev != null) window.unmap.link.remove();
+        if (window.commit.link.prev != null) window.commit.link.remove();
+        if (window.destroy.link.prev != null) window.destroy.link.remove();
+        if (window.toplevel_destroy.link.prev != null) window.toplevel_destroy.link.remove();
+    }
+
+    /// wlroots 0.20 teardown order on client disconnect:
+    ///   destroy_xdg_toplevel:
+    ///     1. wlr_surface_unmap (may early-return if !mapped)
+    ///     2. emit toplevel->events.destroy        <- we detach HERE
+    ///     3. assert all toplevel listener lists empty
+    ///   ... then destroy_xdg_surface:
+    ///     4. emit surface->events.destroy          <- base destroy, too late
+    /// We free the Window here because the toplevel pointer is about to be
+    /// freed by wlroots; the base surface destroy that follows is a no-op for
+    /// us once the Window is gone (we've already removed from the deck).
+    fn handleToplevelDestroy(listener: *wl.Listener(void)) void {
+        const window: *Window = @fieldParentPtr("toplevel_destroy", listener);
+        std.log.info("KidulWM: toplevel destroyed", .{});
+        if (window.server.focused_window == window) {
+            window.server.clearFocus();
+        }
+        if (window.chrome_tree) |tree| {
+            tree.node.destroy();
+            window.chrome_tree = null;
+        }
+        window.detachListeners();
+        window.server.deckForWindow(window).removeWindow(window.id);
+        window.link.remove();
+        window.server.allocator.destroy(window);
+    }
+
     fn handleUnmap(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("unmap", listener);
         std.log.info("KidulWM: window unmapped", .{});
@@ -492,26 +544,18 @@ pub const Window = struct {
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
+        // Listener detach + Window free happen in handleToplevelDestroy, which
+        // fires before wlroots' teardown asserts. Do NOT detach here — unmap
+        // can fire for transient reasons (minimize-style flows) and re-map later.
         window.server.requestLayout();
     }
 
     fn handleDestroy(listener: *wl.Listener(void)) void {
-        const window: *Window = @fieldParentPtr("destroy", listener);
-        std.log.info("KidulWM: window destroyed", .{});
-        if (window.server.focused_window == window) {
-            window.server.clearFocus();
-        }
-        // Detach all listeners; wlroots asserts signal lists are empty when the
-        // toplevel/surface objects are later destroyed.
-        window.set_title.link.remove();
-        window.set_app_id.link.remove();
-        window.map.link.remove();
-        window.unmap.link.remove();
-        window.commit.link.remove();
-        window.destroy.link.remove(); // remove self before toplevel is destroyed
-        window.server.deckForWindow(window).removeWindow(window.id);
-        window.link.remove();
-        window.server.allocator.destroy(window);
+        // Base xdg_surface destroy — fires AFTER destroy_xdg_toplevel, by which
+        // point the Window is already freed by handleToplevelDestroy. This
+        // listener was detached in detachListeners before the free, so this
+        // function should never actually be called; if it is, do nothing.
+        _ = listener;
     }
 
     fn handleCommit(listener: *wl.Listener(*wlr.Surface), surface: *wlr.Surface) void {
