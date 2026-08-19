@@ -352,6 +352,9 @@ pub const SlideDeck = struct {
         // Preserve the output aspect ratio for the mini height.
         const mini_w: u32 = cell_w -| 2 * overview_pad;
         const mini_h: u32 = @intFromFloat(@as(f32, @floatFromInt(mini_w)) * @as(f32, @floatFromInt(self.height)) / @as(f32, @floatFromInt(self.width)));
+        // Row pitch: mini + pad top AND bottom, so vertical gap matches the
+        // horizontal gap between minis.
+        const row_pitch: i32 = @intCast(mini_h + 2 * overview_pad);
 
         // Build the unparked order (row-major from index 0) and the parked
         // order separately; parked minis live on the last row.
@@ -366,7 +369,7 @@ pub const SlideDeck = struct {
             const row: i32 = @intCast(pos / overview_cols);
             return .{
                 .x = area.x + col * cell_w_i + pad,
-                .y = area.y + row * (@as(i32, @intCast(mini_h)) + pad) + pad,
+                .y = area.y + row * row_pitch + pad,
                 .width = mini_w,
                 .height = mini_h,
             };
@@ -384,7 +387,7 @@ pub const SlideDeck = struct {
             const row: i32 = unparked_rows + @divTrunc(@as(i32, @intCast(pos)), overview_cols);
             return .{
                 .x = area.x + col * cell_w_i + pad,
-                .y = area.y + row * (@as(i32, @intCast(mini_h)) + pad) + pad,
+                .y = area.y + row * row_pitch + pad,
                 .width = mini_w,
                 .height = mini_h,
             };
@@ -612,16 +615,16 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     try std.testing.expectEqual(@as(i32, 158 + 342 + 16), m1.x);
     try std.testing.expectEqual(@as(i32, 24), m1.y);
 
-    // Third unparked wraps to row 1: y = 8 + 1*(155+16)+16 = 195.
+    // Third unparked wraps to row 1: pitch = 155+32 = 187, y = 8+187+16 = 211.
     const m3 = deck.overviewTargetForSlide(3);
     try std.testing.expectEqual(@as(i32, 158 + 16), m3.x);
-    try std.testing.expectEqual(@as(i32, 195), m3.y);
+    try std.testing.expectEqual(@as(i32, 211), m3.y);
 
     // Parked slide (idx2): unparked=3 -> 2 rows at 2 cols, parked row = 2,
-    // y = 8 + 2*(155+16)+16 = 366.
+    // y = 8 + 2*187 + 16 = 398.
     const m2 = deck.overviewTargetForSlide(2);
     try std.testing.expectEqual(@as(i32, 158 + 16), m2.x);
-    try std.testing.expectEqual(@as(i32, 366), m2.y);
+    try std.testing.expectEqual(@as(i32, 398), m2.y);
 
     // Exit restores normal mode, focus still unchanged.
     deck.exitOverview();
