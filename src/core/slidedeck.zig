@@ -325,10 +325,10 @@ pub const SlideDeck = struct {
         }
     }
 
-    /// Grid geometry constants for the overview lens (Task 2 pass one):
-    /// 4 columns, minis at 1/4 output width, 16px padding, parked slides in
-    /// a separate bottom row.
-    pub const overview_cols = 4;
+    /// Grid geometry for the overview lens: minis live INSIDE the focused
+    /// slide area (the split.focus band — peeks stay clear, per Barticus
+    /// 2026-08-19). 3 columns, 16px padding, parked slides in a bottom row.
+    pub const overview_cols = 3;
     pub const overview_pad = 16;
 
     /// Return the mini grid rect for slide `slide_index` in overview mode.
@@ -338,11 +338,17 @@ pub const SlideDeck = struct {
         if (slide_index >= self.slides.items.len or self.width == 0) {
             return .{ .x = 0, .y = 0, .width = 0, .height = 0 };
         }
+        // Grid area = the focused slide band of the normal layout (inset by
+        // the deck gap, matching where the focused slide actually sits).
+        const area = switch (self.orientation) {
+            .horizontal => self.horizontalTarget(0).inset(self.gap),
+            .vertical => self.verticalTarget(0).inset(self.gap),
+        };
         const pad: i32 = @intCast(overview_pad);
-        const cell_w_i: i32 = @intCast(self.width / overview_cols);
-        const cell_w: u32 = self.width / overview_cols;
-        // Preserve aspect ratio of the output for the mini height.
-        const mini_w: u32 = cell_w - 2 * overview_pad;
+        const cell_w: u32 = area.width / overview_cols;
+        const cell_w_i: i32 = @intCast(cell_w);
+        // Preserve the output aspect ratio for the mini height.
+        const mini_w: u32 = cell_w -| 2 * overview_pad;
         const mini_h: u32 = @intFromFloat(@as(f32, @floatFromInt(mini_w)) * @as(f32, @floatFromInt(self.height)) / @as(f32, @floatFromInt(self.width)));
 
         // Build the unparked order (row-major from index 0) and the parked
@@ -357,8 +363,8 @@ pub const SlideDeck = struct {
             const col: i32 = @intCast(pos % overview_cols);
             const row: i32 = @intCast(pos / overview_cols);
             return .{
-                .x = col * cell_w_i + pad,
-                .y = row * (@as(i32, @intCast(mini_h)) + pad) + pad,
+                .x = area.x + col * cell_w_i + pad,
+                .y = area.y + row * (@as(i32, @intCast(mini_h)) + pad) + pad,
                 .width = mini_w,
                 .height = mini_h,
             };
@@ -375,8 +381,8 @@ pub const SlideDeck = struct {
             const col: i32 = @intCast(pos % overview_cols);
             const row: i32 = unparked_rows + @divTrunc(@as(i32, @intCast(pos)), overview_cols);
             return .{
-                .x = col * cell_w_i + pad,
-                .y = row * (@as(i32, @intCast(mini_h)) + pad) + pad,
+                .x = area.x + col * cell_w_i + pad,
+                .y = area.y + row * (@as(i32, @intCast(mini_h)) + pad) + pad,
                 .width = mini_w,
                 .height = mini_h,
             };
@@ -591,27 +597,28 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     // Lens never moves focus.
     try std.testing.expectEqual(saved_focus, deck.focused_index);
 
-    // 1000x500 output, 4 cols: cell_w=250, mini_w=250-32=218, mini_h=218*500/1000=109.
+    // 1000x500, gap 8, split .15/.7/.15: focus band x=158, y=8, w=684, h=484.
+    // 3 cols -> cell 228, mini_w=228-32=196, mini_h=196*500/1000=98.
     // Unparked order (deck order): idx0 (win1), idx1 (win4), idx3 (win2).
     const m0 = deck.overviewTargetForSlide(0);
-    try std.testing.expectEqual(@as(i32, 16), m0.x);
-    try std.testing.expectEqual(@as(i32, 16), m0.y);
-    try std.testing.expectEqual(@as(u32, 218), m0.width);
-    try std.testing.expectEqual(@as(u32, 109), m0.height);
+    try std.testing.expectEqual(@as(i32, 158 + 16), m0.x);
+    try std.testing.expectEqual(@as(i32, 8 + 16), m0.y);
+    try std.testing.expectEqual(@as(u32, 196), m0.width);
+    try std.testing.expectEqual(@as(u32, 98), m0.height);
 
     const m1 = deck.overviewTargetForSlide(1);
-    try std.testing.expectEqual(@as(i32, 250 + 16), m1.x);
-    try std.testing.expectEqual(@as(i32, 16), m1.y);
+    try std.testing.expectEqual(@as(i32, 158 + 228 + 16), m1.x);
+    try std.testing.expectEqual(@as(i32, 24), m1.y);
 
     const m3 = deck.overviewTargetForSlide(3);
-    try std.testing.expectEqual(@as(i32, 500 + 16), m3.x);
-    try std.testing.expectEqual(@as(i32, 16), m3.y);
+    try std.testing.expectEqual(@as(i32, 158 + 456 + 16), m3.x);
+    try std.testing.expectEqual(@as(i32, 24), m3.y);
 
     // Parked slide (idx2) goes to the row below the unparked rows:
-    // unparked=3 -> 1 row, so parked row = 1, y = 1*(109+16)+16 = 141.
+    // unparked=3 -> 1 row, so parked row = 1, y = 8 + 1*(98+16)+16 = 138.
     const m2 = deck.overviewTargetForSlide(2);
-    try std.testing.expectEqual(@as(i32, 16), m2.x);
-    try std.testing.expectEqual(@as(i32, 141), m2.y);
+    try std.testing.expectEqual(@as(i32, 158 + 16), m2.x);
+    try std.testing.expectEqual(@as(i32, 138), m2.y);
 
     // Exit restores normal mode, focus still unchanged.
     deck.exitOverview();
