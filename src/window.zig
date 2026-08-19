@@ -383,6 +383,30 @@ pub const Window = struct {
         self.setSurfaceOffset(off_x, off_y);
     }
 
+    /// Overview mini: scale the whole surface tree down into the mini cell.
+    /// Unlike focus (which renders the buffer at native size and only clips
+    /// CSD), the mini must shrink the content to the target rect. Uses the
+    /// existing per-buffer setDestSize walk (proven path), then clips CSD.
+    pub fn setSurfaceForMini(self: *Window) void {
+        const surface = self.toplevel.base.surface;
+        if (!surface.mapped) return;
+        const geom = self.toplevel.base.geometry;
+        if (geom.width <= 0 or geom.height <= 0) return;
+
+        const target_w: i32 = @intFromFloat(@max(1.0, self.animation.target_w));
+        const target_h: i32 = @intFromFloat(@max(1.0, self.animation.target_h));
+
+        self.surface_tree.node.setPosition(0, 0);
+        self.setSurfaceDestSize(target_w, target_h);
+        self.applyContainment();
+    }
+
+    /// Reset any mini scaling when returning to normal layout. Destination
+    /// size of 0x0 means "render at native buffer size" in wlroots.
+    pub fn clearMiniScale(self: *Window) void {
+        self.setSurfaceDestSize(0, 0);
+    }
+
     /// Regenerate the compositor-drawn chrome overlay for this window.
     /// The overlay follows the layout target size and focus state, ensuring
     /// KidulWM owns the signature corner look regardless of client CSD.
@@ -574,9 +598,16 @@ pub const Window = struct {
             window.setSurfaceOffsetForFocus();
         }
 
-        // Do not request a full layout pass here: map/unmap already trigger layout,
-        // and running a full layout pass on every surface commit causes a
-        // configure storm once multiple XDG toplevels are mapped.
-        window.applyContainment();
+        // Live minis in overview must re-apply their scale on every commit —
+        // a fresh buffer replaces the one setDestSize was applied to.
+        const deck = window.server.deckForWindow(window);
+        if (deck.view_mode == .overview) {
+            window.setSurfaceForMini();
+        } else {
+            // Do not request a full layout pass here: map/unmap already trigger layout,
+            // and running a full layout pass on every surface commit causes a
+            // configure storm once multiple XDG toplevels are mapped.
+            window.applyContainment();
+        }
     }
 };

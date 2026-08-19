@@ -951,15 +951,15 @@ pub const Server = struct {
                     window.startTransition(self.current_transition_kind);
                 }
                 if (in_overview) {
-                    // Overview: every slide (parked included) is a live mini.
-                    // Containment clip still applies; no chrome on minis.
+                    // Overview: every slide (parked included) is a live mini,
+                    // surface scaled into its grid cell. No chrome on minis.
                     window.scene_tree.node.setEnabled(true);
-                    window.setSurfaceOffsetForFocus();
-                    window.applyContainment();
+                    window.setSurfaceForMini();
                     window.clearChrome();
                 } else if (is_focused) {
                     // Focused slide: full screen, chrome border, surface scaled to fit.
                     window.scene_tree.node.setEnabled(true);
+                    window.clearMiniScale();
                     if (size_changed) {
                         _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                     }
@@ -972,6 +972,7 @@ pub const Server = struct {
                 } else {
                     // Non-focused slides: disabled, no rendering, no chrome.
                     window.scene_tree.node.setEnabled(false);
+                    window.clearMiniScale();
                     window.clearChrome();
                 }
             }
@@ -1005,11 +1006,11 @@ pub const Server = struct {
                     }
                     if (headless_overview) {
                         window.scene_tree.node.setEnabled(true);
-                        window.setSurfaceOffsetForFocus();
-                        window.applyContainment();
+                        window.setSurfaceForMini();
                         window.clearChrome();
                     } else if (is_focused) {
                         window.scene_tree.node.setEnabled(true);
+                        window.clearMiniScale();
                         if (size_changed) {
                             _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
                         }
@@ -1023,6 +1024,7 @@ pub const Server = struct {
                         }
                     } else {
                         window.scene_tree.node.setEnabled(false);
+                        window.clearMiniScale();
                         window.clearChrome();
                     }
                 }
