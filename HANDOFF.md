@@ -21,6 +21,18 @@ the overview grid sizing and killed the parked-slide ghost.
 - **Row caps**: unparked max 2 rows, parked max 1 row visible. Extra slides
   computed but clipped by card edge (scrollable via keyboard arrows).
 
+## Vocabulary (locked)
+
+- **Terminal view** = **PARKED slides view**. The place where background
+  terminals go when Mod4+B'd. Not a separate mode — it's the overview
+  sentinel showing parked slides at the bottom row.
+- **Overview** = Mod4+Tab sentinel slide (end-of-rows). Shows unparked +
+  parked minis in a grid.
+- **Parked** = Ctrl+B / Mod4+B hidden slides, alive but invisible in normal
+  navigation. Visible in the overview.
+- **Terminal view** is NOT the normal deck view. The normal deck view is
+  just "the deck" or "normal mode".
+
 ## Known issues / WIP
 
 - **Grid breaks with >6 slides**: 9+ slides make the grid overlap. Needs
