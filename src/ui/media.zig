@@ -1254,6 +1254,23 @@ pub const MediaWidget = struct {
         const card_bg = style_.color_background.toF64();
         const scale_f: f64 = @as(f64, scale);
 
+        // Slide mode (out_click == null): wear the system chrome — corners
+        // + 2px focused ring, same tokens every other slide gets. Card
+        // callers keep their full-bleed fill.
+        const as_slide = (out_click == null);
+        const corner_r = @as(f64, style_.corner_depth) * scale_f;
+        if (as_slide) {
+            // Transparent outside the corner path.
+            c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+            c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+            c.cairo_paint(cr);
+            c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+            // Clip everything to the slide's corner shape.
+            c.cairo_save(cr);
+            mediaSlidePath(cr, 0, 0, w_d, h_d, corner_r, style_.corner_style);
+            c.cairo_clip(cr);
+        }
+
         // Full slide: fill background, no card frame.
         const bg4 = style_.color_card_mat.toF64();
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
@@ -1649,6 +1666,18 @@ pub const MediaWidget = struct {
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
+
+        // Slide chrome LAST: pop the corner clip, then the 2px focused ring
+        // at the buffer edge (same tokens as window chrome).
+        if (as_slide) {
+            c.cairo_restore(cr);
+            const bw = @as(f64, style_.border_width) * scale_f;
+            const half = bw * 0.5;
+            mediaSlidePath(cr, half, half, w_d - bw, h_d - bw, @max(0.0, corner_r - half), style_.corner_style);
+            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 1.0);
+            c.cairo_set_line_width(cr, bw);
+            c.cairo_stroke(cr);
+        }
     }
 
     fn drawEllipsizedText(_: *MediaWidget, cr: *c.cairo_t, text: []const u8, x: f64, y: f64, max_w: f64) void {
@@ -1698,6 +1727,45 @@ pub const MediaWidget = struct {
         c.cairo_close_path(cr);
     }
 };
+
+/// Slide chrome path: the system's corner treatment for a focused slide.
+/// Round = roundedRect at corner_depth, chamfer = clipped corners, square.
+fn mediaSlidePath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64, corner_style: style.Style.CornerStyle) void {
+    switch (corner_style) {
+        .round => roundedRectPath(cr, x, y, w, h, r),
+        .chamfer => chamferPath(cr, x, y, w, h, r),
+        .square => c.cairo_rectangle(cr, x, y, w, h),
+    }
+}
+
+fn roundedRectPath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
+    const rr = @min(r, w * 0.5, h * 0.5);
+    c.cairo_new_path(cr);
+    c.cairo_move_to(cr, x + rr, y);
+    c.cairo_line_to(cr, x + w - rr, y);
+    c.cairo_arc(cr, x + w - rr, y + rr, rr, -std.math.pi * 0.5, 0);
+    c.cairo_line_to(cr, x + w, y + h - rr);
+    c.cairo_arc(cr, x + w - rr, y + h - rr, rr, 0, std.math.pi * 0.5);
+    c.cairo_line_to(cr, x + rr, y + h);
+    c.cairo_arc(cr, x + rr, y + h - rr, rr, std.math.pi * 0.5, std.math.pi);
+    c.cairo_line_to(cr, x, y + rr);
+    c.cairo_arc(cr, x + rr, y + rr, rr, std.math.pi, std.math.pi * 1.5);
+    c.cairo_close_path(cr);
+}
+
+fn chamferPath(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, d: f64) void {
+    const dd = @min(d, w * 0.5, h * 0.5);
+    c.cairo_new_path(cr);
+    c.cairo_move_to(cr, x + dd, y);
+    c.cairo_line_to(cr, x + w - dd, y);
+    c.cairo_line_to(cr, x + w, y + dd);
+    c.cairo_line_to(cr, x + w, y + h - dd);
+    c.cairo_line_to(cr, x + w - dd, y + h);
+    c.cairo_line_to(cr, x + dd, y + h);
+    c.cairo_line_to(cr, x, y + h - dd);
+    c.cairo_line_to(cr, x, y + dd);
+    c.cairo_close_path(cr);
+}
 
 fn animationNowUs() u64 {
     var ts: unistd.timespec = std.mem.zeroes(unistd.timespec);

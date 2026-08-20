@@ -99,6 +99,12 @@ const KeyboardDevice = struct {
         ) > 0;
 
         if (mod4_active or ctrl_active) {
+            // Media slide owns Ctrl+Q (system quit) while open: closing the
+            // slide IS closing the focused surface.
+            if (server.mediaSlideOpenAnywhere() and ctrl_active and base_sym == xkb.Keysym.q) {
+                server.mediaSlideToggle();
+                return;
+            }
             const action = server.keybinds.match(mod4_active, ctrl_active, base_sym);
             if (action) |a| {
                 if (handleAction(server, a)) return;
