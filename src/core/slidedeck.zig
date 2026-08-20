@@ -554,20 +554,21 @@ test "horizontal slide targets fill the output" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(1000, 600, 8, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(1000, 600, 8, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(1);
     deck.addWindow(2);
     deck.addWindow(3);
 
-    // With three slides and focus in the middle, the focused slide should use
-    // the central 70% of the width minus the gap insets.
-    const focused = deck.targetForSlide(1);
-    try std.testing.expectEqual(@as(u32, 684), focused.width);
-    try std.testing.expectEqual(@as(i32, 158), focused.x);
+    // With three slides and focus on the newest (index 2), the focused slide
+    // should use the central 88% of the width minus the gap insets.
+    const focused = deck.targetForSlide(2);
+    try std.testing.expectEqual(@as(u32, 864), focused.width); // 1000*0.88 - 2*8
+    try std.testing.expectEqual(@as(i32, 68), focused.x); // 1000*0.06 + 8
 
-    const left = deck.targetForSlide(0);
-    try std.testing.expectEqual(@as(i32, 8), left.x);
-    try std.testing.expectEqual(@as(u32, 134), left.width);
+    // Index 1 is the left peek (delta=-1 from focus at 2).
+    const left = deck.targetForSlide(1);
+    try std.testing.expectEqual(@as(i32, -932), left.x); // -1000 + 60 + 8
+    try std.testing.expectEqual(@as(u32, 984), left.width); // 1000 - 2*8
 }
 
 test "insert at focused slide" {
@@ -575,16 +576,16 @@ test "insert at focused slide" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(10); // first slide at 0, focused
-    deck.addWindow(20); // insert to right of focus, focused
-    deck.addWindow(30); // insert to right of focus (index 1), focused
+    deck.addWindow(20); // insert to right of focus (index 1), focused
+    deck.addWindow(30); // insert to right of focus (index 2), focused
 
-    // Expect order: 10, 30, 20 with focus on 30
+    // Expect order: 10, 20, 30 with focus on 30 (index 2)
     try std.testing.expectEqual(deck.slides.items[0].window_id, 10);
-    try std.testing.expectEqual(deck.slides.items[1].window_id, 30);
-    try std.testing.expectEqual(deck.slides.items[2].window_id, 20);
-    try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
+    try std.testing.expectEqual(deck.slides.items[1].window_id, 20);
+    try std.testing.expectEqual(deck.slides.items[2].window_id, 30);
+    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
 }
 
 test "park focused moves focus to next unparked" {
@@ -592,28 +593,28 @@ test "park focused moves focus to next unparked" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(1000, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(1000, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(1);
     deck.addWindow(2);
     deck.addWindow(3);
-    // Deck order after center-out inserts: 1, 3, 2 — focused index 1 (window 3).
-    try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
-
-    // Park the focused slide (window 3 at index 1).
-    try std.testing.expect(deck.parkFocused());
-    try std.testing.expect(deck.slides.items[1].parked);
-    // Focus moves to the next unparked slide (index 2, window 2).
+    // Deck order after sequential right-of-focus inserts: 1, 2, 3 — focused index 2 (window 3).
     try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
+
+    // Park the focused slide (window 3 at index 2).
+    try std.testing.expect(deck.parkFocused());
+    try std.testing.expect(deck.slides.items[2].parked);
+    // Focus moves to the previous unparked slide (index 1, window 2).
+    try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
     try std.testing.expectEqual(@as(usize, 2), deck.unparkedCount());
 
-    // focusPrev from index 2 must skip parked index 1 and land on index 0.
+    // focusPrev from index 1 lands on index 0.
     deck.focusPrev();
     try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
     try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
 
-    // focusNext from index 0 must skip parked index 1 and land on index 2.
+    // focusNext from index 0 must skip parked index 2 and land on index 1.
     deck.focusNext();
-    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
+    try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
     try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
 
     // focusNext past the last unparked slide lands in the after_last slot.
@@ -621,8 +622,8 @@ test "park focused moves focus to next unparked" {
     try std.testing.expectEqual(EmptySlot.after_last, deck.empty_slot);
 
     // Unpark restores the slide at its old index.
-    try std.testing.expect(deck.unparkIndex(1));
-    try std.testing.expect(!deck.slides.items[1].parked);
+    try std.testing.expect(deck.unparkIndex(2));
+    try std.testing.expect(!deck.slides.items[2].parked);
     try std.testing.expectEqual(@as(usize, 3), deck.unparkedCount());
 }
 
@@ -631,7 +632,7 @@ test "park refuses on single-slide deck" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(42);
     try std.testing.expect(!deck.parkFocused());
     try std.testing.expect(!deck.slides.items[0].parked);
@@ -643,21 +644,21 @@ test "parked slide target is zero-width and hidden" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(1000, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(1000, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(1);
     deck.addWindow(2);
     deck.addWindow(3);
-    // Park the middle slide (index 1, currently focused).
+    // Park the focused slide (index 2, window 3).
     _ = deck.parkFocused();
 
-    const parked = deck.targetForSlide(1);
+    const parked = deck.targetForSlide(2);
     try std.testing.expectEqual(@as(u32, 0), parked.width);
     try std.testing.expect(parked.x < 0);
 
-    // Unparked slides keep normal targets: index 2 is now focused.
-    const focused = deck.targetForSlide(2);
+    // Unparked slides keep normal targets: index 1 is now focused.
+    const focused = deck.targetForSlide(1);
     try std.testing.expect(focused.width > 0);
-    try std.testing.expectEqual(@as(i32, 150), focused.x); // left_w = 1000*0.15, gap 0
+    try std.testing.expectEqual(@as(i32, 60), focused.x); // left_w = 1000*0.06, gap 0
 }
 
 test "focusWindowByIndex refuses parked slide" {
@@ -665,14 +666,14 @@ test "focusWindowByIndex refuses parked slide" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(1);
     deck.addWindow(2);
     deck.addWindow(3);
-    _ = deck.parkFocused(); // parks index 1
+    _ = deck.parkFocused(); // parks index 2 (window 3)
     deck.focusWindowByIndex(0);
     try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
-    deck.focusWindowByIndex(1); // parked — must not take focus
+    deck.focusWindowByIndex(2); // parked — must not take focus
     try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
 }
 
@@ -681,46 +682,47 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(1000, 500, 8, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(1000, 500, 8, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(1);
     deck.addWindow(2);
     deck.addWindow(3);
     deck.addWindow(4);
-    // Deck order: 1, 4, 3, 2 — focused index 1 (window 4).
+    // Deck order: 1, 2, 3, 4 — focused index 3 (window 4).
     const saved_focus = deck.focused_index;
-    // Park the slide at index 2 (window 3).
-    deck.slides.items[2].parked = true;
+    // Park the slide at index 1 (window 2).
+    deck.slides.items[1].parked = true;
 
     // Sentinel opened; focus moved onto the after_last slot. Grid math is
     // lens-independent (pure functions), so targets compute the same.
     deck.openOverviewSlide();
     try std.testing.expect(deck.overviewSlideOpen());
 
-    // 1000x500, gap 8, split .15/.7/.15: focus band x=158, y=8, w=684, h=484.
-    // 2 cols -> cell 342, mini_w=342-32=310, mini_h=310*500/1000=155.
-    // Deck [1,4,3,2], focused idx1 (win4). Recency (focus..tail, then down):
-    // idx1 (pos0, top-left), idx3? no — idx2 is PARKED so skipped: idx1, idx3, idx0.
-    const m1 = deck.overviewTargetForSlide(1);
-    try std.testing.expectEqual(@as(i32, 158 + 16), m1.x);
-    try std.testing.expectEqual(@as(i32, 8 + 16), m1.y);
-    try std.testing.expectEqual(@as(u32, 310), m1.width);
-    try std.testing.expectEqual(@as(u32, 155), m1.height);
-
-    // pos1 = idx3 (win2, tail).
+    // 1000x500, gap 8, split .06/.88/.06: focus band x=68, y=8, w=864, h=484.
+    // 2 cols -> cell 432, mini_w=432-32=400, mini_h=400*500/1000=200.
+    // Deck [1,2,3,4], focused idx3 (win4). Recency (focus..tail, then down):
+    // idx3 (pos0, top-left), idx2 (pos1), idx0 (pos2, older side).
+    // idx1 is PARKED so skipped in recency.
     const m3 = deck.overviewTargetForSlide(3);
-    try std.testing.expectEqual(@as(i32, 158 + 342 + 16), m3.x);
-    try std.testing.expectEqual(@as(i32, 24), m3.y);
+    try std.testing.expectEqual(@as(i32, 68 + 16), m3.x);
+    try std.testing.expectEqual(@as(i32, 8 + 16), m3.y);
+    try std.testing.expectEqual(@as(u32, 400), m3.width);
+    try std.testing.expectEqual(@as(u32, 200), m3.height);
 
-    // pos2 = idx0 (win1, older side) wraps to row 1: pitch 187, y = 8+187+16 = 211.
-    const m0 = deck.overviewTargetForSlide(0);
-    try std.testing.expectEqual(@as(i32, 158 + 16), m0.x);
-    try std.testing.expectEqual(@as(i32, 211), m0.y);
-
-    // Parked slide (idx2): unparked=3 -> 2 rows at 2 cols, parked row = 2,
-    // y = 8 + 2*187 + 16 = 398.
+    // pos1 = idx2 (win3).
     const m2 = deck.overviewTargetForSlide(2);
-    try std.testing.expectEqual(@as(i32, 158 + 16), m2.x);
-    try std.testing.expectEqual(@as(i32, 398), m2.y);
+    try std.testing.expectEqual(@as(i32, 68 + 432 + 16), m2.x);
+    try std.testing.expectEqual(@as(i32, 24), m2.y);
+
+    // pos2 = idx0 (win1, older side) wraps to row 1: pitch 232, y = 8+232+16 = 256.
+    const m0 = deck.overviewTargetForSlide(0);
+    try std.testing.expectEqual(@as(i32, 68 + 16), m0.x);
+    try std.testing.expectEqual(@as(i32, 256), m0.y);
+
+    // Parked slide (idx1): unparked=3 -> 2 rows at 2 cols, parked row = 2,
+    // y = 8 + 2*232 + 16 = 488.
+    const m1 = deck.overviewTargetForSlide(1);
+    try std.testing.expectEqual(@as(i32, 68 + 16), m1.x);
+    try std.testing.expectEqual(@as(i32, 488), m1.y);
 
     // Close restores the slide that opened it.
     deck.closeOverviewSlide();
@@ -733,7 +735,7 @@ test "sentinel toggle round-trips" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(800, 600, 0, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(1);
     deck.toggleOverviewSlide();
     try std.testing.expect(deck.overview_slide_open);
@@ -753,7 +755,7 @@ test "miniAtPoint hit-tests the grid" {
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
-    deck.sync(1000, 500, 8, .{ .left_peek = 0.15, .focus = 0.7, .right_peek = 0.15 }, .horizontal);
+    deck.sync(1000, 500, 8, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
     deck.addWindow(1);
     deck.addWindow(2);
     deck.addWindow(3);
@@ -762,11 +764,11 @@ test "miniAtPoint hit-tests the grid" {
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 50));
 
     deck.openOverviewSlide();
-    // Grid: band x=158,y=8,w=684,h=484; 2 cols; mini 310x155.
-    // Slide order: 1, 3, 2, focused idx1. Recency: idx1=(174,24), idx2=(516,24), idx0=(174,211).
-    try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(200, 50));
-    try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(550, 50));
-    try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(200, 250));
+    // Grid: band x=68,y=8,w=864,h=484; 2 cols; mini 400x200.
+    // Slide order: 1, 2, 3, focused idx2. Recency: idx2=(84,24), idx1=(516,24), idx0=(84,256).
+    try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(200, 50));
+    try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(550, 50));
+    try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(200, 300));
     // Gap between minis: no hit.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(490, 50));
     // Outside band: no hit.
