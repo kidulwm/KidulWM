@@ -1,3 +1,50 @@
+# KidulWM HANDOFF — Aug 20 2026 (session 8, overview grid + ghost fix)
+
+## Session summary
+
+Reset from the 01e065d rows mess back to 638e041 sentinel pivot. Fixed stale
+slidedeck tests (0.06/0.88/0.06 split, current addWindow semantics). Repaired
+the overview grid sizing and killed the parked-slide ghost.
+
+## What landed today
+
+- **Test suite fixed**: 9/9 passing. Tests now match current split ratios and
+  insert behavior. Stale tests were the false signal that made 638e041 look
+  broken when it was actually the tests that were wrong.
+- **Overview grid sizing**: Mini size is now FIXED (never changes with slide
+  count), computed for max 3 visible rows (2 unparked + 1 parked peek). Even
+  28px gaps all round. Configurable via `style.layout.overview_cols` and
+  `style.layout.overview_gap`.
+- **Ghost fix**: `handleToplevelDestroy` now destroys `scene_tree` so crashed
+  clients don't leave orphaned nodes rendering stale buffers. The "ghost on
+  unpark" is dead.
+- **Row caps**: unparked max 2 rows, parked max 1 row visible. Extra slides
+  computed but clipped by card edge (scrollable via keyboard arrows).
+
+## Known issues / WIP
+
+- **Grid breaks with >6 slides**: 9+ slides make the grid overlap. Needs
+  scroll or dynamic sizing. Parked for polish pass — the core WM/SlideDeck
+  is the product, this is a gimmick.
+- **Close-crash ghost**: a62efa0's assert fix works but scene_tree destroy
+  may race wlroots XDG teardown. Watch for asserts on window close.
+- **+50 buffer offset**: ghostty buffer is 1723x1114 vs geometry 1673x1064.
+  Not fixed — the chrome ring hides it when the window is focused.
+
+## Deploy
+
+Current VM build: 2504930 (fix: overview grid sizing + ghost scene_tree
+destroy + stale test updates). Active on fresh-one.
+
+## Next (when the gimmick matters)
+
+1. Grid scroll for >6 slides
+2. Dynamic cols based on band aspect (3+ on ultrawide)
+3. Freeze-on-park buffer snapshots
+4. The +50 buffer offset hunt (wlroots xdg geometry derivation)
+
+---
+
 # KidulWM HANDOFF — Aug 17 2026 (session 7, bluetooth slide + sticky pills)
 
 ## Session summary
