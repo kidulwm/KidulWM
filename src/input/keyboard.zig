@@ -142,6 +142,13 @@ const KeyboardDevice = struct {
                 else => return, // swallow all other keys while the grid is open
             }
         }
+        // Media slide owns keys while open (sibling sentinel on the
+        // before_first slot). INPUT LAW: ↑↓=focus, ←→=move, Enter=apply,
+        // Esc=back to the slide that opened it.
+        if (server.mediaSlideOpenAnywhere()) {
+            if (server.mediaSlideKey(sym)) return;
+            return; // swallow everything else while the slide is open
+        }
         // Cards consume arrow/navigation/typing before clients while open.
         if (server.tray.calendar_card_open or server.tray.weather_card_open or server.tray.media_card_open or server.tray.files_card_open) {
             if (server.tray.handleMediaCardKey(sym)) return;

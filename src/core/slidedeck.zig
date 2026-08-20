@@ -72,6 +72,12 @@ pub const SlideDeck = struct {
     overview_slide_open: bool = false,
     /// The slide index to return to when the overview slide closes.
     overview_return_index: usize = 0,
+    /// Media player slide (sibling sentinel): occupies the before_first
+    /// virtual slot at the LEFT end of the row. Not a Slide in slides.items
+    /// — window-count invariants stay intact, same ruling as the overview.
+    media_slide_open: bool = false,
+    /// The slide index to return to when the media slide closes.
+    media_return_index: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) SlideDeck {
         return .{
@@ -343,6 +349,62 @@ pub const SlideDeck = struct {
     /// True while the sentinel occupies the end slot.
     pub fn overviewSlideOpen(self: *const SlideDeck) bool {
         return self.overview_slide_open and self.empty_slot == .after_last;
+    }
+
+    /// Media player slide (sibling sentinel): occupies the before_first
+    /// virtual slot at the LEFT end of the row. Not a Slide in slides.items
+    /// — window-count invariants stay intact, same ruling as the overview.
+    pub fn openMediaSlide(self: *SlideDeck) void {
+        // No slides.len==0 guard: the media player must open on an empty
+        // deck too (first boot, everything parked/closed).
+        if (self.media_slide_open) return;
+        if (self.overview_slide_open) {
+            self.overview_slide_open = false;
+        }
+        self.media_return_index = self.focused_index;
+        self.media_slide_open = true;
+        self.empty_slot = .before_first;
+        std.log.info("SlideDeck: media slide opened (return_index={d}, slides={d})", .{ self.media_return_index, self.slides.items.len });
+    }
+
+    pub fn closeMediaSlide(self: *SlideDeck) void {
+        if (!self.media_slide_open) return;
+        self.media_slide_open = false;
+        self.empty_slot = .none;
+        if (self.slides.items.len > 0) {
+            self.focused_index = @min(self.media_return_index, self.slides.items.len - 1);
+            if (self.slides.items[self.focused_index].parked) {
+                if (self.nextUnparked(self.focused_index + 1)) |n| {
+                    self.focused_index = n;
+                } else if (self.prevUnparked(self.focused_index)) |p| {
+                    self.focused_index = p;
+                }
+            }
+        } else {
+            // Empty deck: after closing, focus stays on the virtual end slot
+            // (the state the deck boots in).
+            self.empty_slot = .after_last;
+        }
+        std.log.info("SlideDeck: media slide closed (focused_index={d})", .{self.focused_index});
+    }
+
+    pub fn toggleMediaSlide(self: *SlideDeck) void {
+        if (self.media_slide_open) self.closeMediaSlide() else self.openMediaSlide();
+    }
+
+    /// True while the media slide occupies the left-end slot.
+    pub fn mediaSlideOpen(self: *const SlideDeck) bool {
+        return self.media_slide_open and self.empty_slot == .before_first;
+    }
+
+    /// The rect the compositor-owned media slide renders into: the deck's
+    /// focused slot (delta 0), same geometry a focused client window gets.
+    pub fn mediaSlideTarget(self: *SlideDeck) Rect {
+        const result = switch (self.orientation) {
+            .horizontal => self.horizontalTarget(0),
+            .vertical => self.verticalTarget(0),
+        };
+        return result.inset(self.gap);
     }
 
     /// Recency position of a slide among unparked slides (0 = top-left).

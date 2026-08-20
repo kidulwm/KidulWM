@@ -117,6 +117,7 @@ pub const TrayHost = struct {
     is_transition_active: *const fn (ctx: *anyopaque) bool,
     focused_window_box: *const fn (ctx: *anyopaque) ?wlr.Box,
     is_kfiles_open: *const fn (ctx: *anyopaque) bool,
+    media_slide_toggle: *const fn (ctx: *anyopaque) void,
     theme: *const theme_mod.Theme,
 };
 
@@ -1074,7 +1075,8 @@ pub const Tray = struct {
             .toggle_tray => self.toggle(),
             .cycle_animation => self.host.cycle_animation(self.host.ctx),
             .media_card => {
-                self.toggleMediaCard();
+                // Media player is a deck SLIDE now, not a tray card.
+                self.host.media_slide_toggle(self.host.ctx);
             },
             .files_card => {
                 self.toggleFilesCard();
@@ -4084,12 +4086,9 @@ pub const Tray = struct {
                 .network => self.network.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
                 .files => self.files.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self)),
                 .signals => self.drawSignalsCard(cr, @floatFromInt(w), @floatFromInt(h)),
-                .media => blk: {
-                    var click: MediaWidget.CardClick = .{};
-                    self.media.renderCard(cr, @floatFromInt(w), @floatFromInt(h), self.host.theme.style, outputScaleForCard(self), &click);
-                    self.media_card_click = click;
-                    break :blk;
-                },
+                // Media player lives on the deck slide; the tray card mode
+                // is dead. Draw nothing if we ever land here.
+                .media => {},
             }
             const DataBuffer = @import("../render/buffer.zig").DataBuffer;
             const buffer = DataBuffer.create(temp, w, h, @intCast(stride)) catch |err| {

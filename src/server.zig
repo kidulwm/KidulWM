@@ -18,6 +18,7 @@ const chrome_renderer = @import("render/chrome.zig");
 const cairo = @import("dm").c;
 const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
+const media_slide_mod = @import("ui/media_slide.zig");
 const ui = @import("./ui/tray.zig");
 const spyglass_mod = @import("./ui/spyglass.zig");
 const keybinds = @import("config/keybinds.zig");
@@ -54,6 +55,8 @@ pub const Output = struct {
     deck: slidedeck.SlideDeck,
     /// Sentinel overview slide for THIS output's deck (per-output by ruling).
     overview: overview_slide_mod.OverviewSlide = .{},
+    /// Media player slide (left-end sentinel sibling).
+    media_slide: media_slide_mod.MediaSlide = .{},
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -65,6 +68,7 @@ pub const Output = struct {
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
             .deck = slidedeck.SlideDeck.init(server.allocator),
             .overview = .{},
+            .media_slide = .{},
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -270,7 +274,8 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .media_card_toggle => {
-                self.tray.toggleMediaCard();
+                // Media player is a deck SLIDE now, not a tray card.
+                self.mediaSlideToggle();
                 return .{ .ok = true };
             },
             .media_play => |p| {
@@ -944,6 +949,276 @@ pub const Server = struct {
         std.log.info("KidulWM: overview slide closed", .{});
     }
 
+    /// Toggle the media player slide on the current deck's output.
+    pub fn mediaSlideToggle(self: *Server) void {
+        const deck = self.currentDeck();
+        var owner: ?*Output = null;
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (&output.deck == deck) {
+                owner = output;
+                break;
+            }
+        }
+        if (deck.media_slide_open) {
+            if (owner) |output| self.mediaSlideClose(output);
+            deck.closeMediaSlide();
+            self.requestLayout();
+        } else {
+            // Reconcile: if the scene tree is already open but the deck
+            // disagrees (e.g. open raced an empty-deck refusal before),
+            // close the tree and call it closed.
+            if (owner) |output| {
+                if (output.media_slide.isOpen()) {
+                    self.mediaSlideClose(output);
+                    self.requestLayout();
+                    return;
+                }
+            }
+            // Deck state FIRST: openMediaSlide sets empty_slot=.before_first,
+            // and mediaSlideTarget() only returns the focused rect while
+            // that's true. Order matters — render after the deck moves.
+            deck.openMediaSlide();
+            if (owner) |output| {
+                if (output.overview.isOpen()) self.overviewSlideClose(output);
+                self.mediaSlideOpen(output);
+            }
+            self.requestLayout();
+        }
+    }
+
+    fn mediaSlideOpen(self: *Server, output: *Output) void {
+        if (output.media_slide.isOpen()) return;
+        const tree = self.scene.tree.createSceneTree() catch return;
+        output.media_slide.tree = tree;
+        tree.node.raiseToTop();
+        self.overlay_tree.node.raiseToTop();
+        self.mediaSlideRefresh(output);
+        std.log.info("KidulWM: media slide open on output", .{});
+    }
+
+    /// (Re)render the media widget into the slide's card buffer. Called on
+    /// open and whenever the widget's state_generation moves.
+    pub fn mediaSlideRefresh(self: *Server, output: *Output) void {
+        const tree = output.media_slide.tree orelse return;
+        const deck = &output.deck;
+        // The slide occupies the virtual before_first slot: it gets the
+        // deck's focused rect (inset by the same gap real slides get).
+        const target = deck.mediaSlideTarget();
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        const widget = output.media_slide.ensureWidget(self.allocator);
+        const buffer = media_slide_mod.renderToBuffer(widget, self.theme, @intCast(target.width), @intCast(target.height), scale) orelse return;
+        if (output.media_slide.card_buffer) |old| old.node.destroy();
+        const card = tree.createSceneBuffer(buffer) catch {
+            wlr.Buffer.drop(buffer);
+            return;
+        };
+        output.media_slide.card_buffer = card;
+        tree.node.setPosition(target.x, target.y);
+        card.node.raiseToTop();
+    }
+
+    fn mediaSlideClose(self: *Server, output: *Output) void {
+        _ = self;
+        if (!output.media_slide.isOpen()) return;
+        output.media_slide.tree.?.node.destroy();
+        output.media_slide.tree = null;
+        output.media_slide.card_buffer = null;
+        std.log.info("KidulWM: media slide closed", .{});
+    }
+
+    /// True while any output's media slide is open (keyboard routing).
+    pub fn mediaSlideOpenAnywhere(self: *Server) bool {
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (output.media_slide.isOpen()) return true;
+        }
+        return false;
+    }
+
+    /// INPUT LAW key table for the open media slide. Returns true when the
+    /// key was consumed. Widget state changes trigger a re-render.
+    fn mediaPrintableChar(sym: @import("xkbcommon").Keysym) ?u8 {
+        const xkb = @import("xkbcommon");
+        const v = @intFromEnum(sym);
+        if (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z))
+            return @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.a))) + 'a';
+        if (v >= @intFromEnum(xkb.Keysym.@"0") and v <= @intFromEnum(xkb.Keysym.@"9"))
+            return @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.@"0"))) + '0';
+        if (sym == xkb.Keysym.space) return ' ';
+        if (sym == xkb.Keysym.minus) return '-';
+        if (sym == xkb.Keysym.period) return '.';
+        return null;
+    }
+
+    pub fn mediaSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
+        const xkb = @import("xkbcommon");
+        var it = self.outputs.iterator(.forward);
+        var output: ?*Output = null;
+        while (it.next()) |o| {
+            if (o.media_slide.isOpen()) {
+                output = o;
+                break;
+            }
+        }
+        const out = output orelse return false;
+        const widget = &out.media_slide.widget;
+        if (!out.media_slide.widget_ready) return false;
+        var dirty = false;
+
+        if (widget.search_focused) {
+            switch (sym) {
+                xkb.Keysym.Escape => { widget.cancelSearch(); dirty = true; },
+                xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
+                    const text = widget.acceptSearch();
+                    if (text.len == 2) {
+                        var lb: [2]u8 = undefined;
+                        const code = std.ascii.lowerString(&lb, text);
+                        if (std.mem.eql(u8, code, "sh")) widget.setCategory(.shop)
+                        else if (std.mem.eql(u8, code, "mo")) widget.setCategory(.movies)
+                        else if (std.mem.eql(u8, code, "mu")) widget.setCategory(.music)
+                        else if (std.mem.eql(u8, code, "pi")) widget.setCategory(.pictures)
+                        else if (std.mem.eql(u8, code, "tv")) widget.setCategory(.tv)
+                        else widget.jumpToSearchPrefix(text);
+                    } else if (text.len > 0) {
+                        widget.jumpToSearchPrefix(text);
+                    }
+                    widget.focusControl(.result);
+                    dirty = true;
+                },
+                xkb.Keysym.Left => {
+                    if (widget.search_len > 0 and widget.search_caret > 0) widget.moveSearchCaret(-1) else widget.focusControl(.category);
+                    dirty = true;
+                },
+                xkb.Keysym.Right => {
+                    if (widget.search_caret < widget.search_len) widget.moveSearchCaret(1) else widget.focusSlider();
+                    dirty = true;
+                },
+                xkb.Keysym.Up => { widget.focusControl(.category); dirty = true; },
+                xkb.Keysym.Down => {
+                    widget.focusControl(.result);
+                    widget.selected_result = widget.grid_cols / 2;
+                    widget.adjustScrollToSelection();
+                    dirty = true;
+                },
+                xkb.Keysym.Home => { widget.search_caret = 0; dirty = true; },
+                xkb.Keysym.End => { widget.search_caret = widget.search_len; dirty = true; },
+                xkb.Keysym.BackSpace => { widget.backspaceSearch(); dirty = true; },
+                xkb.Keysym.Delete => { widget.deleteSearch(); dirty = true; },
+                xkb.Keysym.Tab => { widget.focusSearch(); dirty = true; },
+                else => {
+                    if (mediaPrintableChar(sym)) |ch| {
+                        widget.appendSearch(ch);
+                        dirty = true;
+                    }
+                },
+            }
+            if (dirty) self.mediaSlideRefresh(out);
+            return true;
+        }
+
+        switch (sym) {
+            xkb.Keysym.Escape => {
+                self.mediaSlideToggle();
+                return true;
+            },
+            xkb.Keysym.Left => {
+                switch (widget.focus) {
+                    .category => widget.moveCategory(-1),
+                    .subcategory => widget.moveSubcategory(-1),
+                    .search => widget.moveSearchCaret(-1),
+                    .result => widget.moveResultSelection(-1),
+                    .slider => widget.focusControl(.result),
+                }
+                dirty = true;
+            },
+            xkb.Keysym.Right => {
+                switch (widget.focus) {
+                    .category => widget.moveCategory(1),
+                    .subcategory => widget.moveSubcategory(1),
+                    .search => widget.moveSearchCaret(1),
+                    .result => {
+                        if (widget.isResultLastColumn()) widget.focusSlider() else widget.moveResultSelection(1);
+                    },
+                    .slider => {},
+                }
+                dirty = true;
+            },
+            xkb.Keysym.Up => {
+                switch (widget.focus) {
+                    .category => {},
+                    .subcategory => widget.closeSubcategory(),
+                    .search => widget.focusControl(.category),
+                    .result => {
+                        if (widget.atResultTopRow()) widget.focusControl(.search) else widget.moveResultVertical(-1);
+                    },
+                    .slider => widget.moveSliderVertical(-1),
+                }
+                dirty = true;
+            },
+            xkb.Keysym.Down => {
+                switch (widget.focus) {
+                    .category => {
+                        if (widget.subcategory_open) widget.focusControl(.subcategory) else widget.focusControl(.search);
+                    },
+                    .subcategory => widget.focusControl(.search),
+                    .search => {
+                        if (widget.hasResults()) {
+                            widget.focusControl(.result);
+                            widget.selected_result = widget.grid_cols / 2;
+                            widget.adjustScrollToSelection();
+                        } else {
+                            widget.focusControl(.slider);
+                        }
+                    },
+                    .result => widget.moveResultVertical(1),
+                    .slider => widget.moveSliderVertical(1),
+                }
+                dirty = true;
+            },
+            xkb.Keysym.Tab => {
+                switch (widget.focus) {
+                    .category, .subcategory => widget.focusControl(.search),
+                    .search => {
+                        if (widget.hasResults()) widget.focusControl(.result) else widget.focusControl(.slider);
+                    },
+                    .result, .slider => widget.focusControl(.category),
+                }
+                dirty = true;
+            },
+            xkb.Keysym.Page_Up => { widget.pageList(-1); dirty = true; },
+            xkb.Keysym.Page_Down => { widget.pageList(1); dirty = true; },
+            xkb.Keysym.space, xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
+                switch (widget.focus) {
+                    .category => {
+                        if (widget.canOpenSubcategory()) widget.openSubcategory();
+                    },
+                    .subcategory => widget.closeSubcategory(),
+                    .search => {},
+                    .result => {
+                        const path = widget.selectedResultPath();
+                        if (path.len > 0) widget.play(path);
+                    },
+                    .slider => {},
+                }
+                dirty = true;
+            },
+            else => {
+                if (mediaPrintableChar(sym)) |ch| {
+                    if (widget.focus == .search) {
+                        widget.appendSearch(ch);
+                    } else {
+                        widget.focusControl(.result);
+                        widget.jumpToLetter(if (ch >= 'a' and ch <= 'z') std.ascii.toUpper(ch) else ch);
+                    }
+                    dirty = true;
+                }
+            },
+        }
+        if (dirty) self.mediaSlideRefresh(out);
+        return true;
+    }
+
     /// Hit-test a click in output-local coords against the sentinel's tiles.
     /// Returns the deck slide index to focus, or null (empty card space).
     pub fn overviewSlideHitTest(self: *Server, x: i32, y: i32) ?usize {
@@ -1591,6 +1866,12 @@ pub const Server = struct {
                         }
                     }
                     return false;
+                }
+            }.f,
+            .media_slide_toggle = struct {
+                fn f(ctx: *anyopaque) void {
+                    const s: *Server = @ptrCast(@alignCast(ctx));
+                    s.mediaSlideToggle();
                 }
             }.f,
             .theme = &self.theme_runtime,
