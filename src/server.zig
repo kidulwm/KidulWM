@@ -1150,7 +1150,8 @@ pub const Server = struct {
                     .subcategory => widget.closeSubcategory(),
                     .search => widget.focusControl(.category),
                     .result => {
-                        if (widget.atResultTopRow()) widget.focusControl(.search) else widget.moveResultVertical(-1);
+                        // Top row + Up = back to the pills, never to search.
+                        if (widget.atResultTopRow()) widget.focusControl(.category) else widget.moveResultVertical(-1);
                     },
                     .slider => widget.moveSliderVertical(-1),
                 }
@@ -1158,10 +1159,24 @@ pub const Server = struct {
             },
             xkb.Keysym.Down => {
                 switch (widget.focus) {
+                    // Down from the pills goes to the TILES — search is
+                    // letter-summoned only, never a navigation stop.
                     .category => {
-                        if (widget.subcategory_open) widget.focusControl(.subcategory) else widget.focusControl(.search);
+                        if (widget.subcategory_open) widget.focusControl(.subcategory) else {
+                            if (widget.hasResults()) {
+                                widget.focusControl(.result);
+                                widget.selected_result = widget.grid_cols / 2;
+                                widget.adjustScrollToSelection();
+                            }
+                        }
                     },
-                    .subcategory => widget.focusControl(.search),
+                    .subcategory => {
+                        if (widget.hasResults()) {
+                            widget.focusControl(.result);
+                            widget.selected_result = widget.grid_cols / 2;
+                            widget.adjustScrollToSelection();
+                        }
+                    },
                     .search => {
                         if (widget.hasResults()) {
                             widget.focusControl(.result);
@@ -1178,7 +1193,10 @@ pub const Server = struct {
             },
             xkb.Keysym.Tab => {
                 switch (widget.focus) {
-                    .category, .subcategory => widget.focusControl(.search),
+                    // Tab cycles pills <-> tiles; search is letter-summoned.
+                    .category, .subcategory => {
+                        if (widget.hasResults()) widget.focusControl(.result) else widget.focusControl(.slider);
+                    },
                     .search => {
                         if (widget.hasResults()) widget.focusControl(.result) else widget.focusControl(.slider);
                     },

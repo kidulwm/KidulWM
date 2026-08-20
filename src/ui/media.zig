@@ -343,6 +343,8 @@ pub const MediaWidget = struct {
     state_generation: u32 = 0,
     slider_reveal: f64 = 0.0,
     slider_reveal_target: f64 = 0.0,
+    /// Landing-vs-reset: false until focus first enters the tile wall.
+    seen_wall: bool = false,
 
     selected_result: usize = 0,
     visible_result_count: usize = 0,
@@ -407,12 +409,14 @@ pub const MediaWidget = struct {
         self.search_focused = ctl == .search;
         self.slider_reveal_target = if (ctl == .slider) 1.0 else 0.0;
         if (ctl != .slider) self.slider_hover = false;
-        // Pills merge when focus drops into content: the sub track closes
-        // so the center stack collapses to the dormant token cleanly.
+        // WALL tracking: landing (top-5 ABOVE the stack) vs reset (rows
+        // start UNDER the stack after coming back up from the wall).
         if (ctl == .result or ctl == .slider) {
+            self.seen_wall = true;
             self.subcategory_open = false;
             self.subcategory_index = 0;
         }
+        if (ctl == .category) self.seen_wall = false;
         if (self.search_focused) {
             self.search_caret = self.search_len;
         }
@@ -1305,48 +1309,46 @@ pub const MediaWidget = struct {
         const active_display = displayIndex(self.category);
         const mcol = pillModeColor(self.category);
 
-        // Search owns center ONLY when the search row truly has it —
-        // focused caret or real text. Bare .search focus passing through
-        // must NOT flip the stack mid-scroll.
+        // ---- LANDING / WALL / SEARCH — the media slide state machine. ----
+        // ---- LANDING: pill stack at center, top row BELOW the stack, ----
+        // ----   bottom row peeks in at the slide's bottom edge.       ----
+        // ---- WALL: focus is in the tiles — the ENTIRE stack is gone, ----
+        // ----   no reserved space, one endless 5xN wall.              ----
+        // ---- SEARCH: letter key from ANY state — the bar takes center ----
+        // ----   and tiles sit behind it at landing positions.         ----
         const search_active = self.search_focused or self.search_len > 0;
-
-        // Merge state: focus in content = the 5 segments collapse into ONE
-        // dormant token at center (chrome retreats, never abandons).
-        const pills_merged = (self.focus == .result or self.focus == .slider) and !search_active;
+        const in_wall = (self.focus == .result or self.focus == .slider) and !search_active;
 
         const sub_names = self.subcategoryNames(self.category);
         const sub_rows: f64 = if (self.subcategory_open and sub_names.len > 0) 1.0 else 0.0;
         const stack_gap = 8.0 * scale_f;
         const stack_h = pb_track_h + sub_rows * (pb_track_h + stack_gap);
-        const cat_y = (h_d - stack_h) * 0.5;
+
+        // ---- TILE DIMS FIRST: the stack serves the rows on landing.  ----
+        // ---- tile size is CONSTANT (2:3 fan art); only focus inflates. ----
+        const gap: f64 = 56.0 * scale_f;
+        const title_strip_h = 44.0 * scale_f; // "kmedia" strip at slide top
+        const grid_top = pad_y + title_strip_h;
+        const cols = self.grid_cols;
+        const tile_gap: f64 = gap;
+        const tile_w = (w_d - @as(f64, @floatFromInt(cols + 1)) * gap) / @as(f64, @floatFromInt(cols));
+        const art_h = tile_w * 1.5;
+        const tile_h = art_h;
+        const row_h = tile_h + tile_gap;
+
+        // Stack Y: on LANDING the stack floats in the TRIPLE gap between
+        // row0 and row1 — row0 at its solid seat, stack centered in the
+        // 3x gap, row1 in full below. WALL/RESET: stack at true center.
+        const cat_y = if (!in_wall and !self.seen_wall)
+            grid_top + tile_h + gap * 1.5
+        else
+            (h_d - stack_h) * 0.5;
 
         // ---- Category pill bar: ONE stadium track, 5 segments, floating ----
         // ---- tricolor inner pill. THE PILL spec — brand-locked,        ----
         // ---- theme-immune, same 280px segments the original 3 had.     ----
-        if (pills_merged) {
-            // Dormant token: one slim stadium, current category name in its
-            // mode color, no gold ring, no labels. Granny's breadcrumb.
-            const tok_w = pb_seg_w;
-            const tok_x = pb_track_x + (pb_track_w - tok_w) * 0.5;
-            roundedRect(cr, tok_x, cat_y, tok_w, pb_track_h, pb_track_r);
-            c.cairo_set_source_rgba(cr, PILL_TRACK_FILL.r, PILL_TRACK_FILL.g, PILL_TRACK_FILL.b, 0.75);
-            c.cairo_fill_preserve(cr);
-            c.cairo_set_source_rgba(cr, PILL_TRACK_BORDER.r, PILL_TRACK_BORDER.g, PILL_TRACK_BORDER.b, 0.6);
-            c.cairo_set_line_width(cr, 1.0);
-            c.cairo_stroke(cr);
-            // Inner glint: mode color, very muted.
-            roundedRect(cr, tok_x + pb_inset, cat_y + pb_inset, tok_w - 2.0 * pb_inset, pb_pill_h, pb_pill_r);
-            c.cairo_set_source_rgba(cr, mcol.r, mcol.g, mcol.b, 60.0 / 255.0);
-            c.cairo_fill(cr);
-            const label = categoryLabel(self.category);
-            const tok_font = @as(f64, style_.font_size_s) * scale_f;
-            c.cairo_set_font_size(cr, tok_font);
-            var ext: c.cairo_text_extents_t = undefined;
-            c.cairo_text_extents(cr, label.ptr, &ext);
-            c.cairo_set_source_rgba(cr, mcol.r, mcol.g, mcol.b, 0.9);
-            c.cairo_move_to(cr, tok_x + (tok_w - ext.width) * 0.5, cat_y + pb_track_h * 0.5 + tok_font * 0.30);
-            c.cairo_show_text(cr, label.ptr);
-        } else if (!search_active) {
+        // ---- WALL state: the stack is GONE — nothing draws, no token. ----
+        if (!search_active and !in_wall) {
         // Track fill + border (house colors, never theme-fed).
         roundedRect(cr, pb_track_x, cat_y, pb_track_w, pb_track_h, pb_track_r);
         c.cairo_set_source_rgba(cr, PILL_TRACK_FILL.r, PILL_TRACK_FILL.g, PILL_TRACK_FILL.b, 1.0);
@@ -1404,7 +1406,7 @@ pub const MediaWidget = struct {
 
         // ---- Subcategory track: SAME spec as the main track, one row ----
         // ---- under it. Floating inner pill wears the parent's color. ----
-        if (!search_active and self.subcategory_open and sub_names.len > 0) {
+        if (!search_active and !in_wall and self.subcategory_open and sub_names.len > 0) {
             const sub_y = cat_y + pb_track_h + stack_gap;
             const sub_n = sub_names.len;
             const sub_track_w = pb_seg_w * @as(f64, @floatFromInt(sub_n));
@@ -1538,35 +1540,68 @@ pub const MediaWidget = struct {
         // ---- Result grid + scroller: TOP band, owns everything above ----
         // ---- the center stack. HARD CLIP to the band — nothing draws  ----
         // ---- through the no-go zone, bug or not. ----
-        // ---- Result grid: TWO bands — above AND below the center    ----
-        // ---- stack (ksignals geometry). Clip = union of both bands, ----
-        // ---- so nothing ever crosses the stack, bug or not.         ----
-        const band_y = pad_y;
-        const band_h_clip = @max(0.0, cat_y - 8.0 * scale_f - band_y);
-        const bottom_clip_y = cat_y + stack_h + 8.0 * scale_f;
-        const bottom_clip_h = @max(0.0, h_d - pad_y - bottom_clip_y);
+        // ---- GRID GEOMETRY — on LANDING the stack serves the rows:   ----
+        // ---- row1 at its solid seat under the title strip, stack     ----
+        // ---- floating one gap below it, row2 one gap under the stack ----
+        // ---- IN FULL. WALL: one endless field from grid_top.         ----
+        const wall = in_wall;
+        const landing_top_y = cat_y - gap;
+        const landing_bottom_y = cat_y + stack_h + gap;
+        const top_band_h = if (wall) 0.0 else @max(0.0, landing_top_y - grid_top);
+        const bottom_band_y = if (wall) grid_top else landing_bottom_y;
+        const bottom_band_h = @max(0.0, h_d - pad_y - bottom_band_y);
+
+        // Clip = the bands the grid may draw in (nothing else, ever).
+        // Headroom above the top band: the focused tile's inflate + its
+        // trimmed title must never clip. (kmedia strip draws after restore.)
+        const focus_headroom = tile_w * 0.06 + 30.0 * scale_f;
         c.cairo_save(cr);
-        c.cairo_rectangle(cr, 0, band_y, w_d, band_h_clip);
-        c.cairo_rectangle(cr, 0, bottom_clip_y, w_d, bottom_clip_h);
+        if (!wall) {
+            c.cairo_rectangle(cr, 0, grid_top - focus_headroom, w_d, top_band_h + focus_headroom);
+        }
+        c.cairo_rectangle(cr, 0, bottom_band_y, w_d, bottom_band_h);
         c.cairo_clip(cr);
-        // ---- GOLDILOCKS GAP: ONE gap everywhere — between tiles, rows, ----
-        // ---- band edges, and the no-go zone. 56px house gap (kfiles). ----
-        const gap: f64 = 56.0 * scale_f;
-        const list_y = pad_y + gap * 0.5;
+
         const bar_w: f64 = 5.0 * scale_f;
-        const scroller_track: f64 = 30.0 * scale_f; // fixed right-side channel for the scroller and letters
-        const cols = self.grid_cols;
-        const tile_gap: f64 = gap;
-        const tile_w = (w_d - @as(f64, @floatFromInt(cols + 1)) * gap) / @as(f64, @floatFromInt(cols));
+        const scroller_track: f64 = 30.0 * scale_f;
         const list_x = tile_gap;
         const list_w = w_d - 2.0 * tile_gap;
-        // Top band: top edge down to the no-go zone — a full gap above
-        // Granny's Pills, same gap as between tiles.
-        const list_h = @max(0.0, cat_y - gap - list_y);
         const right_gap_center = w_d - tile_gap * 0.5;
         const channel_cx_open = right_gap_center;
         const channel_cx = channel_cx_open + (1.0 - self.slider_reveal) * (tile_gap * 0.5 + scroller_track * 0.5);
         const channel_x = channel_cx - scroller_track * 0.5;
+
+        // ---- FAN ART: 2:3 portrait posters. TILE SIZE IS CONSTANT —  ----
+        // ---- never derived from band fit. Bands clip; scroll owns    ----
+        // ---- overflow. Only the focused tile enlarges.               ----
+        const label_font = @as(f64, style_.font_size_s) * scale_f;
+
+        // Row layout per state:
+        //   LANDING (fresh, never walled): row1 at grid_top — its solid
+        //     seat, never cut. The stack floats one gap below row1; row2
+        //     sits one gap under the stack, IN FULL (no peek-clipping on
+        //     landing — the flow just continues and the clip handles the
+        //     rest).
+        //   RESET (came back up from the wall): rows start UNDER the
+        //     stack — the motion you ride back into.
+        //   WALL: one field from grid_top, rows flow to the bottom edge.
+        //   SEARCH: LANDING geometry behind the bar.
+        const grid_origin_y = if (wall)
+            grid_top
+        else if (!self.seen_wall)
+            grid_top // landing: row1 at its seat, full stop
+        else
+            landing_bottom_y; // reset: rows under the stack
+        const rows_total_space = if (wall)
+            @as(usize, @intFromFloat(@floor(bottom_band_h / row_h)))
+        else
+            // Landing/reset: rows flow from the origin to the SLIDE BOTTOM —
+            // the clip carves the stack out, so row 2+ emerges below it
+            // as the peek. Count the full flow height, not just the band.
+            @as(usize, @intFromFloat(@ceil((h_d - pad_y - grid_origin_y) / row_h)));
+        const rows_visible = rows_total_space;
+        const list_y = grid_origin_y;
+        const list_h = h_d - pad_y - grid_origin_y;
 
         if (out_click) |click| {
             click.list_x = @intFromFloat(list_x);
@@ -1581,22 +1616,6 @@ pub const MediaWidget = struct {
             click.letters_x = click.scroll_x;
             click.letters_w = click.scroll_w;
         }
-
-        // ---- TRIMMED TITLES: no permanent label strip under tiles.   ----
-        // ---- Art is square; the focused tile's title rides centered  ----
-        // ---- at the TOP of the band, outside all borders.            ----
-        const label_font = @as(f64, style_.font_size_s) * scale_f;
-        const art_h = @min(tile_w, @max(80.0 * scale_f, list_h - tile_gap));
-        const tile_h = art_h;
-        const row_h = tile_h + tile_gap;
-        // ---- TWO PANELS (ksignals geometry): rows fill the TOP band, ----
-        // ---- then continue in the BOTTOM band under the stack.       ----
-        // ---- The center stack is the focus row — tiles never enter.  ----
-        const bottom_y = cat_y + stack_h + gap;
-        const bottom_h = @max(0.0, h_d - pad_y - bottom_y);
-        const rows_top: usize = if (row_h <= 0.0 or list_h <= 0.0) 0 else @max(1, @as(usize, @intFromFloat(@floor(list_h / row_h))));
-        const rows_bottom: usize = if (row_h <= 0.0 or bottom_h <= 0.0) 0 else @as(usize, @intFromFloat(@floor(bottom_h / row_h)));
-        const rows_visible = rows_top + rows_bottom;
         const library = getLibrary(self.category);
         const total_rows = (library.len + cols - 1) / cols;
         if (library.len == 0) {
@@ -1643,12 +1662,10 @@ pub const MediaWidget = struct {
         var row_i: usize = 0;
         while (row_i < rows_visible and self.list_scroll_offset + row_i < total_rows) : (row_i += 1) {
             const grid_row = self.list_scroll_offset + row_i;
-            // Rows 0..rows_top live in the TOP band; the rest continue in
-            // the BOTTOM band under the stack.
-            const ty = if (row_i < rows_top)
-                list_y + @as(f64, @floatFromInt(row_i)) * row_h
-            else
-                bottom_y + @as(f64, @floatFromInt(row_i - rows_top)) * row_h;
+            // One continuous flow: row_i maps straight from the grid origin.
+            // In LANDING the clip keeps rows out of the stack (the peek is
+            // just the clipped part of the flow); in WALL the flow owns all.
+            const ty = list_y + @as(f64, @floatFromInt(row_i)) * row_h;
             const first_idx = grid_row * cols;
             const last_idx = @min(first_idx + cols, library.len);
             const tiles_in_row = last_idx - first_idx;
@@ -1661,28 +1678,31 @@ pub const MediaWidget = struct {
                 const entry = library[idx];
                 const tx = row_start_x + @as(f64, @floatFromInt(col_i)) * (tile_w + tile_gap);
 
-                if (self.focus == .result and self.selected_result == idx) {
+                const is_focused_tile = self.focus == .result and self.selected_result == idx;
+                if (is_focused_tile) {
                     focus_tx = tx;
                     focus_ty = ty;
                     focus_drawn = true;
                 }
 
-                if (self.focus == .result and self.selected_result == idx) {
-                    const sel_pad = 4.0 * scale_f;
-                    const depth = 3.0 * scale_f;
-                    const fx = tx - sel_pad;
-                    const fy = ty - sel_pad;
-                    const fw = tile_w + 2.0 * sel_pad;
-                    const fh = tile_h + 2.0 * sel_pad;
-                    const fr = 10.0 * scale_f;
+                // THE 3 SUBTLETIES on the focused tile: slight enlarge,
+                // double border (inner ring wider), trimmed title on top.
+                // Everyone else is a cleanskin.
+                const inflate: f64 = if (is_focused_tile) tile_w * 0.06 else 0.0;
+                const dx = tx - inflate * 0.5;
+                const dy = ty - inflate * 0.5;
+                const dw = tile_w + inflate;
+                const dh = art_h + inflate;
 
+                if (is_focused_tile) {
+                    const depth = 3.0 * scale_f;
+                    const fr = 10.0 * scale_f;
                     // 3D shadow: offset dark bottom-right edge
-                    roundedRect(cr, fx + depth, fy + depth, fw, fh, fr);
+                    roundedRect(cr, dx + depth, dy + depth, dw, dh, fr);
                     c.cairo_set_source_rgba(cr, card_bg[0], card_bg[1], card_bg[2], 0.85);
                     c.cairo_fill(cr);
-
-                    // Focus frame body
-                    roundedRect(cr, fx, fy, fw, fh, fr);
+                    // Outer ring (the double border's outer half)
+                    roundedRect(cr, dx, dy, dw, dh, fr);
                     c.cairo_set_source_rgba(cr, card_bg[0], card_bg[1], card_bg[2], 0.55);
                     c.cairo_fill_preserve(cr);
                     c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.95);
@@ -1690,7 +1710,17 @@ pub const MediaWidget = struct {
                     c.cairo_stroke(cr);
                 }
 
-                renderTileArt(cr, tx, ty, tile_w, art_h, entry, border, &self.art_cache);
+                renderTileArt(cr, dx, dy, dw, dh, entry, border, &self.art_cache);
+
+                if (is_focused_tile) {
+                    // Inner ring — a touch wider, the double border's
+                    // inside half (the magic mistake, kept on purpose).
+                    const ir = 10.0 * scale_f;
+                    roundedRect(cr, dx + 2.0 * scale_f, dy + 2.0 * scale_f, dw - 4.0 * scale_f, dh - 4.0 * scale_f, ir);
+                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.8);
+                    c.cairo_set_line_width(cr, 2.0);
+                    c.cairo_stroke(cr);
+                }
                 // No per-tile labels — TRIMMED TITLES: focused tile only,
                 // title centered at the TOP of the band, outside borders.
             }
@@ -1738,6 +1768,20 @@ pub const MediaWidget = struct {
 
         // Pop the band clip — grid/scroller/overlay all stayed inside.
         c.cairo_restore(cr);
+
+        // ---- "kmedia" title strip — slide top, outside the grid clip. ----
+        {
+            const title = "kmedia";
+            const strip_font = @as(f64, style_.font_size_m) * scale_f;
+            c.cairo_set_font_size(cr, strip_font);
+            var ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, title.ptr, &ext);
+            const tx = (w_d - ext.width) * 0.5;
+            const ty = pad_y + (title_strip_h + ext.height) * 0.5 - 6.0 * scale_f;
+            c.cairo_set_source_rgba(cr, PILL_TEXT_DIM.r, PILL_TEXT_DIM.g, PILL_TEXT_DIM.b, 0.9);
+            c.cairo_move_to(cr, tx, ty);
+            c.cairo_show_text(cr, title.ptr);
+        }
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
         // at the buffer edge (same tokens as window chrome).
