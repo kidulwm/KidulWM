@@ -275,6 +275,45 @@ fn mediaCategoryFromIndex(i: usize) MediaCategory {
     };
 }
 
+// ---------------------------------------------------------------------------
+// THE PILL — brand-locked house spec (kbrowser slider lineage).
+// These constants are OURS, not the theme's: user theme changes must not
+// touch pill geometry or colors. Recognisable up close and from afar.
+// Geometry per segment matches the original 3-pill kbrowser slider:
+//   track h=56, inner pill inset 5 (h=46), full stadium radius, 280px segs.
+// ---------------------------------------------------------------------------
+const PILL_SEG_W: f64 = 280.0; // same segment width the original 3 had
+const PILL_TRACK_H: f64 = 56.0;
+const PILL_INSET: f64 = 5.0;
+const PILL_COUNT: usize = 5;
+
+const PillColor = struct { r: f64, g: f64, b: f64 };
+
+fn pc(hex: u24) PillColor {
+    return .{
+        .r = @as(f64, @floatFromInt((hex >> 16) & 0xFF)) / 255.0,
+        .g = @as(f64, @floatFromInt((hex >> 8) & 0xFF)) / 255.0,
+        .b = @as(f64, @floatFromInt(hex & 0xFF)) / 255.0,
+    };
+}
+
+const PILL_TRACK_FILL = pc(0x0a0a0a);
+const PILL_TRACK_BORDER = pc(0x4d4a40);
+const PILL_GOLD = pc(0x948e7b);
+const PILL_TEXT_ACTIVE = pc(0xe8e6df);
+const PILL_TEXT_DIM = pc(0x6a6354);
+
+fn pillModeColor(cat: MediaCategory) PillColor {
+    // House set — sits beside the browser trio. Fine-tune hex at polish pass.
+    return switch (cat) {
+        .music => pc(0x9e7e52), // amber (retired Isolate)
+        .movies => pc(0x6a8fc4), // blue
+        .tv => pc(0x6b9e75), // green
+        .pictures => pc(0x948e7b), // gold-grey
+        .shop => pc(0xc45c5c), // muted red
+    };
+}
+
 pub const MediaWidget = struct {
     allocator: std.mem.Allocator,
     card: MediaCard = .{},
@@ -1228,91 +1267,85 @@ pub const MediaWidget = struct {
         const pad_y: f64 = 14.0 * scale_f;
         const content_w = w_d - 2.0 * pad_x;
 
-        // ---- Category pills ----
-        const search_h = @max(34.0 * scale_f, 28.0 * scale_f);
-        const pill_h_max = search_h;
-        const pill_h_min = @max(26.0 * scale_f, 22.0 * scale_f);
-        const pill_gap = 12.0 * scale_f;
-        const pill_w = (content_w - 4.0 * pill_gap) / 5.0;
+        // ---- Category pill bar: ONE stadium track, 5 segments, floating ----
+        // ---- tricolor inner pill. THE PILL spec — brand-locked,        ----
+        // ---- theme-immune, same 280px segments the original 3 had.     ----
+        const pb_seg_w = PILL_SEG_W * scale_f;
+        const pb_track_h = PILL_TRACK_H * scale_f;
+        const pb_track_w = pb_seg_w * @as(f64, @floatFromInt(PILL_COUNT));
+        const pb_track_x = pad_x + @max(0.0, (content_w - pb_track_w) * 0.5);
         const cat_y = pad_y;
-        const total_pill_w = pill_w * 5.0 + pill_gap * 4.0;
-        const pill_start_x = pad_x + (content_w - total_pill_w) * 0.5;
+        const pb_track_r = pb_track_h * 0.5;
+        const pb_inset = PILL_INSET * scale_f;
+        const pb_pill_h = pb_track_h - 2.0 * pb_inset;
+        const pb_pill_r = pb_pill_h * 0.5;
         const search_y = if (self.subcategory_open)
-            cat_y + pill_h_max + 16.0 * scale_f + @max(24.0 * scale_f, pill_h_min * 0.8)
+            cat_y + pb_track_h + 16.0 * scale_f + @max(24.0 * scale_f, 22.0 * scale_f)
         else
-            cat_y + pill_h_max + 10.0 * scale_f;
-        const pill_r = 6.0 * scale_f;
+            cat_y + pb_track_h + 10.0 * scale_f;
 
+        // Track fill + border (house colors, never theme-fed).
+        roundedRect(cr, pb_track_x, cat_y, pb_track_w, pb_track_h, pb_track_r);
+        c.cairo_set_source_rgba(cr, PILL_TRACK_FILL.r, PILL_TRACK_FILL.g, PILL_TRACK_FILL.b, 1.0);
+        c.cairo_fill_preserve(cr);
+        c.cairo_set_source_rgba(cr, PILL_TRACK_BORDER.r, PILL_TRACK_BORDER.g, PILL_TRACK_BORDER.b, 1.0);
+        c.cairo_set_line_width(cr, 1.5);
+        c.cairo_stroke(cr);
+
+        // Segment separators (soft, 10px end margin — browser pattern).
+        c.cairo_set_source_rgba(cr, PILL_TRACK_BORDER.r, PILL_TRACK_BORDER.g, PILL_TRACK_BORDER.b, 90.0 / 255.0);
+        c.cairo_set_line_width(cr, 1.0);
+        var sep_i: usize = 1;
+        while (sep_i < PILL_COUNT) : (sep_i += 1) {
+            const sx = pb_track_x + @as(f64, @floatFromInt(sep_i)) * pb_seg_w;
+            c.cairo_move_to(cr, sx, cat_y + 10.0 * scale_f);
+            c.cairo_line_to(cr, sx, cat_y + pb_track_h - 10.0 * scale_f);
+            c.cairo_stroke(cr);
+        }
+
+        // Floating inner pill on the selected segment.
         const active_display = displayIndex(self.category);
-        const raw_scroll: i32 = @as(i32, @intCast(active_display)) - 2;
-        const clamped_scroll: i32 = @max(-2, @min(2, raw_scroll));
-        for (0..5) |i| {
-            const cat_idx_i32: i32 = clamped_scroll + @as(i32, @intCast(i));
-            if (cat_idx_i32 < 0 or cat_idx_i32 > 4) {
-                if (out_click) |click| {
-                    click.cat_for_index[i] = .music;
-                    click.cat_y[i] = 0;
-                    click.cat_h[i] = 0;
-                    click.cat_x[i] = 0;
-                    click.cat_w[i] = 0;
-                }
-                continue;
-            }
-            const cat = mediaCategoryFromIndex(@intCast(cat_idx_i32));
-            const px = pill_start_x + @as(f64, @floatFromInt(i)) * (pill_w + pill_gap);
-            const is_selected = self.category == cat;
-            const is_focused = self.focus == .category and is_selected;
-            const dist = @abs(@as(i32, @intCast(i)) - 2);
-            const dimmer = @as(f64, @floatFromInt(dist));
-            const this_h = if (is_selected) pill_h_max else pill_h_min - @min(dimmer * 3.0 * scale_f, pill_h_min - 22.0 * scale_f);
-            const py = cat_y + (pill_h_max - this_h) * 0.5;
-            const alpha = 0.95 - @as(f64, @floatFromInt(dist)) * 0.06;
+        const pill_x = pb_track_x + @as(f64, @floatFromInt(active_display)) * pb_seg_w + pb_inset;
+        const pill_w = pb_seg_w - 2.0 * pb_inset;
+        const pill_y = cat_y + pb_inset;
+        const mcol = pillModeColor(self.category);
 
+        roundedRect(cr, pill_x, pill_y, pill_w, pb_pill_h, pb_pill_r);
+        c.cairo_set_source_rgba(cr, mcol.r, mcol.g, mcol.b, 90.0 / 255.0);
+        c.cairo_fill_preserve(cr);
+        // Gold ring: bright when the bar itself has focus, dim otherwise.
+        const ring_a: f64 = if (self.focus == .category) 200.0 / 255.0 else 120.0 / 255.0;
+        c.cairo_set_source_rgba(cr, PILL_GOLD.r, PILL_GOLD.g, PILL_GOLD.b, ring_a);
+        c.cairo_set_line_width(cr, 1.5);
+        c.cairo_stroke(cr);
+
+        // Segment labels + uniform hit rects.
+        const pill_font = @as(f64, style_.font_size_s) * scale_f;
+        c.cairo_set_font_size(cr, pill_font);
+        for (0..PILL_COUNT) |i| {
+            const cat = mediaCategoryFromIndex(i);
+            const seg_x = pb_track_x + @as(f64, @floatFromInt(i)) * pb_seg_w;
             if (out_click) |click| {
                 click.cat_for_index[i] = cat;
-                click.cat_y[i] = @intFromFloat(py);
-                click.cat_h[i] = @intFromFloat(this_h);
-                click.cat_x[i] = @intFromFloat(px);
-                click.cat_w[i] = @intFromFloat(pill_w);
+                click.cat_x[i] = @intFromFloat(seg_x);
+                click.cat_y[i] = @intFromFloat(cat_y);
+                click.cat_w[i] = @intFromFloat(pb_seg_w);
+                click.cat_h[i] = @intFromFloat(pb_track_h);
             }
-
-            roundedRect(cr, px, py, pill_w, this_h, pill_r);
-            if (is_focused) {
-                // bright focused border
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.14);
-                c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.85);
-                c.cairo_set_line_width(cr, 2.5);
-                c.cairo_stroke(cr);
-            } else if (is_selected) {
-                // dimmer unfocused selected border
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.10);
-                c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.45);
-                c.cairo_set_line_width(cr, 2.0);
-                c.cairo_stroke(cr);
-            } else {
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.06);
-                c.cairo_fill_preserve(cr);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.40);
-                c.cairo_set_line_width(cr, 1.0);
-                c.cairo_stroke(cr);
-            }
-
             const label = categoryLabel(cat);
-            const pill_font = @as(f64, style_.font_size_s) * scale_f;
-            c.cairo_set_font_size(cr, pill_font);
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, label.ptr, &ext);
-            c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, if (is_selected) 1.0 else alpha);
-            c.cairo_move_to(cr, px + (pill_w - ext.width) * 0.5, py + this_h * 0.5 + pill_font * 0.30);
+            const tcol = if (i == active_display) PILL_TEXT_ACTIVE else PILL_TEXT_DIM;
+            c.cairo_set_source_rgba(cr, tcol.r, tcol.g, tcol.b, 1.0);
+            c.cairo_move_to(cr, seg_x + (pb_seg_w - ext.width) * 0.5, cat_y + pb_track_h * 0.5 + pill_font * 0.30);
             c.cairo_show_text(cr, label.ptr);
         }
 
-        // ---- Search bar (shortened) ----
-        const search_w = pill_w * 3.0 + pill_gap * 2.0;
-        const search_x = pill_start_x + pill_w + pill_gap;
-        const search_r = 6.0 * scale_f;
+        // ---- Search bar (stadium end-caps, centered under the track) ----
+        const search_h = @max(34.0 * scale_f, 28.0 * scale_f);
+        const search_w = pb_seg_w * 3.0;
+        const search_x = pb_track_x + pb_seg_w;
+        const search_r = search_h * 0.5;
 
         if (out_click) |click| {
             click.search_x = @intFromFloat(search_x);
@@ -1381,22 +1414,22 @@ pub const MediaWidget = struct {
 
         // ---- Subcategory pills (optional pop-out row) ----
         if (self.subcategory_open) {
-            const sub_h = @max(24.0 * scale_f, pill_h_min * 0.8);
+            const sub_h = @max(24.0 * scale_f, 22.0 * scale_f);
             const sub_gap = 8.0 * scale_f;
             const sub_names = self.subcategoryNames(self.category);
-            const sub_total_w = @as(f64, @floatFromInt(sub_names.len)) * pill_w + @as(f64, @floatFromInt(sub_names.len - 1)) * sub_gap;
-            const sub_start_x = pad_x + (content_w - sub_total_w) * 0.5;
-            const sub_y = cat_y + pill_h_max + 8.0 * scale_f;
+            const sub_total_w = @as(f64, @floatFromInt(sub_names.len)) * pb_seg_w + @as(f64, @floatFromInt(sub_names.len - 1)) * sub_gap;
+            const sub_start_x = pad_x + @max(0.0, (content_w - sub_total_w) * 0.5);
+            const sub_y = cat_y + pb_track_h + 8.0 * scale_f;
             for (sub_names, 0..) |name, si| {
-                const sx = sub_start_x + @as(f64, @floatFromInt(si)) * (pill_w + sub_gap);
+                const sx = sub_start_x + @as(f64, @floatFromInt(si)) * (pb_seg_w + sub_gap);
                 const is_sub_focused = self.focus == .subcategory and si == self.subcategory_index;
                 if (out_click) |click| {
                     click.sub_x[si] = @intFromFloat(sx);
                     click.sub_y = @intFromFloat(sub_y);
-                    click.sub_w[si] = @intFromFloat(pill_w);
+                    click.sub_w[si] = @intFromFloat(pb_seg_w);
                     click.sub_h = @intFromFloat(sub_h);
                 }
-                roundedRect(cr, sx, sub_y, pill_w, sub_h, pill_r);
+                roundedRect(cr, sx, sub_y, pb_seg_w, sub_h, sub_h * 0.5);
                 if (is_sub_focused) {
                     c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.14);
                     c.cairo_fill_preserve(cr);
@@ -1413,7 +1446,7 @@ pub const MediaWidget = struct {
                 c.cairo_set_font_size(cr, 11.0 * scale_f);
                 var text_ext: c.cairo_text_extents_t = undefined;
                 c.cairo_text_extents(cr, name.ptr, &text_ext);
-                const tx = sx + (pill_w - text_ext.width) * 0.5;
+                const tx = sx + (pb_seg_w - text_ext.width) * 0.5;
                 const ty = sub_y + (sub_h + text_ext.height) * 0.5 - 2.0 * scale_f;
                 c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, if (is_sub_focused) 1.0 else 0.75);
                 c.cairo_move_to(cr, tx, ty);
