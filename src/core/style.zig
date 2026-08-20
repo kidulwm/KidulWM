@@ -226,4 +226,10 @@ pub const layout = struct {
     /// Vertical top/bottom arrangements.
     pub const vertical_top_split: SplitPreset = .{ .left_peek = 0.0, .focus = 0.5, .right_peek = 0.5 };
     pub const vertical_bottom_split: SplitPreset = .{ .left_peek = 0.5, .focus = 0.5, .right_peek = 0.0 };
+
+    /// Overview grid columns. User-tunable: 2 for readability, 3+ for
+    /// density on wide screens. Must be >= 1.
+    pub const overview_cols: u32 = 2;
+    /// Gap between overview minis and around the grid edge (even all round).
+    pub const overview_gap: u32 = 28;
 };

@@ -554,6 +554,9 @@ pub const Window = struct {
             tree.node.destroy();
             window.chrome_tree = null;
         }
+        // Destroy the scene tree so a crashed client doesn't leave an orphaned
+        // node rendering its last buffer (the "ghost" seen on unpark).
+        window.scene_tree.node.destroy();
         window.detachListeners();
         window.server.deckForWindow(window).removeWindow(window.id);
         window.link.remove();

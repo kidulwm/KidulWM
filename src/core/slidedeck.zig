@@ -393,10 +393,11 @@ pub const SlideDeck = struct {
 
     /// Grid geometry for the overview sentinel's card: minis live INSIDE the
     /// focused slide area (the split.focus band — peeks stay clear, per
-    /// Barticus 2026-08-19). 2 columns (lounge view trial), 16px padding,
-    /// parked slides in a bottom row.
-    pub const overview_cols = 2;
-    pub const overview_pad = 16;
+    /// Barticus 2026-08-19). Grid cols from style.layout.overview_cols,
+    /// even gaps all round (style.layout.overview_gap), parked slides in a
+    /// bottom row. Mini size computed to fit the band, not from aspect ratio.
+    pub const overview_cols = style.layout.overview_cols;
+    pub const overview_gap = style.layout.overview_gap;
 
     /// Return the mini grid rect for slide `slide_index` in overview mode.
     /// Unparked slides fill the top rows left-to-right (recency order);
@@ -417,20 +418,40 @@ pub const SlideDeck = struct {
             .horizontal => self.horizontalTarget(0).inset(self.gap),
             .vertical => self.verticalTarget(0).inset(self.gap),
         };
-        const pad: i32 = @intCast(overview_pad);
-        const cell_w: u32 = area.width / overview_cols;
-        const cell_w_i: i32 = @intCast(cell_w);
-        // Preserve the output aspect ratio for the mini height.
-        const mini_w: u32 = cell_w -| 2 * overview_pad;
-        const mini_h: u32 = @intFromFloat(@as(f32, @floatFromInt(mini_w)) * @as(f32, @floatFromInt(self.height)) / @as(f32, @floatFromInt(self.width)));
-        // Row pitch: mini + pad top AND bottom, so vertical gap matches the
-        // horizontal gap between minis.
-        const row_pitch: i32 = @intCast(mini_h + 2 * overview_pad);
+        const cols = overview_cols;
+        const gap: i32 = @intCast(overview_gap);
+
+        // Fixed mini size: computed from the band dimensions, NEVER changes
+        // regardless of slide count. 2 cols always; rows scroll if they
+        // exceed the visible band. The mini is sized so that 3 rows (the
+        // max we show: 2 unparked + 1 parked) fit exactly with even gaps.
+        const max_visible_rows = 3; // 2 unparked + 1 parked peek
+
+        const mini_w: u32 = @intCast(@max(1, @divTrunc(@as(i32, @intCast(area.width)) - (@as(i32, @intCast(cols)) + 1) * gap, @as(i32, @intCast(cols)))));
+        const mini_h: u32 = @intCast(@max(1, @divTrunc(@as(i32, @intCast(area.height)) - (@as(i32, @intCast(max_visible_rows)) + 1) * gap, @as(i32, @intCast(max_visible_rows)))));
+
+        // Grid origin: centered horizontally, top-aligned vertically (rows
+        // flow down from the top; if there are fewer than max_visible_rows,
+        // the grid is smaller and centered vertically in the band).
+        const unparked = self.unparkedCount();
+        const unparked_rows = (unparked + cols - 1) / cols;
+        var parked_count: usize = 0;
+        for (self.slides.items) |s| {
+            if (s.parked) parked_count += 1;
+        }
+        const parked_rows = if (parked_count > 0) (parked_count + cols - 1) / cols else 0;
+        const total_rows = unparked_rows + parked_rows;
+        if (total_rows == 0) return .{ .x = 0, .y = 0, .width = 0, .height = 0 };
+
+        const grid_w = @as(i32, @intCast(cols)) * @as(i32, @intCast(mini_w)) + (@as(i32, @intCast(cols)) + 1) * gap;
+        const grid_h = @as(i32, @intCast(total_rows)) * @as(i32, @intCast(mini_h)) + (@as(i32, @intCast(total_rows)) + 1) * gap;
+        const grid_x = area.x + @divTrunc(@as(i32, @intCast(area.width)) - grid_w, 2);
+        const grid_y = area.y + @divTrunc(@as(i32, @intCast(area.height)) - grid_h, 2);
 
         // Build the unparked order (most-recently-focused FIRST — the grid
         // fills from the top-left like a page, newest claims the first cell,
         // per Barticus 2026-08-19) and the parked order separately; parked
-        // minis live on the last row.
+        // minis live on the last row(s).
         const inflate = cursor_index != null and cursor_index.? == slide_index;
         const scale_up: f32 = if (inflate) 1.06 else 1.0;
         const this_w: u32 = @intFromFloat(@round(@as(f32, @floatFromInt(mini_w)) * scale_up));
@@ -442,11 +463,11 @@ pub const SlideDeck = struct {
             // Recency order — identical walk to recencyPos(): focus .. tail
             // first (newest), then focus-1 .. 0 (older side).
             const pos: usize = self.recencyPos(slide_index) orelse 0;
-            const col: i32 = @intCast(pos % overview_cols);
-            const row: i32 = @intCast(pos / overview_cols);
+            const col: i32 = @intCast(pos % cols);
+            const row: i32 = @intCast(pos / cols);
             return .{
-                .x = area.x + col * cell_w_i + pad - grow_x,
-                .y = area.y + row * row_pitch + pad - grow_y,
+                .x = grid_x + gap + col * (@as(i32, @intCast(mini_w)) + gap) - grow_x,
+                .y = grid_y + gap + row * (@as(i32, @intCast(mini_h)) + gap) - grow_y,
                 .width = this_w,
                 .height = this_h,
             };
@@ -456,15 +477,11 @@ pub const SlideDeck = struct {
             for (self.slides.items[0..slide_index]) |s| {
                 if (s.parked) pos += 1;
             }
-            const unparked_rows: i32 = blk: {
-                const n = self.unparkedCount();
-                break :blk @intCast((n + overview_cols - 1) / overview_cols);
-            };
-            const col: i32 = @intCast(pos % overview_cols);
-            const row: i32 = unparked_rows + @divTrunc(@as(i32, @intCast(pos)), overview_cols);
+            const col: i32 = @intCast(pos % cols);
+            const row: i32 = @intCast(unparked_rows + pos / cols);
             return .{
-                .x = area.x + col * cell_w_i + pad - grow_x,
-                .y = area.y + row * row_pitch + pad - grow_y,
+                .x = grid_x + gap + col * (@as(i32, @intCast(mini_w)) + gap) - grow_x,
+                .y = grid_y + gap + row * (@as(i32, @intCast(mini_h)) + gap) - grow_y,
                 .width = this_w,
                 .height = this_h,
             };
@@ -698,31 +715,32 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     try std.testing.expect(deck.overviewSlideOpen());
 
     // 1000x500, gap 8, split .06/.88/.06: focus band x=68, y=8, w=864, h=484.
-    // 2 cols -> cell 432, mini_w=432-32=400, mini_h=400*500/1000=200.
+    // 2 cols, gap=28 -> mini_w=(864-3*28)/2=390, mini_h=(484-4*28)/3=124.
+    // Grid 864x484 centered in band (no offset). Tiles at x=96/486, y=36/188/340.
     // Deck [1,2,3,4], focused idx3 (win4). Recency (focus..tail, then down):
     // idx3 (pos0, top-left), idx2 (pos1), idx0 (pos2, older side).
     // idx1 is PARKED so skipped in recency.
     const m3 = deck.overviewTargetForSlide(3);
-    try std.testing.expectEqual(@as(i32, 68 + 16), m3.x);
-    try std.testing.expectEqual(@as(i32, 8 + 16), m3.y);
-    try std.testing.expectEqual(@as(u32, 400), m3.width);
-    try std.testing.expectEqual(@as(u32, 200), m3.height);
+    try std.testing.expectEqual(@as(i32, 96), m3.x);
+    try std.testing.expectEqual(@as(i32, 36), m3.y);
+    try std.testing.expectEqual(@as(u32, 390), m3.width);
+    try std.testing.expectEqual(@as(u32, 124), m3.height);
 
     // pos1 = idx2 (win3).
     const m2 = deck.overviewTargetForSlide(2);
-    try std.testing.expectEqual(@as(i32, 68 + 432 + 16), m2.x);
-    try std.testing.expectEqual(@as(i32, 24), m2.y);
+    try std.testing.expectEqual(@as(i32, 96 + 390 + 28), m2.x);
+    try std.testing.expectEqual(@as(i32, 36), m2.y);
 
-    // pos2 = idx0 (win1, older side) wraps to row 1: pitch 232, y = 8+232+16 = 256.
+    // pos2 = idx0 (win1, older side) wraps to row 1: y = 36 + 124 + 28 = 188.
     const m0 = deck.overviewTargetForSlide(0);
-    try std.testing.expectEqual(@as(i32, 68 + 16), m0.x);
-    try std.testing.expectEqual(@as(i32, 256), m0.y);
+    try std.testing.expectEqual(@as(i32, 96), m0.x);
+    try std.testing.expectEqual(@as(i32, 188), m0.y);
 
-    // Parked slide (idx1): unparked=3 -> 2 rows at 2 cols, parked row = 2,
-    // y = 8 + 2*232 + 16 = 488.
+    // Parked slide (idx1): unparked=3 -> 2 rows, parked row = 2,
+    // y = 8 + 28 + 2*(124+28) = 340.
     const m1 = deck.overviewTargetForSlide(1);
-    try std.testing.expectEqual(@as(i32, 68 + 16), m1.x);
-    try std.testing.expectEqual(@as(i32, 488), m1.y);
+    try std.testing.expectEqual(@as(i32, 96), m1.x);
+    try std.testing.expectEqual(@as(i32, 340), m1.y);
 
     // Close restores the slide that opened it.
     deck.closeOverviewSlide();
@@ -764,15 +782,16 @@ test "miniAtPoint hit-tests the grid" {
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 50));
 
     deck.openOverviewSlide();
-    // Grid: band x=68,y=8,w=864,h=484; 2 cols; mini 400x200.
-    // Slide order: 1, 2, 3, focused idx2. Recency: idx2=(84,24), idx1=(516,24), idx0=(84,256).
-    try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(200, 50));
-    try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(550, 50));
+    // Grid: band x=68,y=8,w=864,h=484; 2 cols; mini 390x124 (fixed for 3 rows).
+    // Grid 864x332 centered in band: x=68, y=84. Tiles at y=112/264.
+    // Slide order: 1, 2, 3, focused idx2. Recency: idx2=(96,112), idx1=(514,112), idx0=(96,264).
+    try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(200, 150));
+    try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(550, 150));
     try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(200, 300));
     // Gap between minis: no hit.
-    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(490, 50));
+    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(490, 150));
     // Outside band: no hit.
-    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(50, 50));
+    try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(50, 150));
     // Below the grid: no hit.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 499));
 }
