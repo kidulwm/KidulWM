@@ -2386,7 +2386,9 @@ pub const Tray = struct {
         switch (sym) {
             .Left => {
                 switch (focused) {
-                    .category => self.backToTray(),
+                    // HARD STOP at the left edge — INPUT LAW says ←→ moves
+                    // and Esc goes back, not the other way round.
+                    .category => self.media.moveCategory(-1),
                     .subcategory => self.media.moveSubcategory(-1),
                     .search => self.media.moveSearchCaret(-1),
                     .result => self.media.moveResultSelection(-1),
