@@ -407,6 +407,12 @@ pub const MediaWidget = struct {
         self.search_focused = ctl == .search;
         self.slider_reveal_target = if (ctl == .slider) 1.0 else 0.0;
         if (ctl != .slider) self.slider_hover = false;
+        // Pills merge when focus drops into content: the sub track closes
+        // so the center stack collapses to the dormant token cleanly.
+        if (ctl == .result or ctl == .slider) {
+            self.subcategory_open = false;
+            self.subcategory_index = 0;
+        }
         if (self.search_focused) {
             self.search_caret = self.search_len;
         }
@@ -1284,23 +1290,63 @@ pub const MediaWidget = struct {
         const pad_y: f64 = 14.0 * scale_f;
         const content_w = w_d - 2.0 * pad_x;
 
-        // ---- Category pill bar: ONE stadium track, 5 segments, floating ----
-        // ---- tricolor inner pill. THE PILL spec — brand-locked,        ----
-        // ---- theme-immune, same 280px segments the original 3 had.     ----
+        // ---- CFC layout: results ride the TOP band, the interaction ----
+        // ---- stack sits at screen CENTER. The stack is ONE slot with ----
+        // ---- two states: pill track, or searchbar when she types.    ----
         const pb_seg_w = PILL_SEG_W * scale_f;
         const pb_track_h = PILL_TRACK_H * scale_f;
         const pb_track_w = pb_seg_w * @as(f64, @floatFromInt(PILL_COUNT));
         const pb_track_x = pad_x + @max(0.0, (content_w - pb_track_w) * 0.5);
-        const cat_y = pad_y;
         const pb_track_r = pb_track_h * 0.5;
         const pb_inset = PILL_INSET * scale_f;
         const pb_pill_h = pb_track_h - 2.0 * pb_inset;
         const pb_pill_r = pb_pill_h * 0.5;
-        const search_y = if (self.subcategory_open)
-            cat_y + pb_track_h + 16.0 * scale_f + @max(24.0 * scale_f, 22.0 * scale_f)
-        else
-            cat_y + pb_track_h + 10.0 * scale_f;
+        const pill_w = pb_seg_w - 2.0 * pb_inset;
+        const active_display = displayIndex(self.category);
+        const mcol = pillModeColor(self.category);
 
+        // Search owns center ONLY when the search row truly has it —
+        // focused caret or real text. Bare .search focus passing through
+        // must NOT flip the stack mid-scroll.
+        const search_active = self.search_focused or self.search_len > 0;
+
+        // Merge state: focus in content = the 5 segments collapse into ONE
+        // dormant token at center (chrome retreats, never abandons).
+        const pills_merged = (self.focus == .result or self.focus == .slider) and !search_active;
+
+        const sub_names = self.subcategoryNames(self.category);
+        const sub_rows: f64 = if (self.subcategory_open and sub_names.len > 0) 1.0 else 0.0;
+        const stack_gap = 8.0 * scale_f;
+        const stack_h = pb_track_h + sub_rows * (pb_track_h + stack_gap);
+        const cat_y = (h_d - stack_h) * 0.5;
+
+        // ---- Category pill bar: ONE stadium track, 5 segments, floating ----
+        // ---- tricolor inner pill. THE PILL spec — brand-locked,        ----
+        // ---- theme-immune, same 280px segments the original 3 had.     ----
+        if (pills_merged) {
+            // Dormant token: one slim stadium, current category name in its
+            // mode color, no gold ring, no labels. Granny's breadcrumb.
+            const tok_w = pb_seg_w;
+            const tok_x = pb_track_x + (pb_track_w - tok_w) * 0.5;
+            roundedRect(cr, tok_x, cat_y, tok_w, pb_track_h, pb_track_r);
+            c.cairo_set_source_rgba(cr, PILL_TRACK_FILL.r, PILL_TRACK_FILL.g, PILL_TRACK_FILL.b, 0.75);
+            c.cairo_fill_preserve(cr);
+            c.cairo_set_source_rgba(cr, PILL_TRACK_BORDER.r, PILL_TRACK_BORDER.g, PILL_TRACK_BORDER.b, 0.6);
+            c.cairo_set_line_width(cr, 1.0);
+            c.cairo_stroke(cr);
+            // Inner glint: mode color, very muted.
+            roundedRect(cr, tok_x + pb_inset, cat_y + pb_inset, tok_w - 2.0 * pb_inset, pb_pill_h, pb_pill_r);
+            c.cairo_set_source_rgba(cr, mcol.r, mcol.g, mcol.b, 60.0 / 255.0);
+            c.cairo_fill(cr);
+            const label = categoryLabel(self.category);
+            const tok_font = @as(f64, style_.font_size_s) * scale_f;
+            c.cairo_set_font_size(cr, tok_font);
+            var ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, label.ptr, &ext);
+            c.cairo_set_source_rgba(cr, mcol.r, mcol.g, mcol.b, 0.9);
+            c.cairo_move_to(cr, tok_x + (tok_w - ext.width) * 0.5, cat_y + pb_track_h * 0.5 + tok_font * 0.30);
+            c.cairo_show_text(cr, label.ptr);
+        } else if (!search_active) {
         // Track fill + border (house colors, never theme-fed).
         roundedRect(cr, pb_track_x, cat_y, pb_track_w, pb_track_h, pb_track_r);
         c.cairo_set_source_rgba(cr, PILL_TRACK_FILL.r, PILL_TRACK_FILL.g, PILL_TRACK_FILL.b, 1.0);
@@ -1321,11 +1367,8 @@ pub const MediaWidget = struct {
         }
 
         // Floating inner pill on the selected segment.
-        const active_display = displayIndex(self.category);
         const pill_x = pb_track_x + @as(f64, @floatFromInt(active_display)) * pb_seg_w + pb_inset;
-        const pill_w = pb_seg_w - 2.0 * pb_inset;
         const pill_y = cat_y + pb_inset;
-        const mcol = pillModeColor(self.category);
 
         roundedRect(cr, pill_x, pill_y, pill_w, pb_pill_h, pb_pill_r);
         c.cairo_set_source_rgba(cr, mcol.r, mcol.g, mcol.b, 90.0 / 255.0);
@@ -1357,11 +1400,71 @@ pub const MediaWidget = struct {
             c.cairo_move_to(cr, seg_x + (pb_seg_w - ext.width) * 0.5, cat_y + pb_track_h * 0.5 + pill_font * 0.30);
             c.cairo_show_text(cr, label.ptr);
         }
+        } // end if (!search_active) pill track
 
-        // ---- Search bar (stadium end-caps, centered under the track) ----
-        const search_h = @max(34.0 * scale_f, 28.0 * scale_f);
-        const search_w = pb_seg_w * 3.0;
-        const search_x = pb_track_x + pb_seg_w;
+        // ---- Subcategory track: SAME spec as the main track, one row ----
+        // ---- under it. Floating inner pill wears the parent's color. ----
+        if (!search_active and self.subcategory_open and sub_names.len > 0) {
+            const sub_y = cat_y + pb_track_h + stack_gap;
+            const sub_n = sub_names.len;
+            const sub_track_w = pb_seg_w * @as(f64, @floatFromInt(sub_n));
+            const sub_track_x = pad_x + @max(0.0, (content_w - sub_track_w) * 0.5);
+
+            roundedRect(cr, sub_track_x, sub_y, sub_track_w, pb_track_h, pb_track_r);
+            c.cairo_set_source_rgba(cr, PILL_TRACK_FILL.r, PILL_TRACK_FILL.g, PILL_TRACK_FILL.b, 1.0);
+            c.cairo_fill_preserve(cr);
+            c.cairo_set_source_rgba(cr, PILL_TRACK_BORDER.r, PILL_TRACK_BORDER.g, PILL_TRACK_BORDER.b, 1.0);
+            c.cairo_set_line_width(cr, 1.5);
+            c.cairo_stroke(cr);
+
+            c.cairo_set_source_rgba(cr, PILL_TRACK_BORDER.r, PILL_TRACK_BORDER.g, PILL_TRACK_BORDER.b, 90.0 / 255.0);
+            c.cairo_set_line_width(cr, 1.0);
+            var ssep: usize = 1;
+            while (ssep < sub_n) : (ssep += 1) {
+                const sx = sub_track_x + @as(f64, @floatFromInt(ssep)) * pb_seg_w;
+                c.cairo_move_to(cr, sx, sub_y + 10.0 * scale_f);
+                c.cairo_line_to(cr, sx, sub_y + pb_track_h - 10.0 * scale_f);
+                c.cairo_stroke(cr);
+            }
+
+            // Floating inner pill on the selected sub (parent's mode color).
+            const sub_pill_x = sub_track_x + @as(f64, @floatFromInt(self.subcategory_index)) * pb_seg_w + pb_inset;
+            const sub_pill_y = sub_y + pb_inset;
+            roundedRect(cr, sub_pill_x, sub_pill_y, pill_w, pb_pill_h, pb_pill_r);
+            c.cairo_set_source_rgba(cr, mcol.r, mcol.g, mcol.b, 90.0 / 255.0);
+            c.cairo_fill_preserve(cr);
+            const sub_ring_a: f64 = if (self.focus == .subcategory) 200.0 / 255.0 else 120.0 / 255.0;
+            c.cairo_set_source_rgba(cr, PILL_GOLD.r, PILL_GOLD.g, PILL_GOLD.b, sub_ring_a);
+            c.cairo_set_line_width(cr, 1.5);
+            c.cairo_stroke(cr);
+
+            const sub_font = @as(f64, style_.font_size_s) * scale_f;
+            c.cairo_set_font_size(cr, sub_font);
+            for (sub_names, 0..) |name, si| {
+                const seg_x = sub_track_x + @as(f64, @floatFromInt(si)) * pb_seg_w;
+                if (out_click) |click| {
+                    if (si < 5) {
+                        click.sub_x[si] = @intFromFloat(seg_x);
+                        click.sub_y = @intFromFloat(sub_y);
+                        click.sub_w[si] = @intFromFloat(pb_seg_w);
+                        click.sub_h = @intFromFloat(pb_track_h);
+                    }
+                }
+                var ext: c.cairo_text_extents_t = undefined;
+                c.cairo_text_extents(cr, name.ptr, &ext);
+                const tcol = if (si == self.subcategory_index) PILL_TEXT_ACTIVE else PILL_TEXT_DIM;
+                c.cairo_set_source_rgba(cr, tcol.r, tcol.g, tcol.b, 1.0);
+                c.cairo_move_to(cr, seg_x + (pb_seg_w - ext.width) * 0.5, sub_y + pb_track_h * 0.5 + sub_font * 0.30);
+                c.cairo_show_text(cr, name.ptr);
+            }
+        }
+
+        // ---- Search bar: takes the pill track's rect when active; ----
+        // ---- otherwise sits just under the stack, same stadium.     ----
+        const search_h = pb_track_h;
+        const search_w = pb_track_w;
+        const search_x = pb_track_x;
+        const search_y = if (search_active) cat_y else cat_y + stack_h + stack_gap;
         const search_r = search_h * 0.5;
 
         if (out_click) |click| {
@@ -1371,6 +1474,8 @@ pub const MediaWidget = struct {
             click.search_h = @intFromFloat(search_h);
         }
 
+        // Search only draws when it owns center.
+        if (search_active) {
         roundedRect(cr, search_x, search_y, search_w, search_h, search_r);
         if (self.focus == .search) {
             c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.18);
@@ -1428,61 +1533,36 @@ pub const MediaWidget = struct {
         } else {
             self.show_caret = true;
         }
+        } // end if (search_active) search draw
 
-        // ---- Subcategory pills (optional pop-out row) ----
-        if (self.subcategory_open) {
-            const sub_h = @max(24.0 * scale_f, 22.0 * scale_f);
-            const sub_gap = 8.0 * scale_f;
-            const sub_names = self.subcategoryNames(self.category);
-            const sub_total_w = @as(f64, @floatFromInt(sub_names.len)) * pb_seg_w + @as(f64, @floatFromInt(sub_names.len - 1)) * sub_gap;
-            const sub_start_x = pad_x + @max(0.0, (content_w - sub_total_w) * 0.5);
-            const sub_y = cat_y + pb_track_h + 8.0 * scale_f;
-            for (sub_names, 0..) |name, si| {
-                const sx = sub_start_x + @as(f64, @floatFromInt(si)) * (pb_seg_w + sub_gap);
-                const is_sub_focused = self.focus == .subcategory and si == self.subcategory_index;
-                if (out_click) |click| {
-                    click.sub_x[si] = @intFromFloat(sx);
-                    click.sub_y = @intFromFloat(sub_y);
-                    click.sub_w[si] = @intFromFloat(pb_seg_w);
-                    click.sub_h = @intFromFloat(sub_h);
-                }
-                roundedRect(cr, sx, sub_y, pb_seg_w, sub_h, sub_h * 0.5);
-                if (is_sub_focused) {
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.14);
-                    c.cairo_fill_preserve(cr);
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.85);
-                    c.cairo_set_line_width(cr, 2.0);
-                    c.cairo_stroke(cr);
-                } else {
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.08);
-                    c.cairo_fill_preserve(cr);
-                    c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.40);
-                    c.cairo_set_line_width(cr, 1.0);
-                    c.cairo_stroke(cr);
-                }
-                c.cairo_set_font_size(cr, 11.0 * scale_f);
-                var text_ext: c.cairo_text_extents_t = undefined;
-                c.cairo_text_extents(cr, name.ptr, &text_ext);
-                const tx = sx + (pb_seg_w - text_ext.width) * 0.5;
-                const ty = sub_y + (sub_h + text_ext.height) * 0.5 - 2.0 * scale_f;
-                c.cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, if (is_sub_focused) 1.0 else 0.75);
-                c.cairo_move_to(cr, tx, ty);
-                c.cairo_show_text(cr, name.ptr);
-            }
-        }
-
-        // ---- Result grid + scroller ----
-        const list_y = search_y + search_h + 10.0 * scale_f;
+        // ---- Result grid + scroller: TOP band, owns everything above ----
+        // ---- the center stack. HARD CLIP to the band — nothing draws  ----
+        // ---- through the no-go zone, bug or not. ----
+        // ---- Result grid: TWO bands — above AND below the center    ----
+        // ---- stack (ksignals geometry). Clip = union of both bands, ----
+        // ---- so nothing ever crosses the stack, bug or not.         ----
+        const band_y = pad_y;
+        const band_h_clip = @max(0.0, cat_y - 8.0 * scale_f - band_y);
+        const bottom_clip_y = cat_y + stack_h + 8.0 * scale_f;
+        const bottom_clip_h = @max(0.0, h_d - pad_y - bottom_clip_y);
+        c.cairo_save(cr);
+        c.cairo_rectangle(cr, 0, band_y, w_d, band_h_clip);
+        c.cairo_rectangle(cr, 0, bottom_clip_y, w_d, bottom_clip_h);
+        c.cairo_clip(cr);
+        // ---- GOLDILOCKS GAP: ONE gap everywhere — between tiles, rows, ----
+        // ---- band edges, and the no-go zone. 56px house gap (kfiles). ----
+        const gap: f64 = 56.0 * scale_f;
+        const list_y = pad_y + gap * 0.5;
         const bar_w: f64 = 5.0 * scale_f;
         const scroller_track: f64 = 30.0 * scale_f; // fixed right-side channel for the scroller and letters
         const cols = self.grid_cols;
-        const base_gap: f64 = 36.0 * scale_f;
-        const min_gap: f64 = 8.0 * scale_f;
-        const tile_gap: f64 = @max(min_gap, base_gap - (scroller_track * self.slider_reveal) / @as(f64, @floatFromInt(cols + 1)));
-        const tile_w = (w_d - @as(f64, @floatFromInt(cols + 1)) * base_gap) / @as(f64, @floatFromInt(cols));
+        const tile_gap: f64 = gap;
+        const tile_w = (w_d - @as(f64, @floatFromInt(cols + 1)) * gap) / @as(f64, @floatFromInt(cols));
         const list_x = tile_gap;
         const list_w = w_d - 2.0 * tile_gap;
-        const list_h = h_d - list_y - pad_y;
+        // Top band: top edge down to the no-go zone — a full gap above
+        // Granny's Pills, same gap as between tiles.
+        const list_h = @max(0.0, cat_y - gap - list_y);
         const right_gap_center = w_d - tile_gap * 0.5;
         const channel_cx_open = right_gap_center;
         const channel_cx = channel_cx_open + (1.0 - self.slider_reveal) * (tile_gap * 0.5 + scroller_track * 0.5);
@@ -1502,16 +1582,21 @@ pub const MediaWidget = struct {
             click.letters_w = click.scroll_w;
         }
 
-
-        const label_h = 34.0 * scale_f;
-        
-        
+        // ---- TRIMMED TITLES: no permanent label strip under tiles.   ----
+        // ---- Art is square; the focused tile's title rides centered  ----
+        // ---- at the TOP of the band, outside all borders.            ----
         const label_font = @as(f64, style_.font_size_s) * scale_f;
-
-        const art_h = tile_w * 1.25;
-        const tile_h = art_h + label_h;
+        const art_h = @min(tile_w, @max(80.0 * scale_f, list_h - tile_gap));
+        const tile_h = art_h;
         const row_h = tile_h + tile_gap;
-        const rows_visible: usize = if (row_h <= 0.0 or list_h <= 0.0) 0 else @max(2, @as(usize, @intFromFloat(@floor(list_h / row_h))));
+        // ---- TWO PANELS (ksignals geometry): rows fill the TOP band, ----
+        // ---- then continue in the BOTTOM band under the stack.       ----
+        // ---- The center stack is the focus row — tiles never enter.  ----
+        const bottom_y = cat_y + stack_h + gap;
+        const bottom_h = @max(0.0, h_d - pad_y - bottom_y);
+        const rows_top: usize = if (row_h <= 0.0 or list_h <= 0.0) 0 else @max(1, @as(usize, @intFromFloat(@floor(list_h / row_h))));
+        const rows_bottom: usize = if (row_h <= 0.0 or bottom_h <= 0.0) 0 else @as(usize, @intFromFloat(@floor(bottom_h / row_h)));
+        const rows_visible = rows_top + rows_bottom;
         const library = getLibrary(self.category);
         const total_rows = (library.len + cols - 1) / cols;
         if (library.len == 0) {
@@ -1558,7 +1643,12 @@ pub const MediaWidget = struct {
         var row_i: usize = 0;
         while (row_i < rows_visible and self.list_scroll_offset + row_i < total_rows) : (row_i += 1) {
             const grid_row = self.list_scroll_offset + row_i;
-            const ty = list_y + @as(f64, @floatFromInt(row_i)) * row_h;
+            // Rows 0..rows_top live in the TOP band; the rest continue in
+            // the BOTTOM band under the stack.
+            const ty = if (row_i < rows_top)
+                list_y + @as(f64, @floatFromInt(row_i)) * row_h
+            else
+                bottom_y + @as(f64, @floatFromInt(row_i - rows_top)) * row_h;
             const first_idx = grid_row * cols;
             const last_idx = @min(first_idx + cols, library.len);
             const tiles_in_row = last_idx - first_idx;
@@ -1601,47 +1691,26 @@ pub const MediaWidget = struct {
                 }
 
                 renderTileArt(cr, tx, ty, tile_w, art_h, entry, border, &self.art_cache);
-
-                c.cairo_set_font_size(cr, label_font);
-                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.95);
-                const title_y = ty + art_h + label_font * 1.15;
-                self.drawEllipsizedText(cr, std.mem.sliceTo(entry.title, 0), tx, title_y, tile_w);
-
-                c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.75);
-                self.drawEllipsizedText(cr, std.mem.sliceTo(entry.artist, 0), tx, title_y + label_font * 1.25, tile_w);
+                // No per-tile labels — TRIMMED TITLES: focused tile only,
+                // title centered at the TOP of the band, outside borders.
             }
         }
 
-        if (self.focus == .result and focus_drawn) {
-            const over_w = tile_w + 20.0 * scale_f;
-            const over_h = tile_h + 18.0 * scale_f;
-            const ox = focus_tx + tile_w * 0.5 - over_w * 0.5;
-            const oy = focus_ty + tile_h * 0.5 - over_h * 0.5;
-            const corner = 10.0 * scale_f;
-
-            c.cairo_save(cr);
-            roundedRect(cr, ox - 3.0 * scale_f, oy - 3.0 * scale_f, over_w + 6.0 * scale_f, over_h + 6.0 * scale_f, corner + 3.0 * scale_f);
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.28);
-            c.cairo_fill(cr);
-
-            roundedRect(cr, ox, oy, over_w, over_h, corner);
-            c.cairo_clip(cr);
-            c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
-            c.cairo_paint(cr);
-
-            const over_art_h = over_h - label_h;
-            renderTileArt(cr, ox, oy, over_w, over_art_h, library[self.selected_result], border, &self.art_cache);
-
+        // Trimmed title: the focused tile's name, centered above the grid.
+        if (self.focus == .result and focus_drawn and library.len > 0) {
+            const title = std.mem.sliceTo(library[self.selected_result].title, 0);
             c.cairo_set_font_size(cr, label_font);
+            var ext: c.cairo_text_extents_t = undefined;
+            c.cairo_text_extents(cr, title.ptr, &ext);
+            const title_x = focus_tx + tile_w * 0.5 - ext.width * 0.5;
+            const title_y = list_y - 14.0 * scale_f;
             c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.95);
-            const over_title_y = oy + over_art_h + label_font * 1.15;
-            self.drawEllipsizedText(cr, std.mem.sliceTo(library[self.selected_result].title, 0), ox, over_title_y, over_w);
-
-            c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.75);
-            self.drawEllipsizedText(cr, std.mem.sliceTo(library[self.selected_result].artist, 0), ox, over_title_y + label_font * 1.25, over_w);
-
-            c.cairo_restore(cr);
+            c.cairo_move_to(cr, title_x, title_y);
+            c.cairo_show_text(cr, title.ptr);
         }
+
+        // Focus indication is the in-grid frame + the trimmed title above —
+        // no enlarged overlay re-paint (that's what doubled the labels).
 
         // ---- Plain scrollbar track ----
         const track_h = list_h;
@@ -1666,6 +1735,9 @@ pub const MediaWidget = struct {
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
+
+        // Pop the band clip — grid/scroller/overlay all stayed inside.
+        c.cairo_restore(cr);
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
         // at the buffer edge (same tokens as window chrome).

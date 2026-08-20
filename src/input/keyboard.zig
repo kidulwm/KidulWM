@@ -156,7 +156,9 @@ const KeyboardDevice = struct {
             return; // swallow everything else while the slide is open
         }
         // Cards consume arrow/navigation/typing before clients while open.
-        if (server.tray.calendar_card_open or server.tray.weather_card_open or server.tray.media_card_open or server.tray.files_card_open) {
+        // NOTE: media_card_open deliberately EXCLUDED — the media player is
+        // a deck slide now; the dead card flag must never swallow keys.
+        if (server.tray.calendar_card_open or server.tray.weather_card_open or server.tray.files_card_open) {
             if (server.tray.handleMediaCardKey(sym)) return;
             if (server.tray.handleFilesCardKey(sym)) return;
             if (server.tray.handleCalendarCardKey(sym)) return;
