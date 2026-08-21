@@ -1,3 +1,47 @@
+# KidulWM HANDOFF — Aug 21 2026 (session 9, media slide CFC viewport)
+
+## Session summary
+
+Media slide CFC (Central Focused Computing) viewport. The law: **"The row you're moving TO becomes center."** Direction determines destination. Destination becomes center.
+
+## What landed today
+
+- **CFC viewport**: Focus is central always. Cards move to the focus, focus never moves.
+- **THE LANDING**: Pills bar centered. Row0 above, row1 below. Even gaps.
+- **THE UP** (↑ from landing): Row0 centered. Top peek EMPTY. Row1 half below. Pills gone.
+- **THE DOWN** (↓ from landing): Row1 centered. Row0 half above (top peek). Row2 half below (bottom peek). Pills gone. **Full 3-row display.**
+- **EVERYTHING-IN-BETWEEN** (↓ or ↑ in wall): Focused row centered. Half-row above. Half-row below. Pills gone.
+- **THE UP + 1** (↑ from THE UP): Pills centered. Row0 in full below. NOTHING else. Hard stop — no further ↑.
+- **HARD STOPS**: No wrap at top or bottom. Ever.
+- **Quit clears**: `mediaSlideClose` resets to LANDING state. Every open is fresh.
+
+## The CFC Law (locked)
+
+> "The row you're moving TO becomes center."
+
+- **↓ arrow**: Bottom peek row moves UP to center. Old center becomes top peek.
+- **↑ arrow**: Top peek row moves DOWN to center. Old center becomes bottom peek.
+- **Focus is central always.** The only break from CFC is UP+1 (pills return).
+
+## Known issues / WIP
+
+- **DOWN from landing not showing top peek**: The initial "full set of cards" is not arriving. Row0 should become the top peek when DOWN is pressed, but it's not. This throws all subsequent calculations off — the focus is not locked in center stage until one of the other phases kicks in. The being off at the start puts everything out of wack.
+- **Focused card highlight moves off screen**: The highlight should stay CFC'd (centered), but it's moving beyond the screen edge. The focused card should never move — only the cards around it should move.
+- **Quit not clearing**: `mediaSlideClose` resets state but the slide may not be re-rendering on next open. The widget state is reset but the scene tree may be caching old geometry.
+
+## Deploy
+
+Current VM build: 7531 (CFC viewport + quit reset). Active on fresh-one.
+
+## Next (when the gimmick matters)
+
+1. Verify DOWN from landing shows row0 as top peek
+2. Verify quit actually resets to landing
+3. Verify scrolling works through large libraries
+4. Logo slot above pills in UP+1 (TBD)
+
+---
+
 # KidulWM HANDOFF — Aug 20 2026 (session 8, overview grid + ghost fix)
 
 ## Session summary

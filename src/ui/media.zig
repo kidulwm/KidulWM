@@ -343,8 +343,8 @@ pub const MediaWidget = struct {
     state_generation: u32 = 0,
     slider_reveal: f64 = 0.0,
     slider_reveal_target: f64 = 0.0,
-    /// Landing-vs-reset: false until focus first enters the tile wall.
-    seen_wall: bool = false,
+    /// UP+1 state: pills centered, row0 below, nothing else.
+    up_plus_one: bool = false,
 
     selected_result: usize = 0,
     visible_result_count: usize = 0,
@@ -409,14 +409,14 @@ pub const MediaWidget = struct {
         self.search_focused = ctl == .search;
         self.slider_reveal_target = if (ctl == .slider) 1.0 else 0.0;
         if (ctl != .slider) self.slider_hover = false;
-        // WALL tracking: landing (top-5 ABOVE the stack) vs reset (rows
-        // start UNDER the stack after coming back up from the wall).
         if (ctl == .result or ctl == .slider) {
-            self.seen_wall = true;
             self.subcategory_open = false;
             self.subcategory_index = 0;
+            self.up_plus_one = false; // entering cards kills UP+1
         }
-        if (ctl == .category) self.seen_wall = false;
+        if (ctl == .category) {
+            // Landing or UP+1: decided by up_plus_one flag
+        }
         if (self.search_focused) {
             self.search_caret = self.search_len;
         }
@@ -522,13 +522,13 @@ pub const MediaWidget = struct {
         var col: i32 = @intCast(self.selected_result % @as(usize, @intCast(cols)));
         const new_row_uncapped: i32 = row + rows;
         if (new_row_uncapped < 0) {
-            // Wrapping up from top row: land on same column, last row (clamp to last item if row is partial).
+            // HARD STOP at top: row0 is the ceiling. No wrap.
+            row = 0;
+        } else if (new_row_uncapped >= total_rows) {
+            // HARD STOP at bottom: last row is the floor. No wrap.
             row = total_rows - 1;
             const last_row_items: i32 = @intCast(library.len - @as(usize, @intCast(row)) * @as(usize, @intCast(cols)));
             if (col >= last_row_items) col = last_row_items - 1;
-        } else if (new_row_uncapped >= total_rows) {
-            // Wrapping down from bottom row: land on same column, first row.
-            row = 0;
         } else {
             row = new_row_uncapped;
             const row_items: i32 = if (row == total_rows - 1)
@@ -551,16 +551,16 @@ pub const MediaWidget = struct {
     }
 
     pub fn adjustScrollToSelection(self: *MediaWidget) void {
+        // CFC: the row you're moving TO becomes center.
+        // scroll_offset = selected_row, clamped to [0, max_scroll_offset].
+        // The render centers (grid_row - scroll_offset) at h_d/2, so
+        // offset = selected_row puts the selected row dead center.
+        // Row above = top peek, row below = bottom peek.
         const cols: usize = self.grid_cols;
         const selected_row = self.selected_result / cols;
-        const visible_rows = self.visible_result_count / cols;
-        if (selected_row < self.list_scroll_offset) {
-            self.list_scroll_offset = selected_row;
-        } else if (visible_rows > 0 and selected_row >= self.list_scroll_offset + visible_rows) {
-            var off = selected_row + 1 - visible_rows;
-            if (off > self.max_scroll_offset) off = self.max_scroll_offset;
-            self.list_scroll_offset = off;
-        }
+        var off: i32 = @as(i32, @intCast(selected_row));
+        off = @max(0, @min(off, @as(i32, @intCast(self.max_scroll_offset))));
+        self.list_scroll_offset = @intCast(off);
         self.bumpGeneration();
     }
 
@@ -1309,9 +1309,8 @@ pub const MediaWidget = struct {
         const active_display = displayIndex(self.category);
         const mcol = pillModeColor(self.category);
 
-        // ---- PLACEMENT, not clipping: rows are computed AROUND the ----
-        // ---- stack. The stack slots in and pushes cards up/down;    ----
-        // ---- no band scissors, no peek geometry, no collisions.     ----
+        // ---- CFC LAW: the row you're moving TO becomes center. ----
+        // ---- Direction determines destination. Destination becomes center. ----
         const search_active = self.search_focused or self.search_len > 0;
         const in_wall = (self.focus == .result or self.focus == .slider) and !search_active;
 
@@ -1321,8 +1320,6 @@ pub const MediaWidget = struct {
         const stack_h = pb_track_h + sub_rows * (pb_track_h + stack_gap);
 
         // ---- TILE DIMS: constant 2:3 fan art; only focus inflates.   ----
-        // NO top banner — the grid starts one gap under the slide edge,
-        // same gap as everywhere else. Nothing to cut off against.
         const gap: f64 = 56.0 * scale_f; // ONE Goldilocks gap everywhere
         const grid_top = pad_y + gap;
         const cols = self.grid_cols;
@@ -1332,31 +1329,36 @@ pub const MediaWidget = struct {
         const tile_h = art_h;
         const row_h = tile_h + tile_gap;
 
-        // ---- THREE STATES, three formulas. Row Y is a pure function  ----
-        // ---- of state + row index. ONE gap between every neighbor.   ----
+        // ---- THE CFC LAW — one sentence: -------------------------------
+        // ---- "The row you're moving TO becomes center." -----------------
         //
-        // LANDING (fresh, never walled): 5 above / stack / 5 below,
-        //   stack centered. row0 = stack_top - gap - tile_h,
-        //   row1 = stack_bottom + gap. row0->row1 = tile_h + 2*gap +
-        //   stack_h (the "triple"). Nothing above the top row — clean.
+        // LANDING (focus in chrome, up_plus_one = false):
+        //   Pills bar centered. Row0 above, row1 below. Even gaps.
+        //   stack_y = (h_d - stack_h) / 2
+        //   row0_top = stack_y - gap - tile_h
+        //   row1_top = stack_y + stack_h + gap
         //
-        // RESET (came back up from the wall): MASTHEAD. The pills bar
-        //   IS the header now — ALL cards flow under it, and the space
-        //   above the stack is the logo slot (logo TBD; the rect is
-        //   grid_top .. stack_y - gap). Stack seats at the top:
-        //   stack_y = grid_top + logo_h + gap when a logo lives there,
-        //   grid_top alone until the real mark ships (logo_h = 0 now).
+        // THE UP (↑ from landing, or scrolled back to row0):
+        //   Row0 centered at h_d/2. Top peek EMPTY. Row1 half below.
+        //   Pills gone.
         //
-        // WALL (focus in the tiles): the stack is GONE — no draw, no
-        //   reserved space. One endless field from grid_top.
+        // THE DOWN (↓ from landing):
+        //   Row1 centered at h_d/2. Row0 half above. Row2 half below.
+        //   Pills gone.
+        //
+        // STANDARD VIEW (moving ↓ in the wall):
+        //   The row you're moving TO centers. Half-rows bleed.
+        //
+        // THE UP + 1 (↑ from THE UP, up_plus_one = true):
+        //   Pills bar centered. Row0 in full below. NOTHING else.
+        //   No peek, no additional rows. Nothing above the pills.
         //
         // SEARCH: letter key from ANY state — the bar takes the stack
         //   rect exactly; tiles keep their state's geometry behind it.
+
         const centered_stack_y = (h_d - stack_h) * 0.5;
         const landing_stack_y = @min(centered_stack_y, grid_top + tile_h + gap);
-        const logo_h: f64 = 0.0; // masthead mark TBD — slot reserved on RESET
-        const reset_stack_y = grid_top + logo_h + gap;
-        const stack_y = if (self.seen_wall) reset_stack_y else landing_stack_y;
+        const stack_y = landing_stack_y; // pills always centered
         const cat_y = stack_y; // pill track top (sub/search hang below)
         const stack_bottom = stack_y + stack_h;
 
@@ -1553,19 +1555,18 @@ pub const MediaWidget = struct {
         }
         } // end if (search_active) search draw
 
-        // ---- Result grid + scroller: rows are PLACED around the     ----
-        // ---- stack. No band carving — each row's Y falls out of     ----
-        // ---- state + index, and the stack pushes its neighbors by   ----
-        // ---- exactly stack_h + 2*gap. One clip: the slide itself.   ----
+        // ---- Result grid + scroller: CFC — the row you're moving TO ----
+        // ---- becomes center. Direction determines destination.       ----
         const grid_bottom = h_d - pad_y;
 
         // Row placement: pure function of (state, row index).
         // LANDING: row0 above the stack, skip, row1+ below.
-        // RESET (masthead): ALL rows flow under the stack.
-        // WALL: rows flow from grid_top, scrolling via offset.
+        // WALL: the row you're moving TO is centered at h_d/2.
+        // UP+1: row0 in full below the centered pills, nothing else.
         const wall = in_wall;
-        const row0_top = stack_y - gap - tile_h; // LANDING only
-        const row1_top = stack_bottom + gap;
+        const up1 = self.up_plus_one and !wall;
+        const row0_top = if (up1) stack_bottom + gap else stack_y - gap - tile_h;
+        const row1_top = if (up1) row0_top + row_h else stack_bottom + gap;
 
         // Clip = the slide body. Tiles never overlap the stack because
         // their Y never lands in it.
@@ -1586,10 +1587,9 @@ pub const MediaWidget = struct {
         // ---- tile only: slight inflate + double border + title.     ----
         const label_font = @as(f64, style_.font_size_s) * scale_f;
 
-        // Field span: WALL from grid_top; LANDING from row0_top (one row
-        // above the stack); RESET from row1_top (all rows under it).
-        const field_top = if (wall) grid_top else if (self.seen_wall) row1_top else row0_top;
-        const rows_visible: usize = @intFromFloat(@max(0.0, @ceil((grid_bottom - field_top) / row_h)));
+        // Field span: WALL from grid_top; LANDING from row0_top; UP+1 from row0_top.
+        const field_top = if (wall) grid_top else row0_top;
+        const rows_visible: usize = if (up1) 1 else @intFromFloat(@max(0.0, @ceil((grid_bottom - field_top) / row_h)));
         const list_y = field_top; // scroller/track anchor
         const list_h = grid_bottom - field_top;
 
@@ -1653,13 +1653,13 @@ pub const MediaWidget = struct {
         while (row_i < rows_visible and self.list_scroll_offset + row_i < total_rows) : (row_i += 1) {
             const grid_row = self.list_scroll_offset + row_i;
             // PLACEMENT:
-            //   WALL:   grid_top + i*row_h (scrolls)
+            //   WALL:   the row you're moving TO is centered at h_d/2
             //   LANDING: row0 above stack, skip, row1+ below
-            //   RESET:   all rows under the stack (masthead above)
+            //   UP+1:   row0 in full below the centered pills, nothing else
             const ty = if (wall)
-                grid_top + @as(f64, @floatFromInt(row_i)) * row_h
-            else if (self.seen_wall)
-                row1_top + @as(f64, @floatFromInt(grid_row)) * row_h
+                h_d * 0.5 - tile_h * 0.5 + (@as(f64, @floatFromInt(grid_row)) - @as(f64, @floatFromInt(self.list_scroll_offset))) * row_h
+            else if (up1)
+                row0_top + @as(f64, @floatFromInt(grid_row)) * row_h
             else if (grid_row == 0)
                 row0_top
             else
@@ -1760,9 +1760,8 @@ pub const MediaWidget = struct {
         // Pop the slide-body clip.
         c.cairo_restore(cr);
 
-        // (No title strip — the masthead belongs to the RESET state's
-        // logo slot above the stack; the rest of the time the cards
-        // own every pixel.)
+        // (No title strip — the cards own every pixel. The pills bar
+        // is the only chrome, and it's either centered or gone.)
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
         // at the buffer edge (same tokens as window chrome).

@@ -1021,6 +1021,12 @@ pub const Server = struct {
     fn mediaSlideClose(self: *Server, output: *Output) void {
         _ = self;
         if (!output.media_slide.isOpen()) return;
+        // Reset to LANDING state for next open.
+        output.media_slide.widget.up_plus_one = false;
+        output.media_slide.widget.focus = .category;
+        output.media_slide.widget.selected_result = 0;
+        output.media_slide.widget.list_scroll_offset = 0;
+        output.media_slide.widget.clearSearch();
         output.media_slide.tree.?.node.destroy();
         output.media_slide.tree = null;
         output.media_slide.card_buffer = null;
@@ -1146,12 +1152,27 @@ pub const Server = struct {
             },
             xkb.Keysym.Up => {
                 switch (widget.focus) {
-                    .category => {},
+                    .category => {
+                        if (widget.up_plus_one) {
+                            // Already in UP+1: hard stop, no further up.
+                        } else if (widget.hasResults()) {
+                            // THE UP: from landing, ↑ puts row0 in center.
+                            // Top peek empty, row1 half below. Pills gone.
+                            widget.focusControl(.result);
+                            widget.selected_result = widget.grid_cols / 2; // center col of row0
+                            widget.adjustScrollToSelection();
+                        }
+                    },
                     .subcategory => widget.closeSubcategory(),
                     .search => widget.focusControl(.category),
                     .result => {
-                        // Top row + Up = back to the pills, never to search.
-                        if (widget.atResultTopRow()) widget.focusControl(.category) else widget.moveResultVertical(-1);
+                        // Top row + Up = UP+1 (pills centered, row0 below).
+                        if (widget.atResultTopRow()) {
+                            widget.up_plus_one = true;
+                            widget.focusControl(.category);
+                        } else {
+                            widget.moveResultVertical(-1);
+                        }
                     },
                     .slider => widget.moveSliderVertical(-1),
                 }
@@ -1162,10 +1183,22 @@ pub const Server = struct {
                     // Down from the pills goes to the TILES — search is
                     // letter-summoned only, never a navigation stop.
                     .category => {
-                        if (widget.subcategory_open) widget.focusControl(.subcategory) else {
+                        if (widget.up_plus_one) {
+                            // UP+1 + Down = back to THE UP (row0 centered).
+                            widget.up_plus_one = false;
                             if (widget.hasResults()) {
                                 widget.focusControl(.result);
-                                widget.selected_result = widget.grid_cols / 2;
+                                widget.selected_result = widget.grid_cols / 2; // row0 center col
+                                widget.adjustScrollToSelection();
+                            }
+                        } else if (widget.subcategory_open) {
+                            widget.focusControl(.subcategory);
+                        } else {
+                            if (widget.hasResults()) {
+                                // THE DOWN: from landing, ↓ puts row1 in center.
+                                // Row0 becomes top peek, row2 becomes bottom peek.
+                                widget.focusControl(.result);
+                                widget.selected_result = widget.grid_cols + widget.grid_cols / 2; // row1 center col
                                 widget.adjustScrollToSelection();
                             }
                         }
