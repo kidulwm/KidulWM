@@ -40,6 +40,15 @@ Current VM build: 7531 (CFC viewport + quit reset). Active on fresh-one.
 3. Verify scrolling works through large libraries
 4. Logo slot above pills in UP+1 (TBD)
 
+## Candy log (polish pass, not now)
+
+- **Pics corner quarter-moons**: real-photo tiles (opaque, clipped) show a
+  subtle dark-blue quarter-moon in each corner under the focused double
+  ring — reads as a soft 3D bezel. Placeholder tiles (translucent gradient)
+  don't. When we pretty-up: either make placeholders opaque so all
+  categories get the bezel, or bottle the Pics look deliberately.
+  (Noted Aug 21: "really subtle but nice — extremely subtle 3Dish look.")
+
 ---
 
 # KidulWM HANDOFF — Aug 20 2026 (session 8, overview grid + ghost fix)
