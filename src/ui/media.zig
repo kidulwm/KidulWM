@@ -1309,13 +1309,9 @@ pub const MediaWidget = struct {
         const active_display = displayIndex(self.category);
         const mcol = pillModeColor(self.category);
 
-        // ---- LANDING / WALL / SEARCH — the media slide state machine. ----
-        // ---- LANDING: pill stack at center, top row BELOW the stack, ----
-        // ----   bottom row peeks in at the slide's bottom edge.       ----
-        // ---- WALL: focus is in the tiles — the ENTIRE stack is gone, ----
-        // ----   no reserved space, one endless 5xN wall.              ----
-        // ---- SEARCH: letter key from ANY state — the bar takes center ----
-        // ----   and tiles sit behind it at landing positions.         ----
+        // ---- PLACEMENT, not clipping: rows are computed AROUND the ----
+        // ---- stack. The stack slots in and pushes cards up/down;    ----
+        // ---- no band scissors, no peek geometry, no collisions.     ----
         const search_active = self.search_focused or self.search_len > 0;
         const in_wall = (self.focus == .result or self.focus == .slider) and !search_active;
 
@@ -1324,11 +1320,11 @@ pub const MediaWidget = struct {
         const stack_gap = 8.0 * scale_f;
         const stack_h = pb_track_h + sub_rows * (pb_track_h + stack_gap);
 
-        // ---- TILE DIMS FIRST: the stack serves the rows on landing.  ----
-        // ---- tile size is CONSTANT (2:3 fan art); only focus inflates. ----
-        const gap: f64 = 56.0 * scale_f;
-        const title_strip_h = 44.0 * scale_f; // "kmedia" strip at slide top
-        const grid_top = pad_y + title_strip_h;
+        // ---- TILE DIMS: constant 2:3 fan art; only focus inflates.   ----
+        // NO top banner — the grid starts one gap under the slide edge,
+        // same gap as everywhere else. Nothing to cut off against.
+        const gap: f64 = 56.0 * scale_f; // ONE Goldilocks gap everywhere
+        const grid_top = pad_y + gap;
         const cols = self.grid_cols;
         const tile_gap: f64 = gap;
         const tile_w = (w_d - @as(f64, @floatFromInt(cols + 1)) * gap) / @as(f64, @floatFromInt(cols));
@@ -1336,13 +1332,33 @@ pub const MediaWidget = struct {
         const tile_h = art_h;
         const row_h = tile_h + tile_gap;
 
-        // Stack Y: on LANDING the stack floats in the TRIPLE gap between
-        // row0 and row1 — row0 at its solid seat, stack centered in the
-        // 3x gap, row1 in full below. WALL/RESET: stack at true center.
-        const cat_y = if (!in_wall and !self.seen_wall)
-            grid_top + tile_h + gap * 1.5
-        else
-            (h_d - stack_h) * 0.5;
+        // ---- THREE STATES, three formulas. Row Y is a pure function  ----
+        // ---- of state + row index. ONE gap between every neighbor.   ----
+        //
+        // LANDING (fresh, never walled): 5 above / stack / 5 below,
+        //   stack centered. row0 = stack_top - gap - tile_h,
+        //   row1 = stack_bottom + gap. row0->row1 = tile_h + 2*gap +
+        //   stack_h (the "triple"). Nothing above the top row — clean.
+        //
+        // RESET (came back up from the wall): MASTHEAD. The pills bar
+        //   IS the header now — ALL cards flow under it, and the space
+        //   above the stack is the logo slot (logo TBD; the rect is
+        //   grid_top .. stack_y - gap). Stack seats at the top:
+        //   stack_y = grid_top + logo_h + gap when a logo lives there,
+        //   grid_top alone until the real mark ships (logo_h = 0 now).
+        //
+        // WALL (focus in the tiles): the stack is GONE — no draw, no
+        //   reserved space. One endless field from grid_top.
+        //
+        // SEARCH: letter key from ANY state — the bar takes the stack
+        //   rect exactly; tiles keep their state's geometry behind it.
+        const centered_stack_y = (h_d - stack_h) * 0.5;
+        const landing_stack_y = @min(centered_stack_y, grid_top + tile_h + gap);
+        const logo_h: f64 = 0.0; // masthead mark TBD — slot reserved on RESET
+        const reset_stack_y = grid_top + logo_h + gap;
+        const stack_y = if (self.seen_wall) reset_stack_y else landing_stack_y;
+        const cat_y = stack_y; // pill track top (sub/search hang below)
+        const stack_bottom = stack_y + stack_h;
 
         // ---- Category pill bar: ONE stadium track, 5 segments, floating ----
         // ---- tricolor inner pill. THE PILL spec — brand-locked,        ----
@@ -1537,29 +1553,24 @@ pub const MediaWidget = struct {
         }
         } // end if (search_active) search draw
 
-        // ---- Result grid + scroller: TOP band, owns everything above ----
-        // ---- the center stack. HARD CLIP to the band — nothing draws  ----
-        // ---- through the no-go zone, bug or not. ----
-        // ---- GRID GEOMETRY — on LANDING the stack serves the rows:   ----
-        // ---- row1 at its solid seat under the title strip, stack     ----
-        // ---- floating one gap below it, row2 one gap under the stack ----
-        // ---- IN FULL. WALL: one endless field from grid_top.         ----
-        const wall = in_wall;
-        const landing_top_y = cat_y - gap;
-        const landing_bottom_y = cat_y + stack_h + gap;
-        const top_band_h = if (wall) 0.0 else @max(0.0, landing_top_y - grid_top);
-        const bottom_band_y = if (wall) grid_top else landing_bottom_y;
-        const bottom_band_h = @max(0.0, h_d - pad_y - bottom_band_y);
+        // ---- Result grid + scroller: rows are PLACED around the     ----
+        // ---- stack. No band carving — each row's Y falls out of     ----
+        // ---- state + index, and the stack pushes its neighbors by   ----
+        // ---- exactly stack_h + 2*gap. One clip: the slide itself.   ----
+        const grid_bottom = h_d - pad_y;
 
-        // Clip = the bands the grid may draw in (nothing else, ever).
-        // Headroom above the top band: the focused tile's inflate + its
-        // trimmed title must never clip. (kmedia strip draws after restore.)
-        const focus_headroom = tile_w * 0.06 + 30.0 * scale_f;
+        // Row placement: pure function of (state, row index).
+        // LANDING: row0 above the stack, skip, row1+ below.
+        // RESET (masthead): ALL rows flow under the stack.
+        // WALL: rows flow from grid_top, scrolling via offset.
+        const wall = in_wall;
+        const row0_top = stack_y - gap - tile_h; // LANDING only
+        const row1_top = stack_bottom + gap;
+
+        // Clip = the slide body. Tiles never overlap the stack because
+        // their Y never lands in it.
         c.cairo_save(cr);
-        if (!wall) {
-            c.cairo_rectangle(cr, 0, grid_top - focus_headroom, w_d, top_band_h + focus_headroom);
-        }
-        c.cairo_rectangle(cr, 0, bottom_band_y, w_d, bottom_band_h);
+        c.cairo_rectangle(cr, 0, pad_y, w_d, grid_bottom - pad_y);
         c.cairo_clip(cr);
 
         const bar_w: f64 = 5.0 * scale_f;
@@ -1571,37 +1582,16 @@ pub const MediaWidget = struct {
         const channel_cx = channel_cx_open + (1.0 - self.slider_reveal) * (tile_gap * 0.5 + scroller_track * 0.5);
         const channel_x = channel_cx - scroller_track * 0.5;
 
-        // ---- FAN ART: 2:3 portrait posters. TILE SIZE IS CONSTANT —  ----
-        // ---- never derived from band fit. Bands clip; scroll owns    ----
-        // ---- overflow. Only the focused tile enlarges.               ----
+        // ---- FAN ART: 2:3 portrait posters, constant size. Focused   ----
+        // ---- tile only: slight inflate + double border + title.     ----
         const label_font = @as(f64, style_.font_size_s) * scale_f;
 
-        // Row layout per state:
-        //   LANDING (fresh, never walled): row1 at grid_top — its solid
-        //     seat, never cut. The stack floats one gap below row1; row2
-        //     sits one gap under the stack, IN FULL (no peek-clipping on
-        //     landing — the flow just continues and the clip handles the
-        //     rest).
-        //   RESET (came back up from the wall): rows start UNDER the
-        //     stack — the motion you ride back into.
-        //   WALL: one field from grid_top, rows flow to the bottom edge.
-        //   SEARCH: LANDING geometry behind the bar.
-        const grid_origin_y = if (wall)
-            grid_top
-        else if (!self.seen_wall)
-            grid_top // landing: row1 at its seat, full stop
-        else
-            landing_bottom_y; // reset: rows under the stack
-        const rows_total_space = if (wall)
-            @as(usize, @intFromFloat(@floor(bottom_band_h / row_h)))
-        else
-            // Landing/reset: rows flow from the origin to the SLIDE BOTTOM —
-            // the clip carves the stack out, so row 2+ emerges below it
-            // as the peek. Count the full flow height, not just the band.
-            @as(usize, @intFromFloat(@ceil((h_d - pad_y - grid_origin_y) / row_h)));
-        const rows_visible = rows_total_space;
-        const list_y = grid_origin_y;
-        const list_h = h_d - pad_y - grid_origin_y;
+        // Field span: WALL from grid_top; LANDING from row0_top (one row
+        // above the stack); RESET from row1_top (all rows under it).
+        const field_top = if (wall) grid_top else if (self.seen_wall) row1_top else row0_top;
+        const rows_visible: usize = @intFromFloat(@max(0.0, @ceil((grid_bottom - field_top) / row_h)));
+        const list_y = field_top; // scroller/track anchor
+        const list_h = grid_bottom - field_top;
 
         if (out_click) |click| {
             click.list_x = @intFromFloat(list_x);
@@ -1662,21 +1652,25 @@ pub const MediaWidget = struct {
         var row_i: usize = 0;
         while (row_i < rows_visible and self.list_scroll_offset + row_i < total_rows) : (row_i += 1) {
             const grid_row = self.list_scroll_offset + row_i;
-            // One continuous flow: row_i maps straight from the grid origin.
-            // In LANDING the clip keeps rows out of the stack (the peek is
-            // just the clipped part of the flow); in WALL the flow owns all.
-            const ty = list_y + @as(f64, @floatFromInt(row_i)) * row_h;
+            // PLACEMENT:
+            //   WALL:   grid_top + i*row_h (scrolls)
+            //   LANDING: row0 above stack, skip, row1+ below
+            //   RESET:   all rows under the stack (masthead above)
+            const ty = if (wall)
+                grid_top + @as(f64, @floatFromInt(row_i)) * row_h
+            else if (self.seen_wall)
+                row1_top + @as(f64, @floatFromInt(grid_row)) * row_h
+            else if (grid_row == 0)
+                row0_top
+            else
+                row1_top + @as(f64, @floatFromInt(grid_row - 1)) * row_h;
             const first_idx = grid_row * cols;
-            const last_idx = @min(first_idx + cols, library.len);
-            const tiles_in_row = last_idx - first_idx;
-            _ = tiles_in_row;
-            const row_start_x = list_x;
             var col_i: usize = 0;
             while (col_i < cols) : (col_i += 1) {
-                const idx = grid_row * cols + col_i;
+                const idx = first_idx + col_i;
                 if (idx >= library.len) break;
                 const entry = library[idx];
-                const tx = row_start_x + @as(f64, @floatFromInt(col_i)) * (tile_w + tile_gap);
+                const tx = list_x + @as(f64, @floatFromInt(col_i)) * (tile_w + tile_gap);
 
                 const is_focused_tile = self.focus == .result and self.selected_result == idx;
                 if (is_focused_tile) {
@@ -1713,34 +1707,31 @@ pub const MediaWidget = struct {
                 renderTileArt(cr, dx, dy, dw, dh, entry, border, &self.art_cache);
 
                 if (is_focused_tile) {
-                    // Inner ring — a touch wider, the double border's
-                    // inside half (the magic mistake, kept on purpose).
+                    // Inner ring — the double border's inside half.
                     const ir = 10.0 * scale_f;
                     roundedRect(cr, dx + 2.0 * scale_f, dy + 2.0 * scale_f, dw - 4.0 * scale_f, dh - 4.0 * scale_f, ir);
                     c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.8);
                     c.cairo_set_line_width(cr, 2.0);
                     c.cairo_stroke(cr);
                 }
-                // No per-tile labels — TRIMMED TITLES: focused tile only,
-                // title centered at the TOP of the band, outside borders.
+                // No per-tile labels — TRIMMED TITLE for the focused tile only.
             }
         }
 
-        // Trimmed title: the focused tile's name, centered above the grid.
+        // Trimmed title: the focused tile's name, centered above ITS row.
+        // Sits in the real gap above that row (stack gap, row gap, or
+        // the strip margin) — there is always one by construction.
         if (self.focus == .result and focus_drawn and library.len > 0) {
             const title = std.mem.sliceTo(library[self.selected_result].title, 0);
             c.cairo_set_font_size(cr, label_font);
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_text_extents(cr, title.ptr, &ext);
             const title_x = focus_tx + tile_w * 0.5 - ext.width * 0.5;
-            const title_y = list_y - 14.0 * scale_f;
+            const title_y = focus_ty - 14.0 * scale_f;
             c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.95);
             c.cairo_move_to(cr, title_x, title_y);
             c.cairo_show_text(cr, title.ptr);
         }
-
-        // Focus indication is the in-grid frame + the trimmed title above —
-        // no enlarged overlay re-paint (that's what doubled the labels).
 
         // ---- Plain scrollbar track ----
         const track_h = list_h;
@@ -1766,22 +1757,12 @@ pub const MediaWidget = struct {
         c.cairo_set_line_width(cr, 1.0);
         c.cairo_stroke(cr);
 
-        // Pop the band clip — grid/scroller/overlay all stayed inside.
+        // Pop the slide-body clip.
         c.cairo_restore(cr);
 
-        // ---- "kmedia" title strip — slide top, outside the grid clip. ----
-        {
-            const title = "kmedia";
-            const strip_font = @as(f64, style_.font_size_m) * scale_f;
-            c.cairo_set_font_size(cr, strip_font);
-            var ext: c.cairo_text_extents_t = undefined;
-            c.cairo_text_extents(cr, title.ptr, &ext);
-            const tx = (w_d - ext.width) * 0.5;
-            const ty = pad_y + (title_strip_h + ext.height) * 0.5 - 6.0 * scale_f;
-            c.cairo_set_source_rgba(cr, PILL_TEXT_DIM.r, PILL_TEXT_DIM.g, PILL_TEXT_DIM.b, 0.9);
-            c.cairo_move_to(cr, tx, ty);
-            c.cairo_show_text(cr, title.ptr);
-        }
+        // (No title strip — the masthead belongs to the RESET state's
+        // logo slot above the stack; the rest of the time the cards
+        // own every pixel.)
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
         // at the buffer edge (same tokens as window chrome).
