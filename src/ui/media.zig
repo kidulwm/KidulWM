@@ -115,8 +115,8 @@ const ArtPipeline = struct {
 };
 
 // Request queue lives behind the pipeline mutex; worker drains it.
-var art_req_queue: std.ArrayListUnmanaged(kimg.Request) = .{};
-var art_results: std.ArrayListUnmanaged(kimg.Result) = .{};
+var art_req_queue: std.ArrayListUnmanaged(kimg.Request) = .empty;
+var art_results: std.ArrayListUnmanaged(kimg.Result) = .empty;
 
 fn artWorkerMain(pipe: *ArtPipeline) void {
     while (!pipe.quit.load(.acquire)) {
@@ -207,8 +207,8 @@ fn execFind(command: [*:0]const u8, entries: []LibraryEntry) usize {
 
 fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
     const roots = switch (category) {
-        .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/sda_backup/Jelly/Music" },
-        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies" },
+        .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/hostmedia/music", "/mnt/sda_backup/Jelly/Music" },
+        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies" },
         .tv => &[_][]const u8{},
         .pictures => &[_][]const u8{ "/home/kidul/Pictures", "/home/kidul/Images" },
         .shop => &[_][]const u8{},
@@ -561,7 +561,7 @@ pub const MediaWidget = struct {
         while (true) {
             var res_opt: ?kimg.Result = null;
             {
-                self.art.mutex.lock();
+                lockArtMutex(&self.art.mutex);
                 defer self.art.mutex.unlock();
                 if (art_results.items.len > 0) res_opt = art_results.orderedRemove(0);
             }
@@ -612,7 +612,7 @@ pub const MediaWidget = struct {
         }
         if (!self.art.in_flight.contains(key)) {
             const cached = kimg.thumbCachePath(self.allocator, self.art.path_by_key.get(key).?) orelse return key;
-            const owned_art = g_alloc.dupeZ(u8, self.art.path_by_key.get(key).?) orelse {
+            const owned_art = g_alloc.dupeZ(u8, self.art.path_by_key.get(key).?) catch {
                 self.allocator.free(cached);
                 return key;
             };
@@ -622,7 +622,7 @@ pub const MediaWidget = struct {
                 return key;
             };
             {
-                self.art.mutex.lock();
+                lockArtMutex(&self.art.mutex);
                 defer self.art.mutex.unlock();
                 art_req_queue.append(g_alloc, .{ .key = key, .kind = .thumb, .art_path = owned_art, .cache_path = cached }) catch {};
             }
@@ -662,7 +662,7 @@ pub const MediaWidget = struct {
             return;
         };
         {
-            self.art.mutex.lock();
+            lockArtMutex(&self.art.mutex);
             defer self.art.mutex.unlock();
             art_req_queue.append(g_alloc, .{ .key = k, .kind = .hires, .art_path = owned, .cache_path = cached }) catch {};
         }

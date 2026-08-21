@@ -26,6 +26,7 @@ const cairo = @import("dm").c;
 
 extern fn access(path: [*:0]const u8, mode: c_int) c_int;
 extern fn system(cmd: [*:0]const u8) c_int;
+extern fn getenv(name: [*:0]const u8) ?[*:0]u8;
 const F_OK: c_int = 0;
 
 extern fn kidul_img_decode(path: [*:0]const u8, out_rgba: *[*]u8, out_w: *c_int, out_h: *c_int) c_int;
@@ -98,11 +99,13 @@ fn extractEmbedded(alloc: std.mem.Allocator, media_path: []const u8) ?[:0]u8 {
 }
 
 fn firstImageInDir(alloc: std.mem.Allocator, dir: []const u8) ?[:0]u8 {
-    var d = std.fs.Dir.openDir(std.fs.cwd(), dir, .{ .iterate = true }) catch return null;
-    defer d.close();
+    var threaded = std.Io.Threaded.init(alloc, .{});
+    const io = threaded.io();
+    var d = std.Io.Dir.openDirAbsolute(io, dir, .{ .iterate = true }) catch return null;
+    defer d.close(io);
     var it = d.iterate();
     var best: ?[:0]u8 = null;
-    while (it.next() catch null) |ent| {
+    while (it.next(io) catch null) |ent| {
         if (ent.kind != .file) continue;
         if (!isImageName(ent.name)) continue;
         const full = std.fmt.allocPrintSentinel(alloc, "{s}/{s}", .{ dir, ent.name }, 0) catch continue;
@@ -168,7 +171,8 @@ pub fn resolveArtPath(
 
 /// Cache path for a resolved art path: ~/.cache/kidulwm/thumbs/<crc>.png
 pub fn thumbCachePath(alloc: std.mem.Allocator, art_path: []const u8) ?[:0]u8 {
-    const home = std.posix.getenv("HOME") orelse "/home/kidul";
+    const home_c = getenv("HOME");
+    const home: []const u8 = if (home_c) |h| std.mem.span(h) else "/home/kidul";
     const key = std.hash.Crc32.hash(art_path);
     return std.fmt.allocPrintSentinel(alloc, "{s}/.cache/kidulwm/thumbs/{x}.png", .{ home, key }, 0) catch null;
 }
@@ -310,7 +314,9 @@ pub fn processRequest(alloc: std.mem.Allocator, req: Request) Result {
                 if (decodeToSurface(alloc, req.art_path, THUMB_W)) |s| {
                     // Write-through to disk cache (best effort).
                     if (std.fs.path.dirname(req.cache_path)) |d| {
-                        std.fs.cwd().makePath(d) catch {};
+                        var threaded = std.Io.Threaded.init(alloc, .{});
+                        const io = threaded.io();
+                        std.Io.Dir.createDirPath(std.Io.Dir.cwd(), io, d) catch {};
                     }
                     _ = cairo.cairo_surface_write_to_png(s, req.cache_path.ptr);
                     surface = s;
