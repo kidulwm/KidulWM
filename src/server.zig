@@ -19,6 +19,7 @@ const cairo = @import("dm").c;
 const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
+const media_mod = @import("ui/media.zig");
 const ui = @import("./ui/tray.zig");
 const spyglass_mod = @import("./ui/spyglass.zig");
 const keybinds = @import("config/keybinds.zig");
@@ -989,6 +990,12 @@ pub const Server = struct {
 
     fn mediaSlideOpen(self: *Server, output: *Output) void {
         if (output.media_slide.isOpen()) return;
+        // Every open is FRESH: rebuild the widget so quit-clears is
+        // structural, not a flag-reset that can miss a field.
+        if (output.media_slide.widget_ready) {
+            output.media_slide.widget.deinit();
+            output.media_slide.widget = media_mod.MediaWidget.init(self.allocator);
+        }
         const tree = self.scene.tree.createSceneTree() catch return;
         output.media_slide.tree = tree;
         tree.node.raiseToTop();
@@ -1027,6 +1034,9 @@ pub const Server = struct {
         output.media_slide.widget.selected_result = 0;
         output.media_slide.widget.list_scroll_offset = 0;
         output.media_slide.widget.clearSearch();
+        // Destroy the card buffer node FIRST (leaking it left a stale frame
+        // on screen — the "quit not clearing" bug), then the tree.
+        if (output.media_slide.card_buffer) |buf| buf.node.destroy();
         output.media_slide.tree.?.node.destroy();
         output.media_slide.tree = null;
         output.media_slide.card_buffer = null;

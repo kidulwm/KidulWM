@@ -506,8 +506,10 @@ pub const MediaWidget = struct {
     pub fn moveResultSelection(self: *MediaWidget, delta: i32) void {
         const library = getLibrary(self.category);
         if (library.len == 0) return;
+        // HARD STOPS: no wrap on horizontal. ←→ walk the row, edges stick.
         var idx: i32 = @intCast(self.selected_result);
-        idx = @mod(idx + delta, @as(i32, @intCast(library.len)));
+        idx += delta;
+        idx = @max(0, @min(idx, @as(i32, @intCast(library.len - 1))));
         self.selected_result = @intCast(idx);
         std.log.info("KidulWM media move horizontal: selected={} len={}", .{self.selected_result, library.len});
         self.adjustScrollToSelection();
@@ -1633,10 +1635,20 @@ pub const MediaWidget = struct {
             c.cairo_move_to(cr, list_x + (list_w - ext.width) * 0.5, my + label_font * 1.6);
             c.cairo_show_text(cr, sub.ptr);
         }
+        // rows_visible is how many row-slots fit on screen; the scroller
+        // range is total_rows - 1 (any row may be selected, CFC centers it).
         self.visible_result_count = rows_visible * cols;
-        self.max_scroll_offset = if (total_rows > rows_visible) total_rows - rows_visible else 0;
-        if (self.list_scroll_offset > self.max_scroll_offset) self.list_scroll_offset = self.max_scroll_offset;
+        self.max_scroll_offset = if (total_rows > 0) total_rows - 1 else 0;
+        // Keep SELECTION in range; never clamp list_scroll_offset here — in
+        // the wall the offset IS the selected row and clamping it amputates
+        // the CFC center on the next render (the "DOWN shows no top peek"
+        // and "highlight drifts off screen" bugs both traced to that clamp).
         if (self.selected_result >= library.len) self.selected_result = if (library.len > 0) library.len - 1 else 0;
+        if (total_rows > 0 and self.selected_result / cols > self.max_scroll_offset) {
+            self.selected_result = self.max_scroll_offset * cols + (self.selected_result % cols);
+            if (self.selected_result >= library.len) self.selected_result = library.len - 1;
+        }
+        if (self.list_scroll_offset > self.max_scroll_offset) self.list_scroll_offset = self.max_scroll_offset;
 
         if (out_click) |click| {
             click.cols = @intCast(cols);
@@ -1649,15 +1661,25 @@ pub const MediaWidget = struct {
         var focus_ty: f64 = 0;
         var focus_drawn = false;
 
+        // Render window. WALL: anchored on the SELECTED row (CFC), bleeding
+        // half a screen up and down so top/bottom peeks always arrive.
+        // LANDING/UP+1: anchored on list_scroll_offset from field_top.
+        const wall_rows_span: usize = rows_visible + 2;
+        const anchor_row: usize = if (wall) blk: {
+            const sel_row = self.selected_result / cols;
+            const half_screen = rows_visible / 2;
+            break :blk if (sel_row > half_screen) sel_row - half_screen else 0;
+        } else self.list_scroll_offset;
+
         var row_i: usize = 0;
-        while (row_i < rows_visible and self.list_scroll_offset + row_i < total_rows) : (row_i += 1) {
-            const grid_row = self.list_scroll_offset + row_i;
+        while (row_i < wall_rows_span and anchor_row + row_i < total_rows) : (row_i += 1) {
+            const grid_row = anchor_row + row_i;
             // PLACEMENT:
             //   WALL:   the row you're moving TO is centered at h_d/2
             //   LANDING: row0 above stack, skip, row1+ below
             //   UP+1:   row0 in full below the centered pills, nothing else
             const ty = if (wall)
-                h_d * 0.5 - tile_h * 0.5 + (@as(f64, @floatFromInt(grid_row)) - @as(f64, @floatFromInt(self.list_scroll_offset))) * row_h
+                h_d * 0.5 - tile_h * 0.5 + (@as(f64, @floatFromInt(grid_row)) - @as(f64, @floatFromInt(self.selected_result / cols))) * row_h
             else if (up1)
                 row0_top + @as(f64, @floatFromInt(grid_row)) * row_h
             else if (grid_row == 0)
