@@ -100,10 +100,6 @@ pub fn build(b: *std.Build) void {
             "-D_REENTRANT",
         },
     });
-    root_mod.addCSourceFile(.{
-        .file = b.path("src/core/kimg_shim.c"),
-        .flags = &.{"-O2"},
-    });
 
     const dm_mod = b.createModule(.{
         .root_source_file = b.path("src/dm/main.zig"),
