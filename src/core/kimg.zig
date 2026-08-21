@@ -32,6 +32,20 @@ const F_OK: c_int = 0;
 extern fn kidul_img_decode(path: [*:0]const u8, out_rgba: *[*]u8, out_w: *c_int, out_h: *c_int) c_int;
 extern fn kidul_img_free(px: [*]u8) void;
 
+// One shared Io for the whole module. std.Io.Threaded.init spawns a worker
+// pool (cpu_count-1 threads) — creating one per call on the render thread
+// strangled the compositor (the 20:1x freeze). Lazy, never deinit'd: it
+// lives exactly as long as the process, which is the correct lifetime here.
+var g_io_state: ?std.Io.Threaded = null;
+var g_io_mutex: std.atomic.Mutex = .unlocked;
+
+fn sharedIo(alloc: std.mem.Allocator) std.Io {
+    while (!g_io_mutex.tryLock()) std.atomic.spinLoopHint();
+    defer g_io_mutex.unlock();
+    if (g_io_state == null) g_io_state = std.Io.Threaded.init(alloc, .{});
+    return g_io_state.?.io();
+}
+
 pub const THUMB_W: usize = 256;
 
 pub const Kind = enum { thumb, hires };
@@ -99,8 +113,7 @@ fn extractEmbedded(alloc: std.mem.Allocator, media_path: []const u8) ?[:0]u8 {
 }
 
 fn firstImageInDir(alloc: std.mem.Allocator, dir: []const u8) ?[:0]u8 {
-    var threaded = std.Io.Threaded.init(alloc, .{});
-    const io = threaded.io();
+    const io = sharedIo(alloc);
     var d = std.Io.Dir.openDirAbsolute(io, dir, .{ .iterate = true }) catch return null;
     defer d.close(io);
     var it = d.iterate();
@@ -314,8 +327,7 @@ pub fn processRequest(alloc: std.mem.Allocator, req: Request) Result {
                 if (decodeToSurface(alloc, req.art_path, THUMB_W)) |s| {
                     // Write-through to disk cache (best effort).
                     if (std.fs.path.dirname(req.cache_path)) |d| {
-                        var threaded = std.Io.Threaded.init(alloc, .{});
-                        const io = threaded.io();
+                        const io = sharedIo(alloc);
                         std.Io.Dir.createDirPath(std.Io.Dir.cwd(), io, d) catch {};
                     }
                     _ = cairo.cairo_surface_write_to_png(s, req.cache_path.ptr);
