@@ -46,6 +46,153 @@ const LibraryEntry = struct {
 const max_library_entries = 512;
 const g_alloc = std.heap.page_allocator;
 
+// ---------------------------------------------------------------------------
+// ArtPipeline — widget-owned art state. Surfaces keyed by crc32(resolved
+// art path); requests ride a pipe to the worker, results come back on the
+// same pipe. The render thread polls the read end non-blocking each frame.
+// ---------------------------------------------------------------------------
+const kimg = @import("../core/kimg.zig");
+
+const ART_DWELL_US: u64 = 500_000; // 500ms focused before hi-res upgrade
+// Speed limit on simultaneous network decodes: one worker drains serially,
+// and the queue never holds more than this. Visible wall is ~8 tiles.
+const MAX_ART_IN_FLIGHT: u32 = 12;
+
+fn lockArtMutex(m: *std.atomic.Mutex) void {
+    while (!m.tryLock()) std.atomic.spinLoopHint();
+}
+
+const ArtPipeline = struct {
+    surfaces: std.AutoHashMap(u32, ?*c.cairo_surface_t) = undefined,
+    in_flight: std.AutoHashMap(u32, void) = undefined, // key = req key ^ kind bit
+    path_by_key: std.AutoHashMap(u32, [:0]u8) = undefined, // for retries/hires
+    ready: bool = false,
+    // Memo of paths that resolve to NO art. Without this, every frame
+    // re-stats every no-art tile over sshfs — that WAS the tray-press lag
+    // and the 74% CPU spin (the baseline drew placeholders with 0 syscalls).
+    no_art: std.AutoHashMap(u32, void) = undefined,
+    // Dwell state (render thread only)
+    dwell_key: u32 = 0,
+    dwell_since_us: u64 = 0,
+    hires_done_key: u32 = 0,
+
+    fn init(self: *ArtPipeline, alloc: std.mem.Allocator) void {
+        self.surfaces = std.AutoHashMap(u32, ?*c.cairo_surface_t).init(alloc);
+        self.in_flight = std.AutoHashMap(u32, void).init(alloc);
+        self.path_by_key = std.AutoHashMap(u32, [:0]u8).init(alloc);
+        self.no_art = std.AutoHashMap(u32, void).init(alloc);
+        self.ready = true;
+        ensureArtWorker();
+    }
+
+    fn deinit(self: *ArtPipeline) void {
+        if (!self.ready) return;
+        var it = self.surfaces.valueIterator();
+        while (it.next()) |v| {
+            if (v.*) |s| c.cairo_surface_destroy(s);
+        }
+        self.surfaces.deinit();
+        self.in_flight.deinit();
+        var pit = self.path_by_key.valueIterator();
+        while (pit.next()) |p| g_alloc.free(p.*);
+        self.path_by_key.deinit();
+        self.no_art.deinit();
+        self.ready = false;
+    }
+};
+
+// Request queue lives behind the GLOBAL art mutex; ONE global worker drains
+// it. The queue/results are file-globals, so the worker must be too —
+// per-widget workers raced on the shared queue and tripped the 0.16
+// atomic.Mutex unlock assert (the Movies crash, thread panic at unlock).
+var art_req_queue: std.ArrayListUnmanaged(kimg.Request) = .empty;
+var art_results: std.ArrayListUnmanaged(kimg.Result) = .empty;
+var g_art_mutex: std.atomic.Mutex = .unlocked;
+// Two ONE-WAY pipes. The crashed design shared one pipe both directions:
+// worker poll() and render-thread read() raced to steal wake bytes from
+// each other, and every queued request + every result wrote a byte, so the
+// pipe stayed readable forever -> compositor re-rendered at 100% CPU (the
+// lag) and the byte race was the lurking crash vector.
+var g_work_r: i32 = -1; // worker reads requests-wake from this
+var g_work_w: i32 = -1; // render thread writes to this
+var g_done_r: i32 = -1; // render thread reads results-wake from this
+var g_done_w: i32 = -1; // worker writes to this
+var g_worker_started = false;
+var g_worker_quit: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
+
+fn ensureArtWorker() void {
+    if (g_worker_started) return;
+    g_worker_started = true;
+    var work_fds: [2]i32 = .{ -1, -1 };
+    var done_fds: [2]i32 = .{ -1, -1 };
+    if (c_linux.pipe2(&work_fds, .{ .NONBLOCK = true, .CLOEXEC = true }) == 0) {
+        g_work_r = work_fds[0];
+        g_work_w = work_fds[1];
+    }
+    if (c_linux.pipe2(&done_fds, .{ .NONBLOCK = true, .CLOEXEC = true }) == 0) {
+        g_done_r = done_fds[0];
+        g_done_w = done_fds[1];
+    }
+    _ = std.Thread.spawn(.{}, artWorkerMain, .{}) catch {
+        std.log.info("kimg: worker spawn failed", .{});
+    };
+}
+
+fn wakeFdDrain(fd: i32) void {
+    if (fd < 0) return;
+    var sink: [64]u8 = undefined;
+    while (true) {
+        const rc = c_linux.read(fd, &sink, sink.len);
+        const signed: i64 = @bitCast(rc);
+        if (signed <= 0) break;
+        if (signed < sink.len) break;
+    }
+}
+
+fn pokeArtWorker() void {
+    if (g_work_w >= 0) {
+        var b: [1]u8 = .{1};
+        _ = c_linux.write(g_work_w, &b, 1);
+    }
+}
+
+fn artWorkerMain() void {
+    std.log.info("kimg trace: worker thread entered, work_r={d}", .{g_work_r});
+    while (!g_worker_quit.load(.acquire)) {
+        // Wait for work on OUR pipe only.
+        var pfd = [_]c_linux.pollfd{.{ .fd = g_work_r, .events = c_linux.POLL.IN, .revents = 0 }};
+        _ = c_linux.poll(&pfd, 1, 500);
+        if (g_worker_quit.load(.acquire)) break;
+        wakeFdDrain(g_work_r); // consume ALL pending bytes before draining
+
+        var batch: u32 = 0;
+        while (true) {
+            var req_opt: ?kimg.Request = null;
+            {
+                lockArtMutex(&g_art_mutex);
+                defer g_art_mutex.unlock();
+                if (art_req_queue.items.len > 0) {
+                    req_opt = art_req_queue.orderedRemove(0);
+                }
+            }
+            const req = req_opt orelse break;
+            const res = kimg.processRequest(g_alloc, req);
+            {
+                lockArtMutex(&g_art_mutex);
+                defer g_art_mutex.unlock();
+                art_results.append(g_alloc, res) catch {};
+            }
+            batch += 1;
+        }
+        // ONE wake per batch, not one per result — kills the re-render storm.
+        if (batch > 0 and g_done_w >= 0) {
+            std.log.info("kimg trace: worker batch done, {d} results", .{batch});
+            var b: [1]u8 = .{1};
+            _ = c_linux.write(g_done_w, &b, 1);
+        }
+    }
+}
+
 fn titleFromName(name: []const u8) ![:0]u8 {
     const stem = std.fs.path.stem(name);
     const title = try g_alloc.dupeZ(u8, stem);
@@ -340,6 +487,10 @@ pub const MediaWidget = struct {
     grid_cols: usize = 5,
     art_cache: std.StringHashMap(?*c.cairo_surface_t),
 
+    // ---- kimg art pipeline (law: local art is sacred, wall = 256px ----
+    // ---- thumbs, focused card dwells into hi-res, decode off-thread) ----
+    art: ArtPipeline = .{},
+
     state_generation: u32 = 0,
     slider_reveal: f64 = 0.0,
     slider_reveal_target: f64 = 0.0,
@@ -360,10 +511,12 @@ pub const MediaWidget = struct {
         };
         @memcpy(self.ipc_path[0..ipc.len], ipc);
         self.ipc_path[ipc.len] = 0;
+        self.art.init(allocator);
         return self;
     }
 
     pub fn deinit(self: *MediaWidget) void {
+        self.art.deinit();
         self.clearArtCache();
         self.art_cache.deinit();
         self.ensureStopped();
@@ -437,6 +590,139 @@ pub const MediaWidget = struct {
             self.slider_reveal = @max(self.slider_reveal_target, self.slider_reveal - dt * speed);
         }
         if (self.slider_reveal != prev_reveal) self.bumpGeneration();
+    }
+
+    /// Drain finished art results (called each render). Returns true when
+    /// at least one tile's surface landed, so the caller can re-render.
+    pub fn pollArtResults(self: *MediaWidget) bool {
+        if (!self.art.ready) return false;
+        var landed = false;
+        // Drain OUR pipe (done direction) so wake bytes don't accumulate.
+        wakeFdDrain(g_done_r);
+        while (true) {
+            var res_opt: ?kimg.Result = null;
+            {
+                lockArtMutex(&g_art_mutex);
+                defer g_art_mutex.unlock();
+                if (art_results.items.len > 0) res_opt = art_results.orderedRemove(0);
+            }
+            const res = res_opt orelse break;
+            const flight_key = res.key ^ (if (res.kind == .hires) @as(u32, 0x8000_0000) else 0);
+            _ = self.art.in_flight.remove(flight_key);
+            // Only the latest dwell target may own the hi-res slot.
+            if (res.kind == .hires) {
+                if (res.key != self.art.dwell_key) {
+                    if (res.surface) |s| c.cairo_surface_destroy(s);
+                    continue;
+                }
+                if (self.art.hires_done_key != 0 and self.art.hires_done_key != res.key) {
+                    if (self.art.surfaces.get(self.art.hires_done_key)) |old| {
+                        if (old) |s| c.cairo_surface_destroy(s);
+                        _ = self.art.surfaces.remove(self.art.hires_done_key);
+                    }
+                }
+                self.art.hires_done_key = if (res.surface != null) res.key else 0;
+            }
+            const gop = self.art.surfaces.getOrPut(res.key) catch continue;
+            if (gop.found_existing) {
+                if (gop.value_ptr.*) |old| c.cairo_surface_destroy(old);
+            }
+            gop.value_ptr.* = res.surface;
+            landed = true;
+        }
+        if (landed) self.bumpGeneration();
+        return landed;
+    }
+
+    /// Ensure a thumb request is queued for this entry. Render-thread cheap:
+    /// path resolve + hash + map lookup; decode rides the worker.
+    fn requestThumb(self: *MediaWidget, entry: LibraryEntry, is_music: bool, is_picture: bool) ?u32 {
+        // Fast path: memoized "no art" — zero syscalls, zero allocs.
+        const entry_key = std.hash.Crc32.hash(entry.path);
+        if (self.art.no_art.contains(entry_key)) return null;
+        const art_path = kimg.resolveArtPath(g_alloc, entry.path, is_music, is_picture) orelse {
+            self.art.no_art.put(entry_key, {}) catch {};
+            return null;
+        };
+        std.log.info("kimg trace: resolved '{s}' -> {s}", .{ entry.title, art_path });
+        const key = kimg.thumbKey(art_path);
+        if (self.art.surfaces.contains(key)) {
+            g_alloc.free(art_path);
+            return key;
+        }
+        // Remember the resolved path for the dwell hi-res request.
+        if (!self.art.path_by_key.contains(key)) {
+            const dup = g_alloc.dupeZ(u8, art_path) catch art_path;
+            self.art.path_by_key.put(key, dup) catch {};
+            if (dup.ptr != art_path.ptr) g_alloc.free(art_path);
+        } else {
+            g_alloc.free(art_path);
+        }
+        if (!self.art.in_flight.contains(key)) {
+            // Throttle: never more than MAX_IN_FLIGHT requests queued. The wall
+            // shows ~8 tiles; 148 at once is what burst the mount and starved
+            // the render thread (the Movies crash). Over the limit the tile
+            // keeps its placeholder this frame — next render retries.
+            if (self.art.in_flight.count() >= MAX_ART_IN_FLIGHT) return key;
+            const cached = kimg.thumbCachePath(g_alloc, self.art.path_by_key.get(key).?) orelse return key;
+            const owned_art = g_alloc.dupeZ(u8, self.art.path_by_key.get(key).?) catch {
+                g_alloc.free(cached);
+                return key;
+            };
+            self.art.in_flight.put(key, {}) catch {
+                g_alloc.free(owned_art);
+                g_alloc.free(cached);
+                return key;
+            };
+            {
+                lockArtMutex(&g_art_mutex);
+                defer g_art_mutex.unlock();
+                art_req_queue.append(g_alloc, .{ .key = key, .kind = .thumb, .art_path = owned_art, .cache_path = cached }) catch |e| {
+                    std.log.info("kimg trace: queue append FAILED key={x} err={s}", .{ key, @errorName(e) });
+                };
+                std.log.info("kimg trace: queued key={x} qlen={d}", .{ key, art_req_queue.items.len });
+            }
+            pokeArtWorker();
+        }
+        return key;
+    }
+
+    /// Focused-card dwell: after ART_DWELL_US on the same tile, queue the
+    /// hi-res upgrade exactly once per focus target.
+    fn tickDwell(self: *MediaWidget, focused_key: ?u32) void {
+        const now = animationNowUs();
+        if (focused_key) |k| {
+            if (k != self.art.dwell_key) {
+                self.art.dwell_key = k;
+                self.art.dwell_since_us = now;
+            }
+        } else {
+            self.art.dwell_key = 0;
+            self.art.dwell_since_us = 0;
+            return;
+        }
+        const k = focused_key.?;
+        if (self.art.hires_done_key == k) return;
+        if (now -% self.art.dwell_since_us < ART_DWELL_US) return;
+        const art_path = self.art.path_by_key.get(k) orelse return;
+        const flight_key = k ^ 0x8000_0000;
+        if (self.art.in_flight.contains(flight_key)) return;
+        const owned = g_alloc.dupeZ(u8, art_path) catch return;
+        const cached = g_alloc.dupeZ(u8, "") catch {
+            g_alloc.free(owned);
+            return;
+        };
+        self.art.in_flight.put(flight_key, {}) catch {
+            g_alloc.free(owned);
+            g_alloc.free(cached);
+            return;
+        };
+        {
+            lockArtMutex(&g_art_mutex);
+            defer g_art_mutex.unlock();
+            art_req_queue.append(g_alloc, .{ .key = k, .kind = .hires, .art_path = owned, .cache_path = cached }) catch {};
+        }
+        pokeArtWorker();
     }
 
     fn bumpGeneration(self: *MediaWidget) void {
@@ -1183,73 +1469,57 @@ pub const MediaWidget = struct {
         c.cairo_fill(cr);
     }
 
-    fn renderTileArt(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, entry: LibraryEntry, border: [4]f64, cache: *std.StringHashMap(?*c.cairo_surface_t)) void {
-        const dir = std.fs.path.dirname(entry.path) orelse "/home/dad/Music";
-        const stem = std.fs.path.stem(entry.path);
+    fn renderTileArt(
+        self: *MediaWidget,
+        cr: *c.cairo_t,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        entry: LibraryEntry,
+        border: [4]f64,
+        is_music: bool,
+        is_picture: bool,
+        is_focused: bool,
+    ) ?u32 {
         const seed = std.hash.Crc32.hash(entry.title);
+        const key = self.requestThumb(entry, is_music, is_picture);
+        // Dwell target tracking happens in the render loop caller.
+        _ = is_focused;
 
-        const gop = cache.getOrPut(entry.path) catch {
-            renderArtPlaceholder(cr, x, y, w, h, seed, border);
-            return;
-        };
         var surf: ?*c.cairo_surface_t = null;
-        if (!gop.found_existing) {
-            const candidates = [_][]const u8{
-                "-landscape.jpg",
-                "-landscape.png",
-                "-backdrop.jpg",
-                "-backdrop.png",
-                "-poster.jpg",
-                "-poster.png",
-                "-logo.png",
-                ".png",
-                "cover.png",
-                "folder.png",
-                "art.png",
-            };
-            for (candidates) |suffix| {
-                var buf: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
-                const slash = if (dir.len > 0 and dir[dir.len - 1] == '/') "" else "/";
-                const full = std.fmt.bufPrintZ(&buf, "{s}{s}{s}{s}", .{ dir, slash, stem, suffix }) catch continue;
-                const loaded = c.cairo_image_surface_create_from_png(full.ptr);
-                if (loaded != null) {
-                    const sw: f64 = @floatFromInt(c.cairo_image_surface_get_width(loaded));
-                    const sh: f64 = @floatFromInt(c.cairo_image_surface_get_height(loaded));
-                    if (sw > 0 and sh > 0) {
-                        surf = loaded;
-                        break;
-                    }
-                    c.cairo_surface_destroy(loaded);
-                }
-            }
-            gop.value_ptr.* = surf;
-        } else {
-            surf = gop.value_ptr.*;
+        if (key) |k| {
+            if (self.art.surfaces.get(k)) |v| surf = v;
         }
+        // Hi-res upgrade replaces the thumb surface for that key wholesale —
+        // same key, bigger pixels, so no special draw path needed here.
 
         if (surf) |s| {
             const sw: f64 = @floatFromInt(c.cairo_image_surface_get_width(s));
             const sh: f64 = @floatFromInt(c.cairo_image_surface_get_height(s));
-            const sx = w / sw;
-            const sy = h / sh;
-            const scale_factor = @max(sx, sy);
-            const dx = x + (w - sw * scale_factor) * 0.5;
-            const dy = y + (h - sh * scale_factor) * 0.5;
-            c.cairo_save(cr);
-            roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
-            c.cairo_clip(cr);
-            c.cairo_translate(cr, dx, dy);
-            c.cairo_scale(cr, scale_factor, scale_factor);
-            c.cairo_set_source_surface(cr, s, 0, 0);
-            c.cairo_paint(cr);
-            c.cairo_restore(cr);
-            roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
-            c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
-            c.cairo_set_line_width(cr, 1.0);
-            c.cairo_stroke(cr);
-        } else {
-            renderArtPlaceholder(cr, x, y, w, h, seed, border);
+            if (sw > 0 and sh > 0) {
+                const sx = w / sw;
+                const sy = h / sh;
+                const scale_factor = @max(sx, sy);
+                const dx = x + (w - sw * scale_factor) * 0.5;
+                const dy = y + (h - sh * scale_factor) * 0.5;
+                c.cairo_save(cr);
+                roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
+                c.cairo_clip(cr);
+                c.cairo_translate(cr, dx, dy);
+                c.cairo_scale(cr, scale_factor, scale_factor);
+                c.cairo_set_source_surface(cr, s, 0, 0);
+                c.cairo_paint(cr);
+                c.cairo_restore(cr);
+                roundedRect(cr, x, y, w, h, @min(8.0, w * 0.06));
+                c.cairo_set_source_rgba(cr, border[0], border[1], border[2], 0.25);
+                c.cairo_set_line_width(cr, 1.0);
+                c.cairo_stroke(cr);
+                return key;
+            }
         }
+        renderArtPlaceholder(cr, x, y, w, h, seed, border);
+        return key;
     }
 
     pub fn clearArtCache(self: *MediaWidget) void {
@@ -1261,6 +1531,8 @@ pub const MediaWidget = struct {
     }
 
     pub fn renderCard(self: *MediaWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32, out_click: ?*CardClick) void {
+        // Art worker drain: pop-in thumbnails land here, one gen per batch.
+        _ = self.pollArtResults();
         const border = style_.color_border_focused.toF64();
         const muted = style_.color_text_muted.toF64();
         const card_bg = style_.color_background.toF64();
@@ -1660,6 +1932,7 @@ pub const MediaWidget = struct {
         var focus_tx: f64 = 0;
         var focus_ty: f64 = 0;
         var focus_drawn = false;
+        var focus_tile_key: ?u32 = null;
 
         // Render window. WALL: anchored on the SELECTED row (CFC), bleeding
         // half a screen up and down so top/bottom peeks always arrive.
@@ -1695,11 +1968,6 @@ pub const MediaWidget = struct {
                 const tx = list_x + @as(f64, @floatFromInt(col_i)) * (tile_w + tile_gap);
 
                 const is_focused_tile = self.focus == .result and self.selected_result == idx;
-                if (is_focused_tile) {
-                    focus_tx = tx;
-                    focus_ty = ty;
-                    focus_drawn = true;
-                }
 
                 // THE 3 SUBTLETIES on the focused tile: slight enlarge,
                 // double border (inner ring wider), trimmed title on top.
@@ -1711,6 +1979,9 @@ pub const MediaWidget = struct {
                 const dh = art_h + inflate;
 
                 if (is_focused_tile) {
+                    focus_tx = tx;
+                    focus_ty = ty;
+                    focus_drawn = true;
                     const depth = 3.0 * scale_f;
                     const fr = 10.0 * scale_f;
                     // 3D shadow: offset dark bottom-right edge
@@ -1726,7 +1997,8 @@ pub const MediaWidget = struct {
                     c.cairo_stroke(cr);
                 }
 
-                renderTileArt(cr, dx, dy, dw, dh, entry, border, &self.art_cache);
+                const tile_key = self.renderTileArt(cr, dx, dy, dw, dh, entry, border, self.category == .music, self.category == .pictures, is_focused_tile);
+                if (is_focused_tile) focus_tile_key = tile_key;
 
                 if (is_focused_tile) {
                     // Inner ring — the double border's inside half.
@@ -1739,6 +2011,9 @@ pub const MediaWidget = struct {
                 // No per-tile labels — TRIMMED TITLE for the focused tile only.
             }
         }
+
+        // Focused-card dwell → hi-res upgrade (500ms on the same tile).
+        self.tickDwell(if (focus_drawn) focus_tile_key else null);
 
         // Trimmed title: the focused tile's name, centered above ITS row.
         // Sits in the real gap above that row (stack gap, row gap, or
