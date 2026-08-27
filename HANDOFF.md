@@ -1,4 +1,52 @@
-# KidulWM HANDOFF — Aug 21 2026 (session 9, media slide CFC viewport)
+# KidulWM HANDOFF — Aug 21 2026 (session 10, kimg art pipeline)
+
+## Session summary
+
+Media slide kimg art pipeline landed. Session 9 crashed mid-debug on Zig stdlib API drift; session 10 rescued the work, fixed the crash (cross-allocator free), fixed the lag (per-frame network re-stat), deployed verified.
+
+## What landed today
+
+- **kimg art pipeline**: stb_image decode via C shim, 256px thumb cache at `~/.cache/kidulwm/thumbs/`, worker-thread decode, render thread never stats/opens/blocks.
+- **Art resolution law**: disk beats everything. Movie in own folder: `<stem>-poster.*` → `poster.*` → `folder.*`. Flat: parent folder's `folder.*` → `poster.*`. Music: embedded (ffprobe) → `folder.*` → `cover.*` → any image. Pics: the file itself IS the art. All failures land on placeholder gradient.
+- **ArtPipeline struct**: surfaces keyed by crc32(resolved art path), pipe-based request/response, MAX_ART_IN_FLIGHT=12, `no_art` memo to stop per-frame network re-stats (the 74% CPU spin fix), ONE allocator (`g_alloc`) through the whole art path.
+- **CFC viewport**: "The row you're moving TO becomes center." Hard stops on ←→. Quit destroys buffer + rebuilds widget.
+- **Crash fix**: cross-allocator free in art path — `self.allocator.free(cached)` on a `g_alloc` pointer. One global worker, one global mutex, one allocator.
+- **Lag fix**: `no_art` memo — each tile stats the network ONCE, never per frame. Tray press instant again.
+
+## Commits
+
+| Commit | Description |
+|--------|-------------|
+| `c1991db` | media: kimg art pipeline — stb_image thumb decode, worker-thread, CFC viewport |
+| `bd2cd21` | media: network roots on pre-kimg slide — STABLE baseline |
+| `bce8fb4` | kimg: fix render-thread freeze — share one Io instead of per-call Threaded pools |
+| `eefceb8` | kimg+media: Zig 0.16 stdlib port + hostmedia scanner roots |
+| `aefe155` | WIP: kimg media art pipeline (crashed mid-debug, 6 stdlib API errors remain) |
+
+## Known issues / WIP
+
+- **DOWN from landing not showing top peek**: The initial "full set of cards" is not arriving. Row0 should become the top peek when DOWN is pressed, but it's not. This throws all subsequent calculations off — the focus is not locked in center stage until one of the other phases kicks in.
+- **Focused card highlight moves off screen**: The highlight should stay CFC'd (centered), but it's moving beyond the screen edge. The focused card should never move — only the cards around it should move.
+- **Quit not clearing**: `mediaSlideClose` resets state but the slide may not be re-rendering on next open.
+
+## Deploy
+
+Current VM build: c1991db on fresh-one (PID was 6273 at deploy time, hashes verified).
+
+## Next (when the gimmick matters)
+
+1. Verify DOWN from landing shows row0 as top peek
+2. Verify quit actually resets to landing
+3. Verify scrolling works through large libraries
+4. Logo slot above pills in UP+1 (TBD)
+
+## Candy log (polish pass, not now)
+
+- **Pics corner quarter-moons**: real-photo tiles (opaque, clipped) show a subtle dark-blue quarter-moon in each corner under the focused double ring — reads as a soft 3D bezel. Placeholder tiles (translucent gradient) don't. When we pretty-up: either make placeholders opaque so all categories get the bezel, or bottle the Pics look deliberately. (Noted Aug 21: "really subtle but nice — extremely subtle 3Dish look.")
+
+---
+
+# KidulWM HANDOFF — Aug 21 2026 (session 9, media slide CFC viewport — CRASHED MID-DEBUG)
 
 ## Session summary
 
