@@ -411,7 +411,7 @@ pub const FilesWidget = struct {
         defer _ = c_std.closedir(dir);
         while (true) {
             const entry = c_std.readdir(dir) orelse break;
-            const name_ptr: [*:0]u8 = @ptrCast(&entry.*.d_name[0]);
+            const name_ptr: [*:0]u8 = @ptrCast(@as([*c]u8, @ptrCast(&entry.*.d_name)));
             const name = std.mem.span(name_ptr);
             if (std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..")) continue;
             const full_path = std.fs.path.join(self.allocator, &.{ path, name }) catch continue;
