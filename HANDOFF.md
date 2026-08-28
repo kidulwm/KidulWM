@@ -1,3 +1,49 @@
+# KidulWM HANDOFF — Aug 28 2026 (session 12, media player: boot-time prewarm + fuzzy art match)
+
+## Session summary
+
+Media player opens fast with real art. The lag was cold SSHFS on first open — fixed by pre-scanning and pre-decoding at boot.
+
+## What landed today
+
+- **Boot-time prewarm thread** (`spawnPrewarm()` in `Server.init`): scans all categories (music/movies/TV/pics) into globals with atomic publish, then loads every cached thumb from `~/.cache/kidulwm/thumbs/` into RAM before the user ever presses the button.
+- **Global art cache**: `g_surfaces`, `g_no_art`, `g_path_by_key`, `g_in_flight` are now file-global, shared by prewarm thread and render thread. No per-widget split, no duplicate work.
+- **Thumb eviction**: at boot, each cached thumb validated against source art existence. Stale thumbs deleted, re-queued for the worker.
+- **TV category live**: scans `Kids Shows/` + `Shows/` for video files (was: `.m3u` playlists only). 370 episodes found. Library cap raised 512 → 1024.
+- **Fuzzy poster match**: `Happy.Feet.mkv` finds `Happy Feet (2006)-poster.jpg`. Normalize names to lowercase alnum, prefix-match. Handles Jellyfin's naming vs our dot-separated files.
+- **Prewarm numbers**: 84 thumbs loaded from disk at boot, 31 queued for worker decode, noart down from 152 to 120.
+
+## The lag diagnosis
+
+User theory: "should we have all the networked content organised BEFORE we even open the media player?" — correct. The old flow:
+1. Open slide → `getLibrary()` lazy-scans → `find` over SSHFS (slow cold)
+2. `requestThumb()` per tile → `resolveArtPath()` → SSHFS stat storm
+3. Art worker decodes one-by-one → `bumpGeneration()` → re-render → more thumbs queue → CPU spike
+
+New flow:
+1. Boot → prewarm thread scans + loads disk-cached thumbs into RAM
+2. Open slide → `getLibrary()` hits warm globals → `requestThumb()` hits `g_surfaces` → instant
+
+## Commits
+
+| Commit | Description |
+|--------|-------------|
+| `c986cfb` | media: TV shows + fuzzy poster match + thumb eviction |
+| `d31d609` | media: boot-time prewarm — global art cache, disk-thumb preload |
+
+## Known issues / remaining
+
+- **120 noart movies**: genuinely no poster file on disk. Jellyfin may store art in its metadata DB, not as files. Would need TMDB fetch or Jellyfin API integration to fill these.
+- **VM CPU ~75-85% with slide open**: software GLES2 (llvmpipe) renders full-screen Cairo every frame. Not a bug — VM has no GPU passthrough. Real hardware will be fine.
+- **DOWN from landing not showing top peek**: still open from session 9. CFC viewport math needs the initial row0 placement fixed.
+- **L/R balance + bit-perfect pulse**: mpv IPC or PipeWire control, not touched yet.
+
+## Deploy
+
+Current VM build: `c986cfb` on fresh-one. Prewarm completes in ~8s after boot.
+
+---
+
 # KidulWM HANDOFF — Aug 28 2026 (session 11, aig: the toolchain is ours)
 
 ## Session summary
