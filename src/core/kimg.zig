@@ -70,7 +70,7 @@ pub const Result = struct {
     surface: ?*cairo.cairo_surface_t, // null = decode failed, use placeholder
 };
 
-fn fileExists(path: []const u8) bool {
+pub fn fileExists(path: []const u8) bool {
     var buf: [4096:0]u8 = undefined;
     if (path.len >= buf.len) return false;
     @memcpy(buf[0..path.len], path);

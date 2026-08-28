@@ -62,42 +62,46 @@ fn lockArtMutex(m: *std.atomic.Mutex) void {
     while (!m.tryLock()) std.atomic.spinLoopHint();
 }
 
-const ArtPipeline = struct {
-    surfaces: std.AutoHashMap(u32, ?*c.cairo_surface_t) = undefined,
-    in_flight: std.AutoHashMap(u32, void) = undefined, // key = req key ^ kind bit
-    path_by_key: std.AutoHashMap(u32, [:0]u8) = undefined, // for retries/hires
-    ready: bool = false,
-    // Memo of paths that resolve to NO art. Without this, every frame
-    // re-stats every no-art tile over sshfs — that WAS the tray-press lag
-    // and the 74% CPU spin (the baseline drew placeholders with 0 syscalls).
-    no_art: std.AutoHashMap(u32, void) = undefined,
-    // Dwell state (render thread only)
-    dwell_key: u32 = 0,
-    dwell_since_us: u64 = 0,
+// GLOBAL art cache — one map set for the compositor's lifetime. The
+// prewarm thread populates these from the on-disk thumb cache at boot;
+// the MediaWidget reads them per tile. Keys are crc32(resolved art path).
+// All writes take g_art_mutex (same as queue/results). Reads on the
+// render thread are safe because HashMap reads never rehash.
+var g_surfaces: std.AutoHashMap(u32, ?*c.cairo_surface_t) = undefined;
+var g_no_art: std.AutoHashMap(u32, void) = undefined;
+var g_path_by_key: std.AutoHashMap(u32, [:0]u8) = undefined;
+var g_in_flight: std.AutoHashMap(u32, void) = undefined;
+var g_maps_ready = false;
+
+// Dwell state — render thread only, no cross-thread traffic.
+const DwellState = struct {
+    key: u32 = 0,
+    since_us: u64 = 0,
     hires_done_key: u32 = 0,
+};
+
+const ArtPipeline = struct {
+    dwell: DwellState = .{},
+    ready: bool = false,
 
     fn init(self: *ArtPipeline, alloc: std.mem.Allocator) void {
-        self.surfaces = std.AutoHashMap(u32, ?*c.cairo_surface_t).init(alloc);
-        self.in_flight = std.AutoHashMap(u32, void).init(alloc);
-        self.path_by_key = std.AutoHashMap(u32, [:0]u8).init(alloc);
-        self.no_art = std.AutoHashMap(u32, void).init(alloc);
+        _ = alloc;
+        // One-time global map init. idempotent.
+        if (!g_maps_ready) {
+            g_surfaces = std.AutoHashMap(u32, ?*c.cairo_surface_t).init(g_alloc);
+            g_no_art = std.AutoHashMap(u32, void).init(g_alloc);
+            g_path_by_key = std.AutoHashMap(u32, [:0]u8).init(g_alloc);
+            g_in_flight = std.AutoHashMap(u32, void).init(g_alloc);
+            g_maps_ready = true;
+        }
         self.ready = true;
         ensureArtWorker();
     }
 
     fn deinit(self: *ArtPipeline) void {
-        if (!self.ready) return;
-        var it = self.surfaces.valueIterator();
-        while (it.next()) |v| {
-            if (v.*) |s| c.cairo_surface_destroy(s);
-        }
-        self.surfaces.deinit();
-        self.in_flight.deinit();
-        var pit = self.path_by_key.valueIterator();
-        while (pit.next()) |p| g_alloc.free(p.*);
-        self.path_by_key.deinit();
-        self.no_art.deinit();
-        self.ready = false;
+        // Global maps survive for the compositor's lifetime — no deinit
+        // of shared data, just mark this widget's thread-local state.
+        self.* = .{};
     }
 };
 
@@ -369,6 +373,127 @@ var g_pictures: [max_library_entries]LibraryEntry = undefined;
 var g_pictures_count: usize = 0;
 var g_pictures_ready = false;
 
+/// Boot-time pre-warm: scan every category and resolve art paths on a
+/// background thread so the render thread never blocks on first open.
+///
+/// SAFETY: g_* atomics are the ONLY cross-thread state. The prewarm writes
+/// through intermediate locals, then publishes with a release-store of the
+/// ready flag. The render thread sees either (ready=false) and falls through
+/// to the lazy scan as before, or (ready=true, entries fully written).
+/// No torn reads, no mutexes on the hot path.
+pub fn prewarmThread() void {
+    std.log.info("kmedia: prewarm started", .{});
+
+    // Scan into local arrays first, then publish with release semantics.
+    // The g_*_count/ready atomics are the ONLY things the render thread
+    // ever reads from another thread's writes.
+    var music_tmp: [max_library_entries]LibraryEntry = undefined;
+    const music_n = scanCategory(.music, &music_tmp);
+    @memcpy(&g_music, &music_tmp);
+    g_music_count = music_n;
+    // Release-store: everything above is visible before the flag goes true.
+    @atomicStore(bool, &g_music_ready, true, .release);
+
+    var movies_tmp: [max_library_entries]LibraryEntry = undefined;
+    const movies_n = scanCategory(.movies, &movies_tmp);
+    @memcpy(&g_movies, &movies_tmp);
+    g_movies_count = movies_n;
+    @atomicStore(bool, &g_movies_ready, true, .release);
+
+    var pics_tmp: [max_library_entries]LibraryEntry = undefined;
+    const pics_n = scanCategory(.pictures, &pics_tmp);
+    @memcpy(&g_pictures, &pics_tmp);
+    g_pictures_count = pics_n;
+    @atomicStore(bool, &g_pictures_ready, true, .release);
+
+    std.log.info("kmedia: prewarm scan done: music={d} movies={d} pics={d}", .{ music_n, movies_n, pics_n });
+
+    // Pre-decode thumbs from the on-disk cache into the GLOBAL surface map.
+    // Any tile with a cached 256px PNG on disk gets its surface NOW, on the
+    // prewarm thread, so the first render hits RAM, not SSHFS. Tiles with no
+    // disk cache get queued for the art worker (which decodes from the
+    // network and writes to disk for next boot).
+    if (!g_maps_ready) {
+        g_surfaces = std.AutoHashMap(u32, ?*c.cairo_surface_t).init(g_alloc);
+        g_no_art = std.AutoHashMap(u32, void).init(g_alloc);
+        g_path_by_key = std.AutoHashMap(u32, [:0]u8).init(g_alloc);
+        g_in_flight = std.AutoHashMap(u32, void).init(g_alloc);
+        g_maps_ready = true;
+    }
+
+    const cats = [_]struct { entries: []const LibraryEntry, is_music: bool, is_pic: bool }{
+        .{ .entries = g_music[0..g_music_count], .is_music = true, .is_pic = false },
+        .{ .entries = g_movies[0..g_movies_count], .is_music = false, .is_pic = false },
+        .{ .entries = g_pictures[0..g_pictures_count], .is_music = false, .is_pic = true },
+    };
+
+    var cached_n: u32 = 0;
+    var queued_n: u32 = 0;
+    var noart_n: u32 = 0;
+    for (cats) |cat| {
+        for (cat.entries) |entry| {
+            const art_path = kimg.resolveArtPath(std.heap.page_allocator, entry.path, cat.is_music, cat.is_pic) orelse {
+                g_no_art.put(std.hash.Crc32.hash(entry.path), {}) catch {};
+                noart_n += 1;
+                continue;
+            };
+            const key = kimg.thumbKey(art_path);
+            if (g_surfaces.contains(key)) {
+                std.heap.page_allocator.free(art_path);
+                continue;
+            }
+            // Store resolved path for the widget's dwell lookups.
+            if (!g_path_by_key.contains(key)) {
+                g_path_by_key.put(key, art_path) catch {
+                    std.heap.page_allocator.free(art_path);
+                    continue;
+                };
+            }
+            // Try the disk cache first — instant, no network.
+            if (kimg.thumbCachePath(std.heap.page_allocator, art_path)) |cache_path| {
+                if (kimg.fileExists(cache_path)) {
+                    const surf = c.cairo_image_surface_create_from_png(cache_path.ptr);
+                    if (surf != null and c.cairo_surface_status(surf) == c.CAIRO_STATUS_SUCCESS) {
+                        g_surfaces.put(key, surf) catch {};
+                        cached_n += 1;
+                        std.heap.page_allocator.free(cache_path);
+                        continue;
+                    }
+                    if (surf != null) c.cairo_surface_destroy(surf);
+                }
+                std.heap.page_allocator.free(cache_path);
+            }
+            // Not on disk — queue for the art worker.
+            const owned_art = g_alloc.dupeZ(u8, art_path) catch continue;
+            const owned_cache = kimg.thumbCachePath(g_alloc, art_path) orelse {
+                g_alloc.free(owned_art);
+                continue;
+            };
+            if (!g_in_flight.contains(key)) {
+                g_in_flight.put(key, {}) catch {};
+                lockArtMutex(&g_art_mutex);
+                art_req_queue.append(g_alloc, .{ .key = key, .kind = .thumb, .art_path = owned_art, .cache_path = owned_cache }) catch {};
+                g_art_mutex.unlock();
+                queued_n += 1;
+            } else {
+                g_alloc.free(owned_art);
+                g_alloc.free(owned_cache);
+            }
+            std.heap.page_allocator.free(art_path);
+        }
+    }
+    std.log.info("kmedia: prewarm cache={d} queued={d} noart={d}", .{ cached_n, queued_n, noart_n });
+    pokeArtWorker();
+}
+
+/// Spawn the prewarm on a background thread. Called from Server.init.
+/// Thread completes quickly, self-contained, no shared state to race.
+pub fn spawnPrewarm() void {
+    _ = std.Thread.spawn(.{}, prewarmThread, .{}) catch |err| {
+        std.log.warn("kmedia: prewarm spawn failed: {}", .{err});
+    };
+}
+
 fn getLibrary(category: MediaCategory) []const LibraryEntry {
     switch (category) {
         .music => {
@@ -608,22 +733,22 @@ pub const MediaWidget = struct {
             }
             const res = res_opt orelse break;
             const flight_key = res.key ^ (if (res.kind == .hires) @as(u32, 0x8000_0000) else 0);
-            _ = self.art.in_flight.remove(flight_key);
+            _ = g_in_flight.remove(flight_key);
             // Only the latest dwell target may own the hi-res slot.
             if (res.kind == .hires) {
-                if (res.key != self.art.dwell_key) {
+                if (res.key != self.art.dwell.key) {
                     if (res.surface) |s| c.cairo_surface_destroy(s);
                     continue;
                 }
-                if (self.art.hires_done_key != 0 and self.art.hires_done_key != res.key) {
-                    if (self.art.surfaces.get(self.art.hires_done_key)) |old| {
+                if (self.art.dwell.hires_done_key != 0 and self.art.dwell.hires_done_key != res.key) {
+                    if (g_surfaces.get(self.art.dwell.hires_done_key)) |old| {
                         if (old) |s| c.cairo_surface_destroy(s);
-                        _ = self.art.surfaces.remove(self.art.hires_done_key);
+                        _ = g_surfaces.remove(self.art.dwell.hires_done_key);
                     }
                 }
-                self.art.hires_done_key = if (res.surface != null) res.key else 0;
+                self.art.dwell.hires_done_key = if (res.surface != null) res.key else 0;
             }
-            const gop = self.art.surfaces.getOrPut(res.key) catch continue;
+            const gop = g_surfaces.getOrPut(res.key) catch continue;
             if (gop.found_existing) {
                 if (gop.value_ptr.*) |old| c.cairo_surface_destroy(old);
             }
@@ -637,39 +762,40 @@ pub const MediaWidget = struct {
     /// Ensure a thumb request is queued for this entry. Render-thread cheap:
     /// path resolve + hash + map lookup; decode rides the worker.
     fn requestThumb(self: *MediaWidget, entry: LibraryEntry, is_music: bool, is_picture: bool) ?u32 {
+        _ = self; // global maps now, but keep the signature
         // Fast path: memoized "no art" — zero syscalls, zero allocs.
         const entry_key = std.hash.Crc32.hash(entry.path);
-        if (self.art.no_art.contains(entry_key)) return null;
+        if (g_no_art.contains(entry_key)) return null;
         const art_path = kimg.resolveArtPath(g_alloc, entry.path, is_music, is_picture) orelse {
-            self.art.no_art.put(entry_key, {}) catch {};
+            g_no_art.put(entry_key, {}) catch {};
             return null;
         };
         std.log.info("kimg trace: resolved '{s}' -> {s}", .{ entry.title, art_path });
         const key = kimg.thumbKey(art_path);
-        if (self.art.surfaces.contains(key)) {
+        if (g_surfaces.contains(key)) {
             g_alloc.free(art_path);
             return key;
         }
         // Remember the resolved path for the dwell hi-res request.
-        if (!self.art.path_by_key.contains(key)) {
+        if (!g_path_by_key.contains(key)) {
             const dup = g_alloc.dupeZ(u8, art_path) catch art_path;
-            self.art.path_by_key.put(key, dup) catch {};
+            g_path_by_key.put(key, dup) catch {};
             if (dup.ptr != art_path.ptr) g_alloc.free(art_path);
         } else {
             g_alloc.free(art_path);
         }
-        if (!self.art.in_flight.contains(key)) {
+        if (!g_in_flight.contains(key)) {
             // Throttle: never more than MAX_IN_FLIGHT requests queued. The wall
             // shows ~8 tiles; 148 at once is what burst the mount and starved
             // the render thread (the Movies crash). Over the limit the tile
             // keeps its placeholder this frame — next render retries.
-            if (self.art.in_flight.count() >= MAX_ART_IN_FLIGHT) return key;
-            const cached = kimg.thumbCachePath(g_alloc, self.art.path_by_key.get(key).?) orelse return key;
-            const owned_art = g_alloc.dupeZ(u8, self.art.path_by_key.get(key).?) catch {
+            if (g_in_flight.count() >= MAX_ART_IN_FLIGHT) return key;
+            const cached = kimg.thumbCachePath(g_alloc, g_path_by_key.get(key).?) orelse return key;
+            const owned_art = g_alloc.dupeZ(u8, g_path_by_key.get(key).?) catch {
                 g_alloc.free(cached);
                 return key;
             };
-            self.art.in_flight.put(key, {}) catch {
+            g_in_flight.put(key, {}) catch {
                 g_alloc.free(owned_art);
                 g_alloc.free(cached);
                 return key;
@@ -692,27 +818,27 @@ pub const MediaWidget = struct {
     fn tickDwell(self: *MediaWidget, focused_key: ?u32) void {
         const now = animationNowUs();
         if (focused_key) |k| {
-            if (k != self.art.dwell_key) {
-                self.art.dwell_key = k;
-                self.art.dwell_since_us = now;
+            if (k != self.art.dwell.key) {
+                self.art.dwell.key = k;
+                self.art.dwell.since_us = now;
             }
         } else {
-            self.art.dwell_key = 0;
-            self.art.dwell_since_us = 0;
+            self.art.dwell.key = 0;
+            self.art.dwell.since_us = 0;
             return;
         }
         const k = focused_key.?;
-        if (self.art.hires_done_key == k) return;
-        if (now -% self.art.dwell_since_us < ART_DWELL_US) return;
-        const art_path = self.art.path_by_key.get(k) orelse return;
+        if (self.art.dwell.hires_done_key == k) return;
+        if (now -% self.art.dwell.since_us < ART_DWELL_US) return;
+        const art_path = g_path_by_key.get(k) orelse return;
         const flight_key = k ^ 0x8000_0000;
-        if (self.art.in_flight.contains(flight_key)) return;
+        if (g_in_flight.contains(flight_key)) return;
         const owned = g_alloc.dupeZ(u8, art_path) catch return;
         const cached = g_alloc.dupeZ(u8, "") catch {
             g_alloc.free(owned);
             return;
         };
-        self.art.in_flight.put(flight_key, {}) catch {
+        g_in_flight.put(flight_key, {}) catch {
             g_alloc.free(owned);
             g_alloc.free(cached);
             return;
@@ -1489,7 +1615,7 @@ pub const MediaWidget = struct {
 
         var surf: ?*c.cairo_surface_t = null;
         if (key) |k| {
-            if (self.art.surfaces.get(k)) |v| surf = v;
+            if (g_surfaces.get(k)) |v| surf = v;
         }
         // Hi-res upgrade replaces the thumb surface for that key wholesale —
         // same key, bigger pixels, so no special draw path needed here.

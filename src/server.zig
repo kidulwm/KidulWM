@@ -529,6 +529,11 @@ pub const Server = struct {
         server.input_manager = try server.allocator.create(InputManager);
         InputManager.init(server.input_manager, server);
 
+        // Boot-time media library pre-warm: scans all categories and
+        // warms dentry caches on a background thread, so the first
+        // media slide open hits warm data, not SSHFS cold reads.
+        media_mod.spawnPrewarm();
+
         server.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
         server.new_output.link.init();
         backend.events.new_output.add(&server.new_output);
