@@ -1,3 +1,66 @@
+# KidulWM HANDOFF — Aug 28 2026 (session 11, aig: the toolchain is ours)
+
+## Session summary
+
+Historic pivot. The compiler — the last outside dependency in the entire
+stack — is now owned. **aig** stands: pinned zig 0.16.0 release fork,
+public on Codeberg, GPLv3 layer, bootstrap proven, KidulWM builds
+byte-identical through it.
+
+Also landed first: crash-rescue cleanup from session 10 — kimg art
+pipeline committed (`c1991db`), HANDOFF session-10 entry written, all
+repos pushed to Codeberg, Apocalypse drive backed up (7 bundles
+`20260827_2334` + KidulWM-src rsync).
+
+## The aig law (locked)
+
+- **Direction**: every Kidul repo builds on aig once the LLVM milestone
+  lands. Until then, host zig (CachyOS 0.16.0 package) remains the
+  build compiler; aig is the seed+destination.
+- Repo: https://codeberg.org/kidulwm/aig · local `/home/dad/dev/aig`
+- Pin: zig 0.16.0 RELEASE tarball. Never track master (master was
+  already 0.17.0-dev the day we forked — drift caught at the gate).
+- No syntax changes in 0.x. Patch discipline: everything through
+  `patches/SERIES`. Our additions live in the `a/` stdlib namespace.
+- Bootstrap law: host zig seeds once, then aig builds aig.
+
+## Proof points (verified tonight)
+
+- Host zig 0.16.0 → aig source → zig 0.16.0 binary (98MB).
+- KidulWM built by the aig-produced compiler is **byte-identical** to
+  the binary deployed on fresh-one: sha256 `780eef98f573...486`.
+- `patches/apply.sh` idempotent; patch 0001 (std exposes `a` namespace)
+  compiles through bootstrap.
+- Codeberg: main = `5be51fe` (hygiene: dropped a stray test stub).
+
+## Known gap (documented, scoped, queued)
+
+- **C compilation**: 0.16 aro refuses standalone `.c` objects
+  (kimg_shim.c, kmedia_shim.c, cairo @cImport paths). Fix = cmake +
+  clang21 (`/usr/lib/llvm21` — LLVM 21.1.8, exact zig 0.16 match;
+  system LLVM 22 unusable) + `zig build -Denable-llvm`. Milestone
+  **aig 0.1.1**, ~2h, fresh-session job.
+
+## Moral stance (why aig exists, on record)
+
+Not a hurt-feelings reaction to the Discord sneering — a completion of
+the full-stack ownership law. Bootloader ours, DM ours, WM ours, daemons
+ours, distro swappable... compiler was the holdout. The toolchain is
+co-built with AI; the name carries the receipt. Code is the only
+personality we grade.
+
+## Next
+
+1. **Media player session** (new session, fresh context — queued now):
+   untangle the kmedia ffmpeg/ffprobe roots, wire the file scanner
+   (hostmedia.zig) to the VM's real /var/media, kill the `sleep`-based
+   lag on network mounts, live-wire L/R balance + bit-perfect pulse.
+2. aig 0.1.1: LLVM enablement pass.
+3. a.fs adoption: sweep Kidul tree's std.fs/std.posix usage onto the
+   stable wrapper once aig is the build compiler.
+
+---
+
 # KidulWM HANDOFF — Aug 21 2026 (session 10, kimg art pipeline)
 
 ## Session summary
