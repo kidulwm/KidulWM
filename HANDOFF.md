@@ -1,3 +1,75 @@
+# KidulWM HANDOFF — Aug 28 2026 (session 13, aig 0.1.1: LLVM enablement)
+
+## Session summary
+
+aig 0.1.1 landed. The compiler now builds C. LLVM 21.1.8 backend
+enabled via cmake + clang21 (`/usr/lib/llvm21`); `zig cc` and
+`build-obj` verified on C sources; kimg_shim.c / kmedia_shim.c compile
+through it. The last outside dependency is closer to fully ours.
+
+Also landed: aig README.md is now the project face (logo with alpha,
+verified no halo on dark), upstream Zig attribution kept, pushed to
+Codeberg.
+
+## What landed today
+
+- **cmake + llvm21 dev packages** installed on host (llvm-config
+  21.1.8 at `/usr/lib/llvm21/bin/llvm-config`)
+- **zigcpp** built against clang21; aig compiler built with
+  `-Denable-llvm -Dconfig_h=build-llvm/config.h` — 19m48s, clean
+- **C compilation gate PASSED**: `zig cc hello.c`, `build-obj -lc`,
+  zig+libc exe all verified
+- **Patch 0002** (`patches/0002-default-lld-x86_64-glibc-sframe.patch`):
+  glibc >= 2.39 crt1.o carries .sframe sections with R_X86_64_PC64
+  relocs that zig 0.16's self-hosted ELF linker rejects. Defaults to
+  LLD + LLVM backend for libc-linked x86_64 ELF builds. Without it,
+  every Debug zig+libc exe fails at link on current CachyOS.
+- **aig README.md**: logo (keyed to transparent alpha, checked on
+  dark), ownership pitch, locked rules, upstream attribution.
+
+## Open bug: kidulwm panics under aig
+
+`kidulwm` itself (not the other 4 targets) panics in Sema/InternPool
+(`elemPtrArray`, InternPool.zig:9926) under aig. Deterministic.
+Present in BOTH LLVM and no-LLVM aig builds, Debug and ReleaseSafe.
+Host zig 0.16.0 builds the identical source clean.
+
+Bisect exonerated: patch 0001, patch 0002, cache poisoning, the
+wlroots/wayland dep graph, LLVM enablement itself, and the source
+tree (verified byte-identical to the 0.16.0 release tarball except
+the two patches). What remains: a self-host miscompile class bug —
+host zig compiling zig source produces a subtly broken compiler on
+one semantic-analysis path that only kidulwm's code shape triggers.
+
+**Workaround**: build kidulwm with host zig (`/usr/bin/zig`). All
+other Kidul targets (kiduldm, kidulwm-control, kidul-files,
+kmedia-test) build under aig.
+
+**Next session probes** (in order):
+1. Bisect kidulwm source for the minimal code shape that triggers
+   elemPtrArray — comment out module imports in main.zig until the
+   panic vanishes, then narrow within that module
+2. If a minimal repro emerges (under ~50 lines), it becomes either a
+   patches/0003 workaround in KidulWM source or an upstream bug report
+3. Nuclear option: build aig with `-Dversion-string=0.16.0` and
+   ReleaseFast (matching CachyOS package build flags) to see if the
+   miscompile is optimize-mode-sensitive
+
+## Commits (aig repo)
+
+| Commit | Description |
+|--------|-------------|
+| `294fbf03` | README becomes the aig face — logo (alpha), upstream attribution |
+| `fd2e87ed` | patch 0002 — default LLD for x86_64 glibc .sframe |
+| `3273d69f` | BUILD-AIG.md — 0.1.1 status, LLVM build recipe, known panic |
+
+## Deploy
+
+Current VM build unchanged: `c986cfb` on fresh-one. aig lives on
+host only; no VM deploy needed for this session's work.
+
+---
+
 # KidulWM HANDOFF — Aug 28 2026 (session 12, media player: boot-time prewarm + fuzzy art match)
 
 ## Session summary
