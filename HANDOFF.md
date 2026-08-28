@@ -1085,3 +1085,43 @@ The VM needs its own signal files or a shared mount.
 
 This session's work is not yet committed. When committed, will be under
 the tray signal pills feature.
+
+---
+
+# KidulWM HANDOFF — Aug 28 2026 (session 14, kcell born, kportal named)
+
+## Session summary
+
+kcell v0.1 born — native sandboxing for the Kidul stack. aig 0003
+documents the kidulwm Sema panic workaround. kportal named: the
+browser becomes a portal to three networks.
+
+## What landed today
+
+- **kcell v0.1**: builds on Zig 0.16, spawns bwrap cells, browser cell works
+- **aig 0003**: kidulwm Sema panic workaround documented (host zig for kidulwm only)
+- **ksd-golden**: 25GB Arch base scripts ready
+- **kportal**: browser → portal, three networks (Freenet/Kidulnet/Internet)
+
+## Open items
+
+1. kcell real browser launch (kidul-browser binary in cell)
+2. Freenet cell + kportal pairing
+3. Golden image build (Arch ISO → VM → snapshot)
+4. ksignals audio slide
+5. Battery to gauges (signals = connections only)
+
+## The kportal law
+
+- Not a browser — a **portal**
+- Three networks: Freenet (left), Kidulnet (center), Internet (right)
+- Favorites per network, curated by us
+- Granny sees pictures, geeks see layers
+- 8-year-old friendly, always
+
+## Deploy
+
+Current VM build: c986cfb on fresh-one. aig workaround: host zig for kidulwm.
+
+---
+Gods speed. The portal opens.
