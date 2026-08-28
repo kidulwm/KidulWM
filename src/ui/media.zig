@@ -43,7 +43,7 @@ const LibraryEntry = struct {
     path: [:0]u8,
 };
 
-const max_library_entries = 512;
+const max_library_entries = 1024;
 const g_alloc = std.heap.page_allocator;
 
 // ---------------------------------------------------------------------------
@@ -260,14 +260,14 @@ fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
     const roots = switch (category) {
         .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/hostmedia/music", "/mnt/sda_backup/Jelly/Music" },
         .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies" },
-        .tv => &[_][]const u8{},
+        .tv => &[_][]const u8{ "/mnt/hostmedia/jelly/Kids Shows", "/mnt/hostmedia/jelly/Shows" },
         .pictures => &[_][]const u8{ "/home/kidul/Pictures", "/home/kidul/Images" },
         .shop => &[_][]const u8{},
     };
     const exts = switch (category) {
         .music => &[_][]const u8{ ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav" },
         .movies => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm" },
-        .tv => &[_][]const u8{ ".m3u", ".m3u8" },
+        .tv => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm" },
         .pictures => &[_][]const u8{ ".jpg", ".jpeg", ".png", ".webp", ".gif" },
         .shop => &[_][]const u8{},
     };
@@ -276,7 +276,7 @@ fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
     for (roots) |root| {
         for (exts) |ext| {
             var cmd_buf: [1024:0]u8 = std.mem.zeroes([1024:0]u8);
-            const cmd = std.fmt.bufPrintZ(&cmd_buf, "find \"{s}\" -type f -iname '*{s}' 2>/dev/null | sort -f | head -n 300", .{ root, ext }) catch continue;
+            const cmd = std.fmt.bufPrintZ(&cmd_buf, "find \"{s}\" -type f -iname '*{s}' 2>/dev/null | sort -f | head -n 1024", .{ root, ext }) catch continue;
             count += execFind(cmd, entries[count..]);
             if (count >= entries.len) break;
         }
@@ -369,6 +369,9 @@ var g_music_ready = false;
 var g_movies: [max_library_entries]LibraryEntry = undefined;
 var g_movies_count: usize = 0;
 var g_movies_ready = false;
+var g_tv: [max_library_entries]LibraryEntry = undefined;
+var g_tv_count: usize = 0;
+var g_tv_ready = false;
 var g_pictures: [max_library_entries]LibraryEntry = undefined;
 var g_pictures_count: usize = 0;
 var g_pictures_ready = false;
@@ -400,13 +403,19 @@ pub fn prewarmThread() void {
     g_movies_count = movies_n;
     @atomicStore(bool, &g_movies_ready, true, .release);
 
+    var tv_tmp: [max_library_entries]LibraryEntry = undefined;
+    const tv_n = scanCategory(.tv, &tv_tmp);
+    @memcpy(&g_tv, &tv_tmp);
+    g_tv_count = tv_n;
+    @atomicStore(bool, &g_tv_ready, true, .release);
+
     var pics_tmp: [max_library_entries]LibraryEntry = undefined;
     const pics_n = scanCategory(.pictures, &pics_tmp);
     @memcpy(&g_pictures, &pics_tmp);
     g_pictures_count = pics_n;
     @atomicStore(bool, &g_pictures_ready, true, .release);
 
-    std.log.info("kmedia: prewarm scan done: music={d} movies={d} pics={d}", .{ music_n, movies_n, pics_n });
+    std.log.info("kmedia: prewarm scan done: music={d} movies={d} tv={d} pics={d}", .{ music_n, movies_n, tv_n, pics_n });
 
     // Pre-decode thumbs from the on-disk cache into the GLOBAL surface map.
     // Any tile with a cached 256px PNG on disk gets its surface NOW, on the
@@ -424,6 +433,7 @@ pub fn prewarmThread() void {
     const cats = [_]struct { entries: []const LibraryEntry, is_music: bool, is_pic: bool }{
         .{ .entries = g_music[0..g_music_count], .is_music = true, .is_pic = false },
         .{ .entries = g_movies[0..g_movies_count], .is_music = false, .is_pic = false },
+        .{ .entries = g_tv[0..g_tv_count], .is_music = false, .is_pic = false },
         .{ .entries = g_pictures[0..g_pictures_count], .is_music = false, .is_pic = true },
     };
 
@@ -449,17 +459,25 @@ pub fn prewarmThread() void {
                     continue;
                 };
             }
-            // Try the disk cache first — instant, no network.
+            // Try the disk cache first — but ONLY if the source art still
+            // exists on the host. One access() per file, warm dentry cache.
+            // If the source is gone, the thumb is stale — evict and re-queue.
             if (kimg.thumbCachePath(std.heap.page_allocator, art_path)) |cache_path| {
                 if (kimg.fileExists(cache_path)) {
-                    const surf = c.cairo_image_surface_create_from_png(cache_path.ptr);
-                    if (surf != null and c.cairo_surface_status(surf) == c.CAIRO_STATUS_SUCCESS) {
-                        g_surfaces.put(key, surf) catch {};
-                        cached_n += 1;
-                        std.heap.page_allocator.free(cache_path);
-                        continue;
+                    if (kimg.fileExists(art_path)) {
+                        const surf = c.cairo_image_surface_create_from_png(cache_path.ptr);
+                        if (surf != null and c.cairo_surface_status(surf) == c.CAIRO_STATUS_SUCCESS) {
+                            g_surfaces.put(key, surf) catch {};
+                            cached_n += 1;
+                            std.heap.page_allocator.free(cache_path);
+                            continue;
+                        }
+                        if (surf != null) c.cairo_surface_destroy(surf);
+                    } else {
+                        // Source gone — evict the stale thumb.
+                        _ = unistd.unlink(cache_path.ptr);
+                        std.log.info("kimg trace: evicted stale thumb {s}", .{cache_path});
                     }
-                    if (surf != null) c.cairo_surface_destroy(surf);
                 }
                 std.heap.page_allocator.free(cache_path);
             }
@@ -511,7 +529,11 @@ fn getLibrary(category: MediaCategory) []const LibraryEntry {
             return g_movies[0..g_movies_count];
         },
         .tv => {
-            return &[_]LibraryEntry{};
+            if (!g_tv_ready) {
+                g_tv_count = scanCategory(.tv, &g_tv);
+                g_tv_ready = true;
+            }
+            return g_tv[0..g_tv_count];
         },
         .pictures => {
             if (!g_pictures_ready) {

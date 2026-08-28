@@ -144,6 +144,72 @@ const plain_poster_names = [_][]const u8{ "poster.jpg", "poster.png", "poster.jp
 const folder_names = [_][]const u8{ "folder.jpg", "folder.png", "folder.jpeg" };
 const cover_names = [_][]const u8{ "cover.jpg", "cover.png", "cover.jpeg" };
 
+/// Normalize a name for fuzzy matching: lowercase alnum only.
+/// "Happy.Feet" -> "happyfeet", "Happy Feet (2006)-poster.jpg" -> "happyfeet2006posterjpg"
+fn normalizeName(buf: []u8, name: []const u8) []const u8 {
+    var n: usize = 0;
+    for (name) |ch| {
+        if (n >= buf.len) break;
+        if (std.ascii.isAlphanumeric(ch)) {
+            buf[n] = std.ascii.toLower(ch);
+            n += 1;
+        }
+    }
+    return buf[0..n];
+}
+
+/// Find a poster file in dir whose normalized name starts with the
+/// normalized media stem. Handles Jellyfin's "Title (Year)-poster.jpg"
+/// vs our "Title.With.Dots.mkv" naming mismatch.
+fn findPosterFuzzy(alloc: std.mem.Allocator, dir: []const u8, stem: []const u8) ?[:0]u8 {
+    var norm_stem_buf: [256]u8 = undefined;
+    const norm_stem = normalizeName(&norm_stem_buf, stem);
+    if (norm_stem.len == 0) return null;
+
+    var dir_z: [4096:0]u8 = undefined;
+    if (dir.len >= dir_z.len) return null;
+    @memcpy(dir_z[0..dir.len], dir);
+    dir_z[dir.len] = 0;
+    const d = c_dir.opendir(dir_z[0..dir.len :0].ptr) orelse return null;
+    defer _ = c_dir.closedir(d);
+
+    var best: ?[:0]u8 = null;
+    var best_len: usize = 0;
+    while (c_dir.readdir(d)) |ent| {
+        const name = std.mem.sliceTo(&ent.d_name, 0);
+        if (!isImageName(name)) continue;
+        // Must end with -poster.* or be poster.*
+        const has_poster_suffix = std.mem.endsWith(u8, name, "-poster.jpg") or
+            std.mem.endsWith(u8, name, "-poster.png") or
+            std.mem.endsWith(u8, name, "-poster.jpeg") or
+            std.mem.eql(u8, name, "poster.jpg") or
+            std.mem.eql(u8, name, "poster.png") or
+            std.mem.eql(u8, name, "poster.jpeg");
+        if (!has_poster_suffix) continue;
+
+        var norm_name_buf: [512]u8 = undefined;
+        const norm_name = normalizeName(&norm_name_buf, name);
+        // Prefix match: art name starts with media stem
+        if (norm_name.len >= norm_stem.len and
+            std.mem.eql(u8, norm_name[0..norm_stem.len], norm_stem))
+        {
+            const full = std.fmt.allocPrintSentinel(alloc, "{s}/{s}", .{ dir, name }, 0) catch continue;
+            if (best) |b| {
+                // Prefer shortest match (most specific)
+                if (name.len < best_len) {
+                    alloc.free(b);
+                    best = full;
+                    best_len = name.len;
+                } else alloc.free(full);
+            } else {
+                best = full;
+                best_len = name.len;
+            }
+        }
+    }
+    return best;
+}
+
 /// Resolve the canonical LOCAL art path for a media entry. Returns null when
 /// nothing local exists (placeholder). Caller owns the returned slice.
 /// Pure path work — cheap stats, no decode. Safe to call on render thread.
@@ -167,6 +233,10 @@ pub fn resolveArtPath(
 
     // Movie in own folder / any media: <stem>-poster.* first.
     if (tryNames(alloc, dir, stem, &poster_suffixes)) |p| return p;
+
+    // Fuzzy match: Jellyfin names art "Title (Year)-poster.jpg" but our
+    // media files are "Title.With.Dots.mkv". Normalize and prefix-match.
+    if (findPosterFuzzy(alloc, dir, stem)) |p| return p;
 
     // If the folder looks like a title folder (folder name == stem, or the
     // folder contains a folder/poster file), use folder-level art.
