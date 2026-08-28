@@ -1,3 +1,92 @@
+# KidulWM HANDOFF — Aug 29 2026 (session 15, aig Sema panic: HUNTED AND KILLED)
+
+## Session summary
+
+The kidulwm-under-aig panic is DEAD. Root cause: a genuine upstream
+zig 0.16.0 Sema bug, triggered by ONE line in our tree. Fixed,
+committed, verified on both compilers. kidulwm now builds under aig.
+
+## The bug (upstream zig 0.16.0, NOT our patches)
+
+`Sema.elemPtrArray` (Sema.zig:27346) asserts
+`array_ptr_ty.ptrSize(zcu) == .one`. But element-indexing into an
+array field behind a `[*c]` C pointer routes into `elemPtrArray` with
+ptrSize `.c` — assert fails. Host zig 0.16.0 release binaries have
+asserts compiled out and survive by luck; aig's LLVM-enabled build
+keeps the assert live and panics at `InternPool.zig:9926
+elemPtrArray → unreachable`.
+
+Trigger line (files_card.zig:414, in `loadDirectory`):
+
+    const entry = c_std.readdir(dir) orelse break;
+    const name_ptr: [*:0]u8 = @ptrCast(&entry.*.d_name[0]);   // BOOM
+
+`readdir` returns `[*c]struct_dirent`; `&entry.*.d_name[0]` takes an
+element pointer into the `d_name` array through that C pointer.
+
+## The fix (a44e25d, merged 0a16383)
+
+    const name_ptr: [*:0]u8 = @ptrCast(@as([*c]u8, @ptrCast(&entry.*.d_name)));
+
+Array-decay to `[*c]u8` yields the identical runtime pointer through a
+Sema path that handles C pointers correctly. One line. kidulwm builds
+under aig AND host zig; `zig build test` passes; the aig-built binary
+boots.
+
+## How it was found (the method, for next time)
+
+30+ swap-variant bisect rounds: variant files staged in /tmp, swapped
+into the tree, aig build, grep for panic, git restore. Chain:
+
+1. Stub all 3 KeyboardDevice listener bodies → CLEAN (bodies, not the
+   wl.Listener pattern)
+2. Layer-by-layer bisect of handleKey → every single-layer removal
+   still PANICS, every gutted variant CLEAN (combinatorial-looking)
+3. Matrix → the `cards` block in every panic; `handleFilesCardKey`
+   solo → PANIC; the call edge into `FilesWidget.handleKey` is poison
+4. Dispatch bisect → pills/files arms panic, preview clean
+5. THEN IT GOT WEIRD: even an EMPTY handlePillsKey panicked. Cause:
+   Zig lazy analysis — removing references just means `loadDirectory`
+   never gets semantically analyzed, so the panic "moved". The bisect
+   was chasing the analysis SCHEDULE, not the bug.
+6. THE BLOODHOUND: rebuilt aig itself in Debug (`-Doptimize=Debug`,
+   ~20min, 523MB binary). Asserts live → crash context printed:
+   "Analyzing src/ui/files_card.zig ... field_call readdir" and the
+   assert at Sema.zig:27346 named. From there: minutes.
+
+LESSON (logged to brain): when a bisect shows "any single removal
+still panics / every gutted variant clean", suspect lazy-analysis
+scheduling — the trigger is whatever gets analyzed LAST, not what you
+removed. Build the compiler in Debug to turn a silent `unreachable`
+into a named assert with crash context.
+
+## Policy note (Barticus, locked)
+
+Upstream ziglang issue: NOT FILED. "They don't like AI, so we keep it
+to ourselves." The fix lives in our git history; the knowledge lives
+in the brain. If upstream trips over it, the assert message leads
+them to the same line.
+
+## aig repo state
+
+- patch 0003 (workaround doc) is now STALE — says "build kidulwm with
+  host zig". Needs rewording to "fixed, root cause documented" or
+  removal. Queued for next aig session.
+- `zig-out-debug/` exists on host (Debug aig build, 523MB) — useful
+  bloodhound, keep for future hunts; not committed.
+- aig law unchanged: pinned 0.16.0 release, we pull deliberately.
+  (Barticus likes the number 17 better. Noted. We pull 0.17.0 when
+  it RELEASES, not before.)
+
+## Deploy
+
+VM build unchanged (c986cfb on fresh-one). The fix is compile-time
+only; runtime behavior identical (same pointer value). Next VM deploy
+can come from aig-built binaries now — the last host-zig-only target
+is free.
+
+---
+
 # KidulWM HANDOFF — Aug 28 2026 (session 13, aig 0.1.1: LLVM enablement)
 
 ## Session summary

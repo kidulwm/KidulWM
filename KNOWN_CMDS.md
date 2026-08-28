@@ -187,6 +187,11 @@ RULES (locked):
 - No syntax changes in aig 0.x. Parser untouched.
 - `a/` namespace for our additions; import `const a = @import("a");`
 - Host zig is bootstrap seed exactly once; then aig builds aig.
+- Resolved (Aug 29): the kidulwm-under-aig Sema panic was an upstream
+  0.16.0 assert vs `[*c]` element-pointer routing, triggered by ONE
+  line in files_card.zig (`&entry.*.d_name[0]` → array-decay form).
+  kidulwm builds under aig now. Details: HANDOFF session 15. Policy:
+  not reported upstream (in-house knowledge).
 - Never track upstream master. We pull, we decide, we pin.
 
 ## Apocalypse drive backup (LaCie)
