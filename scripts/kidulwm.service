@@ -1,15 +1,37 @@
 [Unit]
 Description=KidulWM Wayland Compositor
-After=seatd.service
-Wants=seatd.service
+# ksd-golden lineage (Arch, virtio GPU, wlroots0.20):
+# - pixman+shm is the ONLY stable renderer on virtio without 3D accel.
+#   gles2 on virtio = severe icon flicker (damage-only commit re-presents
+#   timer-redrawn widget rects without the background strip). Painful to
+#   look at. Do not switch back on VM targets.
+# - pixman needs WLR_ALLOCATOR=shm: no GBM on this GPU, else
+#   AllocatorCreateFailed crash-loop.
+# - ExecStartPre waits for logind to create /run/user/1000 before wlroots
+#   binds its wayland socket, else the socket silently never appears.
+After=seatd.service systemd-user-sessions.service systemd-logind.service
+Requires=seatd.service
 
 [Service]
 Type=simple
+User=kidul
+Group=kidul
+SupplementaryGroups=video input seat
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 50); do [ -d /run/user/1000 ] && exit 0; sleep 0.1; done; exit 1'
+Environment=HOME=/home/kidul
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=WLR_RENDERER=pixman
-Environment=WLR_BACKENDS=libinput
+Environment=WLR_BACKENDS=drm,libinput
+Environment=WLR_ALLOCATOR=shm
+Environment=WLR_NO_HARDWARE_CURSORS=1
+Environment=WLR_DRM_NO_ATOMIC=1
 ExecStart=/usr/local/bin/kidulwm
 Restart=on-failure
 RestartSec=1
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
