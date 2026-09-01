@@ -69,6 +69,53 @@ pub fn build(b: *std.Build) void {
     });
     moon_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
 
+    // ── libkmedia dependency / module ──────────────────────────────────────
+    const c_kmedia_mod = b.createModule(.{
+        .root_source_file = b.path("../kmedia/src/c.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    c_kmedia_mod.linkSystemLibrary("cairo", .{});
+    c_kmedia_mod.linkSystemLibrary("wayland-client", .{});
+    c_kmedia_mod.linkSystemLibrary("wayland-cursor", .{});
+    c_kmedia_mod.linkSystemLibrary("xkbcommon", .{});
+    c_kmedia_mod.addSystemIncludePath(b.path("../kmedia/protocol"));
+
+    const av_mod = b.createModule(.{
+        .root_source_file = b.path("../kmedia/src/av.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    av_mod.linkSystemLibrary("avformat", .{});
+    av_mod.linkSystemLibrary("avcodec", .{});
+    av_mod.linkSystemLibrary("avutil", .{});
+    av_mod.linkSystemLibrary("swscale", .{});
+    av_mod.linkSystemLibrary("pulse", .{});
+    av_mod.linkSystemLibrary("pulse-simple", .{});
+    av_mod.linkSystemLibrary("pthread", .{});
+
+    const libkmedia_mod = b.createModule(.{
+        .root_source_file = b.path("../kmedia/src/libkmedia.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "c", .module = c_kmedia_mod },
+            .{ .name = "av", .module = av_mod },
+        },
+    });
+    libkmedia_mod.linkSystemLibrary("cairo", .{});
+    libkmedia_mod.linkSystemLibrary("curl", .{});
+    libkmedia_mod.linkSystemLibrary("avformat", .{});
+    libkmedia_mod.linkSystemLibrary("avcodec", .{});
+    libkmedia_mod.linkSystemLibrary("avutil", .{});
+    libkmedia_mod.linkSystemLibrary("swscale", .{});
+    libkmedia_mod.linkSystemLibrary("pulse", .{});
+    libkmedia_mod.linkSystemLibrary("pulse-simple", .{});
+    libkmedia_mod.linkSystemLibrary("pthread", .{});
+
     const root_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -83,6 +130,7 @@ pub fn build(b: *std.Build) void {
     root_mod.addImport("toml", toml);
     root_mod.addImport("weather", weather_mod);
     root_mod.addImport("moon", moon_mod);
+    root_mod.addImport("kmedia", libkmedia_mod);
     root_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
 
     root_mod.linkSystemLibrary("wayland-server", .{});
@@ -92,6 +140,13 @@ pub fn build(b: *std.Build) void {
     root_mod.linkSystemLibrary("libinput", .{});
     root_mod.linkSystemLibrary("cairo", .{});
     root_mod.linkSystemLibrary("pipewire-0.3", .{});
+    root_mod.linkSystemLibrary("avformat", .{});
+    root_mod.linkSystemLibrary("avcodec", .{});
+    root_mod.linkSystemLibrary("avutil", .{});
+    root_mod.linkSystemLibrary("swscale", .{});
+    root_mod.linkSystemLibrary("pulse", .{});
+    root_mod.linkSystemLibrary("pulse-simple", .{});
+    root_mod.linkSystemLibrary("pthread", .{});
     root_mod.addCSourceFile(.{
         .file = b.path("src/core/kmedia_shim.c"),
         .flags = &.{

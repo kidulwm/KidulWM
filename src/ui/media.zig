@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("dm").c;
 const style = @import("../core/style.zig");
+const kmedia_lib = @import("kmedia");
 
 const unistd = @cImport({
     @cDefine("_FORTIFY_SOURCE", "0");
@@ -33,7 +34,7 @@ pub const MediaCard = struct {
     }
 };
 
-pub const MediaCategory = enum { movies, music, tv, pictures, shop };
+pub const MediaCategory = enum { movies, tv, music };
 
 pub const ControlFocus = enum { category, subcategory, search, result, slider };
 
@@ -222,13 +223,13 @@ fn fileExtensionIndex(name: []const u8, category: MediaCategory) bool {
                    std.mem.eql(u8, ext_l, ".avi") or
                    std.mem.eql(u8, ext_l, ".mov") or
                    std.mem.eql(u8, ext_l, ".webm"),
-        .tv => std.mem.eql(u8, ext_l, ".m3u") or std.mem.eql(u8, ext_l, ".m3u8"),
-        .pictures => std.mem.eql(u8, ext_l, ".jpg") or
-                     std.mem.eql(u8, ext_l, ".jpeg") or
-                     std.mem.eql(u8, ext_l, ".png") or
-                     std.mem.eql(u8, ext_l, ".webp") or
-                     std.mem.eql(u8, ext_l, ".gif"),
-        .shop => false,
+        .tv => std.mem.eql(u8, ext_l, ".mp4") or
+               std.mem.eql(u8, ext_l, ".mkv") or
+               std.mem.eql(u8, ext_l, ".avi") or
+               std.mem.eql(u8, ext_l, ".mov") or
+               std.mem.eql(u8, ext_l, ".webm") or
+               std.mem.eql(u8, ext_l, ".m3u") or
+               std.mem.eql(u8, ext_l, ".m3u8"),
     };
 }
 
@@ -258,93 +259,31 @@ fn execFind(command: [*:0]const u8, entries: []LibraryEntry) usize {
 
 fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
     const roots = switch (category) {
-        .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/hostmedia/music", "/mnt/sda_backup/Jelly/Music" },
-        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies" },
-        .tv => &[_][]const u8{ "/mnt/hostmedia/jelly/Kids Shows", "/mnt/hostmedia/jelly/Shows" },
-        .pictures => &[_][]const u8{ "/home/kidul/Pictures", "/home/kidul/Images" },
-        .shop => &[_][]const u8{},
+        .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/hostmedia/music", "/mnt/sda_backup/Jelly/Music", "/usr/share/kidul/media/music" },
+        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies", "/usr/share/kidul/media/video" },
+        .tv => &[_][]const u8{ "/mnt/hostmedia/jelly/Kids Shows", "/mnt/hostmedia/jelly/Shows", "/mnt/sda_backup/Jelly/Kids Shows", "/mnt/sda_backup/Jelly/Shows", "/usr/share/kidul/media/video" },
     };
     const exts = switch (category) {
         .music => &[_][]const u8{ ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav" },
         .movies => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm" },
-        .tv => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm" },
-        .pictures => &[_][]const u8{ ".jpg", ".jpeg", ".png", ".webp", ".gif" },
-        .shop => &[_][]const u8{},
+        .tv => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm", ".m3u", ".m3u8" },
     };
 
     var count: usize = 0;
     for (roots) |root| {
         for (exts) |ext| {
             var cmd_buf: [1024:0]u8 = std.mem.zeroes([1024:0]u8);
-            const cmd = std.fmt.bufPrintZ(&cmd_buf, "find \"{s}\" -type f -iname '*{s}' 2>/dev/null | sort -f | head -n 1024", .{ root, ext }) catch continue;
+            // -L follows symlinks so /mnt/sda_backup/Jelly and /usr/share/kidul/media symlinks are traversed
+            const cmd = std.fmt.bufPrintZ(&cmd_buf, "find -L \"{s}\" -type f -iname '*{s}' 2>/dev/null | sort -f | head -n 1024", .{ root, ext }) catch continue;
             count += execFind(cmd, entries[count..]);
             if (count >= entries.len) break;
         }
         if (count >= entries.len) break;
     }
     std.log.info("KidulWM media scan {s}: {d} entries", .{ categoryLabel(category), count });
-    if (count == 0) {
-        count = fillSamples(category, entries);
-        std.log.info("KidulWM media scan {s}: filled {d} samples", .{ categoryLabel(category), count });
-    }
     std.mem.sort(LibraryEntry, entries[0..count], {}, compareLibraryEntryTitle);
     return count;
 }
-fn fillSamples(category: MediaCategory, entries: []LibraryEntry) usize {
-    if (category == .tv or category == .shop) return 0;
-    const titles = switch (category) {
-        .music => &[_][]const u8{
-            "Midnight City", "The Night We Met", "Weightless", "Clair de Lune", "Experience",
-            "Instant Crush", "Hotline Bling", "Take Five", "Autumn Leaves", "Hotel California",
-            "Bohemian Rhapsody", "Go Your Own Way", "Dreams", "Under Pressure", "Come Together",
-            "God Only Knows", "Good Vibrations", "Cecilia", "Mrs. Robinson", "Bridge Over Troubled Water",
-        },
-        .movies => &[_][]const u8{
-            "Encanto", "Turning Red", "Toy Story 2", "Kung Fu Panda 3", "Ice Age",
-            "Coco", "Moana", "Frozen", "Zootopia", "Bolt",
-            "Ratatouille", "WALL·E", "Up", "Finding Nemo", "The Incredibles",
-            "Shrek", "How to Train Your Dragon", "Trolls", "Sing", "The Croods",
-        },
-        .pictures => &[_][]const u8{
-            "Vacation 01", "Family 2025", "Puppy", "Sunset", "Wallpaper",
-            "Portrait", "Concert Night", "Baptism", "Halloween", "Christmas 24",
-            "Beach Day", "Mountain Hike", "Brunch", "Graduation", "Pool Party",
-            "Road Trip", "Camping", "New Puppy", "Garden", "Selfie",
-        },
-        .tv, .shop => &[_][]const u8{},
-    };
-    const artists = switch (category) {
-        .music => &[_][]const u8{
-            "M83", "Lord Huron", "Marconi Union", "Debussy", "Ludovico Einaudi",
-            "Daft Punk", "Drake", "Dave Brubeck", "Nat King Cole", "Eagles",
-            "Queen", "Fleetwood Mac", "Fleetwood Mac", "Queen", "The Beatles",
-            "Beach Boys", "Beach Boys", "Simon & Garfunkel", "Simon & Garfunkel", "Simon & Garfunkel",
-        },
-        .movies => &[_][]const u8{
-            "Disney", "Pixar", "Pixar", "DreamWorks", "Blue Sky",
-            "Pixar", "Disney", "Disney", "Disney", "Disney",
-            "Pixar", "Pixar", "Pixar", "Pixar", "Pixar",
-            "DreamWorks", "DreamWorks", "DreamWorks", "Illumination", "DreamWorks",
-        },
-        .pictures => &[_][]const u8{
-            "Album", "Album", "Album", "Album", "Album",
-            "Album", "Album", "Album", "Album", "Album",
-            "Album", "Album", "Album", "Album", "Album",
-            "Album", "Album", "Album", "Album", "Album",
-        },
-        .tv, .shop => &[_][]const u8{},
-    };
-    const count = @min(titles.len, entries.len);
-    for (0..count) |i| {
-        entries[i] = .{
-            .title = g_alloc.dupeZ(u8, titles[i]) catch continue,
-            .artist = g_alloc.dupeZ(u8, artists[i]) catch continue,
-            .path = g_alloc.dupeZ(u8, "/nonexistent") catch continue,
-        };
-    }
-    return count;
-}
-
 fn compareLibraryEntryTitle(_: void, a: LibraryEntry, b: LibraryEntry) bool {
     var la: [512]u8 = undefined;
     var lb: [512]u8 = undefined;
@@ -356,10 +295,8 @@ fn compareLibraryEntryTitle(_: void, a: LibraryEntry, b: LibraryEntry) bool {
 fn categoryLabel(cat: MediaCategory) [:0]const u8 {
     return switch (cat) {
         .movies => "Movies",
-        .music => "Music",
         .tv => "TV",
-        .pictures => "Pics",
-        .shop => "Shop",
+        .music => "Music",
     };
 }
 
@@ -372,9 +309,6 @@ var g_movies_ready = false;
 var g_tv: [max_library_entries]LibraryEntry = undefined;
 var g_tv_count: usize = 0;
 var g_tv_ready = false;
-var g_pictures: [max_library_entries]LibraryEntry = undefined;
-var g_pictures_count: usize = 0;
-var g_pictures_ready = false;
 
 /// Boot-time pre-warm: scan every category and resolve art paths on a
 /// background thread so the render thread never blocks on first open.
@@ -409,13 +343,7 @@ pub fn prewarmThread() void {
     g_tv_count = tv_n;
     @atomicStore(bool, &g_tv_ready, true, .release);
 
-    var pics_tmp: [max_library_entries]LibraryEntry = undefined;
-    const pics_n = scanCategory(.pictures, &pics_tmp);
-    @memcpy(&g_pictures, &pics_tmp);
-    g_pictures_count = pics_n;
-    @atomicStore(bool, &g_pictures_ready, true, .release);
-
-    std.log.info("kmedia: prewarm scan done: music={d} movies={d} tv={d} pics={d}", .{ music_n, movies_n, tv_n, pics_n });
+    std.log.info("kmedia: prewarm scan done: music={d} movies={d} tv={d}", .{ music_n, movies_n, tv_n });
 
     // Pre-decode thumbs from the on-disk cache into the GLOBAL surface map.
     // Any tile with a cached 256px PNG on disk gets its surface NOW, on the
@@ -434,7 +362,6 @@ pub fn prewarmThread() void {
         .{ .entries = g_music[0..g_music_count], .is_music = true, .is_pic = false },
         .{ .entries = g_movies[0..g_movies_count], .is_music = false, .is_pic = false },
         .{ .entries = g_tv[0..g_tv_count], .is_music = false, .is_pic = false },
-        .{ .entries = g_pictures[0..g_pictures_count], .is_music = false, .is_pic = true },
     };
 
     var cached_n: u32 = 0;
@@ -535,37 +462,23 @@ fn getLibrary(category: MediaCategory) []const LibraryEntry {
             }
             return g_tv[0..g_tv_count];
         },
-        .pictures => {
-            if (!g_pictures_ready) {
-                g_pictures_count = scanCategory(.pictures, &g_pictures);
-                g_pictures_ready = true;
-            }
-            return g_pictures[0..g_pictures_count];
-        },
-        .shop => {
-            return &[_]LibraryEntry{};
-        },
     }
 }
 
 fn displayIndex(cat: MediaCategory) usize {
     return switch (cat) {
-        .shop => 0,
-        .movies => 1,
+        .movies => 0,
+        .tv => 1,
         .music => 2,
-        .pictures => 3,
-        .tv => 4,
     };
 }
 
 fn mediaCategoryFromIndex(i: usize) MediaCategory {
     return switch (i) {
-        0 => .shop,
-        1 => .movies,
+        0 => .movies,
+        1 => .tv,
         2 => .music,
-        3 => .pictures,
-        4 => .tv,
-        else => .music,
+        else => .tv,
     };
 }
 
@@ -579,7 +492,7 @@ fn mediaCategoryFromIndex(i: usize) MediaCategory {
 const PILL_SEG_W: f64 = 280.0; // same segment width the original 3 had
 const PILL_TRACK_H: f64 = 56.0;
 const PILL_INSET: f64 = 5.0;
-const PILL_COUNT: usize = 5;
+const PILL_COUNT: usize = 3; // MOVIES · TV · MUSIC — TV centered, hard stops
 
 const PillColor = struct { r: f64, g: f64, b: f64 };
 
@@ -600,31 +513,29 @@ const PILL_TEXT_DIM = pc(0x6a6354);
 fn pillModeColor(cat: MediaCategory) PillColor {
     // House set — sits beside the browser trio. Fine-tune hex at polish pass.
     return switch (cat) {
-        .music => pc(0x9e7e52), // amber (retired Isolate)
         .movies => pc(0x6a8fc4), // blue
         .tv => pc(0x6b9e75), // green
-        .pictures => pc(0x948e7b), // gold-grey
-        .shop => pc(0xc45c5c), // muted red
+        .music => pc(0x9e7e52), // amber (retired Isolate)
     };
 }
 
 pub const MediaWidget = struct {
     allocator: std.mem.Allocator,
     card: MediaCard = .{},
-    ipc_path: [128:0]u8 = std.mem.zeroes([128:0]u8),
-    mpv_pid: ?i32 = null,
-    last_poll_us: u64 = 0,
-    poll_fail_count: u32 = 0,
     cached: MediaState = .{},
     helix_phase: f64 = 0,
     last_energy: f64 = 0,
     last_helix_us: u64 = 0,
+    player: kmedia_lib.Player,
+    watch: kmedia_lib.WatchState,
+    player_active: bool = false,
+    player_ws_key_buf: [256]u8 = std.mem.zeroes([256]u8),
 
     focus: ControlFocus = .category,
-    category: MediaCategory = .music,
+    category: MediaCategory = .tv,
     subcategory_open: bool = false,
     subcategory_index: usize = 0,
-    subcategory_for: MediaCategory = .music,
+    subcategory_for: MediaCategory = .tv,
     search_buf: [128:0]u8 = std.mem.zeroes([128:0]u8),
     search_len: usize = 0,
     search_focused: bool = false,
@@ -651,13 +562,13 @@ pub const MediaWidget = struct {
     slider_hover: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) MediaWidget {
-        const ipc = "/run/user/1000/kidulwm-mpv.sock";
         var self = MediaWidget{
             .allocator = allocator,
             .art_cache = std.StringHashMap(?*c.cairo_surface_t).init(allocator),
+            .player = kmedia_lib.Player.init(allocator),
+            .watch = kmedia_lib.WatchState.init(allocator),
         };
-        @memcpy(self.ipc_path[0..ipc.len], ipc);
-        self.ipc_path[ipc.len] = 0;
+        self.watch.load();
         self.art.init(allocator);
         return self;
     }
@@ -667,6 +578,8 @@ pub const MediaWidget = struct {
         self.clearArtCache();
         self.art_cache.deinit();
         self.ensureStopped();
+        self.player.deinit();
+        self.watch.deinit();
     }
 
     pub fn toggleCard(self: *MediaWidget) void {
@@ -881,10 +794,8 @@ pub const MediaWidget = struct {
         _ = self;
         return switch (cat) {
             .movies => &[_][]const u8{ "Action", "Comedy", "Drama", "Horror", "Sci-Fi" },
-            .music => &[_][]const u8{ "Rock", "Pop", "Jazz", "Classical", "Electronic" },
             .tv => &[_][]const u8{ "Series", "Live", "Docs", "Kids", "Sport" },
-            .pictures => &[_][]const u8{ "Photos", "Wallpapers", "Screenshots", "Art" },
-            .shop => &[_][]const u8{},
+            .music => &[_][]const u8{ "Rock", "Pop", "Jazz", "Classical", "Electronic" },
         };
     }
 
@@ -922,7 +833,7 @@ pub const MediaWidget = struct {
     pub fn moveCategory(self: *MediaWidget, delta: i32) void {
         const idx: i32 = @intCast(displayIndex(self.category));
         const raw = idx + delta;
-        const new_idx = @max(0, @min(4, raw));
+        const new_idx = @max(0, @min(2, raw));
         self.setCategory(mediaCategoryFromIndex(@intCast(new_idx)));
     }
 
@@ -1160,231 +1071,97 @@ pub const MediaWidget = struct {
         self.focusControl(.category);
     }
 
-    fn ensureStopped(self: *MediaWidget) void {
-        if (self.mpv_pid) |pid| {
-            _ = c_linux.kill(pid, c_linux.SIG.TERM);
-            var status: u32 = 0;
-            _ = c_linux.waitpid(@intCast(pid), &status, c_linux.W.NOHANG);
-            self.mpv_pid = null;
+    pub fn ensureStopped(self: *MediaWidget) void {
+        if (self.player_active) {
+            self.player.close();
+            self.player_active = false;
+            self.cached.playing = false;
+            self.watch.deinit();
+            self.watch = kmedia_lib.WatchState.init(self.allocator);
+            self.watch.load();
         }
     }
 
     pub fn play(self: *MediaWidget, path: []const u8) void {
         self.ensureStopped();
-        _ = unistd.unlink(@ptrCast(&self.ipc_path[0]));
+
+        if (path.len == 0) return;
 
         var path_z: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
         const copy_len = @min(path.len, path_z.len - 1);
         @memcpy(path_z[0..copy_len], path[0..copy_len]);
         path_z[copy_len] = 0;
 
-        const pid = unistd.fork();
-        if (pid < 0) {
-            std.log.err("media: fork failed for mpv", .{});
+        // Derive ws_key from path basename / stem
+        const filename = std.fs.path.basename(path);
+        const stem = std.fs.path.stem(filename);
+        const n = @min(stem.len, self.player_ws_key_buf.len - 1);
+        @memcpy(self.player_ws_key_buf[0..n], stem[0..n]);
+        self.player_ws_key_buf[n] = 0;
+        const ws_key = self.player_ws_key_buf[0..n];
+
+        // Resume position from watch-state
+        const resume_s = self.watch.resumePos(ws_key, null);
+        const resume_us: i64 = @as(i64, @intCast(resume_s)) * std.time.us_per_s;
+
+        self.player.open(path_z[0..copy_len :0].ptr, ws_key, resume_us) catch |err| {
+            std.log.err("libkmedia: failed to open {s}: {s}", .{ path, @errorName(err) });
             return;
-        }
-        if (pid == 0) {
-            _ = unistd.setsid();
-            const devnull = unistd.open("/dev/null", unistd.O_RDWR);
-            if (devnull >= 0) {
-                _ = unistd.dup2(devnull, 0);
-                _ = unistd.dup2(devnull, 1);
-                _ = unistd.dup2(devnull, 2);
-                if (devnull > 2) _ = unistd.close(devnull);
-            }
-            const argv = [_:null]?[*:0]const u8{
-                "mpv".ptr,
-                "--no-video".ptr,
-                "--really-quiet".ptr,
-                "--idle=no".ptr,
-                "--force-window=no".ptr,
-                "--ao=pipewire,pulse,alsa,null".ptr,
-                "--input-ipc-server=/run/user/1000/kidulwm-mpv.sock".ptr,
-                "--".ptr,
-                @ptrCast(&path_z[0]),
-                null,
-            };
-            _ = unistd.execvp("mpv", @ptrCast(argv[0..].ptr));
-            unistd._exit(127);
-        }
-        self.mpv_pid = pid;
+        };
+
+        self.player_active = true;
         self.cached = .{};
         self.cached.available = true;
-        self.last_poll_us = 0;
-        self.poll_fail_count = 0;
+        self.cached.playing = true;
+        self.cached.duration = @as(f64, @floatFromInt(self.player.durationUs())) / 1_000_000.0;
+        self.cached.position = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
+
+        const title_slice = stem;
+        const tlen = @min(title_slice.len, self.cached.title.len - 1);
+        @memcpy(self.cached.title[0..tlen], title_slice[0..tlen]);
+        self.cached.title[tlen] = 0;
     }
 
     pub fn playPause(self: *MediaWidget) void {
-        self.sendSimpleCommand("cycle", &.{"pause"});
+        if (!self.player_active) return;
+        const now_paused = !self.player.paused.load(.seq_cst);
+        self.player.paused.store(now_paused, .seq_cst);
+        self.cached.playing = !now_paused;
+        const pos_s: u32 = @intCast(@divFloor(self.player.posUs(), std.time.us_per_s));
+        self.player.writeWatchState(pos_s, false);
     }
 
     pub fn next(self: *MediaWidget) void {
-        self.sendSimpleCommand("playlist-next", &.{});
+        _ = self;
     }
 
     pub fn prev(self: *MediaWidget) void {
-        self.sendSimpleCommand("playlist-prev", &.{});
+        _ = self;
     }
 
     pub fn seek(self: *MediaWidget, seconds: f64) void {
-        var sbuf: [64:0]u8 = std.mem.zeroes([64:0]u8);
-        const s = std.fmt.bufPrintZ(&sbuf, "{d:.3}", .{seconds}) catch return;
-        self.sendSimpleCommand("seek", &.{s});
-    }
-
-    fn sendSimpleCommand(self: *MediaWidget, name: []const u8, args: []const []const u8) void {
-        if (self.mpv_pid == null) return;
-        const fd = self.connectIpc() orelse return;
-        defer _ = c_linux.close(fd);
-
-        var json: [512]u8 = undefined;
-        var j: usize = 0;
-        const parts = [_][]const u8{
-            "{\"command\":[\"",
-            "\"",
-            ",\"",
-            "\"]}\n",
-        };
-        @memcpy(json[j..j + parts[0].len], parts[0]); j += parts[0].len;
-        @memcpy(json[j..j + name.len], name); j += name.len;
-        @memcpy(json[j..j + parts[1].len], parts[1]); j += parts[1].len;
-        for (args) |a| {
-            @memcpy(json[j..j + a.len], a); j += a.len;
-            @memcpy(json[j..j + parts[2].len], parts[2]); j += parts[2].len;
-        }
-        if (args.len == 0) {
-            @memcpy(json[j..j + parts[3].len], parts[3]); j += parts[3].len;
-        } else {
-            const tail = "]}\n";
-            @memcpy(json[j..j + tail.len], tail); j += tail.len;
-        }
-        _ = c_linux.write(fd, &json, j);
-    }
-
-    fn connectIpc(self: *MediaWidget) ?i32 {
-        const fd_i: i32 = @intCast(c_linux.socket(c_linux.AF.UNIX, c_linux.SOCK.STREAM, 0));
-        if (fd_i < 0) return null;
-
-        var addr: c_posix.sockaddr.un = std.mem.zeroes(c_posix.sockaddr.un);
-        addr.family = c_linux.AF.UNIX;
-        var path_buf: [128:0]u8 = std.mem.zeroes([128:0]u8);
-        var path_slice = std.mem.sliceTo(&self.ipc_path, 0);
-        if (path_slice.len == 0) {
-            const default_path = "/run/user/1000/kidulwm-mpv.sock";
-            @memcpy(path_buf[0..default_path.len], default_path);
-            path_buf[default_path.len] = 0;
-            path_slice = std.mem.sliceTo(&path_buf, 0);
-        }
-        const path_len = @min(path_slice.len, addr.path.len - 1);
-        @memcpy(addr.path[0..path_len], path_slice[0..path_len]);
-        addr.path[path_len] = 0;
-        const addr_len: u32 = @intCast(@offsetOf(c_posix.sockaddr.un, "path") + path_len + 1);
-        if (c_linux.connect(fd_i, @ptrCast(&addr), addr_len) != 0) {
-            _ = c_linux.close(fd_i);
-            return null;
-        }
-        return fd_i;
-    }
-
-    fn sendAndRead(self: *MediaWidget, command_json: []const u8, out: []u8) ?usize {
-        if (self.mpv_pid == null) return null;
-        const fd = self.connectIpc() orelse return null;
-        defer _ = c_linux.close(fd);
-        _ = c_linux.write(fd, command_json.ptr, command_json.len);
-
-        const flags = unistd.fcntl(fd, unistd.F_GETFL, @as(c_int, 0));
-        if (flags >= 0) {
-            _ = unistd.fcntl(fd, unistd.F_SETFL, @as(c_int, @intCast(flags)) | unistd.O_NONBLOCK);
-        }
-
-        var total: usize = 0;
-        var attempts: u8 = 0;
-        while (attempts < 20 and total < out.len) {
-            const rc = c_linux.read(fd, out.ptr + total, out.len - total);
-            if (rc == 0) break;
-            if (@as(i64, @bitCast(rc)) < 0) {
-                if (c_linux.errno(rc) == .AGAIN) {
-                    _ = unistd.usleep(10_000);
-                    attempts += 1;
-                    continue;
-                }
-                break;
-            }
-            total += rc;
-            attempts = 0;
-        }
-        return if (total > 0) total else null;
-    }
-
-    fn parseBoolField(haystack: []const u8, key: []const u8) ?bool {
-        var kbuf: [128]u8 = undefined;
-        const K = std.fmt.bufPrint(&kbuf, "\"{s}\":", .{key}) catch return null;
-        const idx = std.mem.indexOf(u8, haystack, K) orelse return null;
-        const rest = haystack[idx + K.len..];
-        if (std.mem.startsWith(u8, rest, "true")) return true;
-        if (std.mem.startsWith(u8, rest, "false")) return false;
-        return null;
-    }
-
-    fn parseStringField(haystack: []const u8, key: []const u8, out: []u8) void {
-        var kbuf: [128]u8 = undefined;
-        const K = std.fmt.bufPrint(&kbuf, "\"{s}\":\"", .{key}) catch return;
-        const start = std.mem.indexOf(u8, haystack, K) orelse return;
-        const rest = haystack[start + K.len..];
-        const end = std.mem.indexOfScalar(u8, rest, '"') orelse return;
-        const len = @min(end, out.len - 1);
-        @memcpy(out[0..len], rest[0..len]);
-        out[len] = 0;
-    }
-
-    fn parseFloatField(_: *MediaWidget, haystack: []const u8, key: []const u8) ?f64 {
-        var kbuf: [128]u8 = undefined;
-        const K = std.fmt.bufPrint(&kbuf, "\"{s}\":", .{key}) catch return null;
-        const start = std.mem.indexOf(u8, haystack, K) orelse return null;
-        const rest = haystack[start + K.len..];
-        const end = for (rest, 0..) |ch, i| {
-            if (ch == ',' or ch == '}' or ch == ']' or std.ascii.isWhitespace(ch)) break i;
-        } else rest.len;
-        return std.fmt.parseFloat(f64, rest[0..end]) catch null;
+        if (!self.player_active) return;
+        const cur_pos_s = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
+        const target_s = @max(0.0, cur_pos_s + seconds);
+        const target_us: i64 = @intFromFloat(target_s * 1_000_000.0);
+        self.player.seekAbsolute(target_us);
+        self.cached.position = target_s;
     }
 
     pub fn update(self: *MediaWidget) void {
-        if (self.mpv_pid == null) {
+        if (!self.player_active) {
             self.cached.playing = false;
             return;
         }
-        const now = animationNowUs();
-        if (now -% self.last_poll_us < 1_000_000) return;
-        self.last_poll_us = now;
 
-        var buf: [8192]u8 = std.mem.zeroes([8192]u8);
-        const cmd = "{\"command\":[\"get_property\",\"playback-time\"]}\n" ++
-                    "{\"command\":[\"get_property\",\"duration\"]}\n" ++
-                    "{\"command\":[\"get_property\",\"pause\"]}\n" ++
-                    "{\"command\":[\"get_property\",\"metadata\"]}\n";
-        const n = self.sendAndRead(cmd, &buf) orelse {
-            self.poll_fail_count += 1;
-            if (self.poll_fail_count > 10) {
-                self.cached.playing = false;
-                self.cached.available = false;
-            }
+        if (self.player.isDone()) {
+            self.ensureStopped();
             return;
-        };
-        self.poll_fail_count = 0;
-        const resp = buf[0..n];
-
-        const pos = parseFloatField(self, resp, "playback-time");
-        self.cached.position = pos orelse self.cached.position;
-        const dur = parseFloatField(self, resp, "duration");
-        self.cached.duration = dur orelse self.cached.duration;
-        if (parseBoolField(resp, "pause")) |paused| {
-            self.cached.playing = !paused;
         }
-        parseStringField(resp, "title", &self.cached.title);
-        if (self.cached.title[0] == 0) parseStringField(resp, "TITLE", &self.cached.title);
-        if (self.cached.title[0] == 0) parseStringField(resp, "icy-title", &self.cached.title);
-        parseStringField(resp, "artist", &self.cached.artist);
-        parseStringField(resp, "album", &self.cached.album);
+
+        self.cached.playing = !self.player.paused.load(.seq_cst);
+        self.cached.position = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
+        self.cached.duration = @as(f64, @floatFromInt(self.player.durationUs())) / 1_000_000.0;
     }
 
     pub fn needsRedraw(self: *const MediaWidget) bool {
@@ -1527,11 +1304,11 @@ pub const MediaWidget = struct {
         search_y: i32 = 0,
         search_w: i32 = 0,
         search_h: i32 = 0,
-        cat_y: [5]i32 = .{ 0, 0, 0, 0, 0 },
-        cat_h: [5]i32 = .{ 0, 0, 0, 0, 0 },
-        cat_for_index: [5]MediaCategory = .{ .music, .music, .music, .music, .music },
-        cat_x: [5]i32 = .{ 0, 0, 0, 0, 0 },
-        cat_w: [5]i32 = .{ 0, 0, 0, 0, 0 },
+        cat_y: [3]i32 = .{ 0, 0, 0 },
+        cat_h: [3]i32 = .{ 0, 0, 0 },
+        cat_for_index: [3]MediaCategory = .{ .tv, .tv, .tv },
+        cat_x: [3]i32 = .{ 0, 0, 0 },
+        cat_w: [3]i32 = .{ 0, 0, 0 },
         list_x: i32 = 0,
         list_y: i32 = 0,
         list_w: i32 = 0,
@@ -1679,18 +1456,10 @@ pub const MediaWidget = struct {
     }
 
     pub fn renderCard(self: *MediaWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32, out_click: ?*CardClick) void {
-        // Art worker drain: pop-in thumbnails land here, one gen per batch.
-        _ = self.pollArtResults();
-        const border = style_.color_border_focused.toF64();
-        const muted = style_.color_text_muted.toF64();
-        const card_bg = style_.color_background.toF64();
-        const scale_f: f64 = @as(f64, scale);
-
-        // Slide mode (out_click == null): wear the system chrome — corners
-        // + 2px focused ring, same tokens every other slide gets. Card
-        // callers keep their full-bleed fill.
         const as_slide = (out_click == null);
+        const scale_f: f64 = @as(f64, scale);
         const corner_r = @as(f64, style_.corner_depth) * scale_f;
+
         if (as_slide) {
             // Transparent outside the corner path.
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
@@ -1702,6 +1471,18 @@ pub const MediaWidget = struct {
             mediaSlidePath(cr, 0, 0, w_d, h_d, corner_r, style_.corner_style);
             c.cairo_clip(cr);
         }
+
+        // When playing in-slide video, player owns the full surface.
+        if (self.player_active) {
+            self.player.render(@ptrCast(cr), @intFromFloat(w_d), @intFromFloat(h_d));
+            return;
+        }
+
+        // Art worker drain: pop-in thumbnails land here, one gen per batch.
+        _ = self.pollArtResults();
+        const border = style_.color_border_focused.toF64();
+        const muted = style_.color_text_muted.toF64();
+        const card_bg = style_.color_background.toF64();
 
         // Full slide: fill background, no card frame.
         const bg4 = style_.color_card_mat.toF64();
@@ -2033,7 +1814,6 @@ pub const MediaWidget = struct {
         if (library.len == 0) {
             const msg = switch (self.category) {
                 .tv => "Live TV — Coming Soon",
-                .shop => "Artist Shop — Coming Soon",
                 else => "No items found",
             };
             c.cairo_set_font_size(cr, label_font * 1.3);
@@ -2047,7 +1827,6 @@ pub const MediaWidget = struct {
             c.cairo_set_font_size(cr, label_font);
             const sub = switch (self.category) {
                 .tv => "Tuner + aerial support on the way",
-                .shop => "Buy & sell media directly in your player",
                 else => "",
             };
             c.cairo_text_extents(cr, sub.ptr, &ext);
@@ -2145,7 +1924,7 @@ pub const MediaWidget = struct {
                     c.cairo_stroke(cr);
                 }
 
-                const tile_key = self.renderTileArt(cr, dx, dy, dw, dh, entry, border, self.category == .music, self.category == .pictures, is_focused_tile);
+                const tile_key = self.renderTileArt(cr, dx, dy, dw, dh, entry, border, self.category == .music, false, is_focused_tile);
                 if (is_focused_tile) focus_tile_key = tile_key;
 
                 if (is_focused_tile) {

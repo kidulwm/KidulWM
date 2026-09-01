@@ -93,6 +93,14 @@ pub const Output = struct {
         }
         self.server.tray.update();
 
+        // While media slide is playing video, re-render each frame tick
+        if (self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active) {
+            if (self.media_slide.widget.player.isDone()) {
+                self.media_slide.widget.ensureStopped();
+            }
+            self.server.mediaSlideRefresh(self);
+        }
+
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
         const ok = self.scene_output.commit(null);
@@ -1087,6 +1095,19 @@ pub const Server = struct {
         if (!out.media_slide.widget_ready) return false;
         var dirty = false;
 
+        // Player mode: route key to Player state machine (Space=pause, Esc=exit, etc.)
+        if (widget.player_active) {
+            const sym_u32 = @intFromEnum(sym);
+            if (widget.player.handleKey(sym_u32)) {
+                if (widget.player.isDone()) {
+                    widget.ensureStopped();
+                }
+                self.mediaSlideRefresh(out);
+                return true;
+            }
+            return true;
+        }
+
         if (widget.search_focused) {
             switch (sym) {
                 xkb.Keysym.Escape => { widget.cancelSearch(); dirty = true; },
@@ -1095,11 +1116,9 @@ pub const Server = struct {
                     if (text.len == 2) {
                         var lb: [2]u8 = undefined;
                         const code = std.ascii.lowerString(&lb, text);
-                        if (std.mem.eql(u8, code, "sh")) widget.setCategory(.shop)
-                        else if (std.mem.eql(u8, code, "mo")) widget.setCategory(.movies)
-                        else if (std.mem.eql(u8, code, "mu")) widget.setCategory(.music)
-                        else if (std.mem.eql(u8, code, "pi")) widget.setCategory(.pictures)
+                        if (std.mem.eql(u8, code, "mo")) widget.setCategory(.movies)
                         else if (std.mem.eql(u8, code, "tv")) widget.setCategory(.tv)
+                        else if (std.mem.eql(u8, code, "mu")) widget.setCategory(.music)
                         else widget.jumpToSearchPrefix(text);
                     } else if (text.len > 0) {
                         widget.jumpToSearchPrefix(text);

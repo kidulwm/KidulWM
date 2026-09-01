@@ -2176,7 +2176,7 @@ pub const Tray = struct {
         const click = self.media_card_click;
 
         // Category pills.
-        for (0..5) |i| {
+        for (0..3) |i| {
             if (ly >= @as(f64, @floatFromInt(click.cat_y[i])) and
                 ly <= @as(f64, @floatFromInt(click.cat_y[i] + click.cat_h[i])) and
                 lx >= @as(f64, @floatFromInt(click.cat_x[i])) and
@@ -2334,11 +2334,9 @@ pub const Tray = struct {
                     // Secret category easter egg: two-letter codes jump to category pills.
                     if (text.len == 2) {
                         const code = std.ascii.lowerString(&self.media.search_buf, text);
-                        if (std.mem.eql(u8, code, "sh")) { self.media.setCategory(.shop); }
-                        else if (std.mem.eql(u8, code, "mo")) { self.media.setCategory(.movies); }
-                        else if (std.mem.eql(u8, code, "mu")) { self.media.setCategory(.music); }
-                        else if (std.mem.eql(u8, code, "pi")) { self.media.setCategory(.pictures); }
+                        if (std.mem.eql(u8, code, "mo")) { self.media.setCategory(.movies); }
                         else if (std.mem.eql(u8, code, "tv")) { self.media.setCategory(.tv); }
+                        else if (std.mem.eql(u8, code, "mu")) { self.media.setCategory(.music); }
                         else { self.media.jumpToSearchPrefix(text); }
                     } else if (text.len > 0) {
                         self.media.jumpToSearchPrefix(text);
