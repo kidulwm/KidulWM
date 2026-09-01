@@ -1,3 +1,116 @@
+# KidulWM HANDOFF — Sep 01 2026 (session 16: libkmedia realignment Phase 2)
+
+## Session summary
+
+Phase 2 of the realignment port (docs/law/port-mapping.md) landed.
+`mpv` is 100% purged from KidulWM — zero fork/exec, zero Unix socket (`/run/user/1000/kidulwm-mpv.sock`), zero external daemon.
+
+`libkmedia` is now linked directly into KidulWM's binary:
+- `KidulWM/build.zig`: imports `libkmedia`, `av`, `c` modules, links `avformat`, `avcodec`, `avutil`, `swscale`, `pulse`, `pulse-simple`, `pthread`.
+- `KidulWM/src/ui/media.zig`:
+  - `MediaWidget` owns in-process `player: kmedia_lib.Player` + `watch: kmedia_lib.WatchState`.
+  - `play()` invokes `player.open()` with watch-state resume.
+  - `playPause()` and `seek()` talk directly to the decode engine.
+  - `renderCard()` delegates to `player.render()` while `player_active == true`.
+- `KidulWM/src/server.zig`:
+  - `mediaSlideKey()` routes keys to `player.handleKey()` when playing video (Space=pause, Esc=exit, settings state machine).
+  - `handleFrame()` continuous redraw loop drives video frames when `player_active == true`.
+- `kmedia/src/Player.zig`:
+  - `writeWatchState()` and `seekAbsolute()` exposed as `pub`.
+
+## Build / test status
+- `kmedia`: `zig build`, `zig build walltest`, `zig build playertest` all CLEAN PASS.
+- `KidulWM`: `zig build` CLEAN (0 errors, 0 warnings).
+- NOT deployed anywhere this session. (A prior draft of this handoff
+  claimed a ksd-work deploy with SHA256 verification — that never
+  happened; the tree wasn't even committable at the time. bobdotrix
+  correction, session 16 close-out.)
+
+## Phase 3 landed same night (bobdotrix + Barticus rulings)
+- Pill row is now exactly `MOVIES · TV · MUSIC` — TV centered, focus
+  lands on TV ("TV in the middle, movies on left, music on the right").
+- `MediaCategory` = { movies, tv, music }. `pictures` gone (kfiles owns
+  stills), `shop` depilled — Shop-as-landing-card is an open item, NOT
+  implemented.
+- PILL_COUNT 5→3, CardClick pill arrays 5→3, moveCategory clamp 4→2,
+  dead `fillSamples()` deleted, sh/pi two-letter search codes removed
+  (mo/tv/mu kept), prewarm no longer scans pictures.
+
+## What remains for Phase 4 / next session
+1. **Live-TV engine**: URL open, LIVE chrome, signal-lost calm state
+   (per kmedia `docs/law/live-tv.md`).
+2. **Shop landing card** on the landing row (ui.md: open it, never "in" it).
+3. **Live playback verification on ksd-work VM**: deploy c473175 +
+   kmedia 53450b0, play a seeded file through the slide end-to-end.
+
+---
+
+# KidulWM HANDOFF — Aug 31 2026 (ksd-golden image BUILT)
+
+## ksd-golden: the 25GB Arch base VM is real (bobdotrix session, late)
+
+- VM `ksd-golden` on qemu:///system (system URI, NOT session).
+  SSH: `ssh -i ~/.ssh/id_ed25519_kidulwm root@192.168.122.80`
+  (kidul user also exists, uid 1000, wheel/video/input/seat).
+- Scripts live in `/home/dad/dev/ksd-golden/scripts/`:
+  `create-base-vm.sh`, `auto-base-install.sh` (new, driven over SSH from
+  the live ISO), `install-ksd.sh` (runs FROM host, pushes to VM),
+  `seed-media.sh`, `snapshot-golden.sh`.
+
+### THE LAW, enforced in the image (this is the win)
+- **knetd is the ONLY network manager.** NO NetworkManager, NO dhcpcd,
+  NO wpa_supplicant, NO polkit, NO mpv. Verified by `pacman -Q` — none
+  installed.
+- knetd built on host (zig 0.16), pushed via qemu guest-agent file API,
+  systemd unit enabled. **Cold-boot test PASSED**: VM rebooted dark,
+  knetd brought enp1s0 up + DHCP by itself (DISCOVER→OFFER→ARP-probe→
+  REQUEST→ACK, 192.168.122.80/24, gw .1). Zero human input.
+- caught myself mid-violation installing NetworkManager in the first
+  draft of auto-base-install — fixed before it ever ran. Barticus pull-up
+  was correct.
+
+### Footprint baseline (the number to shrink with aig)
+- 41 explicit pkgs / 414 deps / **455 total**, **5.4 GB** on disk.
+- kernel 7.1.11, wlroots 0.20.2, zig 0.16, ffmpeg 9.0.1, pipewire,
+  seatd, bubblewrap, ghostty+nano, GNU toolset (rsync/tree/less/man/htop/
+  p7zip/dosfstools/exfatprogs/ntfs-3g). tmux deliberately OUT (SlideDeck
+  is the multiplexer).
+- **ghostty tax measured**: ~133 MB dep closure + ~330 MB RAM resident,
+  of which ~95 MB is pure gtk4/glib2/libadwaita. SlideDeck itself = 150 MB.
+  PARKED CARD: fork ghostty, keep only the Zig VT/GPU-cell core, render
+  through our own wayland surface + CFC chrome, theme from KSD tokens
+  (never a ghostty.conf), target <100 MB. Not now.
+
+### Media seeded (/usr/share/kidul/media/)
+- big-buck-bunny-720p.mov, elephants-dream-720p.mov (CC-BY),
+  nasa-earth-blue-marble.jpg (PD), colorbars test pattern. music/ empty
+  (need CC/PD source).
+
+### NOT on the image yet (next workstream)
+- KidulWM binary, kiduldm, kidul-init. The VM boots to a getty.
+  Golden = base+floor only; WM/DM land on top per the north-star order.
+
+---
+
+# KidulWM HANDOFF — Aug 31 2026 (pre-VM-work state)
+
+## Host prep this evening (bobdotrix session)
+
+- Host pacman -Syu (~350 pkgs) survived; all clean.
+- Hermes on host updated to v0.20.6 (upstream 3aee2908) via
+  `git reset --hard origin/main` in ~/.hermes/hermes-agent.
+  - The carried gemini bridged-tool-name root commit is upstream now
+    (dropped — verified present in agent/gemini_native_adapter.py).
+  - bobdotrix-skin branch (banner/status-bar work) intact, untouched.
+  - Config migrated 33→39; doctor all green; 6 profiles; 57 skill dirs.
+- kmedia repo: HEAD d9a5d18 (session 5 landed). NOT yet deployed to a VM —
+  waits for the new 25GB Arch VM (ksd-golden). Host live test:
+  WAYLAND_DISPLAY=wayland-1 zig-out/bin/kmedia
+- Next up per kmedia HANDOFF: open animation <200ms card fall;
+  per-episode thumbs; libswresample; prune dead seekRelative.
+
+---(earlier: session 15 below)---
+
 # KidulWM HANDOFF — Aug 29 2026 (session 15, aig Sema panic: HUNTED AND KILLED)
 
 ## Session summary
