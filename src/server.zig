@@ -99,6 +99,13 @@ pub const Output = struct {
         // the DISPLAY edge moved (display_serial) do we copy pixels into the
         // dedicated video scene buffer; the card/chrome buffer is NOT
         // repainted here.
+        //
+        // VSYNC SELF-PERPETUATION: while player_active, re-arm the vsync so
+        // the next frame callback fires at the next refresh interval. Without
+        // this, playback only advances when an unrelated event (IPC, layout,
+        // tray) happens to call scheduleFrame() — producing single-digit fps
+        // and the "constantly trying to load" stutter. This is the primary
+        // stutter fix (SUSPECT #1).
         if (self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active) {
             if (self.media_slide.widget.player.isDone()) {
                 self.media_slide.widget.ensureStopped();
@@ -109,6 +116,9 @@ pub const Output = struct {
                     self.media_slide.last_display_serial = serial;
                     self.server.mediaVideoRefresh(self);
                 }
+                // Re-arm: drives the frame loop at the output's native refresh
+                // rate (typically 60 Hz on the virtio-vga SPICE path).
+                self.wlr_output.scheduleFrame();
             }
         }
 
