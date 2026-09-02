@@ -16,6 +16,15 @@ pub const MediaSlide = struct {
     /// category/search/selection between visits.
     widget: media_mod.MediaWidget = undefined,
     widget_ready: bool = false,
+    /// Last DISPLAY-edge serial we copied into the video scene buffer for;
+    /// the frame handler ticks the player every vsync and only refreshes
+    /// the video buffer when this moves.
+    last_display_serial: u64 = 0,
+    /// Dedicated scene buffer for the live video frame. Updated per-frame
+    /// from Player.currentFrame(); the card buffer above carries only chrome.
+    video_buffer: ?*wlr.SceneBuffer = null,
+    video_wlr_buf: ?*wlr.Buffer = null,
+    video_pixels: []u8 = &.{},
 
     pub fn isOpen(self: *const MediaSlide) bool {
         return self.tree != null;

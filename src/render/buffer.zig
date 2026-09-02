@@ -7,6 +7,7 @@ pub const DataBuffer = struct {
     base: wlr.Buffer,
     pixels: []u8,
     stride: usize,
+    owned: bool = true,
 
     const Self = @This();
 
@@ -16,7 +17,7 @@ pub const DataBuffer = struct {
     pub fn destroy(buffer: *wlr.Buffer) callconv(.c) void {
         const self: *Self = @alignCast(@fieldParentPtr("base", buffer));
         const allocator = std.heap.page_allocator;
-        allocator.free(self.pixels);
+        if (self.owned) allocator.free(self.pixels);
         allocator.destroy(self);
     }
 
@@ -61,6 +62,25 @@ pub const DataBuffer = struct {
             .base = undefined,
             .pixels = owned,
             .stride = @intCast(stride),
+            .owned = true,
+        };
+        wlr.Buffer.init(&self.base, impl(), width, height);
+        return &self.base;
+    }
+
+    /// Zero-copy variant for per-frame video: wraps a caller-owned pixel
+    /// slice WITHOUT dupe. Caller keeps the backing alive and may rewrite
+    /// the pixels in place between frames; the scene graph reads the same
+    /// memory. destroy() does NOT free the pixels.
+    pub fn createRef(pixels: []u8, width: i32, height: i32, stride: i32) !*wlr.Buffer {
+        const allocator = std.heap.page_allocator;
+        const self = try allocator.create(Self);
+        errdefer allocator.destroy(self);
+        self.* = .{
+            .base = undefined,
+            .pixels = pixels,
+            .stride = @intCast(stride),
+            .owned = false,
         };
         wlr.Buffer.init(&self.base, impl(), width, height);
         return &self.base;

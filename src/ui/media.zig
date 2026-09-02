@@ -1087,6 +1087,10 @@ pub const MediaWidget = struct {
 
         if (path.len == 0) return;
 
+        // KidulWM slide owns the video blit via a dedicated scene buffer;
+        // Player.render() must skip its cairo video path.
+        self.player.embedder_owns_video = true;
+
         var path_z: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
         const copy_len = @min(path.len, path_z.len - 1);
         @memcpy(path_z[0..copy_len], path[0..copy_len]);
@@ -1474,6 +1478,33 @@ pub const MediaWidget = struct {
 
         // When playing in-slide video, player owns the full surface.
         if (self.player_active) {
+            if (self.player.embedder_owns_video) {
+                // The compositor draws the video itself in a dedicated scene
+                // buffer BELOW this card buffer. Paint the black matte here
+                // so the letterbox bars are black (not transparent), then
+                // punch a transparent hole exactly where the video goes so
+                // the scene buffer shows through. Chrome (Player.render's
+                // UI bar/buttons) draws after, so it stays visible on top.
+                c.cairo_set_source_rgb(cr, 0, 0, 0);
+                c.cairo_paint(cr);
+                // Punch the hole from the STREAM dims (known at open), NOT
+                // currentFrame() — at first render no frame has decoded yet,
+                // and gating on it left the card opaque with the video hidden
+                // behind (only its overflow edge showed).
+                const vsize = self.player.videoSize();
+                if (vsize.w > 0 and vsize.h > 0) {
+                    const vw: f64 = @floatFromInt(vsize.w);
+                    const vh: f64 = @floatFromInt(vsize.h);
+                    const vscale = @min(w_d / vw, h_d / vh);
+                    const dw = vw * vscale;
+                    const dh = vh * vscale;
+                    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+                    c.cairo_set_source_rgba(cr, 0, 0, 0, 0);
+                    c.cairo_rectangle(cr, (w_d - dw) / 2.0, (h_d - dh) / 2.0, dw, dh);
+                    c.cairo_fill(cr);
+                    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+                }
+            }
             self.player.render(@ptrCast(cr), @intFromFloat(w_d), @intFromFloat(h_d));
             return;
         }

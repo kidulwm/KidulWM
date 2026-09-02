@@ -93,12 +93,23 @@ pub const Output = struct {
         }
         self.server.tray.update();
 
-        // While media slide is playing video, re-render each frame tick
+        // mpv playloop shape: EVERY vsync while playing, tick() advances the
+        // frame queue (pick due frame, drop late) — cheap, no render. Skip
+        // this and the ring back-pressures and playback freezes. Only when
+        // the DISPLAY edge moved (display_serial) do we copy pixels into the
+        // dedicated video scene buffer; the card/chrome buffer is NOT
+        // repainted here.
         if (self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active) {
             if (self.media_slide.widget.player.isDone()) {
                 self.media_slide.widget.ensureStopped();
+            } else {
+                self.media_slide.widget.player.tick();
+                const serial = self.media_slide.widget.player.display_serial;
+                if (serial != self.media_slide.last_display_serial) {
+                    self.media_slide.last_display_serial = serial;
+                    self.server.mediaVideoRefresh(self);
+                }
             }
-            self.server.mediaSlideRefresh(self);
         }
 
         var ts: linux.timespec = undefined;
@@ -288,7 +299,19 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .media_play => |p| {
-                self.tray.media.play(p.path);
+                // Route through the open media slide's widget (phase-2 path);
+                // fall back to the tray widget if no slide is open.
+                var routed = false;
+                var oit = self.outputs.iterator(.forward);
+                while (oit.next()) |o| {
+                    if (o.media_slide.isOpen() and o.media_slide.widget_ready) {
+                        o.media_slide.widget.play(p.path);
+                        self.mediaSlideRefresh(o);
+                        routed = true;
+                        break;
+                    }
+                }
+                if (!routed) self.tray.media.play(p.path);
                 return .{ .ok = true, .message = "media play requested" };
             },
             .media_toggle => {
@@ -1038,8 +1061,88 @@ pub const Server = struct {
         card.node.raiseToTop();
     }
 
+    /// Update the dedicated video scene buffer from the player's current
+    /// frame. Called on each frame_serial bump while player_active. Only the
+    /// video pixels are copied (native size); the scene graph scales to the
+    /// letterboxed rect. No full-slide repaint, no 8MB DataBuffer dupe.
+    pub fn mediaVideoRefresh(self: *Server, output: *Output) void {
+        const tree = output.media_slide.tree orelse return;
+        const widget = &output.media_slide.widget;
+        if (!widget.player_active) return;
+        const frame = widget.player.currentFrame() orelse return;
+        const deck = &output.deck;
+        const target = deck.mediaSlideTarget();
+
+        // (Re)allocate the persistent pixel buffer if size changed.
+        const need: usize = @intCast(frame.stride * frame.h);
+        if (output.media_slide.video_pixels.len != need) {
+            if (output.media_slide.video_buffer) |sb| {
+                sb.node.destroy();
+                output.media_slide.video_buffer = null;
+            }
+            if (output.media_slide.video_wlr_buf) |old| {
+                wlr.Buffer.drop(old);
+                output.media_slide.video_wlr_buf = null;
+            }
+            self.allocator.free(output.media_slide.video_pixels);
+            output.media_slide.video_pixels = self.allocator.alloc(u8, need) catch return;
+        }
+
+        // Copy the frame rows (respect stride).
+        const row_bytes: usize = @intCast(frame.w * 4);
+        var row: usize = 0;
+        while (row < @as(usize, @intCast(frame.h))) : (row += 1) {
+            const src_off = row * @as(usize, @intCast(frame.stride));
+            @memcpy(output.media_slide.video_pixels[src_off .. src_off + row_bytes],
+                    frame.data[src_off .. src_off + row_bytes]);
+        }
+
+        // (Re)create the wlroots buffer wrapper if needed. Zero-copy ref:
+        // the scene graph reads our video_pixels memory directly; we rewrite
+        // it in place each frame. No 8MB dupe.
+        if (output.media_slide.video_wlr_buf == null) {
+            const buf = DataBuffer.createRef(
+                output.media_slide.video_pixels,
+                frame.w, frame.h, frame.stride,
+            ) catch return;
+            output.media_slide.video_wlr_buf = buf;
+        }
+
+        // (Re)create the scene buffer node if needed.
+        if (output.media_slide.video_buffer == null) {
+            const sb = tree.createSceneBuffer(output.media_slide.video_wlr_buf) catch return;
+            output.media_slide.video_buffer = sb;
+        } else {
+            output.media_slide.video_buffer.?.setBuffer(output.media_slide.video_wlr_buf);
+        }
+
+        const sb = output.media_slide.video_buffer.?;
+        // Letterbox: scale video into target rect preserving aspect.
+        const tw: f64 = @floatFromInt(target.width);
+        const th: f64 = @floatFromInt(target.height);
+        const vw: f64 = @floatFromInt(frame.w);
+        const vh: f64 = @floatFromInt(frame.h);
+        const scale = @min(tw / vw, th / vh);
+        const dw: i32 = @intFromFloat(vw * scale);
+        const dh: i32 = @intFromFloat(vh * scale);
+        const tw_i: i32 = @intCast(target.width);
+        const th_i: i32 = @intCast(target.height);
+        // The video node is a CHILD of the slide tree, which is already
+        // positioned at target.x/target.y (see mediaSlideOpen). Use LOCAL
+        // coords here — adding target.x/y again double-offsets the video
+        // (the "shifted right, strip off-screen" bug).
+        const dx: i32 = @divTrunc(tw_i - dw, 2);
+        const dy: i32 = @divTrunc(th_i - dh, 2);
+        sb.setDestSize(dw, dh);
+        sb.node.setPosition(dx, dy);
+        // Z-ORDER: the video buffer sits BELOW the card buffer. The card's
+        // Player.render (embedder_owns_video) paints the black matte + chrome
+        // but leaves the video rect transparent, so the video shows through
+        // the hole while the progress bar / buttons stay visible on top.
+        if (output.media_slide.card_buffer) |card| card.node.raiseToTop();
+    }
+
     fn mediaSlideClose(self: *Server, output: *Output) void {
-        _ = self;
         if (!output.media_slide.isOpen()) return;
         // Reset to LANDING state for next open.
         output.media_slide.widget.up_plus_one = false;
@@ -1047,6 +1150,18 @@ pub const Server = struct {
         output.media_slide.widget.selected_result = 0;
         output.media_slide.widget.list_scroll_offset = 0;
         output.media_slide.widget.clearSearch();
+        // Tear down the dedicated video path: scene node, wlr buffer ref,
+        // and the persistent pixel copy. Forgetting this leaked the buffer
+        // and left a stale frame on screen.
+        if (output.media_slide.video_buffer) |sb| sb.node.destroy();
+        output.media_slide.video_buffer = null;
+        if (output.media_slide.video_wlr_buf) |buf| wlr.Buffer.drop(buf);
+        output.media_slide.video_wlr_buf = null;
+        if (output.media_slide.video_pixels.len > 0) {
+            self.allocator.free(output.media_slide.video_pixels);
+            output.media_slide.video_pixels = &.{};
+        }
+        output.media_slide.last_display_serial = 0;
         // Destroy the card buffer node FIRST (leaking it left a stale frame
         // on screen — the "quit not clearing" bug), then the tree.
         if (output.media_slide.card_buffer) |buf| buf.node.destroy();
