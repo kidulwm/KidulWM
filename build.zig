@@ -92,6 +92,7 @@ pub fn build(b: *std.Build) void {
     av_mod.linkSystemLibrary("avcodec", .{});
     av_mod.linkSystemLibrary("avutil", .{});
     av_mod.linkSystemLibrary("swscale", .{});
+    av_mod.linkSystemLibrary("swresample", .{});
     av_mod.linkSystemLibrary("pulse", .{});
     av_mod.linkSystemLibrary("pulse-simple", .{});
     av_mod.linkSystemLibrary("pthread", .{});
@@ -112,6 +113,7 @@ pub fn build(b: *std.Build) void {
     libkmedia_mod.linkSystemLibrary("avcodec", .{});
     libkmedia_mod.linkSystemLibrary("avutil", .{});
     libkmedia_mod.linkSystemLibrary("swscale", .{});
+    libkmedia_mod.linkSystemLibrary("swresample", .{});
     libkmedia_mod.linkSystemLibrary("pulse", .{});
     libkmedia_mod.linkSystemLibrary("pulse-simple", .{});
     libkmedia_mod.linkSystemLibrary("pthread", .{});
@@ -144,6 +146,7 @@ pub fn build(b: *std.Build) void {
     root_mod.linkSystemLibrary("avcodec", .{});
     root_mod.linkSystemLibrary("avutil", .{});
     root_mod.linkSystemLibrary("swscale", .{});
+    root_mod.linkSystemLibrary("swresample", .{});
     root_mod.linkSystemLibrary("pulse", .{});
     root_mod.linkSystemLibrary("pulse-simple", .{});
     root_mod.linkSystemLibrary("pthread", .{});
