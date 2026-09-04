@@ -1960,8 +1960,17 @@ pub const Server = struct {
     /// 24-28" 4K → 2x (right), 27-32" 1440p → 2x (right), 1080p → 1x.
     /// Scale is decided HERE and nowhere else.
     fn pickIntegerScale(wlr_output: *wlr.Output) f32 {
-        const scale: f32 = if (wlr_output.width >= 2560) 2.0 else 1.0;
-        std.log.info("KidulWM: output {s} {d}px wide -> scale {d:.0}", .{ wlr_output.name, wlr_output.width, scale });
+        return pickIntegerScaleForWidth(wlr_output.width, wlr_output.name);
+    }
+
+    /// Decide scale from the MODE we are about to commit, never from live
+    /// output state: wlr_output.width is 0 until the mode commit lands, and
+    /// reading it early silently picks 1x on a 2x panel (Kogan 4K, 2026-09-04:
+    /// "HDMI-A-1 0px wide -> scale 1", then mode 3840x2160 committed at
+    /// scale 1 — slides quartered, tray stranded bottom-left).
+    fn pickIntegerScaleForWidth(width: i32, name: [*c]const u8) f32 {
+        const scale: f32 = if (width >= 2560) 2.0 else 1.0;
+        std.log.info("KidulWM: output {s} {d}px wide -> scale {d:.0}", .{ name, width, scale });
         return scale;
     }
 
@@ -2010,11 +2019,13 @@ pub const Server = struct {
         } else {
             state.setCustomMode(1024, 768, 60_000);
         }
-        // CFC scale law: integer scale only, auto from EDID DPI, committed
-        // atomically with the mode so layout/clients never see a 1x frame.
-        // Everything downstream renders in logical units — scale is decided
-        // HERE and nowhere else.
-        const scale = pickIntegerScale(wlr_output);
+        // CFC scale law: integer scale only, auto from pixel density,
+        // committed atomically with the mode so layout/clients never see a
+        // 1x frame. Scale must be decided from the MODE WE JUST CHOSE —
+        // wlr_output.width is still 0 here (mode not yet committed), which
+        // is exactly how the Kogan 4K got scale 1 (2026-09-04).
+        const committed_width: i32 = if (state.mode) |m| m.width else state.custom_mode.width;
+        const scale = pickIntegerScaleForWidth(committed_width, wlr_output.name);
         state.setScale(scale);
         if (!wlr_output.commitState(&state)) {
             std.log.err("KidulWM: failed to commit output state, dropping output", .{});
