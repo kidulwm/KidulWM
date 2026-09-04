@@ -46,6 +46,23 @@ fn applyTitleBarEnvironment(show_title_bars: bool) void {
 
 const InputDeviceCounts = packed struct { pointer: u32 = 0, keyboard: u32 = 0 };
 
+/// One observed pressed key event, recorded for the debug probe.
+/// `swallowed_by` names the subsystem that consumed the event without a
+/// keybind match ("" = forwarded to client or matched a bind).
+pub const KeyRingEntry = struct {
+    sym: u32 = 0,
+    mod4: bool = false,
+    ctrl: bool = false,
+    action: [24]u8 = [_]u8{0} ** 24,
+    action_len: u8 = 0,
+
+    pub fn setAction(self: *KeyRingEntry, name: []const u8) void {
+        const n = @min(name.len, self.action.len);
+        @memcpy(self.action[0..n], name[0..n]);
+        self.action_len = @intCast(n);
+    }
+};
+
 pub const Output = struct {
     server: *Server,
     wlr_output: *wlr.Output,
@@ -205,6 +222,12 @@ pub const Server = struct {
     backend_started: bool = false,
     chrome_style_generation: u32,
 
+    /// Last N pressed key events for the bobPI/debug probe. Lock-free enough:
+    /// written on the main thread only, read by the IPC thread via memcpy.
+    key_ring: [32]KeyRingEntry = [_]KeyRingEntry{.{}} ** 32,
+    key_ring_pos: usize = 0,
+    key_events_seen: u64 = 0,
+
     decoration_manager: *wlr.XdgDecorationManagerV1,
 
     new_output: wl.Listener(*wlr.Output),
@@ -361,6 +384,7 @@ pub const Server = struct {
                 return .{ .ok = true, .message = "navigate queued" };
             },
             .get_windows => return self.getWindowsResponse(),
+            .debug_status => return self.getDebugStatusResponse(),
             else => return self.handleStateRequest(req),
         }
         return self.handleStateRequest(req);
@@ -417,7 +441,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .quit => {},
+            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };
@@ -643,6 +667,7 @@ pub const Server = struct {
             try self.backend.start();
             self.backend_started = true;
             std.log.info("KidulWM: backend started", .{});
+            self.writeBootCheck();
         } else {
             std.log.info("KidulWM: skipping backend start", .{});
             const event_loop = self.wl_server.getEventLoop();
@@ -732,6 +757,146 @@ pub const Server = struct {
             .pointer = self.input_device_counts.pointer > 0,
             .keyboard = self.input_device_counts.keyboard > 0,
         });
+    }
+
+    /// Record one pressed key event into the debug ring. Called from the
+    /// keyboard handler before any swallow decision; `note` is the keybind
+    /// action name or the subsystem that swallowed the event.
+    pub fn recordKeyEvent(self: *Server, sym: u32, mod4: bool, ctrl: bool, note: []const u8) void {
+        var entry = &self.key_ring[self.key_ring_pos % self.key_ring.len];
+        entry.* = .{ .sym = sym, .mod4 = mod4, .ctrl = ctrl };
+        entry.setAction(note);
+        self.key_ring_pos += 1;
+        self.key_events_seen += 1;
+    }
+
+    /// Boot checklist: runs after backend start, writes a plain-text verdict
+    /// for bobPI / post-mortem reading. Same content goes to the session log.
+    pub fn writeBootCheck(self: *Server) void {
+        var report = std.ArrayList(u8).empty;
+        defer report.deinit(self.allocator);
+
+        report.appendSlice(self.allocator, "kidulwm bootcheck\n") catch return;
+
+        var output_count: usize = 0;
+        var out_it = self.outputs.iterator(.forward);
+        while (out_it.next()) |output| {
+            output_count += 1;
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            const wo = output.wlr_output;
+            report.print(self.allocator, "output[{d}]: {s} mode={d}x{d}@{d} scale={d:.2} box={d},{d} {d}x{d} enabled={}\n", .{
+                output_count,
+                wo.name,
+                wo.width,
+                wo.height,
+                wo.refresh,
+                wo.scale,
+                box.x,
+                box.y,
+                box.width,
+                box.height,
+                wo.enabled,
+            }) catch return;
+        }
+        if (output_count == 0) report.appendSlice(self.allocator, "output: NONE — no displays attached\n") catch return;
+
+        report.print(self.allocator, "keyboards: {d} pointers: {d}\n", .{
+            self.input_device_counts.keyboard,
+            self.input_device_counts.pointer,
+        }) catch return;
+        report.print(self.allocator, "keybinds: {d} loaded (source={s})\n", .{
+            self.keybinds.binds.items.len,
+            if (self.keybinds.fallback) "built-in" else "user config",
+        }) catch return;
+        report.print(self.allocator, "ipc_socket: {s}\n", .{self.socket_path}) catch return;
+        report.appendSlice(self.allocator, "verdict: ") catch return;
+        if (output_count == 0) {
+            report.appendSlice(self.allocator, "FAIL no outputs\n") catch return;
+        } else if (self.input_device_counts.keyboard == 0) {
+            report.appendSlice(self.allocator, "FAIL no keyboard\n") catch return;
+        } else if (self.keybinds.binds.items.len == 0) {
+            report.appendSlice(self.allocator, "FAIL no keybinds\n") catch return;
+        } else {
+            report.appendSlice(self.allocator, "OK\n") catch return;
+        }
+
+        std.log.info("bootcheck:\n{s}", .{report.items});
+        const path_z = "/tmp/kidulwm-bootcheck.txt";
+        const fd = linux.open(path_z, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644);
+        if (@as(isize, @bitCast(fd)) >= 0) {
+            defer _ = linux.close(@intCast(fd));
+            _ = linux.write(@intCast(fd), report.items.ptr, report.items.len);
+        }
+    }
+
+    /// JSON debug status for `kidulwm-control debug_status` — the bobPI probe.
+    /// Called from the IPC thread; only reads main-thread-written state.
+    fn getDebugStatusResponse(self: *Server) ipc.message.Response {
+        const alloc = self.allocator;
+        var buf = std.ArrayList(u8).empty;
+        defer buf.deinit(alloc);
+
+        buf.appendSlice(alloc, "{\"outputs\":[") catch return .{ .ok = false };
+        var first = true;
+        var out_it = self.outputs.iterator(.forward);
+        while (out_it.next()) |output| {
+            if (!first) buf.appendSlice(alloc, ",") catch return .{ .ok = false };
+            first = false;
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            const wo = output.wlr_output;
+            buf.print(alloc, "{{\"name\":\"{s}\",\"mode\":[{d},{d}],\"refresh\":{d},\"scale\":{d:.2},\"box\":[{d},{d},{d},{d}],\"enabled\":{},\"overview_open\":{},\"media_open\":{}}}", .{
+                wo.name,
+                wo.width,
+                wo.height,
+                wo.refresh,
+                wo.scale,
+                box.x,
+                box.y,
+                box.width,
+                box.height,
+                wo.enabled,
+                output.deck.overview_slide_open,
+                output.media_slide.isOpen(),
+            }) catch return .{ .ok = false };
+        }
+        buf.print(alloc, "],\"devices\":{{\"keyboards\":{d},\"pointers\":{d}}}", .{
+            self.input_device_counts.keyboard,
+            self.input_device_counts.pointer,
+        }) catch return .{ .ok = false };
+        buf.print(alloc, ",\"keybinds\":{{\"count\":{d},\"fallback\":{}}}", .{
+            self.keybinds.binds.items.len,
+            self.keybinds.fallback,
+        }) catch return .{ .ok = false };
+        buf.print(alloc, ",\"flags\":{{\"tray_open\":{},\"calendar_card\":{},\"weather_card\":{},\"media_card\":{},\"network_card\":{},\"files_card\":{},\"signals_card\":{}}}", .{
+            self.tray.open,
+            self.tray.calendar_card_open,
+            self.tray.weather_card_open,
+            self.tray.media_card_open,
+            self.tray.network_card_open,
+            self.tray.files_card_open,
+            self.tray.signals_card_open,
+        }) catch return .{ .ok = false };
+        buf.print(alloc, ",\"key_events_seen\":{d},\"key_ring\":[", .{self.key_events_seen}) catch return .{ .ok = false };
+        // Oldest-first replay of the ring.
+        const ring_count = @min(self.key_ring_pos, self.key_ring.len);
+        var i: usize = 0;
+        while (i < ring_count) : (i += 1) {
+            const idx = (self.key_ring_pos - ring_count + i) % self.key_ring.len;
+            const e = self.key_ring[idx];
+            if (i > 0) buf.appendSlice(alloc, ",") catch return .{ .ok = false };
+            buf.print(alloc, "{{\"sym\":{d},\"mod4\":{},\"ctrl\":{},\"note\":\"{s}\"}}", .{
+                e.sym,
+                e.mod4,
+                e.ctrl,
+                e.action[0..e.action_len],
+            }) catch return .{ .ok = false };
+        }
+        buf.appendSlice(alloc, "]}") catch return .{ .ok = false };
+
+        const owned = buf.toOwnedSlice(alloc) catch return .{ .ok = false };
+        return .{ .ok = true, .data = owned };
     }
 
     fn getLayoutResponse(self: *Server) ipc.message.Response {

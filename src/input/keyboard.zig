@@ -102,12 +102,16 @@ const KeyboardDevice = struct {
             // Media slide owns Ctrl+Q (system quit) while open: closing the
             // slide IS closing the focused surface.
             if (server.mediaSlideOpenAnywhere() and ctrl_active and base_sym == xkb.Keysym.q) {
+                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "media_slide_ctrl_q");
                 server.mediaSlideToggle();
                 return;
             }
             const action = server.keybinds.match(mod4_active, ctrl_active, base_sym);
             if (action) |a| {
+                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, @tagName(a));
                 if (handleAction(server, a)) return;
+            } else {
+                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "no_match");
             }
         }
         // Overview sentinel owns Esc/Enter/arrows while open. Scan every
@@ -145,7 +149,10 @@ const KeyboardDevice = struct {
                     server.overviewMoveCursor(2);
                     return;
                 },
-                else => return, // swallow all other keys while the grid is open
+                else => {
+                    server.recordKeyEvent(@intFromEnum(sym), mod4_active, ctrl_active, "swallowed:overview");
+                    return; // swallow all other keys while the grid is open
+                },
             }
         }
         // Media slide owns keys while open (sibling sentinel on the
@@ -153,6 +160,7 @@ const KeyboardDevice = struct {
         // Esc=back to the slide that opened it.
         if (server.mediaSlideOpenAnywhere()) {
             if (server.mediaSlideKey(sym)) return;
+            server.recordKeyEvent(@intFromEnum(sym), mod4_active, ctrl_active, "swallowed:media_slide");
             return; // swallow everything else while the slide is open
         }
         // Cards consume arrow/navigation/typing before clients while open.
@@ -165,6 +173,7 @@ const KeyboardDevice = struct {
             if (server.tray.handleWeatherCardKey(sym)) return;
             // With a card open and no card handler consumed it, do not pass to clients;
             // this keeps arrow keys from moving a focused window while navigating the card.
+            server.recordKeyEvent(@intFromEnum(sym), mod4_active, ctrl_active, "swallowed:card");
             return;
         }
         // Tray takes full keyboard control while open (arrows to navigate, Return to activate, Escape to close).

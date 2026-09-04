@@ -32,6 +32,7 @@ pub const RequestTag = enum {
     notification_clear,
     kfiles_navigate,
     get_windows,
+    debug_status,
     quit,
 };
 
@@ -92,6 +93,7 @@ pub const Request = union(RequestTag) {
         path: []const u8,
     },
     get_windows: void,
+    debug_status: void,
     quit: void,
 };
 
