@@ -51,6 +51,12 @@ const KeyboardDevice = struct {
     fn destroy(self: *KeyboardDevice) void {
         // The input device and its signals are being destroyed; wlroots cleans
         // its own signal lists, so only detach from the manager list here.
+        // If this was the elected seat keyboard, drop it — the next key event
+        // from any surviving device re-elects.
+        if (self.manager.server.seat.getKeyboard() == self.keyboard) {
+            self.manager.server.seat.setKeyboard(null);
+            std.log.info("KidulWM: seat keyboard removed, awaiting re-election", .{});
+        }
         self.link.remove();
         self.manager.server.input_device_counts.keyboard -|= 1;
         self.manager.server.allocator.destroy(self);
@@ -65,6 +71,14 @@ const KeyboardDevice = struct {
     fn handleKey(listener: *wl.Listener(*wlr.Keyboard.event.Key), event: *wlr.Keyboard.event.Key) void {
         const self: *KeyboardDevice = @fieldParentPtr("key", listener);
         const server = self.manager.server;
+        // Seat election: the first keyboard that actually emits an event
+        // becomes the seat keyboard; if the elected device later vanishes
+        // (device_destroy clears it), the next event re-elects. A virtual
+        // or control-only keyboard that never fires can never win.
+        if (server.seat.getKeyboard() != self.keyboard) {
+            server.seat.setKeyboard(self.keyboard);
+            std.log.info("KidulWM: seat keyboard elected: {s}", .{self.input_device.name orelse "?"});
+        }
         if (event.state != .pressed) {
             server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
             return;

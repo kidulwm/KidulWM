@@ -822,7 +822,12 @@ pub const Server = struct {
         }
 
         std.log.info("bootcheck:\n{s}", .{report.items});
-        const path_z = "/tmp/kidulwm-bootcheck.txt";
+        // Persistent path: /tmp is tmpfs and wiped on reboot — the exact
+        // failure mode this report exists for. Session log lives in the
+        // same dir via kidulwm-session.
+        const dir_z = "/home/dad/.local/state/kidulwm";
+        _ = linux.mkdir(dir_z, 0o755);
+        const path_z = "/home/dad/.local/state/kidulwm/bootcheck.txt";
         const fd = linux.open(path_z, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644);
         if (@as(isize, @bitCast(fd)) >= 0) {
             defer _ = linux.close(@intCast(fd));
@@ -1956,20 +1961,18 @@ pub const Server = struct {
         var state = wlr.Output.State.init();
         defer state.finish();
         state.setEnabled(true);
-        if (!wlr_output.commitState(&state)) {
-            std.log.err("KidulWM: failed to enable output, dropping output", .{});
-            return;
-        }
-
-        var mode_state = wlr.Output.State.init();
-        defer mode_state.finish();
+        // Single enable+mode commit: the two-commit split (enable first,
+        // then mode) left bare-metal connectors dark — some DRM drivers
+        // reject enable-without-mode or the follow-up mode commit, and we
+        // then dropped the output entirely. Reverted to the shape that
+        // found the second screen.
         if (pickOutputMode(wlr_output)) |mode| {
-            mode_state.setMode(mode);
+            state.setMode(mode);
         } else {
-            mode_state.setCustomMode(1024, 768, 60_000);
+            state.setCustomMode(1024, 768, 60_000);
         }
-        if (!wlr_output.commitState(&mode_state)) {
-            std.log.err("KidulWM: failed to commit output mode, dropping output", .{});
+        if (!wlr_output.commitState(&state)) {
+            std.log.err("KidulWM: failed to commit output state, dropping output", .{});
             return;
         }
 

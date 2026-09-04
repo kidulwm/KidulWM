@@ -11,4 +11,8 @@
 export XDG_RUNTIME_DIR
 export KIDULWM_WAYLAND_DISPLAY=wayland-1
 
-exec /usr/local/bin/kidulwm
+# stderr/stdout land in a persistent log — /tmp is tmpfs and dies with the
+# reboot, which is exactly when we need the post-mortem (5b64ba9 lesson).
+LOGDIR="$HOME/.local/state/kidulwm"
+mkdir -p "$LOGDIR"
+exec /usr/local/bin/kidulwm > "$LOGDIR/session.log" 2>&1

@@ -29,16 +29,19 @@ pub const InputManager = struct {
 
     fn handleNewInput(listener: *wl.Listener(*wlr.InputDevice), device: *wlr.InputDevice) void {
         const self: *InputManager = @fieldParentPtr("new_input", listener);
-        const seat = self.server.seat;
 
         switch (device.type) {
             .keyboard => {
                 const keyboard = device.toKeyboard();
                 self.configureKeyboard(keyboard);
                 self.server.keyboard.listen(keyboard, device);
-                seat.setKeyboard(keyboard);
+                // Do NOT setKeyboard here. Host libinput presents many
+                // keyboard-class devices (keyd virtual keyboard, control
+                // interfaces, mouse HID keyboards); last attach wins and a
+                // silent device can steal the seat. Election happens on the
+                // first real key event instead (keyboard.zig handleKey).
                 self.server.input_device_counts.keyboard += 1;
-                std.log.info("KidulWM: keyboard attached to seat", .{});
+                std.log.info("KidulWM: keyboard device attached: {s}", .{device.name orelse "?"});
             },
             .pointer => {
                 const pointer = device.toPointer();
