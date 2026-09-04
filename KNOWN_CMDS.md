@@ -8,11 +8,46 @@ Live reference. Verified commands only. If a command is here, it worked.
 |---|---|
 | Source repo | `/home/dad/dev/KidulWM` |
 | Build out | `zig-out/bin/kidulwm`, `zig-out/bin/kidulwm-control` |
-| Installed system | `/usr/bin/kidulwm`, `/usr/bin/kidulwm-control` |
+| Installed system | `/usr/local/bin/kidulwm`, `/usr/local/bin/kidulwm-control` |
 | Service log | `/tmp/kidulwm-service.log` |
 | System config | `/etc/kidulwm/` |
 | User config | `~/.config/kidulwm/` |
 | Runtime | `/run/user/1000/` |
+
+## Host layout — where everything lives (workbench, 2026-09-04)
+
+  Compositor:   /usr/local/bin/kidulwm  (spawned by SDDM session wrapper
+                /usr/local/bin/kidulwm-session; desktop entry
+                /usr/share/wayland-sessions/kidulwm.desktop)
+  Satellites:   /usr/local/bin/ksignals, /usr/local/bin/kfiles,
+                /usr/local/bin/launch-kfiles.sh
+  knetd:        /usr/local/bin/knetd, knetd.service (SYSTEM unit,
+                multi-user.target), state /tmp/knet/{state,cmd,flows,
+                *.detail}, persistent /var/lib/knetd/{networks,whitelist},
+                log /var/log/knetd.log
+  ksignals:     reads /tmp/kidul-signals/*.detail
+  brain-knet-watch: USER timer (~/.config/systemd/user/) — runs ONLY
+                while dad's user session is up. Logged out = watcher
+                asleep. Workbench-acceptable; product needs a system unit.
+
+## TRIP WIRES (read before touching session/spawn code)
+
+  1. Install path = /usr/local/bin, NOT /usr/bin. tray.zig and
+     server.zig spawn absolute /usr/local/bin/... paths. (Earlier
+     revisions of this file said /usr/bin — that was wrong; nothing
+     was ever installed there.)
+  2. uid-1000 assumption: spawn envp hardcodes
+     XDG_RUNTIME_DIR=/run/user/1000 (server.zig spawn helper,
+     tray.zig x4, launch-kfiles.sh). Correct while dad is uid 1000
+     and the only user. A second user breaks satellite launches
+     silently. Do not "fix" by cleverness mid-session — refactor is
+     a product-side task.
+  3. wayland-1 contract: the compositor's socket name comes from
+     KIDULWM_WAYLAND_DISPLAY (main.zig), but ALL spawn strings
+     hardcode WAYLAND_DISPLAY=wayland-1. The session wrapper MUST
+     export KIDULWM_WAYLAND_DISPLAY=wayland-1 so both sides agree.
+  4. Satellites must exist at their /usr/local/bin paths BEFORE the
+     session is exercised — tray launches fail silently otherwise.
 
 ## Build / test on host
 

@@ -1,0 +1,14 @@
+#!/bin/sh
+# kidulwm-session — SDDM session entry for the B&B workbench.
+# Law: docs/law/daily-driver.md (workbench keeps GRUB + SDDM; niri remains
+# the escape-hatch session). Trip wires: KNOWN_CMDS.md "TRIP WIRES".
+#
+# Guarantees the two contracts the compositor's spawn strings hardcode:
+#   XDG_RUNTIME_DIR=/run/user/<uid>  (uid-1000 assumption inside compositor)
+#   WAYLAND socket name wayland-1    (KIDULWM_WAYLAND_DISPLAY, main.zig)
+
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+export KIDULWM_WAYLAND_DISPLAY=wayland-1
+
+exec /usr/local/bin/kidulwm

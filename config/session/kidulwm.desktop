@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=KidulWM
+Comment=Kidul SlideDeck compositor (B&B workbench session)
+Exec=/usr/local/bin/kidulwm-session
+Type=Application
+DesktopNames=kidulwm
