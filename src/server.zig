@@ -1950,6 +1950,28 @@ pub const Server = struct {
         return preferred;
     }
 
+    /// CFC scale law: integer scale only, auto from EDID DPI.
+    /// 96 DPI is the 1x reference; 2x above ~160 DPI (a 27" 4K ≈ 163).
+    /// Panels whose EDID lies about physical size (some TVs report 0 or the
+    /// full wall) fall back to a pixel-count heuristic: anything denser than
+    /// ~FHD at ≥ 2560px wide gets 2x. Scale is decided HERE and nowhere else.
+    fn pickIntegerScale(wlr_output: *wlr.Output) f32 {
+        const w_px: f64 = @floatFromInt(wlr_output.width);
+        const w_mm = wlr_output.phys_width;
+        if (w_mm > 0) {
+            const dpi = w_px / (@as(f64, @floatFromInt(w_mm)) / 25.4);
+            if (dpi >= 160.0) {
+                std.log.info("KidulWM: output {s} dpi={d:.0} -> scale 2", .{ wlr_output.name, dpi });
+                return 2.0;
+            }
+            std.log.info("KidulWM: output {s} dpi={d:.0} -> scale 1", .{ wlr_output.name, dpi });
+            return 1.0;
+        }
+        // EDID has no trustworthy physical size: 4K-class panels get 2x.
+        if (wlr_output.width >= 3840) return 2.0;
+        return 1.0;
+    }
+
     fn handleNewOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Server = @fieldParentPtr("new_output", listener);
 
@@ -1971,13 +1993,18 @@ pub const Server = struct {
         } else {
             state.setCustomMode(1024, 768, 60_000);
         }
+        // CFC scale law: integer scale only, auto from EDID DPI, committed
+        // atomically with the mode so layout/clients never see a 1x frame.
+        // Everything downstream renders in logical units — scale is decided
+        // HERE and nowhere else.
+        const scale = pickIntegerScale(wlr_output);
+        state.setScale(scale);
         if (!wlr_output.commitState(&state)) {
             std.log.err("KidulWM: failed to commit output state, dropping output", .{});
             return;
         }
 
-        std.log.info("KidulWM: new output {s} {d}x{d}", .{ wlr_output.name, wlr_output.width, wlr_output.height });
-
+        std.log.info("KidulWM: new output {s} {d}x{d} scale={d:.0} phys={d}x{d}mm drm_fd={d}", .{ wlr_output.name, wlr_output.width, wlr_output.height, scale, wlr_output.phys_width, wlr_output.phys_height, wlr_output.backend.getDrmFd() });
         _ = self.output_layout.addAuto(wlr_output) catch |err| {
             std.log.err("failed to add output to layout: {}", .{err});
             return;
