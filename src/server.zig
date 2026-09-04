@@ -1289,8 +1289,7 @@ pub const Server = struct {
         var row: usize = 0;
         while (row < @as(usize, @intCast(frame.h))) : (row += 1) {
             const src_off = row * @as(usize, @intCast(frame.stride));
-            @memcpy(output.media_slide.video_pixels[src_off .. src_off + row_bytes],
-                    frame.data[src_off .. src_off + row_bytes]);
+            @memcpy(output.media_slide.video_pixels[src_off .. src_off + row_bytes], frame.data[src_off .. src_off + row_bytes]);
         }
 
         // (Re)create the wlroots buffer wrapper if needed. Zero-copy ref:
@@ -1299,7 +1298,9 @@ pub const Server = struct {
         if (output.media_slide.video_wlr_buf == null) {
             const buf = DataBuffer.createRef(
                 output.media_slide.video_pixels,
-                frame.w, frame.h, frame.stride,
+                frame.w,
+                frame.h,
+                frame.stride,
             ) catch return;
             output.media_slide.video_wlr_buf = buf;
         }
@@ -1421,16 +1422,16 @@ pub const Server = struct {
 
         if (widget.search_focused) {
             switch (sym) {
-                xkb.Keysym.Escape => { widget.cancelSearch(); dirty = true; },
+                xkb.Keysym.Escape => {
+                    widget.cancelSearch();
+                    dirty = true;
+                },
                 xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
                     const text = widget.acceptSearch();
                     if (text.len == 2) {
                         var lb: [2]u8 = undefined;
                         const code = std.ascii.lowerString(&lb, text);
-                        if (std.mem.eql(u8, code, "mo")) widget.setCategory(.movies)
-                        else if (std.mem.eql(u8, code, "tv")) widget.setCategory(.tv)
-                        else if (std.mem.eql(u8, code, "mu")) widget.setCategory(.music)
-                        else widget.jumpToSearchPrefix(text);
+                        if (std.mem.eql(u8, code, "mo")) widget.setCategory(.movies) else if (std.mem.eql(u8, code, "tv")) widget.setCategory(.tv) else if (std.mem.eql(u8, code, "mu")) widget.setCategory(.music) else widget.jumpToSearchPrefix(text);
                     } else if (text.len > 0) {
                         widget.jumpToSearchPrefix(text);
                     }
@@ -1445,18 +1446,36 @@ pub const Server = struct {
                     if (widget.search_caret < widget.search_len) widget.moveSearchCaret(1) else widget.focusSlider();
                     dirty = true;
                 },
-                xkb.Keysym.Up => { widget.focusControl(.category); dirty = true; },
+                xkb.Keysym.Up => {
+                    widget.focusControl(.category);
+                    dirty = true;
+                },
                 xkb.Keysym.Down => {
                     widget.focusControl(.result);
                     widget.selected_result = widget.grid_cols / 2;
                     widget.adjustScrollToSelection();
                     dirty = true;
                 },
-                xkb.Keysym.Home => { widget.search_caret = 0; dirty = true; },
-                xkb.Keysym.End => { widget.search_caret = widget.search_len; dirty = true; },
-                xkb.Keysym.BackSpace => { widget.backspaceSearch(); dirty = true; },
-                xkb.Keysym.Delete => { widget.deleteSearch(); dirty = true; },
-                xkb.Keysym.Tab => { widget.focusSearch(); dirty = true; },
+                xkb.Keysym.Home => {
+                    widget.search_caret = 0;
+                    dirty = true;
+                },
+                xkb.Keysym.End => {
+                    widget.search_caret = widget.search_len;
+                    dirty = true;
+                },
+                xkb.Keysym.BackSpace => {
+                    widget.backspaceSearch();
+                    dirty = true;
+                },
+                xkb.Keysym.Delete => {
+                    widget.deleteSearch();
+                    dirty = true;
+                },
+                xkb.Keysym.Tab => {
+                    widget.focusSearch();
+                    dirty = true;
+                },
                 else => {
                     if (mediaPrintableChar(sym)) |ch| {
                         widget.appendSearch(ch);
@@ -1582,8 +1601,14 @@ pub const Server = struct {
                 }
                 dirty = true;
             },
-            xkb.Keysym.Page_Up => { widget.pageList(-1); dirty = true; },
-            xkb.Keysym.Page_Down => { widget.pageList(1); dirty = true; },
+            xkb.Keysym.Page_Up => {
+                widget.pageList(-1);
+                dirty = true;
+            },
+            xkb.Keysym.Page_Down => {
+                widget.pageList(1);
+                dirty = true;
+            },
             xkb.Keysym.space, xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
                 switch (widget.focus) {
                     .category => {
@@ -1962,7 +1987,13 @@ pub const Server = struct {
                 const window = self.windowById(slide.window_id) orelse continue;
                 if (!window.toplevel.base.surface.mapped) continue;
 
-                const target = output.deck.targetForSlide(slide_idx);
+                // Translate output-local deck coords into global scene coords.
+                const target = blk: {
+                    var t = output.deck.targetForSlide(slide_idx);
+                    t.x += box.x;
+                    t.y += box.y;
+                    break :blk t;
+                };
                 // When the deck is in an empty-slot state (past the ends of the
                 // row), no slide is focused — disable everything.
                 const is_focused = output.deck.empty_slot == .none and slide_idx == output.deck.focused_index and !slide.parked;

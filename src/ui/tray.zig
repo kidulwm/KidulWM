@@ -917,18 +917,29 @@ pub const Tray = struct {
         self.host.request_frame(self.host.ctx);
     }
 
+    // Weather click launches the kweather satellite (full slide) — the old
+    // compositor weather card is dead. Pattern matches toggleSignalsCard.
     pub fn toggleWeatherCard(self: *Self) void {
-        if (self.calendar_card_open) {
-            self.calendar_card_open = false;
-        }
-        self.weather_card_open = !self.weather_card_open;
+        if (self.calendar_card_open) self.calendar_card_open = false;
         if (self.weather_card_open) {
-            self.weather.card.open = true;
-            self.card_mode = .weather;
-            self.setCardCloseDirection(.weather);
-        } else {
+            self.weather_card_open = false;
             self.weather.card.open = false;
         }
+        if (self.media_card_open) {
+            self.media_card_open = false;
+            self.media.setCardOpen(false);
+        }
+        if (self.network_card_open) {
+            self.network_card_open = false;
+            self.network.card.close();
+        }
+        if (self.files_card_open) self.files_card_open = false;
+        // Kill any orphaned kweather from a previous compositor session,
+        // then spawn fresh. NOTE: pkill without -f.
+        _ = c_std.system("pkill -9 kweather 2>/dev/null; sleep 0.2");
+        var buf: [256]u8 = undefined;
+        const cmd = std.fmt.bufPrintZ(&buf, "WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000 /usr/local/bin/kweather &", .{}) catch return;
+        _ = c_std.system(cmd.ptr);
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
     }
