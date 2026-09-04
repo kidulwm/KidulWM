@@ -277,6 +277,14 @@ const KeyboardDevice = struct {
                 server.overviewToggle();
                 return true;
             },
+            .focus_output_next => {
+                server.focusOutputNext();
+                return true;
+            },
+            .move_to_output_next => {
+                server.moveFocusedToOutputNext();
+                return true;
+            },
             .none => return false,
         }
     }

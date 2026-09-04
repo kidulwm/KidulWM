@@ -16,6 +16,8 @@ pub const Action = union(enum) {
     reload,
     park_toggle,
     overview_toggle,
+    focus_output_next,
+    move_to_output_next,
     none,
 };
 
@@ -49,6 +51,8 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.r, .action = .reload }) catch {};
     list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.b, .action = .park_toggle }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Tab, .action = .overview_toggle }) catch {};
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.o, .action = .focus_output_next }) catch {};
+    list.append(allocator, .{ .mod4 = true, .ctrl = true, .sym = xkb.Keysym.o, .action = .move_to_output_next }) catch {};
     return list;
 }
 
@@ -288,6 +292,8 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "reload")) return .reload;
         if (std.mem.eql(u8, str, "park_toggle")) return .park_toggle;
         if (std.mem.eql(u8, str, "overview_toggle")) return .overview_toggle;
+        if (std.mem.eql(u8, str, "focus_output_next")) return .focus_output_next;
+        if (std.mem.eql(u8, str, "move_to_output_next")) return .move_to_output_next;
         if (std.mem.eql(u8, str, "open_slide")) {
             const cmd = allocator.dupe(u8, "/usr/bin/ghostty") catch return null;
             return .{ .spawn = cmd };

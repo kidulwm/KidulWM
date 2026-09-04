@@ -210,6 +210,10 @@ pub const Server = struct {
     keybinds: keybinds.Keybinds,
     focused_window_id: u32 = 0,
     focused_output: ?*Output = null,
+    /// Set while warping the cursor to follow focus, so the resulting motion
+    /// event does not retrigger focus-follows-cursor (the two halves of
+    /// "follow the leader" must not chase each other).
+    suppress_focus_follow: bool = false,
     last_focused_slide_id: u32 = 0,
     current_transition_kind: animation.AnimationKind = .snap,
     next_window_id: u32 = 1,
@@ -1677,6 +1681,7 @@ pub const Server = struct {
         const window = self.windowById(slide.window_id) orelse return;
         if (window.toplevel.base.surface.mapped) {
             self.focusWindow(window);
+            self.warpCursorToFocus();
             self.requestLayout();
         }
     }
@@ -1697,6 +1702,7 @@ pub const Server = struct {
         const window = self.windowById(slide.window_id) orelse return;
         if (window.toplevel.base.surface.mapped) {
             self.focusWindow(window);
+            self.warpCursorToFocus();
             self.requestLayout();
         }
     }
@@ -1766,6 +1772,142 @@ pub const Server = struct {
                 return;
             }
         }
+    }
+
+    /// Focus-follows-cursor half of "follow the leader": on pointer motion,
+    /// if the cursor has crossed onto a different output than the one holding
+    /// keyboard focus, hand focus to whatever window is under the cursor.
+    /// Guarded: only fires when a mapped window is hit (an empty stage keeps
+    /// the old focus — no flapping on bare wallpaper).
+    pub fn focusFollowsCursor(self: *Server) void {
+        if (self.suppress_focus_follow) return;
+        var cursor_output: ?*Output = null;
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |output| {
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            const cx = self.cursor_x;
+            const cy = self.cursor_y;
+            if (cx >= @as(f64, @floatFromInt(box.x)) and
+                cx < @as(f64, @floatFromInt(box.x + box.width)) and
+                cy >= @as(f64, @floatFromInt(box.y)) and
+                cy < @as(f64, @floatFromInt(box.y + box.height)))
+            {
+                cursor_output = output;
+                break;
+            }
+        }
+        const co = cursor_output orelse return;
+        if (self.focused_output == co) return;
+        // Only steal the stage if a window is actually under the cursor.
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            if (window.output != co) continue;
+            const node = &window.scene_tree.node;
+            if (!window.toplevel.base.surface.mapped) continue;
+            if (!node.enabled) continue;
+            var nx: f64 = undefined;
+            var ny: f64 = undefined;
+            if (node.at(self.cursor_x, self.cursor_y, &nx, &ny)) |_| {
+                self.focusWindow(window);
+                return;
+            }
+        }
+        // Empty stage: still adopt it as the focused output so new windows
+        // map there and Mod4+O behaves, but keep existing window focus.
+        self.focused_output = co;
+    }
+
+    /// Cursor-follows-focus half of "follow the leader": warp the pointer to
+    /// the centre of the focused window's current layout target. Called after
+    /// any non-pointer focus change (hotkey, IPC, map, stage jump).
+    pub fn warpCursorToFocus(self: *Server) void {
+        const window = self.focused_window orelse return;
+        const cx = window.animation.target_x + window.animation.target_w / 2.0;
+        const cy = window.animation.target_y + window.animation.target_h / 2.0;
+        self.suppress_focus_follow = true;
+        _ = self.cursor.warp(null, cx, cy);
+        self.cursor_x = cx;
+        self.cursor_y = cy;
+        self.seat.pointerNotifyMotion(0, cx, cy);
+        self.suppress_focus_follow = false;
+    }
+
+    /// Mod4+O: jump keyboard focus to the other stage, and (leader law) pull
+    /// the cursor along with it.
+    pub fn focusOutputNext(self: *Server) void {
+        var count: usize = 0;
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |_| count += 1;
+        if (count < 2) return;
+
+        const current = self.focused_output orelse self.outputs.first() orelse return;
+        // Outputs form a ring; pick the next one after `current`.
+        var next: ?*Output = null;
+        var seen_current = false;
+        it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (seen_current) {
+                next = output;
+                break;
+            }
+            if (output == current) seen_current = true;
+        }
+        if (next == null) next = self.outputs.first();
+        const target = next orelse return;
+
+        self.focused_output = target;
+        // Focus that deck's current slide if it has one.
+        const deck = &target.deck;
+        if (deck.slides.items.len > 0 and deck.empty_slot == .none) {
+            const slide = deck.slides.items[deck.focused_index];
+            if (self.windowById(slide.window_id)) |window| {
+                self.focusWindow(window);
+            }
+        }
+        self.warpCursorToFocus();
+        self.requestLayout();
+    }
+
+    /// Mod4+Ctrl+O: send the focused slide to the other stage's deck.
+    pub fn moveFocusedToOutputNext(self: *Server) void {
+        const window = self.focused_window orelse return;
+        const from_output = window.output orelse return;
+        var it = self.outputs.iterator(.forward);
+        var count: usize = 0;
+        while (it.next()) |_| count += 1;
+        if (count < 2) return;
+
+        var next: ?*Output = null;
+        var seen_current = false;
+        it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (seen_current) {
+                next = output;
+                break;
+            }
+            if (output == from_output) seen_current = true;
+        }
+        if (next == null) next = self.outputs.first();
+        const target = next orelse return;
+        if (target == from_output) return;
+
+        from_output.deck.removeWindow(window.id);
+        target.deck.addWindow(window.id);
+        window.output = target;
+        // Re-enter surfaces so scale/layer hints follow the new stage.
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |output| {
+            if (output == target) {
+                window.toplevel.base.surface.sendEnter(output.wlr_output);
+            } else if (output == from_output) {
+                window.toplevel.base.surface.sendLeave(output.wlr_output);
+            }
+        }
+        self.focused_output = target;
+        self.focusWindow(window);
+        self.warpCursorToFocus();
+        self.requestLayout();
     }
 
     pub fn applyLayout(self: *Server) void {

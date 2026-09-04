@@ -81,6 +81,7 @@ const PointerDevice = struct {
             return;
         }
         server.seat.pointerNotifyMotion(timeMsec(), server.cursor_x, server.cursor_y);
+        server.focusFollowsCursor();
     }
 
     fn handleMotionAbsolute(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
@@ -96,6 +97,7 @@ const PointerDevice = struct {
             return;
         }
         server.seat.pointerNotifyMotion(event.time_msec, server.cursor_x, server.cursor_y);
+        server.focusFollowsCursor();
     }
 
     fn handleButton(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
