@@ -164,6 +164,7 @@ pub const Server = struct {
 
     seat: *wlr.Seat,
     cursor: *wlr.Cursor,
+    xcursor_manager: *wlr.XcursorManager,
     input_manager: *InputManager,
     pointer: PointerManager,
     keyboard: KeyboardManager,
@@ -467,6 +468,10 @@ pub const Server = struct {
         const cursor = try wlr.Cursor.create();
         cursor.attachOutputLayout(output_layout);
 
+        const xcursor_manager = try wlr.XcursorManager.create(null, 24);
+        try xcursor_manager.load(1);
+        cursor.setXcursor(xcursor_manager, "left_ptr");
+
         server.* = Server{
             .allocator = allocator,
             .socket_path = &.{},
@@ -488,6 +493,7 @@ pub const Server = struct {
             .decoration_manager = decoration_manager,
             .seat = seat,
             .cursor = cursor,
+            .xcursor_manager = xcursor_manager,
             .input_manager = undefined,
             .pointer = undefined,
             .keyboard = undefined,
@@ -689,6 +695,7 @@ pub const Server = struct {
         self.backend_destroy.link.remove();
 
         self.cursor.destroy();
+        self.xcursor_manager.destroy();
 
         // scene/scene_output_layout and most globals do not expose destroy()
         // wrappers in this zig-wlroots version; the display teardown frees them.
@@ -923,8 +930,10 @@ pub const Server = struct {
 
         // Card background sized to the FULL output (the slide fills the
         // focused area via layout; the card is the whole slide).
-        const width = @as(i32, @intCast(output.wlr_output.width));
-        const height = @as(i32, @intCast(output.wlr_output.height));
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        const width = box.width;
+        const height = box.height;
         const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         deck.sync(@intCast(width), @intCast(height), self.state.gap, self.deck_split, self.deck_orientation);
 
@@ -1602,8 +1611,10 @@ pub const Server = struct {
         var output_it = self.outputs.iterator(.forward);
         while (output_it.next()) |output| {
             const wlr_output = output.wlr_output;
-            const width = @as(u32, @intCast(wlr_output.width));
-            const height = @as(u32, @intCast(wlr_output.height));
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(wlr_output, &box);
+            const width = @as(u32, @intCast(box.width));
+            const height = @as(u32, @intCast(box.height));
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
             // Update spyglass icon positions and neighbor availability.
@@ -1780,13 +1791,20 @@ pub const Server = struct {
         var state = wlr.Output.State.init();
         defer state.finish();
         state.setEnabled(true);
-        if (pickOutputMode(wlr_output)) |mode| {
-            state.setMode(mode);
-        } else {
-            state.setCustomMode(1024, 768, 60_000);
-        }
         if (!wlr_output.commitState(&state)) {
-            std.log.err("KidulWM: failed to commit output state, dropping output", .{});
+            std.log.err("KidulWM: failed to enable output, dropping output", .{});
+            return;
+        }
+
+        var mode_state = wlr.Output.State.init();
+        defer mode_state.finish();
+        if (pickOutputMode(wlr_output)) |mode| {
+            mode_state.setMode(mode);
+        } else {
+            mode_state.setCustomMode(1024, 768, 60_000);
+        }
+        if (!wlr_output.commitState(&mode_state)) {
+            std.log.err("KidulWM: failed to commit output mode, dropping output", .{});
             return;
         }
 

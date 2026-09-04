@@ -83,7 +83,7 @@ pub const InputManager = struct {
         if (event.surface) |surface| {
             self.server.cursor.setSurface(surface, event.hotspot_x, event.hotspot_y);
         } else {
-            self.server.cursor.unsetImage();
+            self.server.cursor.setXcursor(self.server.xcursor_manager, "left_ptr");
         }
     }
 };
