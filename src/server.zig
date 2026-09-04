@@ -1950,26 +1950,16 @@ pub const Server = struct {
         return preferred;
     }
 
-    /// CFC scale law: integer scale only, auto from EDID DPI.
-    /// 96 DPI is the 1x reference; 2x above ~160 DPI (a 27" 4K ≈ 163).
-    /// Panels whose EDID lies about physical size (some TVs report 0 or the
-    /// full wall) fall back to a pixel-count heuristic: anything denser than
-    /// ~FHD at ≥ 2560px wide gets 2x. Scale is decided HERE and nowhere else.
+    /// CFC scale law: integer scale only, from pixel density.
+    /// TVs lie about physical size in EDID; pixels don't lie. The "retina"
+    /// crossover for desktop use is FHD-per-scale-unit: anything at or above
+    /// QHD-class (2560px wide) renders at 2x, everything below at 1x.
+    /// 24-28" 4K → 2x (right), 27-32" 1440p → 2x (right), 1080p → 1x.
+    /// Scale is decided HERE and nowhere else.
     fn pickIntegerScale(wlr_output: *wlr.Output) f32 {
-        const w_px: f64 = @floatFromInt(wlr_output.width);
-        const w_mm = wlr_output.phys_width;
-        if (w_mm > 0) {
-            const dpi = w_px / (@as(f64, @floatFromInt(w_mm)) / 25.4);
-            if (dpi >= 160.0) {
-                std.log.info("KidulWM: output {s} dpi={d:.0} -> scale 2", .{ wlr_output.name, dpi });
-                return 2.0;
-            }
-            std.log.info("KidulWM: output {s} dpi={d:.0} -> scale 1", .{ wlr_output.name, dpi });
-            return 1.0;
-        }
-        // EDID has no trustworthy physical size: 4K-class panels get 2x.
-        if (wlr_output.width >= 3840) return 2.0;
-        return 1.0;
+        const scale: f32 = if (wlr_output.width >= 2560) 2.0 else 1.0;
+        std.log.info("KidulWM: output {s} {d}px wide -> scale {d:.0}", .{ wlr_output.name, wlr_output.width, scale });
+        return scale;
     }
 
     fn handleNewOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
