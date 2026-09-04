@@ -3580,11 +3580,14 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 4;
-        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 130.0) * @as(f64, scale))));
+        // Butterfly cap: 130*scale was ~150% too big once the 4K reported 2x
+        // (260px tall, hugging the bottom). 86 logical px matches the left-peek
+        // logo's footprint; raise the bottom margin to the logo's 10px line.
+        const max_pill_side: i32 = @max(60, @as(i32, @intFromFloat(@as(f64, 86.0) * @as(f64, scale))));
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
         const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        const pill_y = box.y + box.height - pill_h - peek_vmargin;
+        const pill_y = box.y + box.height - pill_h - @max(peek_vmargin, 10);
 
         const title = std.mem.sliceTo(&self.media.cached.title, 0);
         const title_hash: u64 = std.hash.Crc32.hash(title);

@@ -14,12 +14,20 @@ const std = @import("std");
 ///
 /// Schema (all entries optional; unknown outputs fall back to addAuto):
 ///   [arrange]
-///   HDMI-A-1 = { x = 0, y = 0 }        # Kogan, top
-///   eDP-1    = { x = 0, y = 1080 }     # Predator, bottom
+///   HDMI-A-1 = { x = 0, y = 0, scale = 1.7 }  # Kogan, top, fractional override
+///   eDP-1    = { x = 0, y = 1080 }            # Predator, bottom, auto law (1x)
+///
+/// `scale` is optional. When present it OVERRIDES the CFC integer scale law
+/// for that output (user-manipulable display setting; auto law stays the
+/// default when absent). Fractional values are supported: buffer surfaces
+/// allocate at ceil(scale) and cairo rescales by scale/ceil, so widgets stay
+/// crisp. This is the first per-output user display setting — shape future
+/// settings (text size etc.) the same way: declared here, auto by default.
 pub const Placement = struct {
     name: []const u8,
     x: i32,
     y: i32,
+    scale: ?f32 = null,
 };
 
 pub const OutputLayout = struct {

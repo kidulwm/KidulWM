@@ -44,14 +44,8 @@ pub const DrivesWidget = struct {
         if (count == 0) return;
 
         if (!kfiles_open) {
-            // Show a subtle hint that drives are available when kfiles opens.
-            c.cairo_set_source_rgba(cr, unfocused[0], unfocused[1], unfocused[2], 0.35);
-            c.cairo_set_font_size(cr, 11.0 * s);
-            const hint = "drives";
-            var ext: c.cairo_text_extents_t = undefined;
-            c.cairo_text_extents(cr, @ptrCast(hint), &ext);
-            c.cairo_move_to(cr, (w_d - ext.width) * 0.5, 24.0 * s);
-            c.cairo_show_text(cr, @ptrCast(hint));
+            // LAW: no text in the peek. The EXIT dot-matrix owns peek
+            // signage; the drive list appears only while kfiles is open.
             return;
         }
 
