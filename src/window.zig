@@ -502,6 +502,13 @@ pub const Window = struct {
         const app_id_slice = window.app_id.asSlice();
         std.log.info("KidulWM: window mapped id={d} app_id='{s}'", .{ window.id, app_id_slice });
         window.server.assignOutput(window);
+        // Tell the client its output's scale immediately — before it commits
+        // its first buffer — so it renders at buffer_scale = output scale.
+        if (window.output) |output| {
+            const scale: f64 = output.wlr_output.scale;
+            wlr.FractionalScaleManagerV1.notifyScale(window.toplevel.base.surface, scale);
+            window.toplevel.base.surface.sendEnter(output.wlr_output);
+        }
         const deck = window.server.deckForWindow(window);
         deck.addWindow(window.id);
         std.log.info("KidulWM: added window id={d} to deck slides={d} focused_index={d}", .{ window.id, deck.slides.items.len, deck.focused_index });

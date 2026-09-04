@@ -1962,6 +1962,30 @@ pub const Server = struct {
         return scale;
     }
 
+    /// Scale is decided in handleNewOutput and nowhere else. Every surface on
+    /// this output must hear about it, or a client that mapped while the
+    /// output was at scale 1 keeps committing scale-1 buffers — rendered 1:1
+    /// physical on a 2x panel, they occupy the top-left quarter (the Kogan
+    /// 4K bug, 2026-09-04).
+    pub fn syncOutputScaleToWindows(self: *Server, wlr_output: *wlr.Output, scale: f32) void {
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            const wo = window.output orelse continue;
+            if (wo.wlr_output != wlr_output) continue;
+            const surface = window.toplevel.base.surface;
+            wlr.FractionalScaleManagerV1.notifyScale(surface, scale);
+            surface.sendEnter(wlr_output);
+            const target = window.animation;
+            const tw: i32 = @intFromFloat(@max(0.0, target.target_w));
+            const th: i32 = @intFromFloat(@max(0.0, target.target_h));
+            if (tw > 0 and th > 0) {
+                _ = window.toplevel.setSize(tw, th);
+                _ = window.toplevel.base.scheduleConfigure();
+            }
+            std.log.info("KidulWM: scale sync id={d} output={s} scale={d:.0} reconfigure={d}x{d}", .{ window.id, wlr_output.name, scale, tw, th });
+        }
+    }
+
     fn handleNewOutput(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Server = @fieldParentPtr("new_output", listener);
 
@@ -2013,6 +2037,9 @@ pub const Server = struct {
         // Compute layout immediately so window panels appear on the first frame,
         // instead of waiting for the asynchronous layout-event loop tick.
         self.applyLayout();
+        // Tell any windows already on this output about the committed scale
+        // (they may have mapped while the output was still at scale 1).
+        self.syncOutputScaleToWindows(wlr_output, scale);
         self.requestLayout();
         wlr_output.scheduleFrame();
     }
