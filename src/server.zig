@@ -11,6 +11,7 @@ const style = @import("core/style.zig");
 const theme_mod = @import("core/theme.zig");
 const Theme = theme_mod.Theme;
 const slidedeck = @import("core/slidedeck.zig");
+const output_layout_config = @import("core/output_layout_config.zig");
 const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
@@ -170,6 +171,7 @@ pub const Server = struct {
     overlay_tree: *wlr.SceneTree,
     output_layout: *wlr.OutputLayout,
     scene_output_layout: *wlr.SceneOutputLayout,
+    output_arrangement: output_layout_config.OutputLayout,
     xdg_shell: *wlr.XdgShell,
     output_manager: *wlr.OutputManagerV1,
 
@@ -507,6 +509,7 @@ pub const Server = struct {
             .scene = scene,
             .output_layout = output_layout,
             .scene_output_layout = scene_output_layout,
+            .output_arrangement = output_layout_config.load(allocator),
             .xdg_shell = xdg_shell,
             .output_manager = output_manager,
             .shm = shm,
@@ -2019,10 +2022,23 @@ pub const Server = struct {
         }
 
         std.log.info("KidulWM: new output {s} {d}x{d} scale={d:.0} phys={d}x{d}mm drm_fd={d}", .{ wlr_output.name, wlr_output.width, wlr_output.height, scale, wlr_output.phys_width, wlr_output.phys_height, wlr_output.backend.getDrmFd() });
-        _ = self.output_layout.addAuto(wlr_output) catch |err| {
-            std.log.err("failed to add output to layout: {}", .{err});
-            return;
-        };
+        // Placement is declared physical reality (outputs.toml [arrange]),
+        // in logical units. Unknown outputs fall back to addAuto (extend right).
+        // Two outputs must never land at the same origin — that is how the
+        // mirror incident happened.
+        if (self.output_arrangement.find(std.mem.span(wlr_output.name))) |p| {
+            _ = self.output_layout.add(wlr_output, p.x, p.y) catch |err| {
+                std.log.err("failed to add output to layout at {d},{d}: {}", .{ p.x, p.y, err });
+                return;
+            };
+            std.log.info("KidulWM: placed output {s} at {d},{d} (declared)", .{ wlr_output.name, p.x, p.y });
+        } else {
+            _ = self.output_layout.addAuto(wlr_output) catch |err| {
+                std.log.err("failed to add output to layout: {}", .{err});
+                return;
+            };
+            std.log.info("KidulWM: placed output {s} via addAuto (no declared position)", .{wlr_output.name});
+        }
         const scene_output = self.scene.createSceneOutput(wlr_output) catch |err| {
             std.log.err("scene output create failed: {}", .{err});
             return;
