@@ -30,6 +30,7 @@ pub const RequestTag = enum {
     media_seek,
     notification_test,
     notification_clear,
+    arrange_outputs,
     kfiles_navigate,
     get_windows,
     debug_status,
@@ -89,6 +90,7 @@ pub const Request = union(RequestTag) {
         display_mode: ?[]const u8 = null,
     },
     notification_clear: void,
+    arrange_outputs: void,
     kfiles_navigate: struct {
         path: []const u8,
     },

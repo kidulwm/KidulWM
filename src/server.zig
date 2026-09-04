@@ -76,6 +76,12 @@ pub const Output = struct {
     overview: overview_slide_mod.OverviewSlide = .{},
     /// Media player slide (left-end sentinel sibling).
     media_slide: media_slide_mod.MediaSlide = .{},
+    /// Per-output wallpaper scene buffer (fill-contain, no crop). The master
+    /// pixel buffer lives on server.background.image_buffer; each output gets
+    /// its own scene buffer referencing it, sized to that output's logical
+    /// box. This kills the "one global wallpaper only spans the first output"
+    /// bug and the resulting mirror/top-center artifacts.
+    wallpaper_scene_buffer: ?*wlr.SceneBuffer = null,
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -88,10 +94,53 @@ pub const Output = struct {
             .deck = slidedeck.SlideDeck.init(server.allocator),
             .overview = .{},
             .media_slide = .{},
+            .wallpaper_scene_buffer = null,
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
         wlr_output.events.destroy.add(&self.destroy);
+    }
+
+    /// Create or refresh this output's wallpaper scene buffer from the master
+    /// image buffer. Fill-contain: scale the image to fit entirely inside the
+    /// output's logical box, centered, with the theme background color filling
+    /// any letterbox bars. No crop.
+    pub fn setupWallpaper(self: *Output, server: *Server) void {
+        // Tear down any existing per-output wallpaper node first.
+        if (self.wallpaper_scene_buffer) |sb| {
+            sb.node.destroy();
+            self.wallpaper_scene_buffer = null;
+        }
+
+        const master = server.background.image_buffer orelse return;
+        var box: wlr.Box = undefined;
+        server.output_layout.getBox(self.wlr_output, &box);
+        if (box.width <= 0 or box.height <= 0) return;
+
+        const scene_buffer = server.scene.tree.createSceneBuffer(master) catch return;
+        // Fill-contain: preserve aspect, fit entirely inside the box.
+        const iw: f64 = @floatFromInt(master.width);
+        const ih: f64 = @floatFromInt(master.height);
+        const bw: f64 = @floatFromInt(box.width);
+        const bh: f64 = @floatFromInt(box.height);
+        var dest_w: i32 = box.width;
+        var dest_h: i32 = box.height;
+        var x: i32 = box.x;
+        var y: i32 = box.y;
+        if (iw / ih > bw / bh) {
+            // Image wider than output: letterbox top/bottom.
+            dest_w = box.width;
+            dest_h = @intFromFloat(@floor(bw * (ih / iw)));
+            y = box.y + @divTrunc(box.height - dest_h, 2);
+        } else {
+            // Image taller than output: pillarbox left/right.
+            dest_h = box.height;
+            dest_w = @intFromFloat(@floor(bh * (iw / ih)));
+            x = box.x + @divTrunc(box.width - dest_w, 2);
+        }
+        scene_buffer.setDestSize(dest_w, dest_h);
+        scene_buffer.node.setPosition(x, y);
+        self.wallpaper_scene_buffer = scene_buffer;
     }
 
     pub fn deinit(self: *Output) void {
@@ -99,6 +148,10 @@ pub const Output = struct {
         self.frame.link.remove();
         self.destroy.link.remove();
         self.deck.deinit();
+        if (self.wallpaper_scene_buffer) |sb| {
+            sb.node.destroy();
+            self.wallpaper_scene_buffer = null;
+        }
     }
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -313,6 +366,19 @@ pub const Server = struct {
                 self.tray.toggle();
                 return .{ .ok = true };
             },
+            .arrange_outputs => {
+                // Re-read the declared arrangement (outputs.toml) and re-place
+                // every output. Fixes a live mirrored session without restart.
+                // VALIDATE FIRST: a broken config must never touch live state.
+                var v = output_layout_config.validate(self.allocator);
+                if (!v.ok()) {
+                    const msg = v.problems.items[0];
+                    self.tray.notificationAdd("WM reset blocked", msg, "kidulwm", "high", null, null);
+                    return .{ .ok = false, .message = msg };
+                }
+                self.arrangeOutputsLive();
+                return .{ .ok = true, .message = "outputs re-arranged" };
+            },
             .tray_select_next => {
                 self.tray.selectNext();
                 return .{ .ok = true };
@@ -447,7 +513,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .quit => {},
+            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };
@@ -593,9 +659,16 @@ pub const Server = struct {
         server.background.rect = bg_rect;
         server.background.node = &bg_rect.node;
 
-        server.loadWallpaper("/home/kidul/Pictures/Wallpapers/theWallpaper.png") catch |err| {
-            std.log.warn("KidulWM: failed to load wallpaper, using fallback color: {}", .{err});
-        };
+        // Wallpaper path is HOME-relative: ~/Pictures/Wallpapers/theWallpaper.png.
+        // VM (HOME=/home/kidul) and host workbench (HOME=/home/dad) both resolve.
+        {
+            const wp_home = std.c.getenv("HOME") orelse "/home/kidul";
+            const wp_path = std.fs.path.join(server.allocator, &.{ std.mem.span(wp_home), "Pictures", "Wallpapers", "theWallpaper.png" }) catch null;
+            defer if (wp_path) |p| server.allocator.free(p);
+            server.loadWallpaper(if (wp_path) |p| p else "/home/kidul/Pictures/Wallpapers/theWallpaper.png") catch |err| {
+                std.log.warn("KidulWM: failed to load wallpaper, using fallback color: {}", .{err});
+            };
+        }
 
         // Background/wallpaper nodes were created after the tray, so ensure the
         // overlay tree stays on top of the background for immediate visibility.
@@ -1132,6 +1205,9 @@ pub const Server = struct {
             return;
         };
         output.overview.card_buffer = card;
+        // Same scale law as the media slide: rendered at physical pixels,
+        // displayed at logical size.
+        card.setDestSize(width, height);
 
         // Reparent each slide's scene tree into the card at its tile rect.
         for (output.overview.tiles[0..output.overview.tile_count], 0..) |t, i| {
@@ -1253,6 +1329,12 @@ pub const Server = struct {
             return;
         };
         output.media_slide.card_buffer = card;
+        // The buffer was rendered at physical pixels (target × scale) for
+        // crispness; the scene graph shows buffers 1:1 by default, which
+        // blows the card up by the output scale on HiDPI (the "huge media
+        // player, top-left corner only" bug). Pin the display size back to
+        // the logical target rect.
+        card.setDestSize(@intCast(target.width), @intCast(target.height));
         tree.node.setPosition(target.x, target.y);
         card.node.raiseToTop();
     }
@@ -2234,6 +2316,10 @@ pub const Server = struct {
         output.init(self, wlr_output, scene_output);
         std.log.info("KidulWM: output added to layout", .{});
         self.tray.addOutput(output);
+        // Give this output its own wallpaper node, sized to its logical box
+        // with fill-contain (no crop). Must happen after placement so the box
+        // coordinates are real.
+        output.setupWallpaper(self);
         // Compute layout immediately so window panels appear on the first frame,
         // instead of waiting for the asynchronous layout-event loop tick.
         self.applyLayout();
@@ -2290,19 +2376,52 @@ pub const Server = struct {
         self.requestLayout();
     }
 
+    /// Re-place every output from the declared arrangement (outputs.toml).
+    /// Live fix for a mirrored session; assumes config already validated.
+    pub fn arrangeOutputsLive(self: *Server) void {
+        self.output_arrangement = output_layout_config.load(self.allocator);
+        var it = self.outputs.iterator(.forward);
+        var placed: usize = 0;
+        while (it.next()) |output| {
+            const name = std.mem.span(output.wlr_output.name);
+            self.output_layout.remove(output.wlr_output);
+            if (self.output_arrangement.find(name)) |p| {
+                _ = self.output_layout.add(output.wlr_output, p.x, p.y) catch {
+                    _ = self.output_layout.addAuto(output.wlr_output) catch continue;
+                    continue;
+                };
+            } else {
+                _ = self.output_layout.addAuto(output.wlr_output) catch continue;
+            }
+            placed += 1;
+        }
+        std.log.info("KidulWM: arrange_outputs re-placed {d} outputs", .{placed});
+    }
+
     fn updateBackgroundLayout(self: *Server, box: *const wlr.Box) void {
+        // The global fallback rect covers the whole layout box. Per-output
+        // wallpaper buffers are sized in setupWallpaper; nothing to do here.
+        if (self.background.rect) |rect| {
+            rect.setSize(box.width, box.height);
+        }
         if (self.background.node) |node| {
             node.setPosition(box.x, box.y);
-        }
-        if (self.background.image_scene_buffer) |scene_buffer| {
-            scene_buffer.setDestSize(box.width, box.height);
-        } else if (self.background.rect) |rect| {
-            rect.setSize(box.width, box.height);
         }
     }
 
     fn loadWallpaper(self: *Server, path: []const u8) !void {
-        // Tear down any existing background node and image buffer first.
+        // Tear down per-output wallpaper scene buffers first (they lock the
+        // master buffer). Then destroy the old master buffer and any fallback
+        // rect before loading the new image.
+        {
+            var it = self.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                if (output.wallpaper_scene_buffer) |sb| {
+                    sb.node.destroy();
+                    output.wallpaper_scene_buffer = null;
+                }
+            }
+        }
         if (self.background.node) |node| {
             node.destroy();
             self.background.node = null;
@@ -2310,7 +2429,6 @@ pub const Server = struct {
         if (self.background.image_buffer) |buffer| {
             wlr.Buffer.drop(buffer);
             self.background.image_buffer = null;
-            self.background.image_scene_buffer = null;
         }
 
         const image = render_image.Image.loadPng(path) catch |err| {
@@ -2327,19 +2445,20 @@ pub const Server = struct {
         const buffer = try DataBuffer.create(image.data, image.width, image.height, image.stride);
         errdefer wlr.Buffer.drop(buffer);
 
-        // Attach the image buffer directly to the root scene tree so there is
-        // no intermediate transform to get wrong. The buffer remains referenced
-        // by image_buffer and by the scene buffer (which locks it), so both must
-        // be released before replacement.
-        const scene_buffer = try self.scene.tree.createSceneBuffer(buffer);
-        scene_buffer.setDestSize(image.width, image.height);
-
+        // Keep the master buffer alive; per-output scene buffers reference it.
+        // The global background.node is only the fallback solid rect.
         self.background.rect = null;
         self.background.image_buffer = buffer;
-        self.background.image_scene_buffer = scene_buffer;
-        self.background.node = &scene_buffer.node;
+        self.background.image_scene_buffer = null;
+        self.background.node = null;
 
         std.log.info("KidulWM: loaded wallpaper '{s}' ({d}x{d})", .{ path, image.width, image.height });
+
+        // Re-create per-output wallpaper nodes for every existing output.
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            output.setupWallpaper(self);
+        }
     }
 
     fn handleShutdownTimer(server: *@This()) c_int {

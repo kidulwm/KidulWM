@@ -269,6 +269,19 @@ const KeyboardDevice = struct {
                 server.requestQuit();
                 return true;
             },
+            .wm_reset => {
+                // Soft WM reset (i3/sway style). Validate outputs.toml first —
+                // a broken config surfaces as a HIGH notification in the right
+                // peek and the live layout is left untouched.
+                var v = @import("../core/output_layout_config.zig").validate(server.allocator);
+                if (!v.ok()) {
+                    server.tray.notificationAdd("WM reset blocked", v.problems.items[0], "kidulwm", "high", null, null);
+                    return true;
+                }
+                server.arrangeOutputsLive();
+                server.tray.notificationAdd("WM reset", "outputs re-arranged from outputs.toml", "kidulwm", "low", null, null);
+                return true;
+            },
             .park_toggle => {
                 server.parkToggleFocused();
                 return true;

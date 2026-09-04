@@ -114,6 +114,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
             } };
         }
         if (std.mem.eql(u8, cmd, "notification_clear")) break :blk .{ .notification_clear = {} };
+        if (std.mem.eql(u8, cmd, "arrange_outputs")) break :blk .{ .arrange_outputs = {} };
         if (std.mem.eql(u8, cmd, "get_windows")) break :blk .{ .get_windows = {} };
         if (std.mem.eql(u8, cmd, "debug_status")) break :blk .{ .debug_status = {} };
         if (std.mem.eql(u8, cmd, "kfiles_navigate")) {

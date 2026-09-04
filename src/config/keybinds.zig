@@ -18,6 +18,7 @@ pub const Action = union(enum) {
     overview_toggle,
     focus_output_next,
     move_to_output_next,
+    wm_reset,
     none,
 };
 
@@ -49,6 +50,8 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.q, .action = .close_focused }) catch {};
     list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.q, .action = .close_focused }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.r, .action = .reload }) catch {};
+    // Soft WM reset (i3/sway style): re-place outputs, re-apply layout, live.
+    list.append(allocator, .{ .mod4 = true, .ctrl = true, .sym = xkb.Keysym.r, .action = .wm_reset }) catch {};
     list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.b, .action = .park_toggle }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Tab, .action = .overview_toggle }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.o, .action = .focus_output_next }) catch {};

@@ -30,6 +30,50 @@ pub const Placement = struct {
     scale: ?f32 = null,
 };
 
+/// Validation result for a would-be outputs.toml load.
+/// `problems` is a human-readable list; empty means clean.
+pub const Validation = struct {
+    problems: std.ArrayList([]const u8),
+
+    pub fn ok(self: *const Validation) bool {
+        return self.problems.items.len == 0;
+    }
+};
+
+/// Parse + sanity-check the user outputs.toml WITHOUT touching live state.
+/// Catches the classic footguns before a wm_reset applies them:
+///   - two outputs declared at the same origin (the mirror incident)
+///   - negative/absurd coordinates
+///   - duplicate output names
+/// Returns a Validation whose problems list is empty when clean.
+pub fn validate(allocator: std.mem.Allocator) Validation {
+    var v = Validation{ .problems = std.ArrayList([]const u8).empty };
+    const layout = load(allocator);
+
+    // Duplicate names / origin collisions.
+    var i: usize = 0;
+    while (i < layout.count) : (i += 1) {
+        const a = layout.placements[i];
+        if (a.x < -10000 or a.x > 100000 or a.y < -10000 or a.y > 100000) {
+            const msg = std.fmt.allocPrint(allocator, "outputs.toml: {s} has absurd coords {d},{d}", .{ a.name, a.x, a.y }) catch continue;
+            v.problems.append(allocator, msg) catch {};
+        }
+        var j: usize = i + 1;
+        while (j < layout.count) : (j += 1) {
+            const b = layout.placements[j];
+            if (std.mem.eql(u8, a.name, b.name)) {
+                const msg = std.fmt.allocPrint(allocator, "outputs.toml: {s} declared twice", .{a.name}) catch continue;
+                v.problems.append(allocator, msg) catch {};
+            }
+            if (a.x == b.x and a.y == b.y) {
+                const msg = std.fmt.allocPrint(allocator, "outputs.toml: {s} and {s} share origin {d},{d} (this is how screens mirror)", .{ a.name, b.name, a.x, a.y }) catch continue;
+                v.problems.append(allocator, msg) catch {};
+            }
+        }
+    }
+    return v;
+}
+
 pub const OutputLayout = struct {
     placements: [8]Placement = undefined,
     count: usize = 0,
