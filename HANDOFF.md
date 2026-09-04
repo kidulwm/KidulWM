@@ -1,3 +1,45 @@
+# KidulWM HANDOFF — Sep 05 2026 (session 17: per-output wallpaper + wm_reset)
+
+## Session summary
+
+Wallpaper architecture fixed: replaced single global scene buffer with
+per-output nodes. Root cause of "top center" and mirror artifacts: one
+3840x2160 buffer was sized to the layout box before the second output
+landed, so it only spanned the first output and bled onto the second.
+
+- `Output.wallpaper_scene_buffer`: per-output scene buffer referencing
+  the master image buffer. Fill-contain (letterbox/pillarbox), no crop.
+- `Output.setupWallpaper()`: called from `handleNewOutput` after placement,
+  so each screen gets its own correctly-sized background from boot.
+- `loadWallpaper()`: tears down per-output nodes first, keeps master buffer,
+  re-creates per-output nodes after load.
+- `updateBackgroundLayout()`: now only handles the fallback solid rect;
+  per-output wallpaper sizing is done in `setupWallpaper`.
+- `wm_reset` keybind (Mod4+Ctrl+R): validates outputs.toml, blocks on
+  duplicate names / origin collisions (the mirror law), then
+  `arrangeOutputsLive`. Notification on success/failure.
+- Validation in `output_layout_config.zig` catches the classic footguns
+  before they touch live state.
+
+## Build / test status
+
+- `zig build` CLEAN (0 errors, 0 warnings).
+- Deployed to host `/usr/local/bin/kidulwm` (Sep 05 02:16).
+- **NOT yet verified on live session.** Barticus will restart test
+  (logout → SDDM → KidulWM) and report back.
+
+## TODO for next session (Sep 06)
+
+1. **Verify wallpaper fix on live host**: both outputs should show the
+   whole wallpaper (fill-contain), no mirroring, no top-center crop.
+   Kogan (HDMI-A-1, 1920x1080 logical) above Predator (eDP-1, 1920x1080).
+2. **Lockscreen**: currently absent. No swaylock, no ext-session-lock in
+   codebase. Needs wlroots ext-session-lock-v1 + unlock UI in compositor.
+   Parked until tomorrow; Barticus closing laptop lid / turning off Kogan
+   tonight means no lockscreen is acceptable for now.
+
+---
+
 # KidulWM HANDOFF — Sep 01 2026 (session 16: libkmedia realignment Phase 2)
 
 ## Session summary
