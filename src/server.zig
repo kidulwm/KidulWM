@@ -1137,8 +1137,17 @@ pub const Server = struct {
     }
 
     /// Assign a window to the best available output when it maps.
+    /// "Focus" means keyboard focus first: a window focused on the laptop
+    /// beats a bare focused_output the pointer may have claimed on an
+    /// empty stage (focusFollowsCursor line ~2017).
     pub fn assignOutput(self: *Server, window: *Window) void {
         if (window.output != null) return;
+        if (self.focused_window) |focused| {
+            if (focused.output) |output| {
+                window.output = output;
+                return;
+            }
+        }
         if (self.focused_output) |output| {
             window.output = output;
             return;
