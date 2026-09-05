@@ -1137,20 +1137,23 @@ pub const Server = struct {
     }
 
     /// Assign a window to the best available output when it maps.
-    /// "Focus" means keyboard focus first: a window focused on the laptop
-    /// beats a bare focused_output the pointer may have claimed on an
-    /// empty stage (focusFollowsCursor line ~2017).
+    /// CFC law: everything follows focus, and the CURSOR is the focus you
+    /// can see. When the pointer rests on a different stage than the focused
+    /// window, the pointer's stage owns new slides — otherwise Granny moves
+    /// the mouse to the TV, clicks, and the app opens on the other screen.
+    /// Keyboard-driven focus changes warp the cursor along (warpCursorToFocus),
+    /// so the two halves can't stay in disagreement for long either way.
     pub fn assignOutput(self: *Server, window: *Window) void {
         if (window.output != null) return;
+        if (self.focused_output) |output| {
+            window.output = output;
+            return;
+        }
         if (self.focused_window) |focused| {
             if (focused.output) |output| {
                 window.output = output;
                 return;
             }
-        }
-        if (self.focused_output) |output| {
-            window.output = output;
-            return;
         }
         if (self.outputs.first()) |output| {
             window.output = output;
@@ -2445,6 +2448,24 @@ pub const Server = struct {
         // with fill-contain (no crop). Must happen after placement so the box
         // coordinates are real.
         output.setupWallpaper(self);
+        // Boot cursor placement: the hardware cursor starts at 0,0 — the
+        // shared corner of the layout, a no-man's-land belonging to no stage
+        // (top edge of the laptop when docked). The first output to land
+        // claims it: warp to the centre of that output's box and adopt the
+        // stage, so the very first click/keypress does something. When
+        // docked, the declared main screen (origin 0,0 = Kogan) is driven
+        // first and wins; undocked, the laptop is the only candidate.
+        if (self.focused_output == null) {
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(wlr_output, &box);
+            const cx = @as(f64, @floatFromInt(box.x)) + @as(f64, @floatFromInt(box.width)) / 2.0;
+            const cy = @as(f64, @floatFromInt(box.y)) + @as(f64, @floatFromInt(box.height)) / 2.0;
+            _ = self.cursor.warp(null, cx, cy);
+            self.cursor_x = cx;
+            self.cursor_y = cy;
+            self.focused_output = output;
+            std.log.info("KidulWM: boot cursor parked on {s} at {d:.0},{d:.0}", .{ wlr_output.name, cx, cy });
+        }
         // Compute layout immediately so window panels appear on the first frame,
         // instead of waiting for the asynchronous layout-event loop tick.
         self.applyLayout();
