@@ -155,6 +155,12 @@ pub const Output = struct {
         scene_buffer.setDestSize(dest_w, dest_h);
         scene_buffer.node.setPosition(x, y);
         self.wallpaper_scene_buffer = scene_buffer;
+        // Wallpaper is the BOTTOM of the stack, never the top. A freshly
+        // created scene node lands above every sibling — including the
+        // overlay tree (widgets/tray/spyglass) — which is exactly the
+        // "widgets vanish behind the wallpaper until something re-raises
+        // them" bug. Re-assert overlay-topmost on every wallpaper (re)apply.
+        server.overlay_tree.node.raiseToTop();
     }
 
     pub fn deinit(self: *Output) void {
@@ -339,6 +345,36 @@ pub const Server = struct {
         progress: f64,
     },
     outputs: wl.list.Head(Output, .link),
+
+    /// Catcher for dropped outputs. Every early-return error path in
+    /// handleNewOutput records (name, stage, err) here instead of vanishing
+    /// into the log scroll. Surfaced in writeBootCheck so a black screen is
+    /// one file-read away from its cause. Fixed-size: drops beyond the cap
+    /// still hit the log, just not the record.
+    output_drops: [8]OutputDrop = undefined,
+    output_drop_count: usize = 0,
+
+    pub const DropStage = enum { init_render, commit_state, layout_add, scene_output, alloc };
+
+    pub const OutputDrop = struct {
+        name: [64]u8 = undefined,
+        name_len: usize = 0,
+        stage: DropStage = .alloc,
+        err: ?anyerror = null,
+    };
+
+    fn recordOutputDrop(self: *Server, wlr_output: *wlr.Output, stage: DropStage, err: ?anyerror) void {
+        if (self.output_drop_count >= self.output_drops.len) return;
+        const rec = &self.output_drops[self.output_drop_count];
+        const name_span = std.mem.span(wlr_output.name);
+        const n = @min(name_span.len, rec.name.len);
+        @memcpy(rec.name[0..n], name_span[0..n]);
+        rec.name_len = n;
+        rec.stage = stage;
+        rec.err = err;
+        self.output_drop_count += 1;
+        std.log.err("KidulWM: OUTPUT DROPPED {s} stage={s} err={?}", .{ name_span, @tagName(stage), err });
+    }
 
     fn getWindowsResponse(self: *Server) ipc.message.Response {
         var list = std.ArrayList(ipc.message.WindowInfo).initCapacity(self.allocator, 16) catch return .{ .ok = true, .windows = &[_]ipc.message.WindowInfo{} };
@@ -922,6 +958,19 @@ pub const Server = struct {
         }
         if (output_count == 0) report.appendSlice(self.allocator, "output: NONE — no displays attached\n") catch return;
 
+        // The catcher: any output that hit an early-return error path in
+        // handleNewOutput is named here with the exact stage that killed it.
+        if (self.output_drop_count > 0) {
+            report.print(self.allocator, "output_drops: {d}\n", .{self.output_drop_count}) catch return;
+            for (self.output_drops[0..self.output_drop_count]) |drop| {
+                report.print(self.allocator, "  drop: {s} stage={s} err={?}\n", .{
+                    drop.name[0..drop.name_len],
+                    @tagName(drop.stage),
+                    drop.err,
+                }) catch return;
+            }
+        }
+
         report.print(self.allocator, "keyboards: {d} pointers: {d}\n", .{
             self.input_device_counts.keyboard,
             self.input_device_counts.pointer,
@@ -934,6 +983,8 @@ pub const Server = struct {
         report.appendSlice(self.allocator, "verdict: ") catch return;
         if (output_count == 0) {
             report.appendSlice(self.allocator, "FAIL no outputs\n") catch return;
+        } else if (self.output_drop_count > 0) {
+            report.print(self.allocator, "FAIL {d} output(s) dropped\n", .{self.output_drop_count}) catch return;
         } else if (self.input_device_counts.keyboard == 0) {
             report.appendSlice(self.allocator, "FAIL no keyboard\n") catch return;
         } else if (self.keybinds.binds.items.len == 0) {
@@ -2298,7 +2349,7 @@ pub const Server = struct {
         const self: *Server = @fieldParentPtr("new_output", listener);
 
         if (!wlr_output.initRender(self.renderer_allocator, self.renderer)) {
-            std.log.err("KidulWM: failed to initialize output render, dropping output", .{});
+            self.recordOutputDrop(wlr_output, .init_render, null);
             return;
         }
 
@@ -2334,7 +2385,7 @@ pub const Server = struct {
         }
         state.setScale(scale);
         if (!wlr_output.commitState(&state)) {
-            std.log.err("KidulWM: failed to commit output state, dropping output", .{});
+            self.recordOutputDrop(wlr_output, .commit_state, null);
             return;
         }
 
@@ -2345,23 +2396,37 @@ pub const Server = struct {
         // mirror incident happened.
         if (self.output_arrangement.find(std.mem.span(wlr_output.name))) |p| {
             _ = self.output_layout.add(wlr_output, p.x, p.y) catch |err| {
-                std.log.err("failed to add output to layout at {d},{d}: {}", .{ p.x, p.y, err });
+                self.recordOutputDrop(wlr_output, .layout_add, err);
                 return;
             };
             std.log.info("KidulWM: placed output {s} at {d},{d} (declared)", .{ wlr_output.name, p.x, p.y });
         } else {
             _ = self.output_layout.addAuto(wlr_output) catch |err| {
-                std.log.err("failed to add output to layout: {}", .{err});
+                self.recordOutputDrop(wlr_output, .layout_add, err);
                 return;
             };
             std.log.info("KidulWM: placed output {s} via addAuto (no declared position)", .{wlr_output.name});
         }
-        const scene_output = self.scene.createSceneOutput(wlr_output) catch |err| {
-            std.log.err("scene output create failed: {}", .{err});
-            return;
+        // Prefer the layout-managed scene output (attachOutputLayout creates
+        // one per layout output and keeps its position synced to the layout
+        // coordinates — this is what stops the mirror). But never drop an
+        // output: if the layout-managed one is missing (e.g. the layout
+        // remove/re-add cycle in arrangeOutputsLive raced us), fall back to
+        // creating our own and pinning it to the declared layout position.
+        // An output we refuse to drive is a black screen.
+        const scene_output = self.scene.getSceneOutput(wlr_output) orelse blk: {
+            std.log.warn("KidulWM: no layout-managed scene output for {s}; creating fallback", .{wlr_output.name});
+            const so = self.scene.createSceneOutput(wlr_output) catch |err| {
+                self.recordOutputDrop(wlr_output, .scene_output, err);
+                return;
+            };
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(wlr_output, &box);
+            so.setPosition(box.x, box.y);
+            break :blk so;
         };
         const output = self.allocator.create(Output) catch |err| {
-            std.log.err("failed to allocate output state: {}", .{err});
+            self.recordOutputDrop(wlr_output, .alloc, err);
             return;
         };
         output.init(self, wlr_output, scene_output);

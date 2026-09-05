@@ -69,6 +69,19 @@ fi
 
 sleep 2
 
+# 5b. Output assertions — the 2026-09-05 black-screen incident passed every
+# check above while both physical outputs were silently dropped. A smoke test
+# that never looks at the outputs is blind to the exact failure it exists to
+# catch. Require: at least one output driven, and zero recorded output drops.
+OUTPUT_LINES=$(grep -c "output added to layout" "$LOGFILE" || true)
+DROP_LINES=$(grep -c "OUTPUT DROPPED" "$LOGFILE" || true)
+OUTPUTS_OK=false
+[[ "$OUTPUT_LINES" -ge 1 && "$DROP_LINES" -eq 0 ]] && OUTPUTS_OK=true
+if ! $OUTPUTS_OK; then
+    say "Output assertion FAILED: driven=$OUTPUT_LINES drops=$DROP_LINES"
+    grep -E "OUTPUT DROPPED|output added to layout" "$LOGFILE" || true
+fi
+
 # 6. Send IPC quit
 QUIT_RESP=""
 QUIT_OK=false
@@ -117,9 +130,10 @@ say "Results:"
 echo "  compositor accepted quit: $QUIT_OK"
 echo "  compositor exited:        $WAIT_OK"
 echo "  client process ran:       $CLIENT_RAN"
+echo "  outputs driven (no drops): $OUTPUTS_OK ($OUTPUT_LINES driven, $DROP_LINES dropped)"
 echo "  IPC response:             ${QUIT_RESP:-<none>}"
 
-if $QUIT_OK && $WAIT_OK && $CLIENT_RAN; then
+if $QUIT_OK && $WAIT_OK && $CLIENT_RAN && $OUTPUTS_OK; then
     say "Smoke test PASSED"
     exit 0
 else
