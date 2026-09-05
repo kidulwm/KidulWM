@@ -34,6 +34,7 @@ pub const RequestTag = enum {
     kfiles_navigate,
     get_windows,
     debug_status,
+    scene_dump,
     quit,
 };
 
@@ -96,6 +97,7 @@ pub const Request = union(RequestTag) {
     },
     get_windows: void,
     debug_status: void,
+    scene_dump: void,
     quit: void,
 };
 

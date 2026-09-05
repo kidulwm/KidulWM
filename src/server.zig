@@ -156,10 +156,17 @@ pub const Output = struct {
         scene_buffer.node.setPosition(x, y);
         self.wallpaper_scene_buffer = scene_buffer;
         // Wallpaper is the BOTTOM of the stack, never the top. A freshly
-        // created scene node lands above every sibling — including the
-        // overlay tree (widgets/tray/spyglass) — which is exactly the
-        // "widgets vanish behind the wallpaper until something re-raises
-        // them" bug. Re-assert overlay-topmost on every wallpaper (re)apply.
+        // created scene node lands above every sibling — windows included —
+        // which veiled the whole screen in the wallpaper image whenever an
+        // output's wallpaper was (re)created after clients mapped (the
+        // "mythical mist" bug, 2026-09-05). Lower it explicitly, then
+        // re-assert overlay-topmost so widgets/tray/spyglass stay visible.
+        scene_buffer.node.lowerToBottom();
+        // lowerToBottom puts the wallpaper under the solid bg_rect too —
+        // raise it back to sit directly above the background colour.
+        if (server.background.node) |bg_node| {
+            scene_buffer.node.placeAbove(bg_node);
+        }
         server.overlay_tree.node.raiseToTop();
     }
 
@@ -172,10 +179,35 @@ pub const Output = struct {
             sb.node.destroy();
             self.wallpaper_scene_buffer = null;
         }
+        // Video path must die with the output — freeing the pixels while a
+        // scene node still references them is a use-after-free, and leaking
+        // them is a ghost frame on the remaining outputs.
+        self.server.mediaVideoTeardown(self);
     }
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Output = @fieldParentPtr("frame", listener);
+        // TEMP DIAG: frame-rate counter — prints once per second.
+        {
+            const S = struct {
+                var count: u64 = 0;
+                var last_log_ms: i64 = 0;
+            };
+            S.count += 1;
+            const now_ms: i64 = @intCast(@divTrunc(animation.nowUs(), 1000));
+            if (now_ms - S.last_log_ms >= 1000) {
+                std.log.info("KidulWM: FRAMES output={s} count={d}/s media_open={} ready={} active={} wallpaper_anim={}", .{
+                    self.wlr_output.name,
+                    S.count,
+                    self.media_slide.isOpen(),
+                    self.media_slide.widget_ready,
+                    self.media_slide.widget.player_active,
+                    self.server.wallpaper_anim.active,
+                });
+                S.count = 0;
+                S.last_log_ms = now_ms;
+            }
+        }
         _ = wlr_output;
         const now_us = animation.nowUs();
         var it = self.server.windows.iterator(.forward);
@@ -201,6 +233,7 @@ pub const Output = struct {
         if (self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active) {
             if (self.media_slide.widget.player.isDone()) {
                 self.media_slide.widget.ensureStopped();
+                self.server.mediaVideoTeardown(self);
             } else {
                 self.media_slide.widget.player.tick();
                 const serial = self.media_slide.widget.player.display_serial;
@@ -212,6 +245,11 @@ pub const Output = struct {
                 // rate (typically 60 Hz on the virtio-vga SPICE path).
                 self.wlr_output.scheduleFrame();
             }
+        } else if (self.media_slide.video_buffer != null) {
+            // Reconcile: player stopped on a path the server didn't drive
+            // (widget.update(), play() switching tracks, widget deinit) —
+            // the ghost frame must not outlive playback. LAW: no stills.
+            self.server.mediaVideoTeardown(self);
         }
 
         var ts: linux.timespec = undefined;
@@ -253,6 +291,7 @@ pub const Server = struct {
     subcompositor: *wlr.Subcompositor,
     data_device_manager: *wlr.DataDeviceManager,
     viewporter: *wlr.Viewporter,
+    screencopy_manager: *wlr.ScreencopyManagerV1,
     fractional_scale_manager: *wlr.FractionalScaleManagerV1,
 
     seat: *wlr.Seat,
@@ -529,6 +568,7 @@ pub const Server = struct {
             },
             .get_windows => return self.getWindowsResponse(),
             .debug_status => return self.getDebugStatusResponse(),
+            .scene_dump => return self.getSceneDumpResponse(),
             else => return self.handleStateRequest(req),
         }
         return self.handleStateRequest(req);
@@ -585,7 +625,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .quit => {},
+            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .scene_dump, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };
@@ -627,6 +667,7 @@ pub const Server = struct {
         const subcompositor = try wlr.Subcompositor.create(wl_server);
         const data_device_manager = try wlr.DataDeviceManager.create(wl_server);
         const viewporter = try wlr.Viewporter.create(wl_server);
+        const screencopy_manager = try wlr.ScreencopyManagerV1.create(wl_server);
         const fractional_scale_manager = try wlr.FractionalScaleManagerV1.create(wl_server, 1);
         const decoration_manager = try wlr.XdgDecorationManagerV1.create(wl_server);
 
@@ -658,6 +699,7 @@ pub const Server = struct {
             .subcompositor = subcompositor,
             .data_device_manager = data_device_manager,
             .viewporter = viewporter,
+            .screencopy_manager = screencopy_manager,
             .fractional_scale_manager = fractional_scale_manager,
             .decoration_manager = decoration_manager,
             .seat = seat,
@@ -737,6 +779,9 @@ pub const Server = struct {
         const bg_rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
         server.background.rect = bg_rect;
         server.background.node = &bg_rect.node;
+        // The background colour is the floor of the stack — pin it there so
+        // later nodes (wallpaper, windows) never slip beneath it.
+        bg_rect.node.lowerToBottom();
 
         // Wallpaper decodes on a worker thread (widgets-first boot law,
         // 2026-09-05): the theme-colour rect above paints immediately, the
@@ -1004,6 +1049,73 @@ pub const Server = struct {
         if (@as(isize, @bitCast(fd)) >= 0) {
             defer _ = linux.close(@intCast(fd));
             _ = linux.write(@intCast(fd), report.items.ptr, report.items.len);
+        }
+    }
+
+    /// Scene-graph dump for `kidulwm-control scene_dump` — writes every scene
+    /// node (type, enabled, world coords, dest size, opacity, owning window id
+    /// for chrome trees tagged via node.data) to
+    /// /home/dad/.local/state/kidulwm/scene_dump.txt. Read-only walk; used to
+    /// hunt the "mist layer" and leaked chrome nodes across outputs.
+    fn getSceneDumpResponse(self: *Server) ipc.message.Response {
+        const alloc = self.allocator;
+        var buf = std.ArrayList(u8).empty;
+        defer buf.deinit(alloc);
+
+        buf.appendSlice(alloc, "kidulwm scene dump\n") catch return .{ .ok = false };
+
+        // Output layout boxes for reference.
+        var out_it = self.outputs.iterator(.forward);
+        while (out_it.next()) |output| {
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            buf.print(alloc, "output {s} box={d},{d} {d}x{d} scale={d:.2}\n", .{
+                output.wlr_output.name, box.x, box.y, box.width, box.height, output.wlr_output.scale,
+            }) catch return .{ .ok = false };
+        }
+        buf.appendSlice(alloc, "-- tree --\n") catch return .{ .ok = false };
+
+        dumpSceneTree(&buf, alloc, &self.scene.tree, 0);
+
+        const path_z = "/home/dad/.local/state/kidulwm/scene_dump.txt";
+        const fd = linux.open(path_z, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644);
+        if (@as(isize, @bitCast(fd)) < 0) {
+            std.log.err("scene_dump: open failed", .{});
+            return .{ .ok = false, .message = "scene_dump: open failed" };
+        }
+        defer _ = linux.close(@intCast(fd));
+        _ = linux.write(@intCast(fd), buf.items.ptr, buf.items.len);
+        return .{ .ok = true, .message = "scene dump written to scene_dump.txt" };
+    }
+
+    fn dumpSceneTree(buf: *std.ArrayList(u8), alloc: std.mem.Allocator, tree: *wlr.SceneTree, depth: usize) void {
+        var it = tree.children.iterator(.forward);
+        while (it.next()) |node| {
+            var i: usize = 0;
+            while (i < depth) : (i += 1) buf.appendSlice(alloc, "  ") catch return;
+            var lx: c_int = 0;
+            var ly: c_int = 0;
+            const has_coords = node.coords(&lx, &ly);
+            const owner: []const u8 = if (node.data) |d| blk: {
+                const win: *Window = @ptrCast(@alignCast(d));
+                break :blk std.fmt.allocPrint(alloc, " window_id={d}", .{win.id}) catch "";
+            } else "";
+            switch (node.type) {
+                .tree => {
+                    buf.print(alloc, "tree enabled={} at={d},{d}{s}\n", .{ node.enabled, lx, ly, owner }) catch return;
+                    const sub: *wlr.SceneTree = @fieldParentPtr("node", node);
+                    dumpSceneTree(buf, alloc, sub, depth + 1);
+                },
+                .rect => {
+                    const rect: *wlr.SceneRect = @fieldParentPtr("node", node);
+                    buf.print(alloc, "rect enabled={} at={d},{d} size={d}x{d}{s}\n", .{ node.enabled, lx, ly, rect.width, rect.height, owner }) catch return;
+                },
+                .buffer => {
+                    const sb: *wlr.SceneBuffer = @fieldParentPtr("node", node);
+                    buf.print(alloc, "buffer enabled={} at={d},{d} dest={d}x{d} opacity={d:.2}{s}\n", .{ node.enabled, lx, ly, sb.dst_width, sb.dst_height, sb.opacity, owner }) catch return;
+                },
+            }
+            _ = has_coords;
         }
     }
 
@@ -1525,17 +1637,11 @@ pub const Server = struct {
         if (output.media_slide.card_buffer) |card| card.node.raiseToTop();
     }
 
-    fn mediaSlideClose(self: *Server, output: *Output) void {
-        if (!output.media_slide.isOpen()) return;
-        // Reset to LANDING state for next open.
-        output.media_slide.widget.up_plus_one = false;
-        output.media_slide.widget.focus = .category;
-        output.media_slide.widget.selected_result = 0;
-        output.media_slide.widget.list_scroll_offset = 0;
-        output.media_slide.widget.clearSearch();
-        // Tear down the dedicated video path: scene node, wlr buffer ref,
-        // and the persistent pixel copy. Forgetting this leaked the buffer
-        // and left a stale frame on screen.
+    /// Kill the live video scene path: scene node, wlr buffer ref, and the
+    /// persistent pixel copy. Called whenever playback stops (ensureStopped)
+    /// so the last frame does NOT linger as a ghost behind the wall and
+    /// other windows. Safe to call when already torn down.
+    pub fn mediaVideoTeardown(self: *Server, output: *Output) void {
         if (output.media_slide.video_buffer) |sb| sb.node.destroy();
         output.media_slide.video_buffer = null;
         if (output.media_slide.video_wlr_buf) |buf| wlr.Buffer.drop(buf);
@@ -1545,6 +1651,20 @@ pub const Server = struct {
             output.media_slide.video_pixels = &.{};
         }
         output.media_slide.last_display_serial = 0;
+    }
+
+    fn mediaSlideClose(self: *Server, output: *Output) void {
+        if (!output.media_slide.isOpen()) return;
+        // Reset to LANDING state for next open.
+        output.media_slide.widget.up_plus_one = false;
+        output.media_slide.widget.focus = .category;
+        output.media_slide.widget.selected_result = 0;
+        output.media_slide.widget.list_scroll_offset = 0;
+        output.media_slide.widget.clearSearch();
+        // Stop playback if still running, then tear down the dedicated
+        // video path via the shared helper (LAW: no stills).
+        if (output.media_slide.widget_ready) output.media_slide.widget.ensureStopped();
+        self.mediaVideoTeardown(output);
         // Destroy the card buffer node FIRST (leaking it left a stale frame
         // on screen — the "quit not clearing" bug), then the tree.
         if (output.media_slide.card_buffer) |buf| buf.node.destroy();
@@ -1599,6 +1719,7 @@ pub const Server = struct {
             if (widget.player.handleKey(sym_u32)) {
                 if (widget.player.isDone()) {
                     widget.ensureStopped();
+                    self.mediaVideoTeardown(out);
                 }
                 self.mediaSlideRefresh(out);
                 return true;
@@ -2011,6 +2132,7 @@ pub const Server = struct {
         const co = cursor_output orelse return;
         if (self.focused_output == co) return;
         // Only steal the stage if a window is actually under the cursor.
+        var hit_any = false;
         var it = self.windows.iterator(.forward);
         while (it.next()) |window| {
             if (window.output != co) continue;
@@ -2020,12 +2142,21 @@ pub const Server = struct {
             var nx: f64 = undefined;
             var ny: f64 = undefined;
             if (node.at(self.cursor_x, self.cursor_y, &nx, &ny)) |_| {
+                std.log.info("KidulWM: focusFollowsCursor hit id={d} on {s}, focusing", .{ window.id, co.wlr_output.name });
                 self.focusWindow(window);
                 return;
             }
+            hit_any = true;
         }
         // Empty stage: still adopt it as the focused output so new windows
         // map there and Mod4+O behaves, but keep existing window focus.
+        std.log.info("KidulWM: focusFollowsCursor {s} -> {s}: no hit (candidate_windows={}, cursor={d:.0},{d:.0})", .{
+            if (self.focused_output) |fo| fo.wlr_output.name else "none",
+            co.wlr_output.name,
+            hit_any,
+            self.cursor_x,
+            self.cursor_y,
+        });
         self.focused_output = co;
     }
 
@@ -2650,10 +2781,11 @@ pub const Server = struct {
         // toward master and drops the final buffer at completion.
         const start_px = tinted orelse result.pixels;
         const buffer = DataBuffer.create(start_px, result.width, result.height, result.stride) catch return 0;
-        server.background.rect = null;
+        // Keep background.rect/node as the permanent bottom anchor: the
+        // rect still fills letterbox bars around the wallpaper, and
+        // setupWallpaper places the wallpaper node directly above it.
         server.background.image_buffer = buffer;
         server.background.image_scene_buffer = null;
-        server.background.node = null;
 
         var it2 = server.outputs.iterator(.forward);
         while (it2.next()) |output| {

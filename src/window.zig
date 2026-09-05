@@ -453,6 +453,7 @@ pub const Window = struct {
 
         if (self.chrome_tree) |tree| {
             tree.node.destroy();
+            std.log.info("KidulWM: CHROME destroy id={d} reason=regen", .{self.id});
             self.chrome_tree = null;
         }
 
@@ -464,7 +465,17 @@ pub const Window = struct {
             @intFromFloat(@round(self.animation.cur_y)),
         );
         tree.node.raiseToTop();
+        tree.node.data = self;
         self.chrome_tree = tree;
+        std.log.info("KidulWM: CHROME create id={d} {d}x{d} at {d},{d} focused={} output={s}", .{
+            self.id,
+            w,
+            h,
+            @as(i64, @intFromFloat(@round(self.animation.cur_x))),
+            @as(i64, @intFromFloat(@round(self.animation.cur_y))),
+            focused,
+            if (self.output) |o| o.wlr_output.name else "none",
+        });
         self.chrome_width = w;
         self.chrome_height = h;
         self.chrome_focused = focused;

@@ -117,6 +117,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
         if (std.mem.eql(u8, cmd, "arrange_outputs")) break :blk .{ .arrange_outputs = {} };
         if (std.mem.eql(u8, cmd, "get_windows")) break :blk .{ .get_windows = {} };
         if (std.mem.eql(u8, cmd, "debug_status")) break :blk .{ .debug_status = {} };
+        if (std.mem.eql(u8, cmd, "scene_dump")) break :blk .{ .scene_dump = {} };
         if (std.mem.eql(u8, cmd, "kfiles_navigate")) {
             const path = it.next() orelse {
                 std.log.err("kfiles_navigate requires a path argument", .{});
