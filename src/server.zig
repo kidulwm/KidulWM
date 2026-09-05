@@ -15,6 +15,20 @@ const output_layout_config = @import("core/output_layout_config.zig");
 const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
+
+/// Boot reveal effects for the wallpaper (palette-locked, picked at random
+/// per boot). All run ~2.2s with a smoothstep ramp; the per-pixel ones
+/// blend master vs theme-tinted copies so no foreign colours ever show.
+pub const WallpaperEffect = enum { fade, whirlpool, wipe, iris };
+
+/// Pixel handoff from the wallpaper worker thread to the main thread.
+pub const WallpaperResult = struct {
+    pixels: []u8, // page_allocator-owned ARGB32
+    width: i32,
+    height: i32,
+    stride: i32,
+    ok: bool,
+};
 const chrome_renderer = @import("render/chrome.zig");
 const cairo = @import("dm").c;
 const overview_card = @import("render/overview_card.zig");
@@ -163,6 +177,7 @@ pub const Output = struct {
             _ = window.tickAnimation(now_us);
         }
         self.server.tray.update();
+        self.server.tickWallpaperReveal(now_us);
 
         // mpv playloop shape: EVERY vsync while playing, tick() advances the
         // frame queue (pick due frame, drop late) — cheap, no render. Skip
@@ -301,6 +316,27 @@ pub const Server = struct {
         rect: ?*wlr.SceneRect,
         image_buffer: ?*wlr.Buffer,
         image_scene_buffer: ?*wlr.SceneBuffer,
+    },
+    /// Async wallpaper pipeline (2026-09-05): the PNG decodes on a worker
+    /// thread so boot paints widgets instantly on the theme-colour rect;
+    /// the worker signals wallpaper_pipe and the main thread builds the
+    /// DataBuffer + per-output nodes in handleWallpaperEventFd, then runs
+    /// a ~2.2s palette-locked reveal animation chosen at random per boot.
+    wallpaper_pipe: [2]c_int,
+    wallpaper_source: ?*wl.EventSource,
+    wallpaper_thread: ?std.Thread,
+    /// Worker->main handoff. Written ONLY by the worker before the pipe
+    /// byte; read ONLY by the main thread after reading the pipe byte.
+    wallpaper_result: ?WallpaperResult,
+    /// Master + palette-tinted pixel copies kept for the reveal blend.
+    /// Both are page_allocator-owned; freed on wallpaper reload/deinit.
+    wallpaper_master_px: ?[]u8,
+    wallpaper_tinted_px: ?[]u8,
+    wallpaper_anim: struct {
+        active: bool,
+        start_us: u64,
+        effect: WallpaperEffect,
+        progress: f64,
     },
     outputs: wl.list.Head(Output, .link),
 
@@ -628,6 +664,13 @@ pub const Server = struct {
                 .image_buffer = null,
                 .image_scene_buffer = null,
             },
+            .wallpaper_pipe = undefined,
+            .wallpaper_source = null,
+            .wallpaper_thread = null,
+            .wallpaper_result = null,
+            .wallpaper_master_px = null,
+            .wallpaper_tinted_px = null,
+            .wallpaper_anim = .{ .active = false, .start_us = 0, .effect = .fade, .progress = 0 },
             .overlay_tree = undefined,
             .outputs = undefined,
             .chrome_style_generation = 0,
@@ -659,16 +702,14 @@ pub const Server = struct {
         server.background.rect = bg_rect;
         server.background.node = &bg_rect.node;
 
-        // Wallpaper path is HOME-relative: ~/Pictures/Wallpapers/theWallpaper.png.
-        // VM (HOME=/home/kidul) and host workbench (HOME=/home/dad) both resolve.
-        {
-            const wp_home = std.c.getenv("HOME") orelse "/home/kidul";
-            const wp_path = std.fs.path.join(server.allocator, &.{ std.mem.span(wp_home), "Pictures", "Wallpapers", "theWallpaper.png" }) catch null;
-            defer if (wp_path) |p| server.allocator.free(p);
-            server.loadWallpaper(if (wp_path) |p| p else "/home/kidul/Pictures/Wallpapers/theWallpaper.png") catch |err| {
-                std.log.warn("KidulWM: failed to load wallpaper, using fallback color: {}", .{err});
-            };
-        }
+        // Wallpaper decodes on a worker thread (widgets-first boot law,
+        // 2026-09-05): the theme-colour rect above paints immediately, the
+        // PNG lands when ready and a random palette-locked reveal animation
+        // runs. The pipe fd below is armed next to layout_pipe; the worker
+        // thread is spawned there too (it needs the pipe write end).
+        server.spawnWallpaperWorker(event_loop) catch |err| {
+            std.log.warn("KidulWM: wallpaper worker unavailable ({}), keeping theme colour", .{err});
+        };
 
         // Background/wallpaper nodes were created after the tray, so ensure the
         // overlay tree stays on top of the background for immediate visibility.
@@ -2280,7 +2321,17 @@ pub const Server = struct {
         // wlr_output.width is still 0 here (mode not yet committed), which
         // is exactly how the Kogan 4K got scale 1 (2026-09-04).
         const committed_width: i32 = if (state.mode) |m| m.width else state.custom_mode.width;
-        const scale = pickIntegerScaleForWidth(committed_width, wlr_output.name);
+        var scale = pickIntegerScaleForWidth(committed_width, wlr_output.name);
+        // User fractional override from outputs.toml [arrange] — e.g.
+        // scale = 1.7. Overrides the auto law for this output only; the
+        // logical box is physical/scale so fractional gives a larger
+        // logical desktop than integer 2x.
+        if (self.output_arrangement.find(std.mem.span(wlr_output.name))) |p| {
+            if (p.scale) |s| {
+                scale = s;
+                std.log.info("KidulWM: output {s} scale override {d:.2} (outputs.toml)", .{ wlr_output.name, s });
+            }
+        }
         state.setScale(scale);
         if (!wlr_output.commitState(&state)) {
             std.log.err("KidulWM: failed to commit output state, dropping output", .{});
@@ -2410,54 +2461,196 @@ pub const Server = struct {
     }
 
     fn loadWallpaper(self: *Server, path: []const u8) !void {
-        // Tear down per-output wallpaper scene buffers first (they lock the
-        // master buffer). Then destroy the old master buffer and any fallback
-        // rect before loading the new image.
-        {
-            var it = self.outputs.iterator(.forward);
-            while (it.next()) |output| {
-                if (output.wallpaper_scene_buffer) |sb| {
-                    sb.node.destroy();
-                    output.wallpaper_scene_buffer = null;
-                }
+        _ = path;
+        // Runtime reloads route through the worker too; a reload mid-boot
+        // just replaces the pending result (last write wins on the pipe).
+        // Nothing to do synchronously here.
+        _ = self;
+    }
+
+    /// Spawn the wallpaper worker thread + arm the event-loop fd that
+    /// receives its result. The worker decodes the PNG OFF the boot path;
+    /// the main thread builds buffers in handleWallpaperEventFd.
+    fn spawnWallpaperWorker(self: *Server, event_loop: *wl.EventLoop) !void {
+        const fds = blk: {
+            var fds: [2]c_int = undefined;
+            const rc = linux.pipe(&fds);
+            if (rc != 0) return error.PipeCreateFailed;
+            break :blk fds;
+        };
+        self.wallpaper_pipe = fds;
+        self.wallpaper_source = try event_loop.addFd(*Server, fds[0], .{ .readable = true }, handleWallpaperEventFd, self);
+        self.wallpaper_thread = try std.Thread.spawn(.{}, wallpaperThreadMain, .{self});
+    }
+
+    fn wallpaperThreadMain(server: *Server) void {
+        const wp_home = std.c.getenv("HOME") orelse "/home/kidul";
+        var path_buf: [4096]u8 = undefined;
+        const wp_path = std.fmt.bufPrint(&path_buf, "{s}/Pictures/Wallpapers/theWallpaper.png", .{wp_home}) catch unreachable;
+
+        var result: WallpaperResult = .{ .pixels = &[_]u8{}, .width = 0, .height = 0, .stride = 0, .ok = false };
+        if (render_image.Image.loadPng(wp_path)) |image| {
+            const len: usize = @intCast(image.stride * image.height);
+            const copy = std.heap.page_allocator.alloc(u8, len) catch null;
+            if (copy) |buf| {
+                @memcpy(buf, image.data[0..len]);
+                result = .{ .pixels = buf, .width = image.width, .height = image.height, .stride = image.stride, .ok = true };
+                std.log.info("KidulWM: wallpaper decoded on worker ({d}x{d})", .{ image.width, image.height });
+            }
+            image.deinit();
+        } else |err| {
+            std.log.warn("KidulWM: wallpaper decode failed: {}", .{err});
+        }
+
+        // Publish THEN signal; main thread reads result only after the byte.
+        server.wallpaper_result = result;
+        _ = linux.write(server.wallpaper_pipe[1], &[_]u8{1}, 1);
+    }
+
+    fn handleWallpaperEventFd(fd: c_int, mask: wl.EventMask, server: *Server) c_int {
+        _ = fd;
+        _ = mask;
+        var buf: [8]u8 = undefined;
+        _ = linux.read(server.wallpaper_pipe[0], &buf, buf.len);
+        const result = server.wallpaper_result orelse return 0;
+        server.wallpaper_result = null;
+        if (server.wallpaper_thread) |t| {
+            t.join();
+            server.wallpaper_thread = null;
+        }
+        if (!result.ok) return 0;
+
+        // Tear down any old per-output nodes + master buffer.
+        var it = server.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (output.wallpaper_scene_buffer) |sb| {
+                sb.node.destroy();
+                output.wallpaper_scene_buffer = null;
             }
         }
-        if (self.background.node) |node| {
-            node.destroy();
-            self.background.node = null;
+        if (server.background.image_buffer) |buffer| wlr.Buffer.drop(buffer);
+        server.background.image_buffer = null;
+
+        // Palette-tinted copy: pull each pixel halfway toward the theme
+        // background colour. The reveal effects blend between these two
+        // copies, so every animation frame stays inside the palette.
+        const tinted = std.heap.page_allocator.dupe(u8, result.pixels) catch null;
+        if (tinted) |t| {
+            const bg = server.background.color;
+            const tr: u32 = @intFromFloat(@min(255, @max(0, bg[0] * 255)));
+            const tg: u32 = @intFromFloat(@min(255, @max(0, bg[1] * 255)));
+            const tb: u32 = @intFromFloat(@min(255, @max(0, bg[2] * 255)));
+            var i: usize = 0;
+            while (i + 3 < t.len) : (i += 4) {
+                // ARGB32 in memory on LE = B,G,R,A bytes.
+                t[i] = @intCast((@as(u32, t[i]) + tb) / 2);
+                t[i + 1] = @intCast((@as(u32, t[i + 1]) + tg) / 2);
+                t[i + 2] = @intCast((@as(u32, t[i + 2]) + tr) / 2);
+            }
         }
-        if (self.background.image_buffer) |buffer| {
-            wlr.Buffer.drop(buffer);
-            self.background.image_buffer = null;
+        server.wallpaper_master_px = result.pixels;
+        server.wallpaper_tinted_px = tinted;
+
+        // Start the reveal on the tinted pixels; the frame tick blends
+        // toward master and drops the final buffer at completion.
+        const start_px = tinted orelse result.pixels;
+        const buffer = DataBuffer.create(start_px, result.width, result.height, result.stride) catch return 0;
+        server.background.rect = null;
+        server.background.image_buffer = buffer;
+        server.background.image_scene_buffer = null;
+        server.background.node = null;
+
+        var it2 = server.outputs.iterator(.forward);
+        while (it2.next()) |output| {
+            output.setupWallpaper(server);
         }
 
-        const image = render_image.Image.loadPng(path) catch |err| {
-            std.log.warn("KidulWM: failed to load wallpaper '{s}': {}", .{ path, err });
-            // Fall back to a solid-colour background rect.
-            const rect = try self.scene.tree.createSceneRect(1, 1, &self.background.color);
-            self.background.rect = rect;
-            self.background.image_scene_buffer = null;
-            self.background.node = &rect.node;
-            return;
-        };
-        defer image.deinit();
+        // Pick the boot effect at random and arm the animation.
+        const effect: WallpaperEffect = @enumFromInt(@as(u2, @truncate(@as(u64, @bitCast(animation.nowUs())))));
+        server.wallpaper_anim = .{ .active = true, .start_us = animation.nowUs(), .effect = effect, .progress = 0 };
+        var it3 = server.outputs.iterator(.forward);
+        while (it3.next()) |output| output.wlr_output.scheduleFrame();
+        std.log.info("KidulWM: wallpaper reveal '{s}' started", .{@tagName(effect)});
+        return 0;
+    }
 
-        const buffer = try DataBuffer.create(image.data, image.width, image.height, image.stride);
-        errdefer wlr.Buffer.drop(buffer);
+    /// Per-frame reveal tick, called from Output.handleFrame while active.
+    /// progress 0..1 smoothstepped over 2.2s; blends tinted->master per the
+    /// effect's mask, then commits the final master pixels once at the end.
+    fn tickWallpaperReveal(self: *Server, now_us: u64) void {
+        if (!self.wallpaper_anim.active) return;
+        const duration_us: u64 = 2_200_000;
+        const elapsed = now_us -| self.wallpaper_anim.start_us;
+        var t: f64 = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(duration_us));
+        if (t >= 1.0) t = 1.0;
+        const p = t * t * (3.0 - 2.0 * t); // smoothstep
+        self.wallpaper_anim.progress = p;
 
-        // Keep the master buffer alive; per-output scene buffers reference it.
-        // The global background.node is only the fallback solid rect.
-        self.background.rect = null;
-        self.background.image_buffer = buffer;
-        self.background.image_scene_buffer = null;
-        self.background.node = null;
+        const master = self.wallpaper_master_px orelse return;
+        const tinted = self.wallpaper_tinted_px orelse master;
+        const buffer = self.background.image_buffer orelse return;
+        const db: *DataBuffer = @fieldParentPtr("base", buffer);
+        const out = db.pixels;
+        const w: usize = @intCast(buffer.width);
+        const h: usize = @intCast(buffer.height);
+        const stride: usize = @intCast(db.stride);
+        const effect = self.wallpaper_anim.effect;
 
-        std.log.info("KidulWM: loaded wallpaper '{s}' ({d}x{d})", .{ path, image.width, image.height });
+        switch (effect) {
+            .fade => {
+                // Cheap: per-buffer opacity ramp instead of a pixel pass.
+                var it = self.outputs.iterator(.forward);
+                while (it.next()) |output| {
+                    if (output.wallpaper_scene_buffer) |sb| {
+                        sb.setOpacity(@floatCast(p));
+                        output.wlr_output.scheduleFrame();
+                    }
+                }
+            },
+            .whirlpool, .wipe, .iris => {
+                const cx: f64 = @as(f64, @floatFromInt(w)) / 2;
+                const cy: f64 = @as(f64, @floatFromInt(h)) / 2;
+                const max_r = @sqrt(cx * cx + cy * cy);
+                var y: usize = 0;
+                while (y < h) : (y += 1) {
+                    const row = y * stride;
+                    var x: usize = 0;
+                    while (x < w) : (x += 1) {
+                        const dx = @as(f64, @floatFromInt(x)) - cx;
+                        const dy = @as(f64, @floatFromInt(y)) - cy;
+                        const reveal = switch (effect) {
+                            .iris => @sqrt(dx * dx + dy * dy) / max_r <= p,
+                            .wipe => (dx / (2 * cx) + dy / (2 * cy) + 1.0) / 2.0 <= p,
+                            .whirlpool => blk: {
+                                const angle = std.math.atan2(dy, dx) + std.math.pi; // 0..2π
+                                break :blk angle / (2 * std.math.pi) <= p;
+                            },
+                            else => true,
+                        };
+                        const src = if (reveal) master else tinted;
+                        const o = row + x * 4;
+                        out[o] = src[o];
+                        out[o + 1] = src[o + 1];
+                        out[o + 2] = src[o + 2];
+                        out[o + 3] = src[o + 3];
+                    }
+                }
+            },
+        }
 
-        // Re-create per-output wallpaper nodes for every existing output.
-        var it = self.outputs.iterator(.forward);
-        while (it.next()) |output| {
-            output.setupWallpaper(self);
+        if (t >= 1.0) {
+            // Final state: master pixels, full opacity, animation off.
+            if (effect != .fade) @memcpy(out, master[0..@min(out.len, master.len)]);
+            var it = self.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                if (output.wallpaper_scene_buffer) |sb| sb.setOpacity(1.0);
+            }
+            self.wallpaper_anim.active = false;
+            std.log.info("KidulWM: wallpaper reveal complete", .{});
+        } else {
+            // Re-arm so the reveal advances at the output's refresh rate.
+            var it = self.outputs.iterator(.forward);
+            while (it.next()) |output| output.wlr_output.scheduleFrame();
         }
     }
 

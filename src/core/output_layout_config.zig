@@ -153,11 +153,17 @@ fn parseInto(allocator: std.mem.Allocator, layout: *OutputLayout, content: []con
         if (value.len < 2 or value[0] != '{') continue;
         var x: ?i32 = null;
         var y: ?i32 = null;
+        var scale: ?f32 = null;
         var fields = std.mem.tokenizeAny(u8, value[1 .. value.len - 1], ",");
         while (fields.next()) |field| {
             const f_eq = std.mem.indexOfScalar(u8, field, '=') orelse continue;
             const f_key = std.mem.trim(u8, field[0..f_eq], " \t");
             const f_val = std.mem.trim(u8, field[f_eq + 1 ..], " \t");
+            if (std.mem.eql(u8, f_key, "scale")) {
+                // Fractional override (e.g. 1.7) — NOT an int; parse float.
+                scale = std.fmt.parseFloat(f32, f_val) catch continue;
+                continue;
+            }
             const num = std.fmt.parseInt(i32, f_val, 10) catch continue;
             if (std.mem.eql(u8, f_key, "x")) x = num;
             if (std.mem.eql(u8, f_key, "y")) y = num;
@@ -167,6 +173,7 @@ fn parseInto(allocator: std.mem.Allocator, layout: *OutputLayout, content: []con
             .name = allocator.dupe(u8, name) catch continue,
             .x = x.?,
             .y = y.?,
+            .scale = scale,
         };
         layout.count += 1;
         std.log.info("KidulWM: output arrangement {s} -> {d},{d}", .{ name, x.?, y.? });
