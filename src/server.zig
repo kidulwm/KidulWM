@@ -2867,7 +2867,10 @@ pub const Server = struct {
 
         if (t >= 1.0) {
             // Final state: master pixels, full opacity, animation off.
-            if (effect != .fade) @memcpy(out, master[0..@min(out.len, master.len)]);
+            // The memcpy must run for EVERY effect — fade ramps opacity only
+            // and never writes pixels, so skipping it left the TINTED copy
+            // on screen forever: the grey "mist" veil of 2026-09-05.
+            @memcpy(out, master[0..@min(out.len, master.len)]);
             var it = self.outputs.iterator(.forward);
             while (it.next()) |output| {
                 if (output.wallpaper_scene_buffer) |sb| sb.setOpacity(1.0);

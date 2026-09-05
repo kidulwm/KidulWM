@@ -33,6 +33,11 @@ pub const Window = struct {
     scene_tree: *wlr.SceneTree,
     /// Child tree containing the XDG surface; can be offset for peeks.
     surface_tree: *wlr.SceneTree,
+    /// Last offset applied via setSurfaceOffset — lets the no-op guard skip
+    /// redundant setPosition writes (which damage the scene every time).
+    /// First call must always apply, hence the impossible sentinel.
+    last_surface_offset_x: i32 = std.math.minInt(i32),
+    last_surface_offset_y: i32 = std.math.minInt(i32),
 
     output: ?*Output,
     id: u32,
@@ -330,6 +335,14 @@ pub const Window = struct {
     /// is pulled right so its right edge aligns with the visible sliver; for
     /// right peeks it stays left-aligned; focused windows are top-left aligned.
     pub fn setSurfaceOffset(self: *Window, x: i32, y: i32) void {
+        // No-op guard: setPosition damages the scene even when unchanged,
+        // and handleCommit calls us on EVERY client commit — an unconditional
+        // write here turns any redrawing client (cursor blink, clock) into a
+        // full-tilt commit->damage->frame-done->redraw feedback loop that
+        // pins the CPU (the 90/s ghostty commit storm, 2026-09-05).
+        if (self.last_surface_offset_x == x and self.last_surface_offset_y == y) return;
+        self.last_surface_offset_x = x;
+        self.last_surface_offset_y = y;
         self.surface_tree.node.setPosition(x, y);
     }
 
