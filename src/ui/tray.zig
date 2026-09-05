@@ -2491,8 +2491,17 @@ pub const Tray = struct {
                     .subcategory => self.media.closeSubcategory(),
                     .search => {},
                     .result => {
-                        const path = self.media.selectedResultPath();
-                        if (path.len > 0) self.media.play(path);
+                        if (self.media.category == .tv) {
+                            // TV pill = live ONLY: Enter opens the stream
+                            // via Player.openLive (LIVE chrome + signal-lost
+                            // state machine already built). Never a file.
+                            if (self.media.selectedLiveChannel()) |ch| {
+                                self.media.playLive(ch.url, ch.id);
+                            }
+                        } else {
+                            const path = self.media.selectedResultPath();
+                            if (path.len > 0) self.media.play(path);
+                        }
                     },
                     .slider => {},
                 }

@@ -44,6 +44,103 @@ const LibraryEntry = struct {
     path: [:0]u8,
 };
 
+// ── TV pill = live ONLY (ui.md amendment 2026-09-06) ─────────────────────
+// The TV category is populated from kmedia's TvChannels (shipped packs
+// /usr/share/kidul/tv/*.m3u + household override ~/.local/share/kmedia/
+// tv.m3u), most-watched first, focus landing on the last-watched channel.
+// Zero channels anywhere = calm empty rail ("a promise, not an error") —
+// NEVER an error state. No stored content ever renders under TV.
+var g_tv_channels: kmedia_lib.TvChannels = undefined;
+var g_tv_channels_init = false;
+var g_tv_live: [max_library_entries]LibraryEntry = undefined;
+var g_tv_live_count: usize = 0;
+
+/// Load channel cards from disk (M3U files), sort most-watched first, and
+/// return the index of the last-watched channel (0 when none recorded).
+fn loadTvChannels() []const LibraryEntry {
+    if (!g_tv_channels_init) {
+        g_tv_channels = kmedia_lib.TvChannels.init(g_alloc);
+        g_tv_channels_init = true;
+    }
+    g_tv_channels.channels.clearRetainingCapacity();
+    g_tv_channels.load();
+
+    // Most-watched sort + last-watched focus: the watch counts live in the
+    // same flat watch.state file (Player.writeLastWatched lines).
+    var state_text: []const u8 = "";
+    {
+        var pbuf: [512]u8 = undefined;
+        const p = kmedia_lib.WatchState.path(&pbuf);
+        var pz: [600:0]u8 = std.mem.zeroes([600:0]u8);
+        if (p.len > 0 and p.len < pz.len) {
+            @memcpy(pz[0..p.len], p);
+            const fd = unistd.open(pz[0..p.len :0].ptr, unistd.O_RDONLY);
+            if (fd >= 0) {
+                var data: [1 << 20]u8 = undefined;
+                const n = unistd.read(fd, &data, data.len - 1);
+                _ = unistd.close(fd);
+                if (n > 0) {
+                    const owned = g_alloc.dupe(u8, data[0..@intCast(n)]) catch null;
+                    if (owned) |o| state_text = o;
+                }
+            }
+        }
+    }
+    g_tv_channels.sortByWatchCounts(state_text);
+
+    g_tv_live_count = 0;
+    for (g_tv_channels.channels.items) |*ch| {
+        if (g_tv_live_count >= g_tv_live.len) break;
+        const title = g_alloc.dupeZ(u8, ch.nameSlice()) catch continue;
+        const group = g_alloc.dupeZ(u8, ch.groupSlice()) catch continue;
+        const url = g_alloc.dupeZ(u8, ch.urlSlice()) catch continue;
+        g_tv_live[g_tv_live_count] = .{ .title = title, .artist = group, .path = url };
+        const id = ch.idSlice();
+        @memcpy(g_tv_ids[g_tv_live_count][0..id.len], id);
+        g_tv_ids[g_tv_live_count][id.len] = 0;
+        g_tv_live_count += 1;
+    }
+
+    // Focus lands on the LAST-WATCHED channel (live-tv.md §Watch-state).
+    var focus_idx: usize = 0;
+    if (state_text.len > 0) {
+        var best_ts: u64 = 0;
+        for (g_tv_channels.channels.items, 0..) |*ch, i| {
+            var lines = std.mem.splitScalar(u8, state_text, '\n');
+            while (lines.next()) |line| {
+                const t = std.mem.trim(u8, line, " \t\r");
+                if (t.len == 0) continue;
+                const id = ch.idSlice();
+                if (!std.mem.startsWith(u8, t, id)) continue;
+                if (t.len != id.len and t[id.len] != ' ') continue;
+                if (std.mem.indexOf(u8, t, "last=1") == null) continue;
+                if (std.mem.indexOf(u8, t, "ts=")) |ti| {
+                    var end = ti + 3;
+                    while (end < t.len and t[end] >= '0' and t[end] <= '9') end += 1;
+                    const ts = std.fmt.parseInt(u64, t[ti + 3 .. end], 10) catch 0;
+                    if (ts > best_ts) {
+                        best_ts = ts;
+                        focus_idx = i;
+                    }
+                }
+            }
+        }
+    }
+    g_tv_last_watched_focus = focus_idx;
+    return g_tv_live[0..g_tv_live_count];
+}
+
+var g_tv_last_watched_focus: usize = 0;
+
+/// Stable channel ids parallel to g_tv_live (TvChannels owns the strings).
+var g_tv_ids: [max_library_entries][128:0]u8 = undefined;
+
+/// The focused channel's stable id (watch-state key), or null.
+pub fn tvChannelIdAt(index: usize) ?[:0]const u8 {
+    if (index >= g_tv_live_count) return null;
+    return std.mem.sliceTo(&g_tv_ids[index], 0);
+}
+
 const max_library_entries = 1024;
 const g_alloc = std.heap.page_allocator;
 
@@ -258,15 +355,27 @@ fn execFind(command: [*:0]const u8, entries: []LibraryEntry) usize {
 }
 
 fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
+    // TV is live ONLY (ui.md amendment): channel cards come from TvChannels
+    // M3U files, never from a stored-media scan. Stored shows under TV was
+    // drift — corrected. Zero channels = calm empty rail, not an error.
+    if (category == .tv) {
+        const live = loadTvChannels();
+        const n = @min(live.len, entries.len);
+        @memcpy(entries[0..n], live[0..n]);
+        std.log.info("KidulWM media scan TV: {d} live channels (stored scan REMOVED — live-only)", .{n});
+        return n;
+    }
     const roots = switch (category) {
         .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/hostmedia/music", "/mnt/sda_backup/Jelly/Music", "/usr/share/kidul/media/music" },
-        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies", "/usr/share/kidul/media/video" },
-        .tv => &[_][]const u8{ "/mnt/hostmedia/jelly/Kids Shows", "/mnt/hostmedia/jelly/Shows", "/mnt/sda_backup/Jelly/Kids Shows", "/mnt/sda_backup/Jelly/Shows", "/usr/share/kidul/media/video" },
+        // MOVIES wall holds everything owned — Shows/ + Kids Shows/ folded
+        // in (a show is a many-part movie; ui.md pill-semantics amendment).
+        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies", "/mnt/sda_backup/Jelly/Kids Shows", "/mnt/sda_backup/Jelly/Shows", "/usr/share/kidul/media/video" },
+        .tv => unreachable,
     };
     const exts = switch (category) {
         .music => &[_][]const u8{ ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav" },
         .movies => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm" },
-        .tv => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm", ".m3u", ".m3u8" },
+        .tv => unreachable,
     };
 
     var count: usize = 0;
@@ -845,6 +954,16 @@ pub const MediaWidget = struct {
         self.search_caret = 0;
         self.selected_result = 0;
         self.list_scroll_offset = 0;
+        if (cat == .tv) {
+            // TV = live ONLY. Force a fresh channel load (most-watched
+            // sort) and land focus on the LAST-WATCHED channel
+            // (live-tv.md §Watch-state). Zero channels = calm empty rail.
+            _ = getLibrary(.tv);
+            if (g_tv_last_watched_focus < getLibrary(.tv).len) {
+                self.selected_result = g_tv_last_watched_focus;
+                self.adjustScrollToSelection();
+            }
+        }
         self.bumpGeneration();
     }
 
@@ -1060,6 +1179,15 @@ pub const MediaWidget = struct {
         return library[self.selected_result].path;
     }
 
+    /// The focused TV channel (url + stable id for watch-state), or null
+    /// when the rail is empty — the calm empty state, never an error.
+    pub fn selectedLiveChannel(self: *const MediaWidget) ?struct { url: [:0]const u8, id: [:0]const u8 } {
+        const library = getLibrary(.tv);
+        if (self.selected_result >= library.len) return null;
+        const id = tvChannelIdAt(self.selected_result) orelse return null;
+        return .{ .url = library[self.selected_result].path, .id = id };
+    }
+
     pub fn acceptSearch(self: *MediaWidget) []const u8 {
         const text = self.searchText();
         self.focusControl(.result);
@@ -1080,6 +1208,39 @@ pub const MediaWidget = struct {
             self.watch = kmedia_lib.WatchState.init(self.allocator);
             self.watch.load();
         }
+    }
+
+    /// Enter on a TV channel card → live playback (live-tv.md). The LIVE
+    /// chrome + signal-lost state machine already live in Player.openLive;
+    /// the slide's embedder path is identical to file playback.
+    pub fn playLive(self: *MediaWidget, url: []const u8, channel_id: []const u8) void {
+        self.ensureStopped();
+        if (url.len == 0) return;
+
+        self.player.embedder_owns_video = true;
+
+        var url_z: [1024:0]u8 = std.mem.zeroes([1024:0]u8);
+        const copy_len = @min(url.len, url_z.len - 1);
+        @memcpy(url_z[0..copy_len], url[0..copy_len]);
+        url_z[copy_len] = 0;
+
+        // ws_key = channel id (writeLastWatched bumps its count, demotes
+        // others — favorites rise by use).
+        const n = @min(channel_id.len, self.player_ws_key_buf.len - 1);
+        @memcpy(self.player_ws_key_buf[0..n], channel_id[0..n]);
+        self.player_ws_key_buf[n] = 0;
+
+        self.player.openLive(url_z[0..copy_len :0].ptr, self.player_ws_key_buf[0..n]) catch |err| {
+            std.log.err("libkmedia: openLive failed for {s}: {s}", .{ url, @errorName(err) });
+            return;
+        };
+
+        self.player_active = true;
+        self.cached = .{};
+        self.cached.available = true;
+        self.cached.playing = true;
+        self.cached.duration = 0; // live — no duration, ever
+        self.cached.position = 0;
     }
 
     pub fn play(self: *MediaWidget, path: []const u8) void {
@@ -1843,8 +2004,11 @@ pub const MediaWidget = struct {
         const library = getLibrary(self.category);
         const total_rows = (library.len + cols - 1) / cols;
         if (library.len == 0) {
+            // Calm empty rail — "a promise, not an error" (ui.md amendment).
+            // Zero channels configured is a locked calm state, NEVER an
+            // error: no red, no warning, no error language.
             const msg = switch (self.category) {
-                .tv => "Live TV — Coming Soon",
+                .tv => "Live TV — no channels yet",
                 else => "No items found",
             };
             c.cairo_set_font_size(cr, label_font * 1.3);
@@ -1857,7 +2021,7 @@ pub const MediaWidget = struct {
             c.cairo_show_text(cr, msg.ptr);
             c.cairo_set_font_size(cr, label_font);
             const sub = switch (self.category) {
-                .tv => "Tuner + aerial support on the way",
+                .tv => "Channels arrive with your first tv.m3u",
                 else => "",
             };
             c.cairo_text_extents(cr, sub.ptr, &ext);
