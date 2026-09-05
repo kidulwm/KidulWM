@@ -1,3 +1,52 @@
+# KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
+
+## Session summary
+
+Black-screen incident: the uncommitted `getSceneOutput orelse return`
+change (mirror-fix attempt) dropped EVERY output at boot — on wlroots
+0.20 the layout-managed scene output does not exist at handleNewOutput
+time, so the orelse fired deterministically. Both screens black.
+
+Landed as cd3bf52, deployed to /usr/local/bin/kidulwm (Sep 05 12:14):
+
+- Output fix: prefer layout-managed scene output, fall back to
+  createSceneOutput + setPosition from layout box. An output is ALWAYS
+  driven, never silently abandoned. Verified headless dual-output:
+  both driven side-by-side, no mirror.
+- Drop catcher: every early-return error path in handleNewOutput
+  records (name, stage, err), logs greppable `OUTPUT DROPPED`,
+  surfaces in bootcheck.txt, flips verdict to FAIL.
+- Smoke: nested-smoke.sh now asserts >=1 output driven + zero drops.
+- Z-order: wallpaper (re)creation re-asserts overlay-topmost — fixes
+  widgets vanishing behind wallpaper during the boot reveal.
+
+## Verified
+
+- zig build CLEAN. Dual-headless run: 2 outputs driven, 0 drops,
+  bootcheck clean. Smoke output assertion passes.
+- Pre-existing tray.removeOutput teardown crash still fails smoke's
+  "compositor exited" — task-carded, NOT from this work (reproduces
+  on 6d6455f).
+
+## Open task cards
+
+- TASKCARD-fullScreenLayouts.md — overlay yield law: widgets topmost
+  EXCEPT when slides fill the output (fullscreen movie / covering
+  split), per-output. HIGH — kmedia movie expansion depends on it.
+  Barticus: geek-only candy for splits; split-of-2 useful, 4+ stupid.
+  Includes xdg fullscreen handling + keybind pull-from-edge UX.
+- TASKCARD-tray-removeOutput-teardown-crash.md — quit crashes in
+  tray.zig:726; blocks clean smoke pass.
+
+## Next session
+
+- Barticus live-test: logout → SDDM → KidulWM. Expect: both screens,
+  widgets visible through wallpaper reveal, no mirror. If anything
+  drops: /home/dad/.local/state/kidulwm/bootcheck.txt names the stage.
+- Then fullScreenLayouts (kmedia fullscreen) is the big one.
+
+---
+
 # KidulWM HANDOFF — Sep 05 2026 (session 17: per-output wallpaper + wm_reset)
 
 ## Session summary
