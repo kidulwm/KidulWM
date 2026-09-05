@@ -2777,9 +2777,10 @@ pub const Server = struct {
         server.wallpaper_master_px = result.pixels;
         server.wallpaper_tinted_px = tinted;
 
-        // Start the reveal on the tinted pixels; the frame tick blends
-        // toward master and drops the final buffer at completion.
-        const start_px = tinted orelse result.pixels;
+        // DIAG KILL SWITCH (2026-09-06): wallpaper reveal animations disabled
+        // to isolate the persistent "mist" veil + CPU-pinning frame storm.
+        // Buffer starts on MASTER pixels and the animation is never armed.
+        const start_px = result.pixels;
         const buffer = DataBuffer.create(start_px, result.width, result.height, result.stride) catch return 0;
         // Keep background.rect/node as the permanent bottom anchor: the
         // rect still fills letterbox bars around the wallpaper, and
@@ -2792,12 +2793,10 @@ pub const Server = struct {
             output.setupWallpaper(server);
         }
 
-        // Pick the boot effect at random and arm the animation.
-        const effect: WallpaperEffect = @enumFromInt(@as(u2, @truncate(@as(u64, @bitCast(animation.nowUs())))));
-        server.wallpaper_anim = .{ .active = true, .start_us = animation.nowUs(), .effect = effect, .progress = 0 };
-        var it3 = server.outputs.iterator(.forward);
-        while (it3.next()) |output| output.wlr_output.scheduleFrame();
-        std.log.info("KidulWM: wallpaper reveal '{s}' started", .{@tagName(effect)});
+        // DIAG: animation arming disabled — reveal stays off, master pixels
+        // shown from the start. tickWallpaperReveal() early-returns on
+        // active==false, so nothing else needs to change.
+        std.log.info("KidulWM: wallpaper reveal DISABLED (diag kill switch)", .{});
         return 0;
     }
 
