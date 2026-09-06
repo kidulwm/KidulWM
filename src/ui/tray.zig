@@ -3,6 +3,7 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const c = @import("dm").c;
 const c_std = @cImport({
+    @cDefine("_FORTIFY_SOURCE", "0");
     @cInclude("stdlib.h");
     @cInclude("unistd.h");
     @cInclude("stdio.h");
