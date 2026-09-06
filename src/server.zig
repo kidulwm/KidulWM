@@ -182,6 +182,8 @@ pub const Output = struct {
         // Video path must die with the output — freeing the pixels while a
         // scene node still references them is a use-after-free, and leaking
         // them is a ghost frame on the remaining outputs.
+        while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
+        defer self.server.scene_mutex.unlock();
         self.server.mediaVideoTeardown(self);
     }
 
@@ -209,6 +211,11 @@ pub const Output = struct {
             }
         }
         _ = wlr_output;
+        // SCENE LOCK: hold for the whole frame — tray.update (drawMediaWidget
+        // allocates/destroys scene buffers), mediaVideoRefresh/Teardown, and
+        // scene_output.commit all walk the graph the IPC thread can mutate.
+        while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
+        defer self.server.scene_mutex.unlock();
         const now_us = animation.nowUs();
         var it = self.server.windows.iterator(.forward);
         while (it.next()) |window| {
@@ -306,6 +313,14 @@ pub const Server = struct {
     ipc_server: ipc.control.Server,
     ipc_thread: ?std.Thread,
     ipc_running: std.atomic.Value(bool),
+    /// Guards the wlroots scene graph against cross-thread mutation.
+    /// The IPC thread (mediaSlideToggle/Close via kidulwm-control)
+    /// destroys scene nodes while the render thread (Output.handleFrame:
+    /// tray.update drawMediaWidget, mediaVideoRefresh, scene commit)
+    /// walks the same graph — pixman abort on live regions, 2026-09-06
+    /// session-killer. Take this on BOTH sides of any scene touch that
+    /// can cross threads. Held per-frame; IPC close waits ≤ 1 vsync.
+    scene_mutex: std.atomic.Mutex = .unlocked,
 
     state: State,
     theme: style.Style,
@@ -1513,6 +1528,9 @@ pub const Server = struct {
     }
 
     fn mediaSlideOpen(self: *Server, output: *Output) void {
+        // SCENE LOCK: reachable from the IPC thread (media_card_toggle).
+        while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
+        defer self.scene_mutex.unlock();
         if (output.media_slide.isOpen()) return;
         // Every open is FRESH: rebuild the widget so quit-clears is
         // structural, not a flag-reset that can miss a field.
@@ -1642,6 +1660,9 @@ pub const Server = struct {
     /// so the last frame does NOT linger as a ghost behind the wall and
     /// other windows. Safe to call when already torn down.
     pub fn mediaVideoTeardown(self: *Server, output: *Output) void {
+        // SCENE LOCK LAW: callers must hold scene_mutex (mediaSlideClose
+        // on the IPC thread; handleFrame on the render thread; Output.deinit
+        // on the main thread at teardown). Never lock here — nested.
         if (output.media_slide.video_buffer) |sb| sb.node.destroy();
         output.media_slide.video_buffer = null;
         if (output.media_slide.video_wlr_buf) |buf| wlr.Buffer.drop(buf);
@@ -1654,6 +1675,10 @@ pub const Server = struct {
     }
 
     fn mediaSlideClose(self: *Server, output: *Output) void {
+        // SCENE LOCK: this runs on the IPC thread; the render thread may be
+        // mid-draw on the same nodes (2026-09-06 pixman abort).
+        while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
+        defer self.scene_mutex.unlock();
         if (!output.media_slide.isOpen()) return;
         // Reset to LANDING state for next open.
         output.media_slide.widget.up_plus_one = false;
