@@ -55,9 +55,16 @@ const PointerDevice = struct {
     }
 
     fn destroy(self: *PointerDevice) void {
-        // The input device and its signals are being destroyed; do not try to
-        // remove listeners here because wlroots may have already cleared the
-        // signal lists.  Just detach from the manager list and free our state.
+        // wlr_pointer_finish (0.20) ASSERTS all its event listener lists are
+        // empty — it does NOT clean them. Detach every listener we
+        // registered or hot-unplugging a pointer aborts the compositor
+        // (SIGABRT), exactly like the keyboard case.
+        self.motion.link.remove();
+        self.motion_absolute.link.remove();
+        self.button.link.remove();
+        self.axis.link.remove();
+        self.frame.link.remove();
+        self.device_destroy.link.remove();
         self.link.remove();
         self.manager.server.cursor.detachInputDevice(self.input_device);
         self.manager.server.input_device_counts.pointer -|= 1;

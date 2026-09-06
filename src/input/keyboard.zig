@@ -49,8 +49,14 @@ const KeyboardDevice = struct {
     }
 
     fn destroy(self: *KeyboardDevice) void {
-        // The input device and its signals are being destroyed; wlroots cleans
-        // its own signal lists, so only detach from the manager list here.
+        // wlr_keyboard_finish (0.20) ASSERTS events.key/modifiers/keymap/
+        // repeat_info listener lists are empty — it does NOT clean them.
+        // Detach every listener we registered or the compositor aborts
+        // (SIGABRT) on any keyboard hot-unplug, e.g. a Bluetooth mouse
+        // flapping its HID keyboard interface mid-session.
+        self.key.link.remove();
+        self.modifiers.link.remove();
+        self.device_destroy.link.remove();
         // If this was the elected seat keyboard, drop it — the next key event
         // from any surviving device re-elects.
         if (self.manager.server.seat.getKeyboard() == self.keyboard) {
