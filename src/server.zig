@@ -224,33 +224,36 @@ pub const Output = struct {
         self.server.tray.update();
         self.server.tickWallpaperReveal(now_us);
 
-        // mpv playloop shape: EVERY vsync while playing, tick() advances the
-        // frame queue (pick due frame, drop late) — cheap, no render. Skip
-        // this and the ring back-pressures and playback freezes. Only when
-        // the DISPLAY edge moved (display_serial) do we copy pixels into the
-        // dedicated video scene buffer; the card/chrome buffer is NOT
-        // repainted here.
+        // ── Play-timer arm (reactive) ────────────────────────────────────────
+        // The compositor-level play_timer (Server.handlePlayTimer) owns
+        // tick() and mediaVideoRefresh() — this output just presents whatever
+        // frame is already due (see below). Arm the timer here the first time
+        // we see player activity, so playback that starts while no timer is
+        // running still gets clocked. The timer self-re-arms; a spurious extra
+        // arm from a second output is harmless (timerUpdate resets the delay).
         //
-        // VSYNC SELF-PERPETUATION: while player_active, re-arm the vsync so
-        // the next frame callback fires at the next refresh interval. Without
-        // this, playback only advances when an unrelated event (IPC, layout,
-        // tray) happens to call scheduleFrame() — producing single-digit fps
-        // and the "constantly trying to load" stutter. This is the primary
-        // stutter fix (SUSPECT #1).
+        // Stage 2 — audio-clocked playloop (2026-09-07): advance is now driven
+        // by a single compositor-level wl_event_loop timer, not by a specific
+        // output's frame callback. Outputs only PRESENT the due frame on their
+        // own vsync. See Server.handlePlayTimer, Server.armPlayTimer.
+        const any_playing = (self.media_slide.isOpen() and
+            self.media_slide.widget_ready and
+            self.media_slide.widget.player_active) or
+            (!self.media_slide.isOpen() and self.server.tray.media.player_active);
+        if (any_playing and self.server.play_timer == null) {
+            self.server.armPlayTimer();
+        }
+
+        // ── isDone / no-stills teardown (render-thread guards) ───────────────
+        // The play_timer checks isDone too, but the render thread must also
+        // guard here: if the timer fires and calls disarmPlayTimer between
+        // vsync edges we still need to catch a done state and clean up scene
+        // nodes (which must happen on the render thread while holding the lock).
         if (self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active) {
             if (self.media_slide.widget.player.isDone()) {
                 self.media_slide.widget.ensureStopped();
                 self.server.mediaVideoTeardown(self);
-            } else {
-                self.media_slide.widget.player.tick();
-                const serial = self.media_slide.widget.player.display_serial;
-                if (serial != self.media_slide.last_display_serial) {
-                    self.media_slide.last_display_serial = serial;
-                    self.server.mediaVideoRefresh(self);
-                }
-                // Re-arm: drives the frame loop at the output's native refresh
-                // rate (typically 60 Hz on the virtio-vga SPICE path).
-                self.wlr_output.scheduleFrame();
+                self.server.disarmPlayTimer();
             }
         } else if (self.media_slide.video_buffer != null) {
             // Reconcile: player stopped on a path the server didn't drive
@@ -259,19 +262,12 @@ pub const Output = struct {
             self.server.mediaVideoTeardown(self);
         }
 
-        // ── Slideless music tick pump ─────────────────────────────────────
-        // When a music track is playing in the tray MediaWidget (slide closed)
-        // the mpv frame queue still needs tick() every vsync — without it the
-        // audio ring back-pressures and playback stalls. The slide tick above
-        // is gated on media_slide.isOpen(), so this is the dedicated arm.
-        // We also re-arm scheduleFrame() so the loop keeps running at native
-        // refresh rate for as long as music is active.
+        // ── Slideless isDone guard ───────────────────────────────────────────
+        // Mirror of the above for the tray music path (slide closed).
         if (!self.media_slide.isOpen() and self.server.tray.media.player_active) {
             if (self.server.tray.media.player.isDone()) {
                 self.server.tray.media.ensureStopped();
-            } else {
-                self.server.tray.media.player.tick();
-                self.wlr_output.scheduleFrame();
+                self.server.disarmPlayTimer();
             }
         }
 
@@ -400,6 +396,12 @@ pub const Server = struct {
     /// a ~2.2s palette-locked reveal animation chosen at random per boot.
     wallpaper_pipe: [2]c_int,
     wallpaper_source: ?*wl.EventSource,
+    /// Compositor-level play-timer: advances the mpv frame queue (tick) on the
+    /// audio clock, independent of any single output's vsync. Outputs only
+    /// present/blit the already-due frame on their own frame callback.
+    /// Null while no playback is active; armed by armPlayTimer(); self-re-arms
+    /// every PLAY_TIMER_MS until disarmPlayTimer() is called.
+    play_timer: ?*wl.EventSource,
     wallpaper_thread: ?std.Thread,
     /// Worker->main handoff. Written ONLY by the worker before the pipe
     /// byte; read ONLY by the main thread after reading the pipe byte.
@@ -775,6 +777,7 @@ pub const Server = struct {
             },
             .wallpaper_pipe = undefined,
             .wallpaper_source = null,
+            .play_timer = null,
             .wallpaper_thread = null,
             .wallpaper_result = null,
             .wallpaper_master_px = null,
@@ -2964,6 +2967,123 @@ pub const Server = struct {
 
     fn handleShutdownTimer(server: *@This()) c_int {
         server.wl_server.terminate();
+        return 0;
+    }
+
+    // ── Compositor-level play-timer ───────────────────────────────────────────
+    // Stage 2 (2026-09-07): advance is driven here, NOT in Output.handleFrame.
+    //
+    // The timer fires every PLAY_TIMER_MS (≈16 ms → ~60 Hz) on the Wayland
+    // event-loop main thread — same thread as handleFrame, so no mutex needed
+    // between this and scene operations.  For mediaVideoRefresh the IPC-thread
+    // rule still applies (scene_mutex held there); the calls below are on the
+    // main thread, so they are safe to call without a lock.
+    //
+    // VSYNC SELF-PERPETUATION preserved: scheduleFrame() is called here for
+    // every output that has new video pixels, so the render loop keeps firing
+    // at the output's native refresh even when no other event triggers it.
+    const PLAY_TIMER_MS: c_int = 16; // ~60 Hz audio-clock advance
+
+    pub fn armPlayTimer(self: *Server) void {
+        const event_loop = self.wl_server.getEventLoop();
+        if (self.play_timer == null) {
+            self.play_timer = event_loop.addTimer(*Server, handlePlayTimer, self) catch |err| {
+                std.log.err("KidulWM: play_timer create failed: {}", .{err});
+                return;
+            };
+        }
+        self.play_timer.?.timerUpdate(PLAY_TIMER_MS) catch |err| {
+            std.log.err("KidulWM: play_timer arm failed: {}", .{err});
+        };
+    }
+
+    pub fn disarmPlayTimer(self: *Server) void {
+        if (self.play_timer) |t| {
+            t.timerUpdate(0) catch {}; // 0 ms = disarm without destroy
+        }
+        // We leave play_timer allocated; it is re-armed by armPlayTimer next
+        // time playback starts.  Destroying and re-creating costs an fd each
+        // cycle; the event-source pool is small, so reuse is preferred.
+    }
+
+    fn handlePlayTimer(self: *Server) c_int {
+        // Check whether anything is still playing before doing any work.
+        var slide_playing = false;
+        var slideless_playing = false;
+        var out_it = self.outputs.iterator(.forward);
+        while (out_it.next()) |output| {
+            if (output.media_slide.isOpen() and
+                output.media_slide.widget_ready and
+                output.media_slide.widget.player_active)
+            {
+                slide_playing = true;
+                break;
+            }
+        }
+        if (!slide_playing and self.tray.media.player_active) {
+            slideless_playing = true;
+        }
+
+        if (!slide_playing and !slideless_playing) {
+            // Nothing to advance — let the timer lapse (do not re-arm).
+            return 0;
+        }
+
+        // ── Slide player advance ──────────────────────────────────────────────
+        // SCENE LOCK: mediaVideoRefresh creates/updates scene buffers.
+        // The IPC thread (mediaSlideClose) destroys nodes concurrently — hold
+        // scene_mutex for the same reason handleFrame does.
+        if (slide_playing) {
+            while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
+            defer self.scene_mutex.unlock();
+
+            out_it = self.outputs.iterator(.forward);
+            while (out_it.next()) |output| {
+                if (!output.media_slide.isOpen() or
+                    !output.media_slide.widget_ready or
+                    !output.media_slide.widget.player_active) continue;
+
+                if (output.media_slide.widget.player.isDone()) {
+                    // isDone teardown: render thread (handleFrame) cleans up
+                    // scene nodes safely under the lock it holds per-frame.
+                    // Disarm so handleFrame's isDone guard fires next vsync.
+                    self.disarmPlayTimer();
+                    return 0;
+                }
+
+                output.media_slide.widget.player.tick();
+                const serial = output.media_slide.widget.player.display_serial;
+                if (serial != output.media_slide.last_display_serial) {
+                    output.media_slide.last_display_serial = serial;
+                    self.mediaVideoRefresh(output);
+                    // VSYNC SELF-PERPETUATION: schedule a frame so the output
+                    // presents the updated pixels on its own vsync.
+                    output.wlr_output.scheduleFrame();
+                }
+            }
+        }
+
+        // ── Slideless music advance ───────────────────────────────────────────
+        // Slide closed, music still playing in the tray MediaWidget.
+        if (slideless_playing) {
+            if (self.tray.media.player.isDone()) {
+                self.tray.media.ensureStopped();
+                self.disarmPlayTimer();
+                return 0;
+            }
+            self.tray.media.player.tick();
+            // No video pixels for audio-only; no scheduleFrame needed here.
+            // Arm scheduleFrame on the first output so the tray repaints its
+            // now-playing metadata once per timer tick.
+            if (self.outputs.first()) |first_out| {
+                first_out.wlr_output.scheduleFrame();
+            }
+        }
+
+        // Re-arm for the next tick.
+        self.play_timer.?.timerUpdate(PLAY_TIMER_MS) catch |err| {
+            std.log.err("KidulWM: play_timer re-arm failed: {}", .{err});
+        };
         return 0;
     }
 
