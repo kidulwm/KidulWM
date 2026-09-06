@@ -1505,37 +1505,54 @@ pub const Server = struct {
         std.log.info("KidulWM: overview slide closed", .{});
     }
 
-    /// Toggle the media player slide on the current deck's output.
+    /// Toggle the media player slide.
+    ///
+    /// LAW (docs/law/media-slide-location.md): the slide's ground truth is
+    /// the OUTPUT scene tree, never the focus deck.  We scan all outputs to
+    /// find where the slide actually lives before deciding close vs open.
+    /// The deck flag is always cleared/set on the SAME output that owns the
+    /// tree — never on the keyboard-focus deck.
     pub fn mediaSlideToggle(self: *Server) void {
-        const deck = self.currentDeck();
-        var owner: ?*Output = null;
-        var it = self.outputs.iterator(.forward);
-        while (it.next()) |output| {
-            if (&output.deck == deck) {
-                owner = output;
-                break;
+        // STEP 1: find the output that currently owns the open slide, if any.
+        // Scan ALL outputs — the open slide may be on a different output than
+        // the current keyboard focus (the classic Kogan→laptop bug).
+        var open_output: ?*Output = null;
+        {
+            var it = self.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                if (output.media_slide.isOpen()) {
+                    open_output = output;
+                    break;
+                }
             }
         }
-        if (deck.media_slide_open) {
-            if (owner) |output| self.mediaSlideClose(output);
-            deck.closeMediaSlide();
+
+        if (open_output) |output| {
+            // CLOSE: slide is open on `output`.  Close the tree on THAT output
+            // and clear THAT output's own deck flag — never the focus deck.
+            self.mediaSlideClose(output);
+            output.deck.closeMediaSlide();
             self.requestLayout();
         } else {
-            // Reconcile: if the scene tree is already open but the deck
-            // disagrees (e.g. open raced an empty-deck refusal before),
-            // close the tree and call it closed.
-            if (owner) |output| {
-                if (output.media_slide.isOpen()) {
-                    self.mediaSlideClose(output);
-                    self.requestLayout();
-                    return;
+            // OPEN: no slide open anywhere — proceed on the current focus output.
+            // Guard: mediaSlideOpenAnywhere() is redundant here (we just scanned)
+            // but kept for safety against any race between scan and open.
+            const deck = self.currentDeck();
+            var focus_output: ?*Output = null;
+            {
+                var it = self.outputs.iterator(.forward);
+                while (it.next()) |output| {
+                    if (&output.deck == deck) {
+                        focus_output = output;
+                        break;
+                    }
                 }
             }
             // Deck state FIRST: openMediaSlide sets empty_slot=.before_first,
             // and mediaSlideTarget() only returns the focused rect while
             // that's true. Order matters — render after the deck moves.
             deck.openMediaSlide();
-            if (owner) |output| {
+            if (focus_output) |output| {
                 if (output.overview.isOpen()) self.overviewSlideClose(output);
                 self.mediaSlideOpen(output);
             }
