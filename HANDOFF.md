@@ -1,5 +1,69 @@
 # KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
 
+---
+## ADDENDUM — Sep 07 2026 (HOST-ONLY session: media slide location + audio-clocked playloop)
+
+CONTEXT: host-only work. We are deliberately AHEAD of the VM "main commits".
+Nothing here is on the VM. To bring the VM up to host state, cherry-pick /
+rebuild through the commits listed below (plus the Sep-06 chain already on
+host). Fallbacks (niri/limine) in place on host.
+
+THE PROBLEM (Barticus report, 2026-09-07): media player slide only opens on
+the Kogan, never the laptop, even with cursor+click on the laptop; and it
+sometimes will not close. Other slides open on either output fine. Barticus
+suspected Vsync — EXONERATED (standalone kmedia = poll-timer heartbeat;
+compositor self-perpetuates its own frame, server.zig). Not a refresh problem.
+
+ROOT CAUSE (verified in src/server.zig): mediaSlideToggle resolved its target
+from currentDeck() (keyboard-focus output). Boot parks cursor+focus on the
+Kogan (origin 0,0 wins). Open lands slide+deck-flag on the KOGAN. Cursor to
+laptop → focusFollowsCursor → focused_output=laptop. Toggle again →
+currentDeck()=laptop, laptop flag FALSE → reconcile checked only the laptop
+output (never opened) → no-op → opened a SECOND slide on the laptop while the
+Kogan one stayed live. Close from laptop never reached the Kogan slide →
+orphaned, "stuck open". One root, two symptoms.
+
+LAW: docs/law/media-slide-location.md — the slide's truth is its scene tree,
+never the focus deck. Find where it lives (scan outputs), close that one
+(output tree + that output's OWN deck flag), never open a second.
+
+CARD: docs/cards/2026-09-07-media-slide-location.md.
+
+COMMITS (all B&B, GPG-signed):
+- 4ff6516  law + card
+- 8a43291  Stage 1: location-aware toggle — scan all outputs, never focus deck
+           (coderBob; verified by orchestrator: diff read, cold Debug+ReleaseSafe clean)
+- cca4265  Stage 2: audio-clocked playloop — compositor play_timer
+           (wl_event_loop, ~16ms) owns player.tick()+mediaVideoRefresh on the
+           audio clock; outputs only PRESENT the due frame on their own vsync.
+           Kills the per-output tick-cadence "vsync-y" stutter. Preserves
+           no-stills reconcile, isDone teardown, slideless music pump, scene
+           lock, VSYNC SELF-PERPETUATION. (coderBob timed out mid-flight
+           post-edit; orchestrator verified the diff, cold-built clean, landed it.)
+
+BUILD/DEPLOY (host): cold Debug + ReleaseSafe both CLEAN.
+  /usr/local/bin/kidulwm          sha256 664c667a1afe032b2ca99fc012d9edcee315c9b918d35674cb3887bb1f1fe6fb
+  /usr/local/bin/kidulwm-control  sha256 f434290ab9c540b42437a85879973e84aea45b7be15a0684662c87a1696d11d7
+  Deployed Sep 07 08:47. RUNNING compositor (pid 1808, Sep 06 21:12 binary)
+  predates this — session restart required to pick up the fix.
+
+SMOKE (after session restart):
+  1. boot → open media on Kogan → cursor to laptop, click → toggle → must
+     CLOSE the Kogan slide (not open a second on laptop).
+  2. toggle → opens on laptop → toggle → closes.
+  3. Play TV/movie: confirm smoothness improved (audio-clocked advance) and
+     close is reliable on both outputs.
+
+OPEN / DEFERRED:
+- Stage 2 landed the smallest correct increment (16ms timer ≈ 60Hz). A true
+  audio-clock-locked (not fixed-16ms) advance is the future refinement; the
+  timer is the seam for it. Not blocking.
+- coderBob stage reports: stage1 written by him; stage2 he died before
+  writing — orchestrator notes are the record (this addendum).
+- VM sync: everything above is host-only; VM needs these commits when we
+  return to it.
+---
+
 ## Session summary
 
 Black-screen incident: the uncommitted `getSceneOutput orelse return`
