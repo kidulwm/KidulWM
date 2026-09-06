@@ -259,6 +259,22 @@ pub const Output = struct {
             self.server.mediaVideoTeardown(self);
         }
 
+        // ── Slideless music tick pump ─────────────────────────────────────
+        // When a music track is playing in the tray MediaWidget (slide closed)
+        // the mpv frame queue still needs tick() every vsync — without it the
+        // audio ring back-pressures and playback stalls. The slide tick above
+        // is gated on media_slide.isOpen(), so this is the dedicated arm.
+        // We also re-arm scheduleFrame() so the loop keeps running at native
+        // refresh rate for as long as music is active.
+        if (!self.media_slide.isOpen() and self.server.tray.media.player_active) {
+            if (self.server.tray.media.player.isDone()) {
+                self.server.tray.media.ensureStopped();
+            } else {
+                self.server.tray.media.player.tick();
+                self.wlr_output.scheduleFrame();
+            }
+        }
+
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
         const ok = self.scene_output.commit(null);
@@ -1952,6 +1968,24 @@ pub const Server = struct {
                     .subcategory => widget.closeSubcategory(),
                     .search => {},
                     .result => {
+                        if (widget.category == .music) {
+                            // MUSIC PATH: play in tray, dismiss slide.
+                            // Grab entry before closing (getLibrary is global).
+                            const entry = widget.selectedResultEntry();
+                            const path = widget.selectedResultPath();
+                            if (path.len > 0 and entry != null) {
+                                const e = entry.?;
+                                self.tray.media.playMusic(
+                                    path,
+                                    std.mem.sliceTo(e.title, 0),
+                                    std.mem.sliceTo(e.artist, 0),
+                                );
+                            }
+                            // Dismiss the slide — returns focus to the opening slide.
+                            self.mediaSlideToggle();
+                            return true;
+                        }
+                        // Movies / TV: existing play-in-slide path.
                         const path = widget.selectedResultPath();
                         if (path.len > 0) widget.play(path);
                     },

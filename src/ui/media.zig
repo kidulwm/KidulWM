@@ -640,6 +640,11 @@ pub const MediaWidget = struct {
     player_active: bool = false,
     player_ws_key_buf: [256]u8 = std.mem.zeroes([256]u8),
 
+    /// True while a music file started from the media slide is playing in the
+    /// tray's MediaWidget (the slide having been dismissed). Drives the
+    /// now-playing line in renderPeek and the slideless vsync tick pump.
+    is_music: bool = false,
+
     focus: ControlFocus = .category,
     category: MediaCategory = .tv,
     subcategory_open: bool = false,
@@ -1179,6 +1184,68 @@ pub const MediaWidget = struct {
         return library[self.selected_result].path;
     }
 
+    /// Return the focused library entry, or null when out of range.
+    /// Used by the music-OK handler to copy title + artist into tray.media.
+    pub fn selectedResultEntry(self: *const MediaWidget) ?LibraryEntry {
+        const library = getLibrary(self.category);
+        if (self.selected_result >= library.len) return null;
+        return library[self.selected_result];
+    }
+
+    /// Start music playback in the tray MediaWidget (slide has already been
+    /// dismissed by the caller). Unlike play(), this:
+    ///   - sets embedder_owns_video = false (no video scene buffer in the tray)
+    ///   - copies the caller-supplied title + artist strings into cached
+    ///   - sets is_music = true so renderPeek shows the now-playing line
+    pub fn playMusic(self: *MediaWidget, path: []const u8, title: []const u8, artist: []const u8) void {
+        self.ensureStopped();
+        if (path.len == 0) return;
+
+        // For audio files, the player's own cairo blit is fine; there is no
+        // video scene buffer in the tray path, so embedder_owns_video = false.
+        self.player.embedder_owns_video = false;
+
+        var path_z: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
+        const copy_len = @min(path.len, path_z.len - 1);
+        @memcpy(path_z[0..copy_len], path[0..copy_len]);
+        path_z[copy_len] = 0;
+
+        // Derive ws_key from path basename stem (watch-state resume).
+        const filename = std.fs.path.basename(path);
+        const stem = std.fs.path.stem(filename);
+        const n = @min(stem.len, self.player_ws_key_buf.len - 1);
+        @memcpy(self.player_ws_key_buf[0..n], stem[0..n]);
+        self.player_ws_key_buf[n] = 0;
+        const ws_key = self.player_ws_key_buf[0..n];
+
+        const resume_s = self.watch.resumePos(ws_key, null);
+        const resume_us: i64 = @as(i64, @intCast(resume_s)) * std.time.us_per_s;
+
+        self.player.open(path_z[0..copy_len :0].ptr, ws_key, resume_us) catch |err| {
+            std.log.err("libkmedia: playMusic failed for {s}: {s}", .{ path, @errorName(err) });
+            return;
+        };
+
+        self.player_active = true;
+        self.is_music = true;
+        self.cached = .{};
+        self.cached.available = true;
+        self.cached.playing = true;
+        self.cached.duration = @as(f64, @floatFromInt(self.player.durationUs())) / 1_000_000.0;
+        self.cached.position = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
+
+        // Copy title (prefer supplied name; fall back to stem).
+        const title_src = if (title.len > 0) title else stem;
+        const tlen = @min(title_src.len, self.cached.title.len - 1);
+        @memcpy(self.cached.title[0..tlen], title_src[0..tlen]);
+        self.cached.title[tlen] = 0;
+
+        // Copy artist (may be empty — that is fine).
+        const alen = @min(artist.len, self.cached.artist.len - 1);
+        if (alen > 0) @memcpy(self.cached.artist[0..alen], artist[0..alen]);
+        self.cached.artist[alen] = 0;
+    }
+
     /// The focused TV channel (url + stable id for watch-state), or null
     /// when the rail is empty — the calm empty state, never an error.
     pub fn selectedLiveChannel(self: *const MediaWidget) ?struct { url: [:0]const u8, id: [:0]const u8 } {
@@ -1203,6 +1270,7 @@ pub const MediaWidget = struct {
         if (self.player_active) {
             self.player.close();
             self.player_active = false;
+            self.is_music = false;
             self.cached.playing = false;
             self.watch.deinit();
             self.watch = kmedia_lib.WatchState.init(self.allocator);
@@ -1353,9 +1421,56 @@ pub const MediaWidget = struct {
 
         const margin: f64 = 6.0 * scale_f;
         const band_w = w_d - margin * 2.0;
-        const lane_h = h_d - margin * 2.0;
+
+        // ── now-playing text (music only) ─────────────────────────────────
+        // Computed before the helix layout so we can reserve vertical space.
+        // "title — artist" in notification/muted style, above the helix.
+        const music_active = self.is_music and self.cached.playing;
+        const font_h: f64 = @as(f64, style_.font_size_s) * 0.7 * scale_f;
+
+        // Build the now-playing string in a small stack buffer.
+        var np_buf: [192]u8 = std.mem.zeroes([192]u8);
+        var np_len: usize = 0;
+        if (music_active) {
+            const t = std.mem.sliceTo(&self.cached.title, 0);
+            const a = std.mem.sliceTo(&self.cached.artist, 0);
+            if (t.len > 0 and a.len > 0) {
+                // "title — artist"
+                const sep = " \xe2\x80\x94 "; // UTF-8 em-dash with spaces
+                const avail = np_buf.len - 1;
+                const tlen2 = @min(t.len, avail);
+                @memcpy(np_buf[0..tlen2], t[0..tlen2]);
+                np_len = tlen2;
+                if (np_len + sep.len < avail) {
+                    @memcpy(np_buf[np_len..][0..sep.len], sep);
+                    np_len += sep.len;
+                    const alen2 = @min(a.len, avail - np_len);
+                    @memcpy(np_buf[np_len..][0..alen2], a[0..alen2]);
+                    np_len += alen2;
+                }
+            } else if (t.len > 0) {
+                const tlen2 = @min(t.len, np_buf.len - 1);
+                @memcpy(np_buf[0..tlen2], t[0..tlen2]);
+                np_len = tlen2;
+            }
+        }
+        np_buf[np_len] = 0;
+
+        // Measure the now-playing text; reserve vertical room above the helix.
+        c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
+        c.cairo_set_font_size(cr, font_h);
+        var np_ext: c.cairo_text_extents_t = undefined;
+        c.cairo_text_extents(cr, &np_buf, &np_ext);
+        const np_fits = music_active and np_len > 0 and np_ext.width < band_w - 4.0 * scale_f;
+
+        // text_reserve: vertical space above helix for the now-playing line.
+        const text_reserve: f64 = if (np_fits) (font_h + margin) else 0.0;
+
+        const lane_h = h_d - margin * 2.0 - text_reserve;
         const cx = margin + band_w * 0.5;
-        const cy = margin + lane_h * 0.5;
+        // Shift cy downward by half text_reserve so helix stays vertically centred
+        // in the remaining space below the text line.
+        const cy = margin + text_reserve + lane_h * 0.5;
 
         const now = animationNowUs();
         const dt = if (self.last_helix_us == 0) 0.0 else @as(f64, @floatFromInt(now -% self.last_helix_us)) / 1_000_000.0;
@@ -1439,16 +1554,26 @@ pub const MediaWidget = struct {
             }
         }
 
-        c.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
-        const txt = if (self.cached.title[0] != 0) std.mem.sliceTo(&self.cached.title, 0) else "";
-        const font_h: f64 = @as(f64, style_.font_size_s) * 0.7 * scale_f;
-        c.cairo_set_font_size(cr, font_h);
-        var ext: c.cairo_text_extents_t = undefined;
-        c.cairo_text_extents(cr, txt.ptr, &ext);
-        if (ext.width < band_w - 4.0 * scale_f) {
+        // ── now-playing line: render above the helix when music is active ──
+        // The font + text are already set up; just paint the np_buf string.
+        if (np_fits) {
             c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.75);
-            c.cairo_move_to(cr, margin, h_d - margin);
-            c.cairo_show_text(cr, txt.ptr);
+            // Baseline at margin + font_h (top of reserved band, ascent-aligned).
+            c.cairo_move_to(cr, margin, margin + font_h);
+            c.cairo_show_text(cr, &np_buf);
+        } else if (!music_active) {
+            // Non-music path: preserve the original title-at-bottom behaviour
+            // (title only, no artist, for movies/TV position display).
+            const txt = if (self.cached.title[0] != 0) std.mem.sliceTo(&self.cached.title, 0) else "";
+            if (txt.len > 0) {
+                var ext: c.cairo_text_extents_t = undefined;
+                c.cairo_text_extents(cr, txt.ptr, &ext);
+                if (ext.width < band_w - 4.0 * scale_f) {
+                    c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.75);
+                    c.cairo_move_to(cr, margin, h_d - margin);
+                    c.cairo_show_text(cr, txt.ptr);
+                }
+            }
         }
 
         if (self.cached.available) {
