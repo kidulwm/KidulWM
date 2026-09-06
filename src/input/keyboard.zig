@@ -171,11 +171,11 @@ const KeyboardDevice = struct {
         }
         // Media slide owns keys while open (sibling sentinel on the
         // before_first slot). INPUT LAW: ↑↓=focus, ←→=move, Enter=apply,
-        // Esc=back to the slide that opened it.
+        // Esc=back to the slide that opened it. NOTHING SWALLOWED:
+        // unconsumed keys fall through to normal routing (card phase 2).
         if (server.mediaSlideOpenAnywhere()) {
             if (server.mediaSlideKey(sym)) return;
-            server.recordKeyEvent(@intFromEnum(sym), mod4_active, ctrl_active, "swallowed:media_slide");
-            return; // swallow everything else while the slide is open
+            // fall through — no swallow
         }
         // Cards consume arrow/navigation/typing before clients while open.
         // NOTE: media_card_open deliberately EXCLUDED — the media player is

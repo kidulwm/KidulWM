@@ -1739,6 +1739,9 @@ pub const Server = struct {
         var dirty = false;
 
         // Player mode: route key to Player state machine (Space=pause, Esc=exit, etc.)
+        // INPUT LAW (card 2026-09-06 phase 2): unhandled keys FALL THROUGH —
+        // the slide never swallows; player Escape exits player, a second
+        // Escape closes the slide below.
         if (widget.player_active) {
             const sym_u32 = @intFromEnum(sym);
             if (widget.player.handleKey(sym_u32)) {
@@ -1749,7 +1752,7 @@ pub const Server = struct {
                 self.mediaSlideRefresh(out);
                 return true;
             }
-            return true;
+            return false;
         }
 
         if (widget.search_focused) {
