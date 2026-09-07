@@ -1669,6 +1669,13 @@ pub const Server = struct {
         const target = deck.mediaSlideTarget();
         const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         const widget = output.media_slide.ensureWidget(self.allocator);
+        // PLAYBACK FULLSCREEN LAW: hand the widget the full-output rect in
+        // slide-local terms so its matte hole matches the video scene node
+        // (Server.mediaVideoRefresh). x/y = slide-tree position; w/h = deck.
+        widget.video_full_x = target.x;
+        widget.video_full_y = target.y;
+        widget.video_full_w = @intCast(deck.width);
+        widget.video_full_h = @intCast(deck.height);
         const buffer = media_slide_mod.renderToBuffer(widget, self.theme, @intCast(target.width), @intCast(target.height), scale) orelse return;
         if (output.media_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
@@ -1743,22 +1750,25 @@ pub const Server = struct {
         }
 
         const sb = output.media_slide.video_buffer.?;
-        // Letterbox: scale video into target rect preserving aspect.
-        const tw: f64 = @floatFromInt(target.width);
-        const th: f64 = @floatFromInt(target.height);
+        // PLAYBACK FULLSCREEN LAW: while playing, the video letterboxes into
+        // the FULL OUTPUT, not the slide's focused-slot rect — it covers the
+        // peek areas either side (Barticus 2026-09-07). The slide tree sits
+        // at target.x/target.y, so shift into local coords by -target.x/y.
+        const tw: f64 = @floatFromInt(deck.width);
+        const th: f64 = @floatFromInt(deck.height);
         const vw: f64 = @floatFromInt(frame.w);
         const vh: f64 = @floatFromInt(frame.h);
         const scale = @min(tw / vw, th / vh);
         const dw: i32 = @intFromFloat(vw * scale);
         const dh: i32 = @intFromFloat(vh * scale);
-        const tw_i: i32 = @intCast(target.width);
-        const th_i: i32 = @intCast(target.height);
+        const tw_i: i32 = @intCast(deck.width);
+        const th_i: i32 = @intCast(deck.height);
         // The video node is a CHILD of the slide tree, which is already
         // positioned at target.x/target.y (see mediaSlideOpen). Use LOCAL
-        // coords here — adding target.x/y again double-offsets the video
-        // (the "shifted right, strip off-screen" bug).
-        const dx: i32 = @divTrunc(tw_i - dw, 2);
-        const dy: i32 = @divTrunc(th_i - dh, 2);
+        // coords — the full-output rect in local space is (-target.x,
+        // -target.y, deck.width, deck.height).
+        const dx: i32 = @divTrunc(tw_i - dw, 2) - target.x;
+        const dy: i32 = @divTrunc(th_i - dh, 2) - target.y;
         sb.setDestSize(dw, dh);
         sb.node.setPosition(dx, dy);
         // Z-ORDER: the video buffer sits BELOW the card buffer. The card's
