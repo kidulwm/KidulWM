@@ -6,9 +6,12 @@ When working on this repository, treat these files as authoritative before guess
 
 Source of truth: `KNOWN_CMDS.md` in this repository.
 
-- **fresh-one**: SSH to `kidul@127.0.0.1:2260`, key `~/.ssh/id_ed25519_kidulwm`
+- DEFAULT IS THE HOST (law, Barticus 2026-09-07): build ReleaseSafe on the
+  host, deploy to `/usr/local/bin/kidulwm`. VM deploys only when Barticus
+  explicitly asks.
+- **fresh-one**: SSH to `kidul@192.168.122.96` (plain NAT, port 22; the old
+  `127.0.0.1:2260` hostfwd is stale), key `~/.ssh/id_ed25519_kidulwm`
 - **cachyos-kidulwm**: SSH to `kidul@127.0.0.1:2222`, same key
-- Deployment is done by building the host binary and copying it to `/usr/bin/kidulwm` on the VM; the VM source tree is a static snapshot, not git.
 
 ## Secrets / credentials
 

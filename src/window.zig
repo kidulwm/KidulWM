@@ -492,6 +492,29 @@ pub const Window = struct {
             std.mem.eql(u8, self.chrome_label.asSlice(), if (label) |l| l else "");
         if (same) return;
 
+        if (self.chrome_tree != null) {
+            // TEMP DIAG: which cache field actually missed? The 2026-09-07
+            // storm regens identical 1673x1064 chrome per commit — log the
+            // full old/new key so the culprit field names itself.
+            std.log.info("KidulWM: CHROME cache-miss id={d} wh {d}x{d}->{d}x{d} focus {}->{} edges {}->{} scale {d}->{d} gen {d}->{d} label '{s}'->'{s}'", .{
+                self.id,
+                self.chrome_width,
+                self.chrome_height,
+                w,
+                h,
+                self.chrome_focused,
+                focused,
+                self.chrome_edges,
+                edges,
+                self.chrome_scale,
+                scale,
+                self.chrome_style_generation,
+                style_gen,
+                self.chrome_label.asSlice(),
+                if (label) |l| l else "",
+            });
+        }
+
         if (self.chrome_tree) |tree| {
             tree.node.destroy();
             std.log.info("KidulWM: CHROME destroy id={d} reason=regen", .{self.id});

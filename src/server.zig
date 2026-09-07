@@ -19,7 +19,7 @@ const DataBuffer = @import("render/buffer.zig").DataBuffer;
 /// Boot reveal effects for the wallpaper (palette-locked, picked at random
 /// per boot). All run ~2.2s with a smoothstep ramp; the per-pixel ones
 /// blend master vs theme-tinted copies so no foreign colours ever show.
-pub const WallpaperEffect = enum { fade, whirlpool, wipe, iris };
+pub const WallpaperEffect = enum { fade };
 
 /// Pixel handoff from the wallpaper worker thread to the main thread.
 pub const WallpaperResult = struct {
@@ -96,6 +96,10 @@ pub const Output = struct {
     /// box. This kills the "one global wallpaper only spans the first output"
     /// bug and the resulting mirror/top-center artifacts.
     wallpaper_scene_buffer: ?*wlr.SceneBuffer = null,
+    /// Transient boot-reveal overlay: fullscreen tinted copy fading out over
+    /// the master wallpaper. Self-destroys at the end of the fade; the
+    /// permanent wallpaper buffer is never mutated by the animation.
+    wallpaper_reveal_buffer: ?*wlr.SceneBuffer = null,
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -109,6 +113,7 @@ pub const Output = struct {
             .overview = .{},
             .media_slide = .{},
             .wallpaper_scene_buffer = null,
+            .wallpaper_reveal_buffer = null,
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -170,11 +175,40 @@ pub const Output = struct {
         server.overlay_tree.node.raiseToTop();
     }
 
+    /// Create or destroy this output's transient boot-reveal overlay: a
+    /// fullscreen tinted copy fading out above the permanent wallpaper.
+    pub fn setupWallpaperReveal(self: *Output, server: *Server, tinted_buffer: ?*wlr.Buffer) void {
+        if (self.wallpaper_reveal_buffer) |sb| {
+            sb.node.destroy();
+            self.wallpaper_reveal_buffer = null;
+        }
+        const buf = tinted_buffer orelse return;
+        var box: wlr.Box = undefined;
+        server.output_layout.getBox(self.wlr_output, &box);
+        if (box.width <= 0 or box.height <= 0) return;
+        const scene_buffer = server.scene.tree.createSceneBuffer(buf) catch return;
+        scene_buffer.setDestSize(box.width, box.height);
+        scene_buffer.node.setPosition(box.x, box.y);
+        scene_buffer.setOpacity(1.0);
+        // Sit directly above the permanent wallpaper, below everything else.
+        if (self.wallpaper_scene_buffer) |wp| {
+            scene_buffer.node.placeAbove(&wp.node);
+        } else {
+            scene_buffer.node.lowerToBottom();
+        }
+        server.overlay_tree.node.raiseToTop();
+        self.wallpaper_reveal_buffer = scene_buffer;
+    }
+
     pub fn deinit(self: *Output) void {
         self.server.tray.removeOutput(self);
         self.frame.link.remove();
         self.destroy.link.remove();
         self.deck.deinit();
+        if (self.wallpaper_reveal_buffer) |sb| {
+            sb.node.destroy();
+            self.wallpaper_reveal_buffer = null;
+        }
         if (self.wallpaper_scene_buffer) |sb| {
             sb.node.destroy();
             self.wallpaper_scene_buffer = null;
@@ -451,10 +485,11 @@ pub const Server = struct {
     /// Worker->main handoff. Written ONLY by the worker before the pipe
     /// byte; read ONLY by the main thread after reading the pipe byte.
     wallpaper_result: ?WallpaperResult,
-    /// Master + palette-tinted pixel copies kept for the reveal blend.
-    /// Both are page_allocator-owned; freed on wallpaper reload/deinit.
-    wallpaper_master_px: ?[]u8,
-    wallpaper_tinted_px: ?[]u8,
+    /// Transient tinted-copy buffer for the boot reveal overlay. Owned by
+    /// the server, dropped when the fade completes (or on wallpaper
+    /// reload/deinit). The permanent wallpaper buffer holds MASTER pixels
+    /// from the start and is never touched by the animation.
+    wallpaper_reveal_wlr_buffer: ?*wlr.Buffer = null,
     wallpaper_anim: struct {
         active: bool,
         start_us: u64,
@@ -824,8 +859,6 @@ pub const Server = struct {
             .wallpaper_source = null,
             .wallpaper_thread = null,
             .wallpaper_result = null,
-            .wallpaper_master_px = null,
-            .wallpaper_tinted_px = null,
             .wallpaper_anim = .{ .active = false, .start_us = 0, .effect = .fade, .progress = 0 },
             .overlay_tree = undefined,
             .outputs = undefined,
@@ -2879,14 +2912,35 @@ pub const Server = struct {
                 sb.node.destroy();
                 output.wallpaper_scene_buffer = null;
             }
+            output.setupWallpaperReveal(server, null);
         }
+        if (server.wallpaper_reveal_wlr_buffer) |b| wlr.Buffer.drop(b);
+        server.wallpaper_reveal_wlr_buffer = null;
+        server.wallpaper_anim.active = false;
         if (server.background.image_buffer) |buffer| wlr.Buffer.drop(buffer);
         server.background.image_buffer = null;
 
-        // Palette-tinted copy: pull each pixel halfway toward the theme
-        // background colour. The reveal effects blend between these two
-        // copies, so every animation frame stays inside the palette.
+        // The permanent wallpaper buffer gets MASTER pixels from frame zero
+        // and is never touched by the animation again.
+        const buffer = DataBuffer.create(result.pixels, result.width, result.height, result.stride) catch return 0;
+        // Keep background.rect/node as the permanent bottom anchor: the
+        // rect still fills letterbox bars around the wallpaper, and
+        // setupWallpaper places the wallpaper node directly above it.
+        server.background.image_buffer = buffer;
+        server.background.image_scene_buffer = null;
+
+        var it2 = server.outputs.iterator(.forward);
+        while (it2.next()) |output| {
+            output.setupWallpaper(server);
+        }
+
+        // Boot reveal ("butterfly"): build a palette-tinted copy as a
+        // transient fullscreen overlay ABOVE the wallpaper, fading 1->0.
+        // Fade-only law (2026-09-07): opacity ramps are GPU-free (one float
+        // on the scene node); the per-pixel iris/wipe/whirlpool passes were
+        // the CPU storm, so they're gone for good.
         const tinted = std.heap.page_allocator.dupe(u8, result.pixels) catch null;
+        var reveal_buffer: ?*wlr.Buffer = null;
         if (tinted) |t| {
             const bg = server.background.color;
             const tr: u32 = @intFromFloat(@min(255, @max(0, bg[0] * 255)));
@@ -2899,31 +2953,25 @@ pub const Server = struct {
                 t[i + 1] = @intCast((@as(u32, t[i + 1]) + tg) / 2);
                 t[i + 2] = @intCast((@as(u32, t[i + 2]) + tr) / 2);
             }
+            if (DataBuffer.create(t, result.width, result.height, result.stride) catch null) |rb| {
+                // create() owns a copy of the pixels now — release our dupe.
+                std.heap.page_allocator.free(t);
+                reveal_buffer = rb;
+            } else {
+                std.heap.page_allocator.free(t);
+            }
         }
-        server.wallpaper_master_px = result.pixels;
-        server.wallpaper_tinted_px = tinted;
+        server.wallpaper_reveal_wlr_buffer = reveal_buffer;
 
-        // Start the reveal on the tinted pixels; the frame tick blends
-        // toward master and drops the final buffer at completion.
-        const start_px = tinted orelse result.pixels;
-        const buffer = DataBuffer.create(start_px, result.width, result.height, result.stride) catch return 0;
-        // Keep background.rect/node as the permanent bottom anchor: the
-        // rect still fills letterbox bars around the wallpaper, and
-        // setupWallpaper places the wallpaper node directly above it.
-        server.background.image_buffer = buffer;
-        server.background.image_scene_buffer = null;
-
-        var it2 = server.outputs.iterator(.forward);
-        while (it2.next()) |output| {
-            output.setupWallpaper(server);
-        }
-
-        // Pick the boot effect at random and arm the animation.
-        const effect: WallpaperEffect = @enumFromInt(@as(u2, @truncate(@as(u64, @bitCast(animation.nowUs())))));
-        server.wallpaper_anim = .{ .active = true, .start_us = animation.nowUs(), .effect = effect, .progress = 0 };
         var it3 = server.outputs.iterator(.forward);
-        while (it3.next()) |output| output.wlr_output.scheduleFrame();
-        std.log.info("KidulWM: wallpaper reveal '{s}' started", .{@tagName(effect)});
+        while (it3.next()) |output| output.setupWallpaperReveal(server, reveal_buffer);
+
+        if (reveal_buffer != null) {
+            server.wallpaper_anim = .{ .active = true, .start_us = animation.nowUs(), .effect = .fade, .progress = 0 };
+            var it4 = server.outputs.iterator(.forward);
+            while (it4.next()) |output| output.wlr_output.scheduleFrame();
+            std.log.info("KidulWM: wallpaper reveal 'fade' started", .{});
+        }
         return 0;
     }
 
@@ -2939,74 +2987,28 @@ pub const Server = struct {
         const p = t * t * (3.0 - 2.0 * t); // smoothstep
         self.wallpaper_anim.progress = p;
 
-        const master = self.wallpaper_master_px orelse return;
-        const tinted = self.wallpaper_tinted_px orelse master;
-        const buffer = self.background.image_buffer orelse return;
-        const db: *DataBuffer = @fieldParentPtr("base", buffer);
-        const out = db.pixels;
-        const w: usize = @intCast(buffer.width);
-        const h: usize = @intCast(buffer.height);
-        const stride: usize = @intCast(db.stride);
-        const effect = self.wallpaper_anim.effect;
-
-        switch (effect) {
-            .fade => {
-                // Cheap: per-buffer opacity ramp instead of a pixel pass.
-                var it = self.outputs.iterator(.forward);
-                while (it.next()) |output| {
-                    if (output.wallpaper_scene_buffer) |sb| {
-                        sb.setOpacity(@floatCast(p));
-                        output.wlr_output.scheduleFrame();
-                    }
-                }
-            },
-            .whirlpool, .wipe, .iris => {
-                const cx: f64 = @as(f64, @floatFromInt(w)) / 2;
-                const cy: f64 = @as(f64, @floatFromInt(h)) / 2;
-                const max_r = @sqrt(cx * cx + cy * cy);
-                var y: usize = 0;
-                while (y < h) : (y += 1) {
-                    const row = y * stride;
-                    var x: usize = 0;
-                    while (x < w) : (x += 1) {
-                        const dx = @as(f64, @floatFromInt(x)) - cx;
-                        const dy = @as(f64, @floatFromInt(y)) - cy;
-                        const reveal = switch (effect) {
-                            .iris => @sqrt(dx * dx + dy * dy) / max_r <= p,
-                            .wipe => (dx / (2 * cx) + dy / (2 * cy) + 1.0) / 2.0 <= p,
-                            .whirlpool => blk: {
-                                const angle = std.math.atan2(dy, dx) + std.math.pi; // 0..2π
-                                break :blk angle / (2 * std.math.pi) <= p;
-                            },
-                            else => true,
-                        };
-                        const src = if (reveal) master else tinted;
-                        const o = row + x * 4;
-                        out[o] = src[o];
-                        out[o + 1] = src[o + 1];
-                        out[o + 2] = src[o + 2];
-                        out[o + 3] = src[o + 3];
-                    }
-                }
-            },
+        // Fade-only: one opacity float per output overlay. No pixel passes,
+        // no mutation of the permanent wallpaper buffer.
+        const opacity: f32 = @floatCast(1.0 - p);
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (output.wallpaper_reveal_buffer) |sb| sb.setOpacity(opacity);
         }
 
         if (t >= 1.0) {
-            // Final state: master pixels, full opacity, animation off.
-            // The memcpy must run for EVERY effect — fade ramps opacity only
-            // and never writes pixels, so skipping it left the TINTED copy
-            // on screen forever: the grey "mist" veil of 2026-09-05.
-            @memcpy(out, master[0..@min(out.len, master.len)]);
-            var it = self.outputs.iterator(.forward);
-            while (it.next()) |output| {
-                if (output.wallpaper_scene_buffer) |sb| sb.setOpacity(1.0);
-            }
+            // Curtain law: at rest the overlay is GONE, not parked. Destroy
+            // the nodes and drop the tinted buffer; the wallpaper below has
+            // held master pixels since boot frame zero.
+            var it2 = self.outputs.iterator(.forward);
+            while (it2.next()) |output| output.setupWallpaperReveal(self, null);
+            if (self.wallpaper_reveal_wlr_buffer) |b| wlr.Buffer.drop(b);
+            self.wallpaper_reveal_wlr_buffer = null;
             self.wallpaper_anim.active = false;
             std.log.info("KidulWM: wallpaper reveal complete", .{});
         } else {
             // Re-arm so the reveal advances at the output's refresh rate.
-            var it = self.outputs.iterator(.forward);
-            while (it.next()) |output| output.wlr_output.scheduleFrame();
+            var it3 = self.outputs.iterator(.forward);
+            while (it3.next()) |output| output.wlr_output.scheduleFrame();
         }
     }
 
