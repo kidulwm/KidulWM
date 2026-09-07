@@ -461,8 +461,17 @@ pub const Window = struct {
     }
 
     pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
-        const w: i32 = @intFromFloat(@round(self.animation.cur_w));
-        const h: i32 = @intFromFloat(@round(self.animation.cur_h));
+        // Cache key is the animation TARGET, not the live cur_w/cur_h: the
+        // spring eases cur_* toward target over many frames and sub-pixel
+        // jitter makes @round(cur_*) alternate by 1px, so a cur-based key
+        // never hits — chrome regenerated on every client commit (the
+        // create/destroy churn of 2026-09-07, ~150 fps with all flags
+        // false). Target changes exactly when the real geometry does;
+        // tickAnimation re-calls us while a genuine move/resize animates,
+        // and on the settle frame cur == target so the final regen lands
+        // at exact size.
+        const w: i32 = @intFromFloat(@round(self.animation.target_w));
+        const h: i32 = @intFromFloat(@round(self.animation.target_h));
         if (w <= 0 or h <= 0) return;
 
         // Pick output scale from the output this window is on.
