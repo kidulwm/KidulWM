@@ -640,17 +640,6 @@ pub const MediaWidget = struct {
     player_active: bool = false,
     player_ws_key_buf: [256]u8 = std.mem.zeroes([256]u8),
 
-    /// PLAYBACK FULLSCREEN LAW: while playing, the video covers the FULL
-    /// OUTPUT (peek areas included), not the slide's focused-slot rect
-    /// (Barticus 2026-09-07). The compositor sizes/positions the video
-    /// scene node; here we only need the hole in the black matte to match.
-    /// Set by Server.mediaSlideRefresh before every render:
-    /// x/y = slide-tree position (target.x/y), w/h = full output dims.
-    video_full_x: i32 = 0,
-    video_full_y: i32 = 0,
-    video_full_w: i32 = 0,
-    video_full_h: i32 = 0,
-
     /// True while a music file started from the media slide is playing in the
     /// tray's MediaWidget (the slide having been dismissed). Drives the
     /// now-playing line in renderPeek and the slideless vsync tick pump.
@@ -1761,7 +1750,7 @@ pub const MediaWidget = struct {
         const scale_f: f64 = @as(f64, scale);
         const corner_r = @as(f64, style_.corner_depth) * scale_f;
 
-        if (as_slide) {
+        if (as_slide and !self.player_active) {
             // Transparent outside the corner path.
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
             c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
@@ -1777,11 +1766,13 @@ pub const MediaWidget = struct {
         if (self.player_active) {
             if (self.player.embedder_owns_video) {
                 // The compositor draws the video itself in a dedicated scene
-                // buffer BELOW this card buffer. Paint the black matte here
-                // so the letterbox bars are black (not transparent), then
-                // punch a transparent hole exactly where the video goes so
-                // the scene buffer shows through. Chrome (Player.render's
-                // UI bar/buttons) draws after, so it stays visible on top.
+                // buffer BELOW this card buffer. While playing the card
+                // buffer is rendered at the FULL OUTPUT size and the slide
+                // tree sits at 0,0 (Server.mediaSlideRefresh), so this
+                // matte + hole cover the peeks and every widget beneath —
+                // normal FULL SCREEN. Paint the black matte, then punch a
+                // transparent hole exactly where the video goes so the
+                // scene buffer shows through. Chrome draws after, on top.
                 c.cairo_set_source_rgb(cr, 0, 0, 0);
                 c.cairo_paint(cr);
                 // Punch the hole from the STREAM dims (known at open), NOT
@@ -1792,20 +1783,14 @@ pub const MediaWidget = struct {
                 if (vsize.w > 0 and vsize.h > 0) {
                     const vw: f64 = @floatFromInt(vsize.w);
                     const vh: f64 = @floatFromInt(vsize.h);
-                    // PLAYBACK FULLSCREEN LAW: hole letterboxes into the FULL
-                    // OUTPUT rect (peek areas included), matching the video
-                    // scene node in Server.mediaVideoRefresh. The card buffer
-                    // is slide-local, so shift by the slide-tree position.
-                    const full_w: f64 = if (self.video_full_w > 0) @floatFromInt(self.video_full_w) else w_d;
-                    const full_h: f64 = if (self.video_full_h > 0) @floatFromInt(self.video_full_h) else h_d;
-                    const off_x: f64 = @floatFromInt(self.video_full_x);
-                    const off_y: f64 = @floatFromInt(self.video_full_y);
-                    const vscale = @min(full_w / vw, full_h / vh);
+                    // Plain letterbox into this buffer's own rect — the
+                    // buffer IS the full output while playing.
+                    const vscale = @min(w_d / vw, h_d / vh);
                     const dw = vw * vscale;
                     const dh = vh * vscale;
                     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
                     c.cairo_set_source_rgba(cr, 0, 0, 0, 0);
-                    c.cairo_rectangle(cr, (full_w - dw) / 2.0 - off_x, (full_h - dh) / 2.0 - off_y, dw, dh);
+                    c.cairo_rectangle(cr, (w_d - dw) / 2.0, (h_d - dh) / 2.0, dw, dh);
                     c.cairo_fill(cr);
                     c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
                 }
@@ -2328,7 +2313,7 @@ pub const MediaWidget = struct {
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
         // at the buffer edge (same tokens as window chrome).
-        if (as_slide) {
+        if (as_slide and !self.player_active) {
             c.cairo_restore(cr);
             const bw = @as(f64, style_.border_width) * scale_f;
             const half = bw * 0.5;

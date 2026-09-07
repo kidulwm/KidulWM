@@ -322,6 +322,9 @@ pub const Output = struct {
             if (self.media_slide.widget.player.isDone()) {
                 self.media_slide.widget.ensureStopped();
                 self.server.mediaVideoTeardown(self);
+                // Player ended from the vsync path — refresh the card so
+                // the slide shrinks back from fullscreen to its slot rect.
+                self.server.mediaSlideRefresh(self);
             } else {
                 self.media_slide.widget.player.tick();
                 const serial = self.media_slide.widget.player.display_serial;
@@ -1664,19 +1667,18 @@ pub const Server = struct {
     pub fn mediaSlideRefresh(self: *Server, output: *Output) void {
         const tree = output.media_slide.tree orelse return;
         const deck = &output.deck;
-        // The slide occupies the virtual before_first slot: it gets the
-        // deck's focused rect (inset by the same gap real slides get).
-        const target = deck.mediaSlideTarget();
-        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         const widget = output.media_slide.ensureWidget(self.allocator);
-        // PLAYBACK FULLSCREEN LAW: hand the widget the full-output rect in
-        // slide-local terms so its matte hole matches the video scene node
-        // (Server.mediaVideoRefresh). x/y = slide-tree position; w/h = deck.
-        widget.video_full_x = target.x;
-        widget.video_full_y = target.y;
-        widget.video_full_w = @intCast(deck.width);
-        widget.video_full_h = @intCast(deck.height);
-        const buffer = media_slide_mod.renderToBuffer(widget, self.theme, @intCast(target.width), @intCast(target.height), scale) orelse return;
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        // PLAYBACK FULLSCREEN LAW (Barticus 2026-09-07): while playing, the
+        // card buffer IS the full output — matte + hole cover the peeks and
+        // every widget beneath. Not playing: the slide's focused-slot rect.
+        const playing = widget.player_active;
+        const target = deck.mediaSlideTarget();
+        const buf_w: i32 = if (playing) @intCast(deck.width) else @intCast(target.width);
+        const buf_h: i32 = if (playing) @intCast(deck.height) else @intCast(target.height);
+        const pos_x: i32 = if (playing) 0 else target.x;
+        const pos_y: i32 = if (playing) 0 else target.y;
+        const buffer = media_slide_mod.renderToBuffer(widget, self.theme, buf_w, buf_h, scale) orelse return;
         if (output.media_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
             wlr.Buffer.drop(buffer);
@@ -1688,9 +1690,12 @@ pub const Server = struct {
         // blows the card up by the output scale on HiDPI (the "huge media
         // player, top-left corner only" bug). Pin the display size back to
         // the logical target rect.
-        card.setDestSize(@intCast(target.width), @intCast(target.height));
-        tree.node.setPosition(target.x, target.y);
+        card.setDestSize(buf_w, buf_h);
+        tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
+        // Fullscreen means over EVERYTHING — the overlay tree (tray/widgets)
+        // normally sits above the slide.
+        if (playing) tree.node.raiseToTop() else self.overlay_tree.node.raiseToTop();
     }
 
     /// Update the dedicated video scene buffer from the player's current
@@ -1703,7 +1708,6 @@ pub const Server = struct {
         if (!widget.player_active) return;
         const frame = widget.player.currentFrame() orelse return;
         const deck = &output.deck;
-        const target = deck.mediaSlideTarget();
 
         // (Re)allocate the persistent pixel buffer if size changed.
         const need: usize = @intCast(frame.stride * frame.h);
@@ -1750,10 +1754,10 @@ pub const Server = struct {
         }
 
         const sb = output.media_slide.video_buffer.?;
-        // PLAYBACK FULLSCREEN LAW: while playing, the video letterboxes into
-        // the FULL OUTPUT, not the slide's focused-slot rect — it covers the
-        // peek areas either side (Barticus 2026-09-07). The slide tree sits
-        // at target.x/target.y, so shift into local coords by -target.x/y.
+        // PLAYBACK FULLSCREEN LAW: while playing, the slide tree sits at
+        // 0,0 and the card buffer IS the full output (see mediaSlideRefresh),
+        // so the video letterboxes straight into the output rect — no
+        // slide-local shifting. Covers the peeks, normal FULL SCREEN.
         const tw: f64 = @floatFromInt(deck.width);
         const th: f64 = @floatFromInt(deck.height);
         const vw: f64 = @floatFromInt(frame.w);
@@ -1763,12 +1767,8 @@ pub const Server = struct {
         const dh: i32 = @intFromFloat(vh * scale);
         const tw_i: i32 = @intCast(deck.width);
         const th_i: i32 = @intCast(deck.height);
-        // The video node is a CHILD of the slide tree, which is already
-        // positioned at target.x/target.y (see mediaSlideOpen). Use LOCAL
-        // coords — the full-output rect in local space is (-target.x,
-        // -target.y, deck.width, deck.height).
-        const dx: i32 = @divTrunc(tw_i - dw, 2) - target.x;
-        const dy: i32 = @divTrunc(th_i - dh, 2) - target.y;
+        const dx: i32 = @divTrunc(tw_i - dw, 2);
+        const dy: i32 = @divTrunc(th_i - dh, 2);
         sb.setDestSize(dw, dh);
         sb.node.setPosition(dx, dy);
         // Z-ORDER: the video buffer sits BELOW the card buffer. The card's
