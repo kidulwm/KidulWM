@@ -39,6 +39,13 @@ pub const Window = struct {
     last_surface_offset_x: i32 = std.math.minInt(i32),
     last_surface_offset_y: i32 = std.math.minInt(i32),
 
+    /// Last clip applied via applyContainment — lets the no-op guard skip
+    /// subsurfaceTreeSetClip on steady-state commits. minInt = never applied.
+    last_clip_x: i32 = std.math.minInt(i32),
+    last_clip_y: i32 = std.math.minInt(i32),
+    last_clip_w: i32 = std.math.minInt(i32),
+    last_clip_h: i32 = std.math.minInt(i32),
+
     output: ?*Output,
     id: u32,
     link: wl.list.Link,
@@ -354,6 +361,18 @@ pub const Window = struct {
         if (!surface.mapped) return;
         const geom = self.toplevel.base.geometry;
         if (geom.width <= 0 or geom.height <= 0) return;
+        // No-op guard: subsurfaceTreeSetClip damages the output even when the
+        // box is unchanged, and handleCommit calls us on EVERY client commit —
+        // an unconditional write here turns any redrawing client into a
+        // commit->damage->frame-done->redraw feedback loop that pins the CPU
+        // (the fans-on storm of 2026-09-07: 78-150 fps on both outputs with
+        // every animation flag false, clip box never changing).
+        if (self.last_clip_x == geom.x and self.last_clip_y == geom.y and
+            self.last_clip_w == geom.width and self.last_clip_h == geom.height) return;
+        self.last_clip_x = geom.x;
+        self.last_clip_y = geom.y;
+        self.last_clip_w = geom.width;
+        self.last_clip_h = geom.height;
         self.surface_tree.node.subsurfaceTreeSetClip(&wlr.Box{
             .x = geom.x,
             .y = geom.y,
