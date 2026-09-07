@@ -233,6 +233,7 @@ const PerOutputMedia = struct {
     last_scale: f32 = 0.0,
     last_title_hash: u64 = 0,
     last_theme_generation: u32 = 0,
+    last_peek_key: u64 = 0,
 };
 
 const PerOutputNotifications = struct {
@@ -1460,6 +1461,41 @@ pub const Tray = struct {
         }
 
         if (needs_redraw) {
+            // TEMP DIAG (Stage 0.5): name which needs_redraw condition is
+            // flapping, rate-limited to one line per second. Keep until the
+            // idle-desk ~0 fps bar is verified live, then remove.
+            {
+                const S = struct {
+                    var last_log_ms: i64 = 0;
+                };
+                const now_ms: i64 = @intCast(@divTrunc(now_us, 1000));
+                if (now_ms - S.last_log_ms >= 1000) {
+                    S.last_log_ms = now_ms;
+                    std.log.info("KidulWM: DIAG tray needs_redraw: first={} tray_anim={} bob={} barry={} underline={} per_output={} notify={} signals_card={} media={}", .{
+                        prev == 0,
+                        self.tray_anim.value > 0.001 and self.tray_anim.value < 0.999,
+                        !bob_settled,
+                        !barry_settled,
+                        !us_step.settled,
+                        blk: {
+                            var f = false;
+                            for (self.outputs.items) |*po| {
+                                const w = self.panelWidth(po.info);
+                                const h = self.panelHeightFor(po.info);
+                                if (po.last_w != w or po.last_h != h or
+                                    @abs(po.last_open_amount - self.tray_anim.value) > 0.0001 or
+                                    po.last_selected != self.selected_index or
+                                    po.last_hover != self.hover_index or
+                                    po.last_order_mode != self.order_mode) f = true;
+                            }
+                            break :blk f;
+                        },
+                        notify_changed,
+                        self.signals_card_open,
+                        self.media_card_open or self.media.cached.playing,
+                    });
+                }
+            }
             self.host.request_frame(self.host.ctx);
         }
     }
@@ -3612,8 +3648,36 @@ pub const Tray = struct {
 
         const title = std.mem.sliceTo(&self.media.cached.title, 0);
         const title_hash: u64 = std.hash.Crc32.hash(title);
-        // The helix animates every frame, so always redraw.
-        const redraw = true;
+        // Gate the redraw on actual state change: the unconditional
+        // `redraw = true` ("helix animates every frame") allocated and
+        // destroyed a scene buffer on every update(); any unrelated
+        // request_frame() then spun this at 46-102 fps on an idle desk
+        // (the munmap/DRM churn in strace). The helix only NEEDS to move
+        // while audio is live (level > 0.03, media.zig renderPeek); idle
+        // or paused, the peek is a static render of cached state.
+        const kmedia = @import("../core/kmedia.zig");
+        const audio_level = kmedia.level();
+        const audio_live = audio_level > 0.03;
+        const playing = self.media.player_active and self.media.cached.playing;
+        var peek_key = title_hash;
+        peek_key = peek_key *% 31 +% theme_gen;
+        peek_key = peek_key *% 31 +% @as(u64, @intFromFloat(@as(f64, scale) * 1024.0));
+        peek_key = peek_key *% 31 +% @as(u64, @as(u32, @bitCast(pill_w)));
+        peek_key = peek_key *% 31 +% @as(u64, @as(u32, @bitCast(pill_h)));
+        peek_key = peek_key *% 31 +% @as(u64, @as(u32, @bitCast(pill_x)));
+        peek_key = peek_key *% 31 +% @as(u64, @as(u32, @bitCast(pill_y)));
+        peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media.player_active));
+        peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media.cached.playing));
+        peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media_card_open));
+        if (audio_live) {
+            // Quantise the level so a live helix keeps redrawing while the
+            // music breathes, without keying on unbounded phase floats.
+            peek_key = peek_key *% 31 +% @as(u64, @intFromFloat(@as(f64, audio_level) * 64.0));
+        }
+        const redraw = widget.scene_buffer == null or
+            widget.last_peek_key != peek_key or
+            (playing and audio_live);
+        widget.last_peek_key = peek_key;
 
         if (!redraw) {
             widget.tree.node.setPosition(pill_x, pill_y);
