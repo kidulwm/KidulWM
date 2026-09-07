@@ -236,10 +236,9 @@ pub const Output = struct {
         // by a single compositor-level wl_event_loop timer, not by a specific
         // output's frame callback. Outputs only PRESENT the due frame on their
         // own vsync. See Server.handlePlayTimer, Server.armPlayTimer.
-        const any_playing = (self.media_slide.isOpen() and
-            self.media_slide.widget_ready and
+        const any_playing = (self.media_slide.widget_ready and
             self.media_slide.widget.player_active) or
-            (!self.media_slide.isOpen() and self.server.tray.media.player_active);
+            self.server.tray.media.player_active;
         if (any_playing and self.server.play_timer == null) {
             self.server.armPlayTimer();
         }
@@ -3023,8 +3022,9 @@ pub const Server = struct {
         var slideless_playing = false;
         var out_it = self.outputs.iterator(.forward);
         while (out_it.next()) |output| {
-            if (output.media_slide.isOpen() and
-                output.media_slide.widget_ready and
+            // AUDIO AUTHORITY: the player survives the card closing — a
+            // headless widget (slide closed, playback live) still ticks.
+            if (output.media_slide.widget_ready and
                 output.media_slide.widget.player_active)
             {
                 slide_playing = true;
@@ -3050,19 +3050,27 @@ pub const Server = struct {
 
             out_it = self.outputs.iterator(.forward);
             while (out_it.next()) |output| {
-                if (!output.media_slide.isOpen() or
-                    !output.media_slide.widget_ready or
+                if (!output.media_slide.widget_ready or
                     !output.media_slide.widget.player_active) continue;
 
                 if (output.media_slide.widget.player.isDone()) {
-                    // isDone teardown: render thread (handleFrame) cleans up
-                    // scene nodes safely under the lock it holds per-frame.
-                    // Disarm so handleFrame's isDone guard fires next vsync.
+                    // isDone teardown: audio authority ends at end-of-track.
+                    // ensureStopped here (the old code relied on the view
+                    // closing to stop playback; that law is dead).
+                    output.media_slide.widget.ensureStopped();
+                    if (output.media_slide.isOpen()) {
+                        self.mediaVideoTeardown(output);
+                        self.mediaSlideRefresh(output);
+                    }
                     self.disarmPlayTimer();
                     return 0;
                 }
 
                 output.media_slide.widget.player.tick();
+                // Keep the widget's cached state fresh for the peek mirror.
+                output.media_slide.widget.update();
+                // Video presents only while the card can show it (view law).
+                if (!output.media_slide.isOpen()) continue;
                 const serial = output.media_slide.widget.player.display_serial;
                 if (serial != output.media_slide.last_display_serial) {
                     output.media_slide.last_display_serial = serial;
@@ -3088,6 +3096,27 @@ pub const Server = struct {
             // now-playing metadata once per timer tick.
             if (self.outputs.first()) |first_out| {
                 first_out.wlr_output.scheduleFrame();
+            }
+        }
+
+        // ── Peek mirror ───────────────────────────────────────────────────────
+        // VISIBILITY LAW (playback.md): while audio plays, the player is
+        // always findable — card open, or the peek label lit. When the SLIDE
+        // owns the player (card closed behind it), mirror its state into the
+        // tray widget's cached view so the peek lights. Tray-owned playback
+        // already feeds its own cache; never overwrite that.
+        if (slide_playing and !self.tray.media.player_active) {
+            var mit = self.outputs.iterator(.forward);
+            while (mit.next()) |output| {
+                if (!output.media_slide.widget_ready or
+                    !output.media_slide.widget.player_active) continue;
+                const src = &output.media_slide.widget;
+                self.tray.media.cached = src.cached;
+                self.tray.media.cached.available = true;
+                if (self.outputs.first()) |first_out| {
+                    first_out.wlr_output.scheduleFrame();
+                }
+                break;
             }
         }
 
