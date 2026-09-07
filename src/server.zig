@@ -1583,11 +1583,12 @@ pub const Server = struct {
     pub fn mediaSlideRefresh(self: *Server, output: *Output) void {
         const tree = output.media_slide.tree orelse return;
         const deck = &output.deck;
-        // The slide occupies the virtual before_first slot: it gets the
-        // deck's focused rect (inset by the same gap real slides get).
-        const target = deck.mediaSlideTarget();
-        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         const widget = output.media_slide.ensureWidget(self.allocator);
+        // Fullscreen is a SIZE (playback.md): a playing player renders into
+        // the full output rect; the card renders into the deck's focused
+        // slot (gap-inset, same as a focused client window).
+        const target = deck.mediaSlideTarget(widget.player_active);
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         const buffer = media_slide_mod.renderToBuffer(widget, self.theme, @intCast(target.width), @intCast(target.height), scale) orelse return;
         if (output.media_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
@@ -1615,7 +1616,9 @@ pub const Server = struct {
         if (!widget.player_active) return;
         const frame = widget.player.currentFrame() orelse return;
         const deck = &output.deck;
-        const target = deck.mediaSlideTarget();
+        // Video plays fullscreen (playback.md): the letterbox target is the
+        // full output rect while the player is active.
+        const target = deck.mediaSlideTarget(true);
 
         // (Re)allocate the persistent pixel buffer if size changed.
         const need: usize = @intCast(frame.stride * frame.h);

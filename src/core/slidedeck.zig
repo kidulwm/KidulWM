@@ -397,9 +397,15 @@ pub const SlideDeck = struct {
         return self.media_slide_open and self.empty_slot == .before_first;
     }
 
-    /// The rect the compositor-owned media slide renders into: the deck's
-    /// focused slot (delta 0), same geometry a focused client window gets.
-    pub fn mediaSlideTarget(self: *SlideDeck) Rect {
+    /// The rect the compositor-owned media slide renders into.
+    /// LAW (docs/law/playback.md): fullscreen is a SIZE, not a mode. The
+    /// card gets the deck's focused slot (delta 0, same geometry a focused
+    /// client window gets). A playing player gets the full output rect —
+    /// no gap inset, no split. Same slide, two sizes; nothing between.
+    pub fn mediaSlideTarget(self: *SlideDeck, fullscreen: bool) Rect {
+        if (fullscreen) {
+            return .{ .x = 0, .y = 0, .width = self.width, .height = self.height };
+        }
         const result = switch (self.orientation) {
             .horizontal => self.horizontalTarget(0),
             .vertical => self.verticalTarget(0),
