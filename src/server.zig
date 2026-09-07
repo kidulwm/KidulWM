@@ -1510,57 +1510,53 @@ pub const Server = struct {
 
     /// Toggle the media player slide.
     ///
-    /// LAW (docs/law/media-slide-location.md): the slide's ground truth is
-    /// the OUTPUT scene tree, never the focus deck.  We scan all outputs to
-    /// find where the slide actually lives before deciding close vs open.
-    /// The deck flag is always cleared/set on the SAME output that owns the
-    /// tree — never on the keyboard-focus deck.
+    /// LAW (docs/law/playback.md, 2026-09-07): the mediaPlayer is a normal
+    /// deck slide. It opens on the CURRENT-FOCUS output's deck and lives
+    /// nowhere else — no cross-output scanning, no special authority.
+    /// The deck flag is the single source of truth for open/closed.
     pub fn mediaSlideToggle(self: *Server) void {
-        // STEP 1: find the output that currently owns the open slide, if any.
-        // Scan ALL outputs — the open slide may be on a different output than
-        // the current keyboard focus (the classic Kogan→laptop bug).
-        var open_output: ?*Output = null;
+        // Find the output that owns the current focus deck. Deck law: the
+        // slide follows the cursor, like every other slide.
+        const deck = self.currentDeck();
+        var focus_output: ?*Output = null;
         {
             var it = self.outputs.iterator(.forward);
             while (it.next()) |output| {
-                if (output.media_slide.isOpen()) {
-                    open_output = output;
+                if (&output.deck == deck) {
+                    focus_output = output;
                     break;
                 }
             }
         }
+        const output = focus_output orelse return;
 
-        if (open_output) |output| {
-            // CLOSE: slide is open on `output`.  Close the tree on THAT output
-            // and clear THAT output's own deck flag — never the focus deck.
+        if (deck.media_slide_open) {
+            // CLOSE: view-only per audio-authority LAW — playback (if any)
+            // survives the card leaving; the peek carries the label.
             self.mediaSlideClose(output);
-            output.deck.closeMediaSlide();
-            self.requestLayout();
+            deck.closeMediaSlide();
         } else {
-            // OPEN: no slide open anywhere — proceed on the current focus output.
-            // Guard: mediaSlideOpenAnywhere() is redundant here (we just scanned)
-            // but kept for safety against any race between scan and open.
-            const deck = self.currentDeck();
-            var focus_output: ?*Output = null;
+            // OPEN: one slide per SESSION, not per deck — the slide follows
+            // the cursor. If another output's deck holds the open slide,
+            // close that VIEW first (playback survives per audio authority);
+            // the slide reopens here, on the cursor's deck.
             {
                 var it = self.outputs.iterator(.forward);
-                while (it.next()) |output| {
-                    if (&output.deck == deck) {
-                        focus_output = output;
-                        break;
+                while (it.next()) |other| {
+                    if (other != output and other.deck.media_slide_open) {
+                        self.mediaSlideClose(other);
+                        other.deck.closeMediaSlide();
                     }
                 }
             }
-            // Deck state FIRST: openMediaSlide sets empty_slot=.before_first,
-            // and mediaSlideTarget() only returns the focused rect while
-            // that's true. Order matters — render after the deck moves.
+            // OPEN: deck state FIRST (openMediaSlide sets empty_slot), then
+            // the scene tree on the same output. Overview and media are
+            // sibling sentinels — never both.
             deck.openMediaSlide();
-            if (focus_output) |output| {
-                if (output.overview.isOpen()) self.overviewSlideClose(output);
-                self.mediaSlideOpen(output);
-            }
-            self.requestLayout();
+            if (output.overview.isOpen()) self.overviewSlideClose(output);
+            self.mediaSlideOpen(output);
         }
+        self.requestLayout();
     }
 
     fn mediaSlideOpen(self: *Server, output: *Output) void {
@@ -1716,23 +1712,27 @@ pub const Server = struct {
         while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.scene_mutex.unlock();
         if (!output.media_slide.isOpen()) return;
-        // Reset to LANDING state for next open.
-        output.media_slide.widget.up_plus_one = false;
-        output.media_slide.widget.focus = .category;
-        output.media_slide.widget.selected_result = 0;
-        output.media_slide.widget.list_scroll_offset = 0;
-        output.media_slide.widget.clearSearch();
-        // Stop playback if still running, then tear down the dedicated
-        // video path via the shared helper (LAW: no stills).
-        if (output.media_slide.widget_ready) output.media_slide.widget.ensureStopped();
-        self.mediaVideoTeardown(output);
+        // AUDIO AUTHORITY LAW (docs/law/playback.md): closing the card is a
+        // VIEW change only. Playback never stops here — audio stops only on
+        // explicit Stop (or isDone at end of track). The widget and player
+        // keep running so the peek label stays live and reopening the card
+        // lands mid-track.
+        //
+        // The dedicated video scene path, however, IS a view: video pixels
+        // only exist while the card can show them. Audio-only playback has
+        // no video path up. If a video is playing, tearing down its scene
+        // buffers stops the GPU-side present without touching the player —
+        // reopening re-arms the buffers from currentFrame().
+        if (output.media_slide.widget_ready and output.media_slide.widget.player_active) {
+            self.mediaVideoTeardown(output);
+        }
         // Destroy the card buffer node FIRST (leaking it left a stale frame
         // on screen — the "quit not clearing" bug), then the tree.
         if (output.media_slide.card_buffer) |buf| buf.node.destroy();
         output.media_slide.tree.?.node.destroy();
         output.media_slide.tree = null;
         output.media_slide.card_buffer = null;
-        std.log.info("KidulWM: media slide closed", .{});
+        std.log.info("KidulWM: media slide closed (playback continues if active)", .{});
     }
 
     /// True while any output's media slide is open (keyboard routing).
@@ -1761,15 +1761,23 @@ pub const Server = struct {
 
     pub fn mediaSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
         const xkb = @import("xkbcommon");
-        var it = self.outputs.iterator(.forward);
-        var output: ?*Output = null;
-        while (it.next()) |o| {
-            if (o.media_slide.isOpen()) {
-                output = o;
-                break;
+        // Deck law (playback.md): keys route to the slide on the CURRENT-
+        // FOCUS output only. No cross-output scanning — if the slide lives
+        // somewhere else, the cursor isn't there, and neither is the typing.
+        const deck = self.currentDeck();
+        if (!deck.media_slide_open) return false;
+        var out_opt: ?*Output = null;
+        {
+            var it = self.outputs.iterator(.forward);
+            while (it.next()) |o| {
+                if (&o.deck == deck) {
+                    out_opt = o;
+                    break;
+                }
             }
         }
-        const out = output orelse return false;
+        const out = out_opt orelse return false;
+        if (!out.media_slide.isOpen()) return false;
         const widget = &out.media_slide.widget;
         if (!out.media_slide.widget_ready) return false;
         var dirty = false;
