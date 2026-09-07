@@ -1239,12 +1239,28 @@ pub const Tray = struct {
         self.tray_anim.setTarget(if (self.open or self.pinned or self.hovered) 1.0 else 0.0);
         _ = self.tray_anim.step(dt);
 
-        // Selection underline position spring.
+        // Selection underline position spring. Semi-implicit Euler is
+        // asymptotic: without a snap, the f32 value hovers a hair below
+        // epsilon forever and us_step.settled never reports true, which
+        // keeps needs_redraw latched and spins the whole frame loop at
+        // idle (the 2026-09-07 140fps idle storm). Snap on settle and
+        // skip stepping entirely when already parked at the target.
         const target_underline: f32 = self.underlineTarget();
-        const us = animation.Spring{ .stiffness = 18.0, .damping = 0.85, .epsilon = 0.5 };
-        const us_step = us.step(self.underline_x, self.underline_vel, target_underline, dt);
-        self.underline_x = @floatCast(us_step.value);
-        self.underline_vel = @floatCast(us_step.velocity);
+        var underline_moving = true;
+        if (self.underline_x == target_underline and self.underline_vel == 0.0) {
+            underline_moving = false;
+        } else {
+            const us = animation.Spring{ .stiffness = 18.0, .damping = 0.85, .epsilon = 0.5 };
+            const us_step = us.step(self.underline_x, self.underline_vel, target_underline, dt);
+            if (us_step.settled) {
+                self.underline_x = target_underline;
+                self.underline_vel = 0.0;
+                underline_moving = false;
+            } else {
+                self.underline_x = @floatCast(us_step.value);
+                self.underline_vel = @floatCast(us_step.velocity);
+            }
+        }
 
         // Freeze Bob/Barry while slides/windows are moving so they stay rock solid.
         const windows_moving = self.host.is_transition_active(self.host.ctx);
@@ -1280,7 +1296,7 @@ pub const Tray = struct {
 
             // Bob animates during tray/underline/state movement; short settle pulse after.
             const tray_moving = !self.tray_anim.isSettled();
-            const bob_moving = tray_moving or !bob_state_step.settled or !us_step.settled;
+            const bob_moving = tray_moving or !bob_state_step.settled or underline_moving;
             if (bob_moving) {
                 self.barry_breath_t += dt * 1.5;
                 self.bob_breath_amp = @min(0.04, self.bob_breath_amp + dt * 0.4);
@@ -1353,7 +1369,7 @@ pub const Tray = struct {
             (self.tray_anim.value > 0.001 and self.tray_anim.value < 0.999) or
             !bob_settled or
             !barry_settled or
-            !us_step.settled;
+            underline_moving;
 
         for (self.outputs.items, 0..) |*po, i| {
             po.info = self.host.output_info(self.host.ctx, i);
@@ -1476,7 +1492,7 @@ pub const Tray = struct {
                         self.tray_anim.value > 0.001 and self.tray_anim.value < 0.999,
                         !bob_settled,
                         !barry_settled,
-                        !us_step.settled,
+                        underline_moving,
                         blk: {
                             var f = false;
                             for (self.outputs.items) |*po| {

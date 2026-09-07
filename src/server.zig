@@ -189,6 +189,53 @@ pub const Output = struct {
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Output = @fieldParentPtr("frame", listener);
+        // TEMP DIAG: frame-gap histogram — buckets inter-frame gaps while
+        // media playback is active. Prints one summary line per second so we
+        // can see stall shape (ragged contention vs quantized timer gaps).
+        // Buckets (ms): <17 / 17-33 / 33-100 / 100-250 / 250-1000 / >1000.
+        {
+            const S = struct {
+                var buckets: [6]u64 = .{ 0, 0, 0, 0, 0, 0 };
+                var frames: u64 = 0;
+                var last_frame_ms: i64 = 0;
+                var last_log_ms: i64 = 0;
+                var longest_ms: i64 = 0;
+            };
+            const now_ms: i64 = @intCast(@divTrunc(animation.nowUs(), 1000));
+            const active = self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active;
+            if (active) {
+                if (S.last_frame_ms != 0) {
+                    const gap = now_ms - S.last_frame_ms;
+                    const b: usize = if (gap < 17) 0 else if (gap < 33) 1 else if (gap < 100) 2 else if (gap < 250) 3 else if (gap < 1000) 4 else 5;
+                    S.buckets[b] += 1;
+                    if (gap > S.longest_ms) S.longest_ms = gap;
+                }
+                S.frames += 1;
+            }
+            S.last_frame_ms = now_ms;
+            if (active and now_ms - S.last_log_ms >= 1000) {
+                std.log.info("KidulWM: GAPS output={s} frames={d} gaps[<{d}]={d} 17-33={d} 33-100={d} 100-250={d} 250-1k={d} >1k={d} longest={d}ms", .{
+                    self.wlr_output.name,
+                    S.frames,
+                    @as(u64, 17),
+                    S.buckets[0],
+                    S.buckets[1],
+                    S.buckets[2],
+                    S.buckets[3],
+                    S.buckets[4],
+                    S.buckets[5],
+                    S.longest_ms,
+                });
+                S.frames = 0;
+                S.buckets = .{ 0, 0, 0, 0, 0, 0 };
+                S.longest_ms = 0;
+                S.last_log_ms = now_ms;
+            }
+            if (!active) {
+                S.last_frame_ms = 0;
+                S.frames = 0;
+            }
+        }
         // TEMP DIAG: frame-rate counter — prints once per second.
         {
             const S = struct {
@@ -2856,10 +2903,9 @@ pub const Server = struct {
         server.wallpaper_master_px = result.pixels;
         server.wallpaper_tinted_px = tinted;
 
-        // DIAG KILL SWITCH (2026-09-06): wallpaper reveal animations disabled
-        // to isolate the persistent "mist" veil + CPU-pinning frame storm.
-        // Buffer starts on MASTER pixels and the animation is never armed.
-        const start_px = result.pixels;
+        // Start the reveal on the tinted pixels; the frame tick blends
+        // toward master and drops the final buffer at completion.
+        const start_px = tinted orelse result.pixels;
         const buffer = DataBuffer.create(start_px, result.width, result.height, result.stride) catch return 0;
         // Keep background.rect/node as the permanent bottom anchor: the
         // rect still fills letterbox bars around the wallpaper, and
@@ -2872,10 +2918,12 @@ pub const Server = struct {
             output.setupWallpaper(server);
         }
 
-        // DIAG: animation arming disabled — reveal stays off, master pixels
-        // shown from the start. tickWallpaperReveal() early-returns on
-        // active==false, so nothing else needs to change.
-        std.log.info("KidulWM: wallpaper reveal DISABLED (diag kill switch)", .{});
+        // Pick the boot effect at random and arm the animation.
+        const effect: WallpaperEffect = @enumFromInt(@as(u2, @truncate(@as(u64, @bitCast(animation.nowUs())))));
+        server.wallpaper_anim = .{ .active = true, .start_us = animation.nowUs(), .effect = effect, .progress = 0 };
+        var it3 = server.outputs.iterator(.forward);
+        while (it3.next()) |output| output.wlr_output.scheduleFrame();
+        std.log.info("KidulWM: wallpaper reveal '{s}' started", .{@tagName(effect)});
         return 0;
     }
 
