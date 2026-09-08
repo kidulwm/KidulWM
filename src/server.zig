@@ -1691,6 +1691,16 @@ pub const Server = struct {
             output.media_slide.widget.deinit();
             output.media_slide.widget = media_mod.MediaWidget.init(self.allocator);
         }
+        // SECOND-VIDEO BLANK LAW (2026-09-08): a fresh widget restarts its
+        // player_generation from 0 — if seen_player_generation still holds
+        // the previous widget's value and they alias, handleFrame's
+        // generation guard never fires and the stale dmabuf cache (keyed on
+        // the DEAD decoder's VA surface ids, which the new pool reuses)
+        // renders freed GPU surfaces = transparent hole where video should
+        // be. Drop all compositor-side video state on open so the new
+        // widget's first frame walks the cache-miss door cleanly.
+        self.mediaVideoTeardown(output);
+        output.media_slide.seen_player_generation = 0;
         const tree = self.scene.tree.createSceneTree() catch return;
         output.media_slide.tree = tree;
         tree.node.raiseToTop();
@@ -2049,17 +2059,21 @@ pub const Server = struct {
         defer self.scene_mutex.unlock();
         if (!output.media_slide.isOpen()) return;
         // AUDIO AUTHORITY LAW (docs/law/playback.md): closing the card is a
-        // VIEW change only. Playback never stops here — audio stops only on
-        // explicit Stop (or isDone at end of track). The widget and player
-        // keep running so the peek label stays live and reopening the card
-        // lands mid-track.
+        // VIEW change only for MUSIC — the album keeps playing, the peek
+        // label stays live, reopening lands mid-track.
         //
-        // The dedicated video scene path, however, IS a view: video pixels
-        // only exist while the card can show them. Audio-only playback has
-        // no video path up. If a video is playing, tearing down its scene
-        // buffers stops the GPU-side present without touching the player —
-        // reopening re-arms the buffers from currentFrame().
+        // VIDEO CARVE-OUT (Barticus, 2026-09-08): closing the slide while a
+        // VIDEO (movie or live TV) plays IS a quit — the sound dies with the
+        // picture. A video playing headless is nonsense: nobody "listens" to
+        // a film from another workspace, and the orphaned audio confused the
+        // reopen path (stale generation aliasing → second-video blank).
         if (output.media_slide.widget_ready and output.media_slide.widget.player_active) {
+            if (!output.media_slide.widget.is_music) {
+                output.media_slide.widget.ensureStopped();
+            }
+            // The dedicated video scene path is a view regardless: video
+            // pixels only exist while the card can show them. Teardown stops
+            // the GPU-side present; reopening re-arms from currentFrame().
             self.mediaVideoTeardown(output);
         }
         // Destroy the card buffer node FIRST (leaking it left a stale frame
