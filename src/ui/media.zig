@@ -638,6 +638,11 @@ pub const MediaWidget = struct {
     player: kmedia_lib.Player,
     watch: kmedia_lib.WatchState,
     player_active: bool = false,
+    /// Bumped on every ensureStopped — the compositor compares against its
+    /// own last-seen value and drops the dmabuf surface cache on change
+    /// (VA pool surface IDs are reused across opens; stale entries point
+    /// at a dead decoder's fds).
+    player_generation: u64 = 0,
     player_ws_key_buf: [256]u8 = std.mem.zeroes([256]u8),
 
     /// True while a music file started from the media slide is playing in the
@@ -1276,6 +1281,11 @@ pub const MediaWidget = struct {
             self.watch = kmedia_lib.WatchState.init(self.allocator);
             self.watch.load();
         }
+        // SECOND-VIDEO FREEZE LAW (2026-09-08): ANY stop bumps the
+        // generation so the compositor drops its dmabuf cache — the new
+        // decoder's VA pool reuses surface IDs, and a stale cache hit
+        // renders freed GPU surfaces at frame rate (hard system wedge).
+        self.player_generation +%= 1;
     }
 
     /// Enter on a TV channel card → live playback (live-tv.md). The LIVE

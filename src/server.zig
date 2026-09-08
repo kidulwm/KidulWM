@@ -321,6 +321,16 @@ pub const Output = struct {
         // and the "constantly trying to load" stutter. This is the primary
         // stutter fix (SUSPECT #1).
         if (self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active) {
+            // PLAYER-INSTANCE GUARD: a stop/reopen cycle (second video)
+            // bumps player_generation; the dmabuf cache is keyed on VA
+            // surface IDs which the new decoder's pool reuses — drop all
+            // compositor-side video state before touching the new player,
+            // or a stale cache hit renders freed GPU surfaces (the 2026-09-08
+            // power-button freeze).
+            if (self.media_slide.widget.player_generation != self.media_slide.seen_player_generation) {
+                self.media_slide.seen_player_generation = self.media_slide.widget.player_generation;
+                self.server.mediaVideoTeardown(self);
+            }
             if (self.media_slide.widget.player.isDone()) {
                 self.media_slide.widget.ensureStopped();
                 self.server.mediaVideoTeardown(self);

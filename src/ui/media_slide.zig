@@ -39,6 +39,11 @@ pub const MediaSlide = struct {
     /// only setBuffer() the cached entry. Teardown drops all entries.
     dmabuf_cache: [8]DmabufCacheEntry = [_]DmabufCacheEntry{.{}} ** 8,
 
+    /// Last widget player_generation the frame handler has seen; a mismatch
+    /// means the player was stopped/reopened and every cached dmabuf buffer
+    /// (keyed on reused VA surface IDs) is stale → teardown before use.
+    seen_player_generation: u64 = 0,
+
     pub const DmabufCacheEntry = struct {
         surface: u32 = 0,
         buf: ?*wlr.Buffer = null,
