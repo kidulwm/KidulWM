@@ -15,6 +15,8 @@ const output_layout_config = @import("core/output_layout_config.zig");
 const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
+const DmabufBuffer = @import("render/dmabuf_buffer.zig").DmabufBuffer;
+const kmedia_lib = @import("kmedia");
 
 /// Boot reveal effects for the wallpaper (palette-locked, picked at random
 /// per boot). All run ~2.2s with a smoothstep ramp; the per-pixel ones
@@ -1706,8 +1708,39 @@ pub const Server = struct {
         const tree = output.media_slide.tree orelse return;
         const widget = &output.media_slide.widget;
         if (!widget.player_active) return;
-        const frame = widget.player.currentFrame() orelse return;
         const deck = &output.deck;
+
+        // ── ZERO-COPY DMABUF BRANCH ─────────────────────────────────────
+        // If the player is in hw zero-copy mode, import the displayed VA
+        // surface as a dmabuf wlr.Buffer and hand it straight to the scene
+        // graph — no per-frame CPU copy. ANY failure falls through to the
+        // memcpy path silently; the next frame may succeed. A failed frame
+        // redraws the last good image (black-with-sound is dead law).
+        if (widget.player.currentVaFrame()) |va_frame| {
+            if (self.mediaVideoDmabufRefresh(output, va_frame)) {
+                // Position/scale into the output rect below (shared with
+                // the memcpy path's tail).
+                const sb = output.media_slide.video_buffer orelse return;
+                const tw: f64 = @floatFromInt(deck.width);
+                const th: f64 = @floatFromInt(deck.height);
+                const vw: f64 = @floatFromInt(sb.buffer.?.width);
+                const vh: f64 = @floatFromInt(sb.buffer.?.height);
+                const scale = @min(tw / vw, th / vh);
+                const dw: i32 = @intFromFloat(vw * scale);
+                const dh: i32 = @intFromFloat(vh * scale);
+                const tw_i: i32 = @intCast(deck.width);
+                const th_i: i32 = @intCast(deck.height);
+                const dx: i32 = @divTrunc(tw_i - dw, 2);
+                const dy: i32 = @divTrunc(th_i - dh, 2);
+                sb.setDestSize(dw, dh);
+                sb.node.setPosition(dx, dy);
+                if (output.media_slide.card_buffer) |card| card.node.raiseToTop();
+                return;
+            }
+        }
+
+        // ── memcpy fallback (sw decode OR dmabuf import failed) ─────────
+        const frame = widget.player.currentFrame() orelse return;
 
         // (Re)allocate the persistent pixel buffer if size changed.
         const need: usize = @intCast(frame.stride * frame.h);
@@ -1778,6 +1811,126 @@ pub const Server = struct {
         if (output.media_slide.card_buffer) |card| card.node.raiseToTop();
     }
 
+    /// Zero-copy dmabuf import of the player's displayed VA frame into the
+    /// video scene buffer. Returns true when the scene buffer now holds a
+    /// live dmabuf; false → caller falls through to the memcpy path
+    /// (silently, per-frame). Mirrors the lab's three doors in Gl.zig:
+    /// door A = separate-layers export, door B = composed-layers whole
+    /// surface. Per-frame failure keeps the last good buffer on screen.
+    fn mediaVideoDmabufRefresh(self: *Server, output: *Output, va_frame: *kmedia_lib.av.AVFrame) bool {
+        _ = self;
+        const av = kmedia_lib.av;
+        const tree = output.media_slide.tree orelse return false;
+
+        // VA surface + display from the hw frame chain (Player owns the
+        // frame; we never free it — borrowed ref per currentVaFrame()).
+        const surface_id: av.VASurfaceID = @intCast(@intFromPtr(va_frame.data[3]));
+        const fctx: *av.AVHWFramesContext = @ptrCast(@alignCast(va_frame.hw_frames_ctx.*.data));
+        const devctx: *av.AVHWDeviceContext = @ptrCast(@alignCast(fctx.device_ref.*.data));
+        const dctx: *av.AVVAAPIDeviceContext = @ptrCast(@alignCast(devctx.hwctx));
+        const va_display: av.VADisplay = dctx.display;
+
+        // Doors A (separate) then B (composed) — the lab's door order;
+        // do NOT reorder (iHD GR1616 quirk).
+        const door_flags = [2]u32{
+            av.VA_EXPORT_SURFACE_READ_ONLY | av.VA_EXPORT_SURFACE_SEPARATE_LAYERS,
+            av.VA_EXPORT_SURFACE_READ_ONLY | av.VA_EXPORT_SURFACE_COMPOSED_LAYERS,
+        };
+        var door: usize = 0;
+        while (door < 2) : (door += 1) {
+            var va_desc: av.VADRMPRIMESurfaceDescriptor = std.mem.zeroes(av.VADRMPRIMESurfaceDescriptor);
+            const rc = av.vaExportSurfaceHandle(va_display, surface_id, av.VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2, door_flags[door], &va_desc);
+            if (rc != av.VA_STATUS_SUCCESS) continue;
+
+            // Walk the descriptor into wlr.DmabufAttributes. We DUP the
+            // object fds: the VA descriptor is closed right after this
+            // block (closeVaDesc hygiene), while the wlr buffer must keep
+            // valid fds for its own lifetime. wlroots does NOT take
+            // ownership of fds handed via wlr_dmabuf_attributes — the
+            // consumer dups again (wlr_dmabuf_attributes_copy) for the
+            // EGLImage import, and wlr_dmabuf_attributes_finish closes
+            // what it owns. Hence: dup here, close VA originals, buffer
+            // destroy() finishes (closes) our dups.
+            var attribs: wlr.DmabufAttributes = std.mem.zeroes(wlr.DmabufAttributes);
+            attribs.width = va_frame.width;
+            attribs.height = va_frame.height;
+            attribs.format = va_desc.fourcc;
+            attribs.modifier = va_desc.objects[0].drm_format_modifier;
+            const n_layers: usize = @min(va_desc.num_layers, 4);
+            var n_planes: usize = 0;
+            var ok = true;
+            for (0..n_layers) |layer_i| {
+                const layer = &va_desc.layers[layer_i];
+                for (0..@min(layer.num_planes, 4)) |plane_i| {
+                    if (n_planes >= 4) { ok = false; break; }
+                    attribs.offset[n_planes] = layer.offset[plane_i];
+                    attribs.stride[n_planes] = layer.pitch[plane_i];
+                    attribs.fd[n_planes] = std.c.dup(va_desc.objects[layer.object_index[plane_i]].fd);
+                    if (attribs.fd[n_planes] < 0) {
+                        ok = false;
+                        break;
+                    }
+                    n_planes += 1;
+                }
+                if (!ok) break;
+            }
+            // closeVaDesc: always close the VA originals now.
+            for (0..va_desc.num_objects) |i| _ = linux.close(va_desc.objects[i].fd);
+
+            if (!ok or n_planes == 0) {
+                for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
+                continue;
+            }
+            attribs.n_planes = @intCast(n_planes);
+
+            // Single modifier across planes (all objects share the same
+            // tiling on iHD; wlroots takes ONE modifier per buffer).
+            // Per-object mismatch → give up on this door quietly.
+            var mod_ok = true;
+            for (1..va_desc.num_objects) |i| {
+                if (va_desc.objects[i].drm_format_modifier != attribs.modifier) mod_ok = false;
+            }
+            if (!mod_ok) {
+                for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
+                continue;
+            }
+
+            // Replace any previous dmabuf buffer (drop old scene node +
+            // buffer; the memcpy pixel buffer stays as the fallback).
+            if (output.media_slide.video_buffer) |sb| {
+                sb.node.destroy();
+                output.media_slide.video_buffer = null;
+            }
+            if (output.media_slide.video_wlr_buf) |old| {
+                wlr.Buffer.drop(old);
+                output.media_slide.video_wlr_buf = null;
+            }
+
+            const buf = DmabufBuffer.create(&attribs) catch {
+                for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
+                continue;
+            };
+            const sb = tree.createSceneBuffer(buf) catch {
+                wlr.Buffer.drop(buf);
+                continue;
+            };
+            output.media_slide.video_wlr_buf = buf;
+            output.media_slide.video_buffer = sb;
+
+            if (!output.media_slide.dmabuf_logged) {
+                output.media_slide.dmabuf_logged = true;
+                std.debug.print("[media] dmabuf zero-copy live (fourcc=0x{x}, {s} layers, planes={d}, mod=0x{x})\n", .{
+                    attribs.format,
+                    if (door == 0) "separate" else "composed",
+                    n_planes,
+                    attribs.modifier,
+                });
+            }
+            return true;
+        }
+        return false;
+    }
+
     /// Kill the live video scene path: scene node, wlr buffer ref, and the
     /// persistent pixel copy. Called whenever playback stops (ensureStopped)
     /// so the last frame does NOT linger as a ghost behind the wall and
@@ -1795,6 +1948,7 @@ pub const Server = struct {
             output.media_slide.video_pixels = &.{};
         }
         output.media_slide.last_display_serial = 0;
+        output.media_slide.dmabuf_logged = false;
     }
 
     fn mediaSlideClose(self: *Server, output: *Output) void {

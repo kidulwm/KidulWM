@@ -25,6 +25,10 @@ pub const MediaSlide = struct {
     video_buffer: ?*wlr.SceneBuffer = null,
     video_wlr_buf: ?*wlr.Buffer = null,
     video_pixels: []u8 = &.{},
+    /// Zero-copy dmabuf path state: one-time-per-stream log latch and the
+    /// source size the live dmabuf buffer was created for (VA frames can
+    /// arrive at native size while the memcpy path letterboxes).
+    dmabuf_logged: bool = false,
 
     pub fn isOpen(self: *const MediaSlide) bool {
         return self.tree != null;
