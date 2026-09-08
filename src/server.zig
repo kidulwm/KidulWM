@@ -1750,9 +1750,15 @@ pub const Server = struct {
     /// video pixels are copied (native size); the scene graph scales to the
     /// letterboxed rect. No full-slide repaint, no 8MB DataBuffer dupe.
     pub fn mediaVideoRefresh(self: *Server, output: *Output) void {
-        const tree = output.media_slide.tree orelse return;
+        const tree = output.media_slide.tree orelse {
+            std.log.info("[media] refresh SKIP: no slide tree", .{});
+            return;
+        };
         const widget = &output.media_slide.widget;
-        if (!widget.player_active) return;
+        if (!widget.player_active) {
+            std.log.info("[media] refresh SKIP: player_active=false gen={d}", .{widget.player_generation});
+            return;
+        }
         const deck = &output.deck;
         // Video plays fullscreen (playback.md): the letterbox target is the
         // full output rect while the player is active.
@@ -1764,6 +1770,7 @@ pub const Server = struct {
         // call-site teardown. Tear down before presenting — a stale node
         // can never reach the screen.
         if (widget.player_generation != output.media_slide.seen_player_generation) {
+            std.log.info("[media] GEN-GUARD refresh: gen={d} seen={d} -> teardown", .{ widget.player_generation, output.media_slide.seen_player_generation });
             output.media_slide.seen_player_generation = widget.player_generation;
             self.mediaVideoTeardown(output);
         }
@@ -1798,7 +1805,13 @@ pub const Server = struct {
         }
 
         // ── memcpy fallback (sw decode OR dmabuf import failed) ─────────
-        const frame = widget.player.currentFrame() orelse return;
+        const frame = widget.player.currentFrame() orelse {
+            if (output.media_slide.dmabuf_fail_logs < 8) {
+                output.media_slide.dmabuf_fail_logs += 1;
+                std.log.info("[media] refresh NULL: no va_frame and no sw frame (gen={d} serial={d})", .{ widget.player_generation, widget.player.display_serial });
+            }
+            return;
+        };
 
         // (Re)allocate the persistent pixel buffer if size changed.
         const need: usize = @intCast(frame.stride * frame.h);
@@ -3353,7 +3366,37 @@ pub const Server = struct {
     // VSYNC SELF-PERPETUATION preserved: scheduleFrame() is called here for
     // every output that has new video pixels, so the render loop keeps firing
     // at the output's native refresh even when no other event triggers it.
-    const PLAY_TIMER_MS: c_int = 16; // ~60 Hz audio-clock advance
+    // TIMER CADENCE LAW (2026-09-08, Raya 144Hz judder): mpv's display-sync
+    // runs the playloop EVERY vsync of the target display. A fixed 16ms
+    // timer against a 143.998Hz panel makes each 24fps frame hold a
+    // wandering 2-or-3 timer ticks instead of a locked integer number of
+    // vsyncs — the grid inside tick() quantizes the CLOCK but the present
+    // decision still flips at the wrong phase. So the timer interval is
+    // derived from the PLAYING output's real refresh (playTimerMs()) and
+    // re-armed at that cadence. 16ms is only the fallback when no refresh
+    // is knowable yet (pre-mode, headless, tray-only music).
+    const PLAY_TIMER_FALLBACK_MS: c_int = 16; // ~60 Hz fallback advance
+
+    /// Milliseconds between play-timer fires: the real vsync interval of
+    /// the output that owns the playing media slide, else the fallback.
+    /// Ceiling division so a 6.94ms slot becomes 7ms, never 6 (firing
+    /// EARLY vs the panel drifts the present phase ahead of scanout).
+    pub fn playTimerMs(self: *Server) c_int {
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (output.media_slide.widget_ready and
+                output.media_slide.widget.player_active)
+            {
+                const mhz = output.wlr_output.refresh;
+                if (mhz > 0) {
+                    const us = @divTrunc(@as(i64, 1_000_000_000), @as(i64, mhz));
+                    const ms: i64 = @intCast(@divTrunc(us + 999, 1000));
+                    return @intCast(@max(1, ms));
+                }
+            }
+        }
+        return PLAY_TIMER_FALLBACK_MS;
+    }
 
     pub fn armPlayTimer(self: *Server) void {
         const event_loop = self.wl_server.getEventLoop();
@@ -3363,7 +3406,7 @@ pub const Server = struct {
                 return;
             };
         }
-        self.play_timer.?.timerUpdate(PLAY_TIMER_MS) catch |err| {
+        self.play_timer.?.timerUpdate(self.playTimerMs()) catch |err| {
             std.log.err("KidulWM: play_timer arm failed: {}", .{err});
         };
     }
@@ -3400,6 +3443,7 @@ pub const Server = struct {
             // Nothing to advance — let the timer lapse (do not re-arm).
             return 0;
         }
+        std.log.info("[media] play_timer: slide_playing={} slideless={}", .{ slide_playing, slideless_playing });
 
         // ── Slide player advance ──────────────────────────────────────────────
         // SCENE LOCK: mediaVideoRefresh creates/updates scene buffers.
@@ -3440,8 +3484,12 @@ pub const Server = struct {
                 // Keep the widget's cached state fresh for the peek mirror.
                 output.media_slide.widget.update();
                 // Video presents only while the card can show it (view law).
-                if (!output.media_slide.isOpen()) continue;
+                if (!output.media_slide.isOpen()) {
+                    std.log.info("[media] play_timer: widget ticking but slide NOT open (gen={d})", .{output.media_slide.widget.player_generation});
+                    continue;
+                }
                 const serial = output.media_slide.widget.player.display_serial;
+                std.log.info("[media] play_timer: gen={d} serial={d} last={d}", .{ output.media_slide.widget.player_generation, serial, output.media_slide.last_display_serial });
                 if (serial != output.media_slide.last_display_serial) {
                     output.media_slide.last_display_serial = serial;
                     self.mediaVideoRefresh(output);
@@ -3490,8 +3538,8 @@ pub const Server = struct {
             }
         }
 
-        // Re-arm for the next tick.
-        self.play_timer.?.timerUpdate(PLAY_TIMER_MS) catch |err| {
+        // Re-arm for the next tick at the playing output's vsync cadence.
+        self.play_timer.?.timerUpdate(self.playTimerMs()) catch |err| {
             std.log.err("KidulWM: play_timer re-arm failed: {}", .{err});
         };
         return 0;
