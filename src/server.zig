@@ -1745,9 +1745,16 @@ pub const Server = struct {
         // (Re)allocate the persistent pixel buffer if size changed.
         const need: usize = @intCast(frame.stride * frame.h);
         if (output.media_slide.video_pixels.len != need) {
-            if (output.media_slide.video_buffer) |sb| {
-                sb.node.destroy();
-                output.media_slide.video_buffer = null;
+            // BLACK-WITH-SOUND LAW: if the previous video node held a live
+            // dmabuf (zero-copy cache), keep it on screen until the memcpy
+            // buffer is ready to replace it — a transient export failure
+            // must redraw the last good image, never blink to the card hole.
+            const had_dmabuf = output.media_slide.video_wlr_buf == null and output.media_slide.video_buffer != null;
+            if (!had_dmabuf) {
+                if (output.media_slide.video_buffer) |sb| {
+                    sb.node.destroy();
+                    output.media_slide.video_buffer = null;
+                }
             }
             if (output.media_slide.video_wlr_buf) |old| {
                 wlr.Buffer.drop(old);
