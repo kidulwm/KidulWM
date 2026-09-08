@@ -1758,6 +1758,16 @@ pub const Server = struct {
         // full output rect while the player is active.
         const target = deck.mediaSlideTarget(true);
 
+        // GENERATION GUARD (structural): the dmabuf cache is keyed on
+        // (surface, gen), but the live video_buffer node may still point
+        // at a stale-gen buffer when a stop/reopen slipped past every
+        // call-site teardown. Tear down before presenting — a stale node
+        // can never reach the screen.
+        if (widget.player_generation != output.media_slide.seen_player_generation) {
+            output.media_slide.seen_player_generation = widget.player_generation;
+            self.mediaVideoTeardown(output);
+        }
+
         // ── ZERO-COPY DMABUF BRANCH ─────────────────────────────────────
         // If the player is in hw zero-copy mode, import the displayed VA
         // surface as a dmabuf wlr.Buffer and hand it straight to the scene
@@ -1883,10 +1893,14 @@ pub const Server = struct {
 
         // CACHE HIT: this pool surface was already exported+imported on an
         // earlier frame — just point the shared scene node at its buffer.
-        // No vaExport, no fd churn, no EGL re-import. This is the steady
-        // state; the decode pool is small (≤8 surfaces).
+        // A hit requires BOTH the surface id AND the player generation
+        // that imported it: VA pools reuse surface ids across decoders, so
+        // a surface-only key can alias the DEAD decoder's freed surfaces
+        // (the second-video blank/freeze). gen makes a stale hit
+        // structurally impossible — no call-site guard can miss it.
+        const gen = output.media_slide.widget.player_generation;
         for (&output.media_slide.dmabuf_cache) |*entry| {
-            if (entry.buf != null and entry.surface == surface_id) {
+            if (entry.buf != null and entry.surface == surface_id and entry.gen == gen) {
                 // RENDER-ONCE LAW (fd-leak fix, 2026-09-08): the lab
                 // (Gl.zig) holds ONE import live and redraws it; the
                 // slide's per-frame setBuffer() made wlroots destroy +
@@ -1991,22 +2005,25 @@ pub const Server = struct {
                 continue;
             };
 
-            // Import succeeded: park this surface's buffer in the cache
-            // (evict the oldest slot if full — pool is small, this should
-            // never actually evict mid-stream) and point the shared scene
-            // node at it, creating the node on first use.
-            var slot: *@TypeOf(output.media_slide.dmabuf_cache[0]) = &output.media_slide.dmabuf_cache[0];
+            // Import succeeded: park this surface's buffer in the cache.
+            // Slot choice: first free slot, else first STALE-GEN slot (its
+            // decoder is dead — the buffer will never hit again), else the
+            // oldest slot (pool is small, same-gen eviction should never
+            // happen mid-stream).
+            var slot: ?*@TypeOf(output.media_slide.dmabuf_cache[0]) = null;
             for (&output.media_slide.dmabuf_cache) |*entry| {
                 if (entry.buf == null) { slot = entry; break; }
+                if (slot == null and entry.gen != gen) slot = entry;
             }
-            if (slot.buf) |old| wlr.Buffer.drop(old);
-            slot.* = .{ .surface = surface_id, .buf = buf };
+            const s = slot orelse &output.media_slide.dmabuf_cache[0];
+            if (s.buf) |old| wlr.Buffer.drop(old);
+            s.* = .{ .surface = surface_id, .gen = gen, .buf = buf };
 
             if (output.media_slide.video_buffer) |sb| {
                 sb.setBuffer(buf);
             } else {
                 const sb = tree.createSceneBuffer(buf) catch {
-                    slot.* = .{};
+                    s.* = .{};
                     wlr.Buffer.drop(buf);
                     continue;
                 };

@@ -46,6 +46,11 @@ pub const MediaSlide = struct {
 
     pub const DmabufCacheEntry = struct {
         surface: u32 = 0,
+        /// Player generation that imported this entry (from the widget's
+        /// player_generation at import time). A hit requires BOTH surface
+        /// and gen match — VA pools reuse surface IDs across decoders, so
+        /// surface alone can alias a dead decoder (second-video blank).
+        gen: u64 = 0,
         buf: ?*wlr.Buffer = null,
     };
 
