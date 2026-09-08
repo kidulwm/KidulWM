@@ -1,6 +1,51 @@
 # KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
 
 ---
+## ADDENDUM — Sep 08 2026 late (media-is-a-slide: sentinel RETIRED)
+
+LAW: docs/law/media-is-a-slide.md LOCKED by Barticus ("lock it in & build
+it !"). Supersedes media-slide-location.md (kept as history). Rulings:
+A. media is a NORMAL deck slide — parks, slides past, shows in overview.
+B. Granny's TV: one compositor, attached screens only; remote wayland
+   screens = worlds away, no server through the back door.
+C. Remote-is-boss = nothing may ever render the remote useless; remote
+   keys are just hotkeys. One player per session, one audio stream ever
+   ("take-over semantics" — Barticus: this names the whole sound saga;
+   carry the phrase into ksound's sound.md law when it comes up for lock).
+
+LANDED: 8cd0a02 (coderBob, bobdotrix-verified diff + cold rebuild):
+- slidedeck: media_slide_open is a plain per-deck bool; empty_slot /
+  virtualFocus / focused_index never touched by media. media_return_index
+  deleted. New test "media slide: normal deck slide, focus undisturbed".
+- server: output-stealing close loop DELETED; toggle is per-output.
+  stopOtherPlayers() enforces one-player at all three play entry points
+  (media_play IPC slide+tray branches, slide-key Movies/TV and MUSIC
+  paths). applyLayout: media card takes the focused slot, raised above
+  that output's windows, overlay raise while playing unchanged.
+- keyboard: unchanged behavior (was already focus-gated + fall-through),
+  comments updated. Ctrl+Q still closes an open media slide.
+
+BARTICUS SIMPLIFICATION (same night, accepted): the "now playing" card
+on a second screen can be a NON-INTERACTIVE VIEWER — art/title/bar/LIVE
+pill of the single player, no input routing. Full interactive wall lives
+where media was opened; other screens get the viewer. Eases ruling 3's
+presentation side; implement when a second-screen card is actually
+wanted — per-output interactive cards are what shipped tonight.
+
+PENDING VERIFICATION: bobdotrix cold-cache ReleaseSafe rebuild + zig
+test (in flight at write time), then DEPLOY + Barticus host test:
+1. Open media on the Kogan — laptop deck fully alive, slide through it.
+2. Slide PAST media on its own deck; park/unpark around it.
+3. Play video A ~30s, stop, play video B (session-19 regression).
+4. Esc on wall closes slide; music take-over both directions
+   (slide→tray and tray→slide, one stream only).
+5. Boot-case: media opens on an empty deck.
+
+STILL OPEN: pause-pill chrome placement bug (law doc open item);
+backups (62 commits ahead of origin: sda1/Codeberg/Apocalypse push
+owed); ksound sound.md law lock ("take-over semantics" doctrine).
+
+---
 ## ADDENDUM — Sep 07 2026 (HOST-ONLY session: media slide location + audio-clocked playloop)
 
 CONTEXT: host-only work. We are deliberately AHEAD of the VM "main commits".
