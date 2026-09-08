@@ -1840,7 +1840,13 @@ pub const Server = struct {
         while (door < 2) : (door += 1) {
             var va_desc: av.VADRMPRIMESurfaceDescriptor = std.mem.zeroes(av.VADRMPRIMESurfaceDescriptor);
             const rc = av.vaExportSurfaceHandle(va_display, surface_id, av.VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2, door_flags[door], &va_desc);
-            if (rc != av.VA_STATUS_SUCCESS) continue;
+            if (rc != av.VA_STATUS_SUCCESS) {
+                if (output.media_slide.dmabuf_fail_logs < 8) {
+                    output.media_slide.dmabuf_fail_logs += 1;
+                    std.debug.print("[media] dmabuf FAIL door={s}: vaExportSurfaceHandle rc={d} surface=0x{x}\n", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", rc, @intFromPtr(va_frame.data[3]) });
+                }
+                continue;
+            }
 
             // Walk the descriptor into wlr.DmabufAttributes. We DUP the
             // object fds: the VA descriptor is closed right after this
@@ -1906,7 +1912,11 @@ pub const Server = struct {
                 output.media_slide.video_wlr_buf = null;
             }
 
-            const buf = DmabufBuffer.create(&attribs) catch {
+            const buf = DmabufBuffer.create(&attribs) catch |err| {
+                if (output.media_slide.dmabuf_fail_logs < 8) {
+                    output.media_slide.dmabuf_fail_logs += 1;
+                    std.debug.print("[media] dmabuf FAIL door={s}: createBuffer err={s} fourcc=0x{x} planes={d} mod=0x{x} {d}x{d}\n", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", @errorName(err), attribs.format, n_planes, attribs.modifier, attribs.width, attribs.height });
+                }
                 for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
                 continue;
             };
@@ -1949,6 +1959,7 @@ pub const Server = struct {
         }
         output.media_slide.last_display_serial = 0;
         output.media_slide.dmabuf_logged = false;
+        output.media_slide.dmabuf_fail_logs = 0;
     }
 
     fn mediaSlideClose(self: *Server, output: *Output) void {

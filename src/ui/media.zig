@@ -1341,6 +1341,10 @@ pub const MediaWidget = struct {
             std.log.err("libkmedia: failed to open {s}: {s}", .{ path, @errorName(err) });
             return;
         };
+        // The compositor-side dmabuf import (mediaVideoDmabufRefresh) is the
+        // always-present consumer — arm zero-copy like the standalone does
+        // after EGL bring-up, else currentVaFrame() never fires.
+        self.player.zero_copy_ok = true;
 
         self.player_active = true;
         self.cached = .{};

@@ -29,6 +29,9 @@ pub const MediaSlide = struct {
     /// source size the live dmabuf buffer was created for (VA frames can
     /// arrive at native size while the memcpy path letterboxes).
     dmabuf_logged: bool = false,
+    /// Failure-probe budget: log the first N dmabuf failures per playback
+    /// (doorstep + error), then stay silent. Reset on teardown.
+    dmabuf_fail_logs: u8 = 0,
 
     pub fn isOpen(self: *const MediaSlide) bool {
         return self.tree != null;
