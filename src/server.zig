@@ -360,7 +360,13 @@ pub const Output = struct {
                 if (serial != self.media_slide.last_display_serial) {
                     self.media_slide.last_display_serial = serial;
                     self.server.mediaVideoRefresh(self);
+                } else {
+                    // [present] DROP: video active on this vsync period but
+                    // the playloop produced no new frame — the display edge
+                    // will re-show the previous buffer.
+                    self.media_slide.present_dropped += 1;
                 }
+                self.server.presentAggregateFlush(self, now_us);
             }
         } else if (self.media_slide.video_buffer != null) {
             // Reconcile: player stopped on a path the server didn't drive
@@ -1745,6 +1751,55 @@ pub const Server = struct {
         if (playing) tree.node.raiseToTop() else self.overlay_tree.node.raiseToTop();
     }
 
+    /// Flush the per-output [present] aggregate once per second while video
+    /// is active: one log line per second per output, never per frame.
+    pub fn presentAggregateFlush(self: *Server, output: *Output, now_us_raw: u64) void {
+        _ = self;
+        const now_us: i64 = @intCast(now_us_raw);
+        const ms = &output.media_slide;
+        if (ms.present_bucket_us == 0) {
+            ms.present_bucket_us = now_us;
+            return;
+        }
+        if (now_us - ms.present_bucket_us < std.time.us_per_s) return;
+        const late_avg: i64 = if (ms.present_committed > 0)
+            @divTrunc(ms.present_late_sum_ms, @as(i64, @intCast(ms.present_committed)))
+        else
+            0;
+        std.log.info("[present] 1s {s}: committed={d} dropped={d} hit={d} miss={d} memcpy={d} late_avg={d}ms late_max={d}ms gen={d}", .{
+            output.wlr_output.name,
+            ms.present_committed,
+            ms.present_dropped,
+            ms.present_hit,
+            ms.present_miss,
+            ms.present_memcpy,
+            late_avg,
+            ms.present_late_max_ms,
+            ms.widget.player_generation,
+        });
+        ms.present_committed = 0;
+        ms.present_dropped = 0;
+        ms.present_hit = 0;
+        ms.present_miss = 0;
+        ms.present_memcpy = 0;
+        ms.present_late_sum_ms = 0;
+        ms.present_late_max_ms = 0;
+        ms.present_bucket_us = now_us;
+    }
+
+    /// Reset the [present] counters (new playback / teardown).
+    fn presentReset(output: *Output) void {
+        const ms = &output.media_slide;
+        ms.present_committed = 0;
+        ms.present_dropped = 0;
+        ms.present_hit = 0;
+        ms.present_miss = 0;
+        ms.present_memcpy = 0;
+        ms.present_late_sum_ms = 0;
+        ms.present_late_max_ms = 0;
+        ms.present_bucket_us = 0;
+    }
+
     /// Update the dedicated video scene buffer from the player's current
     /// frame. Called on each frame_serial bump while player_active. Only the
     /// video pixels are copied (native size); the scene graph scales to the
@@ -1783,6 +1838,23 @@ pub const Server = struct {
         // redraws the last good image (black-with-sound is dead law).
         if (widget.player.currentVaFrame()) |va_frame| {
             if (self.mediaVideoDmabufRefresh(output, va_frame)) {
+                // [present] commit: zero-copy dmabuf frame placed on the
+                // output. Lateness proxy = audio clock − frame pts at the
+                // display edge (target present ≈ pts on the audio clock).
+                const surface_id: u32 = @intCast(@intFromPtr(va_frame.data[3]));
+                output.media_slide.present_committed += 1;
+                const late_ms: i64 = @divTrunc(widget.player.audio_pts_us - widget.player.displayed_pts_us, 1000);
+                output.media_slide.present_late_sum_ms += late_ms;
+                if (late_ms > output.media_slide.present_late_max_ms) output.media_slide.present_late_max_ms = late_ms;
+                if (output.media_slide.present_committed <= 16 or @rem(output.media_slide.present_committed, 120) == 0) {
+                    std.log.info("[present] surface=0x{x} gen={d} cache={s} late={d}ms serial={d}", .{
+                        surface_id,
+                        widget.player_generation,
+                        if (output.media_slide.last_dmabuf_hit) @as([]const u8, "hit") else "miss",
+                        late_ms,
+                        widget.player.display_serial,
+                    });
+                }
                 // Position/scale into the output rect below (shared with
                 // the memcpy path's tail).
                 const sb = output.media_slide.video_buffer orelse return;
@@ -1882,6 +1954,19 @@ pub const Server = struct {
         const dy: i32 = @divTrunc(th_i - dh, 2) + target.y;
         sb.setDestSize(dw, dh);
         sb.node.setPosition(dx, dy);
+        // [present] commit: memcpy (sw decode or dmabuf fallback) frame.
+        output.media_slide.present_committed += 1;
+        output.media_slide.present_memcpy += 1;
+        const late_ms: i64 = @divTrunc(widget.player.audio_pts_us - widget.player.displayed_pts_us, 1000);
+        output.media_slide.present_late_sum_ms += late_ms;
+        if (late_ms > output.media_slide.present_late_max_ms) output.media_slide.present_late_max_ms = late_ms;
+        if (output.media_slide.present_committed <= 16 or @rem(output.media_slide.present_committed, 120) == 0) {
+            std.log.info("[present] memcpy gen={d} cache=na late={d}ms serial={d}", .{
+                widget.player_generation,
+                late_ms,
+                widget.player.display_serial,
+            });
+        }
         // Z-ORDER: the video buffer sits BELOW the card buffer. The card's
         // Player.render (embedder_owns_video) paints the black matte + chrome
         // but leaves the video rect transparent, so the video shows through
@@ -1914,6 +1999,8 @@ pub const Server = struct {
         const gen = output.media_slide.widget.player_generation;
         for (&output.media_slide.dmabuf_cache) |*entry| {
             if (entry.buf != null and entry.surface == surface_id and entry.gen == gen) {
+                output.media_slide.present_hit += 1;
+                output.media_slide.last_dmabuf_hit = true;
                 // RENDER-ONCE LAW (fd-leak fix, 2026-09-08): the lab
                 // (Gl.zig) holds ONE import live and redraws it; the
                 // slide's per-frame setBuffer() made wlroots destroy +
@@ -2031,6 +2118,8 @@ pub const Server = struct {
             const s = slot orelse &output.media_slide.dmabuf_cache[0];
             if (s.buf) |old| wlr.Buffer.drop(old);
             s.* = .{ .surface = surface_id, .gen = gen, .buf = buf };
+            output.media_slide.present_miss += 1;
+            output.media_slide.last_dmabuf_hit = false;
 
             if (output.media_slide.video_buffer) |sb| {
                 sb.setBuffer(buf);
@@ -2076,6 +2165,7 @@ pub const Server = struct {
         output.media_slide.last_display_serial = 0;
         output.media_slide.dmabuf_logged = false;
         output.media_slide.dmabuf_fail_logs = 0;
+        presentReset(output);
         for (&output.media_slide.dmabuf_cache) |*entry| {
             if (entry.buf) |buf| wlr.Buffer.drop(buf);
             entry.* = .{};

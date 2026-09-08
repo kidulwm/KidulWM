@@ -32,6 +32,9 @@ pub const MediaSlide = struct {
     /// Failure-probe budget: log the first N dmabuf failures per playback
     /// (doorstep + error), then stay silent. Reset on teardown.
     dmabuf_fail_logs: u8 = 0,
+    /// Whether the last mediaVideoDmabufRefresh call resolved via cache hit
+    /// (vs a fresh export+import = miss). Read by the [present] commit log.
+    last_dmabuf_hit: bool = false,
     /// Per-surface dmabuf buffer cache: VAAPI decodes through a small
     /// surface pool, so export+import ONCE per pool surface instead of
     /// every frame. Key = VASurfaceID; value = the wlr buffer holding the
@@ -43,6 +46,19 @@ pub const MediaSlide = struct {
     /// means the player was stopped/reopened and every cached dmabuf buffer
     /// (keyed on reused VA surface IDs) is stale → teardown before use.
     seen_player_generation: u64 = 0,
+
+    /// Presentation-timing instrumentation ([present] logs, aggregated 1s
+    /// buckets, reset on teardown). Counts video frames committed to the
+    /// scene, vsync periods with no new frame (drops), dmabuf cache
+    /// hit/miss, and the worst lateness (audio clock − frame pts) in ms.
+    present_committed: u32 = 0,
+    present_dropped: u32 = 0,
+    present_hit: u32 = 0,
+    present_miss: u32 = 0,
+    present_memcpy: u32 = 0,
+    present_late_sum_ms: i64 = 0,
+    present_late_max_ms: i64 = 0,
+    present_bucket_us: i64 = 0,
 
     pub const DmabufCacheEntry = struct {
         surface: u32 = 0,
