@@ -1,5 +1,9 @@
 # LAW — the media slide's truth is its scene tree, never the focus deck
 
+SUPERSEDED 2026-09-08 by `media-is-a-slide.md` — the sentinel design this
+law patched has been retired. Kept for history only; do not implement
+against this document.
+
 Locked 2026-09-07 (host session, Barticus: "free to go, Gods Speed").
 Applies to the compositor-owned media player slide (the sibling sentinel).
 
