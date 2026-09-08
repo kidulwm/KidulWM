@@ -15,11 +15,13 @@ const output_layout_config = @import("core/output_layout_config.zig");
 const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
+const DmabufBuffer = @import("render/dmabuf_buffer.zig").DmabufBuffer;
+const kmedia_lib = @import("kmedia");
 
 /// Boot reveal effects for the wallpaper (palette-locked, picked at random
 /// per boot). All run ~2.2s with a smoothstep ramp; the per-pixel ones
 /// blend master vs theme-tinted copies so no foreign colours ever show.
-pub const WallpaperEffect = enum { fade, whirlpool, wipe, iris };
+pub const WallpaperEffect = enum { fade };
 
 /// Pixel handoff from the wallpaper worker thread to the main thread.
 pub const WallpaperResult = struct {
@@ -96,6 +98,10 @@ pub const Output = struct {
     /// box. This kills the "one global wallpaper only spans the first output"
     /// bug and the resulting mirror/top-center artifacts.
     wallpaper_scene_buffer: ?*wlr.SceneBuffer = null,
+    /// Transient boot-reveal overlay: fullscreen tinted copy fading out over
+    /// the master wallpaper. Self-destroys at the end of the fade; the
+    /// permanent wallpaper buffer is never mutated by the animation.
+    wallpaper_reveal_buffer: ?*wlr.SceneBuffer = null,
 
     pub fn init(self: *Output, server: *Server, wlr_output: *wlr.Output, scene_output: *wlr.SceneOutput) void {
         self.* = .{
@@ -109,6 +115,7 @@ pub const Output = struct {
             .overview = .{},
             .media_slide = .{},
             .wallpaper_scene_buffer = null,
+            .wallpaper_reveal_buffer = null,
         };
         server.outputs.append(self);
         wlr_output.events.frame.add(&self.frame);
@@ -170,11 +177,40 @@ pub const Output = struct {
         server.overlay_tree.node.raiseToTop();
     }
 
+    /// Create or destroy this output's transient boot-reveal overlay: a
+    /// fullscreen tinted copy fading out above the permanent wallpaper.
+    pub fn setupWallpaperReveal(self: *Output, server: *Server, tinted_buffer: ?*wlr.Buffer) void {
+        if (self.wallpaper_reveal_buffer) |sb| {
+            sb.node.destroy();
+            self.wallpaper_reveal_buffer = null;
+        }
+        const buf = tinted_buffer orelse return;
+        var box: wlr.Box = undefined;
+        server.output_layout.getBox(self.wlr_output, &box);
+        if (box.width <= 0 or box.height <= 0) return;
+        const scene_buffer = server.scene.tree.createSceneBuffer(buf) catch return;
+        scene_buffer.setDestSize(box.width, box.height);
+        scene_buffer.node.setPosition(box.x, box.y);
+        scene_buffer.setOpacity(1.0);
+        // Sit directly above the permanent wallpaper, below everything else.
+        if (self.wallpaper_scene_buffer) |wp| {
+            scene_buffer.node.placeAbove(&wp.node);
+        } else {
+            scene_buffer.node.lowerToBottom();
+        }
+        server.overlay_tree.node.raiseToTop();
+        self.wallpaper_reveal_buffer = scene_buffer;
+    }
+
     pub fn deinit(self: *Output) void {
         self.server.tray.removeOutput(self);
         self.frame.link.remove();
         self.destroy.link.remove();
         self.deck.deinit();
+        if (self.wallpaper_reveal_buffer) |sb| {
+            sb.node.destroy();
+            self.wallpaper_reveal_buffer = null;
+        }
         if (self.wallpaper_scene_buffer) |sb| {
             sb.node.destroy();
             self.wallpaper_scene_buffer = null;
@@ -189,6 +225,53 @@ pub const Output = struct {
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Output = @fieldParentPtr("frame", listener);
+        // TEMP DIAG: frame-gap histogram — buckets inter-frame gaps while
+        // media playback is active. Prints one summary line per second so we
+        // can see stall shape (ragged contention vs quantized timer gaps).
+        // Buckets (ms): <17 / 17-33 / 33-100 / 100-250 / 250-1000 / >1000.
+        {
+            const S = struct {
+                var buckets: [6]u64 = .{ 0, 0, 0, 0, 0, 0 };
+                var frames: u64 = 0;
+                var last_frame_ms: i64 = 0;
+                var last_log_ms: i64 = 0;
+                var longest_ms: i64 = 0;
+            };
+            const now_ms: i64 = @intCast(@divTrunc(animation.nowUs(), 1000));
+            const active = self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active;
+            if (active) {
+                if (S.last_frame_ms != 0) {
+                    const gap = now_ms - S.last_frame_ms;
+                    const b: usize = if (gap < 17) 0 else if (gap < 33) 1 else if (gap < 100) 2 else if (gap < 250) 3 else if (gap < 1000) 4 else 5;
+                    S.buckets[b] += 1;
+                    if (gap > S.longest_ms) S.longest_ms = gap;
+                }
+                S.frames += 1;
+            }
+            S.last_frame_ms = now_ms;
+            if (active and now_ms - S.last_log_ms >= 1000) {
+                std.log.info("KidulWM: GAPS output={s} frames={d} gaps[<{d}]={d} 17-33={d} 33-100={d} 100-250={d} 250-1k={d} >1k={d} longest={d}ms", .{
+                    self.wlr_output.name,
+                    S.frames,
+                    @as(u64, 17),
+                    S.buckets[0],
+                    S.buckets[1],
+                    S.buckets[2],
+                    S.buckets[3],
+                    S.buckets[4],
+                    S.buckets[5],
+                    S.longest_ms,
+                });
+                S.frames = 0;
+                S.buckets = .{ 0, 0, 0, 0, 0, 0 };
+                S.longest_ms = 0;
+                S.last_log_ms = now_ms;
+            }
+            if (!active) {
+                S.last_frame_ms = 0;
+                S.frames = 0;
+            }
+        }
         // TEMP DIAG: frame-rate counter — prints once per second.
         {
             const S = struct {
@@ -249,10 +332,35 @@ pub const Output = struct {
         // vsync edges we still need to catch a done state and clean up scene
         // nodes (which must happen on the render thread while holding the lock).
         if (self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active) {
+            // PLAYER-INSTANCE GUARD: a stop/reopen cycle (second video)
+            // bumps player_generation; the dmabuf cache is keyed on VA
+            // surface IDs which the new decoder's pool reuses — drop all
+            // compositor-side video state before touching the new player,
+            // or a stale cache hit renders freed GPU surfaces (the 2026-09-08
+            // power-button freeze).
+            if (self.media_slide.widget.player_generation != self.media_slide.seen_player_generation) {
+                self.media_slide.seen_player_generation = self.media_slide.widget.player_generation;
+                self.server.mediaVideoTeardown(self);
+            }
             if (self.media_slide.widget.player.isDone()) {
                 self.media_slide.widget.ensureStopped();
                 self.server.mediaVideoTeardown(self);
                 self.server.disarmPlayTimer();
+                // Player ended — refresh the card so the slide shrinks back
+                // from fullscreen to its slot rect (media-collapse).
+                self.server.mediaSlideRefresh(self);
+            } else {
+                // AUDIO-CLOCKED PLAYLOOP (main): tick() is owned by the
+                // play_timer, NOT this per-output frame callback. Here we
+                // only PRESENT what the playloop advanced.
+                // VSYNC GRID (media-collapse): the play_timer's tick() carries
+                // the interval; the display_serial check here is the
+                // present-edge.
+                const serial = self.media_slide.widget.player.display_serial;
+                if (serial != self.media_slide.last_display_serial) {
+                    self.media_slide.last_display_serial = serial;
+                    self.server.mediaVideoRefresh(self);
+                }
             }
         } else if (self.media_slide.video_buffer != null) {
             // Reconcile: player stopped on a path the server didn't drive
@@ -405,10 +513,11 @@ pub const Server = struct {
     /// Worker->main handoff. Written ONLY by the worker before the pipe
     /// byte; read ONLY by the main thread after reading the pipe byte.
     wallpaper_result: ?WallpaperResult,
-    /// Master + palette-tinted pixel copies kept for the reveal blend.
-    /// Both are page_allocator-owned; freed on wallpaper reload/deinit.
-    wallpaper_master_px: ?[]u8,
-    wallpaper_tinted_px: ?[]u8,
+    /// Transient tinted-copy buffer for the boot reveal overlay. Owned by
+    /// the server, dropped when the fade completes (or on wallpaper
+    /// reload/deinit). The permanent wallpaper buffer holds MASTER pixels
+    /// from the start and is never touched by the animation.
+    wallpaper_reveal_wlr_buffer: ?*wlr.Buffer = null,
     wallpaper_anim: struct {
         active: bool,
         start_us: u64,
@@ -779,8 +888,6 @@ pub const Server = struct {
             .play_timer = null,
             .wallpaper_thread = null,
             .wallpaper_result = null,
-            .wallpaper_master_px = null,
-            .wallpaper_tinted_px = null,
             .wallpaper_anim = .{ .active = false, .start_us = 0, .effect = .fade, .progress = 0 },
             .overlay_tree = undefined,
             .outputs = undefined,
@@ -1588,7 +1695,12 @@ pub const Server = struct {
         // slot (gap-inset, same as a focused client window).
         const target = deck.mediaSlideTarget(widget.player_active);
         const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
-        const buffer = media_slide_mod.renderToBuffer(widget, self.theme, @intCast(target.width), @intCast(target.height), scale) orelse return;
+        const playing = widget.player_active;
+        const buf_w: i32 = @intCast(target.width);
+        const buf_h: i32 = @intCast(target.height);
+        const pos_x: i32 = target.x;
+        const pos_y: i32 = target.y;
+        const buffer = media_slide_mod.renderToBuffer(widget, self.theme, buf_w, buf_h, scale) orelse return;
         if (output.media_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
             wlr.Buffer.drop(buffer);
@@ -1600,9 +1712,12 @@ pub const Server = struct {
         // blows the card up by the output scale on HiDPI (the "huge media
         // player, top-left corner only" bug). Pin the display size back to
         // the logical target rect.
-        card.setDestSize(@intCast(target.width), @intCast(target.height));
-        tree.node.setPosition(target.x, target.y);
+        card.setDestSize(buf_w, buf_h);
+        tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
+        // Fullscreen means over EVERYTHING — the overlay tree (tray/widgets)
+        // normally sits above the slide.
+        if (playing) tree.node.raiseToTop() else self.overlay_tree.node.raiseToTop();
     }
 
     /// Update the dedicated video scene buffer from the player's current
@@ -1613,18 +1728,56 @@ pub const Server = struct {
         const tree = output.media_slide.tree orelse return;
         const widget = &output.media_slide.widget;
         if (!widget.player_active) return;
-        const frame = widget.player.currentFrame() orelse return;
         const deck = &output.deck;
         // Video plays fullscreen (playback.md): the letterbox target is the
         // full output rect while the player is active.
         const target = deck.mediaSlideTarget(true);
 
+        // ── ZERO-COPY DMABUF BRANCH ─────────────────────────────────────
+        // If the player is in hw zero-copy mode, import the displayed VA
+        // surface as a dmabuf wlr.Buffer and hand it straight to the scene
+        // graph — no per-frame CPU copy. ANY failure falls through to the
+        // memcpy path silently; the next frame may succeed. A failed frame
+        // redraws the last good image (black-with-sound is dead law).
+        if (widget.player.currentVaFrame()) |va_frame| {
+            if (self.mediaVideoDmabufRefresh(output, va_frame)) {
+                // Position/scale into the output rect below (shared with
+                // the memcpy path's tail).
+                const sb = output.media_slide.video_buffer orelse return;
+                const tw: f64 = @floatFromInt(target.width);
+                const th: f64 = @floatFromInt(target.height);
+                const vw: f64 = @floatFromInt(sb.buffer.?.width);
+                const vh: f64 = @floatFromInt(sb.buffer.?.height);
+                const scale = @min(tw / vw, th / vh);
+                const dw: i32 = @intFromFloat(vw * scale);
+                const dh: i32 = @intFromFloat(vh * scale);
+                const tw_i: i32 = @intCast(target.width);
+                const th_i: i32 = @intCast(target.height);
+                const dx: i32 = @divTrunc(tw_i - dw, 2) + target.x;
+                const dy: i32 = @divTrunc(th_i - dh, 2) + target.y;
+                sb.setDestSize(dw, dh);
+                sb.node.setPosition(dx, dy);
+                if (output.media_slide.card_buffer) |card| card.node.raiseToTop();
+                return;
+            }
+        }
+
+        // ── memcpy fallback (sw decode OR dmabuf import failed) ─────────
+        const frame = widget.player.currentFrame() orelse return;
+
         // (Re)allocate the persistent pixel buffer if size changed.
         const need: usize = @intCast(frame.stride * frame.h);
         if (output.media_slide.video_pixels.len != need) {
-            if (output.media_slide.video_buffer) |sb| {
-                sb.node.destroy();
-                output.media_slide.video_buffer = null;
+            // BLACK-WITH-SOUND LAW: if the previous video node held a live
+            // dmabuf (zero-copy cache), keep it on screen until the memcpy
+            // buffer is ready to replace it — a transient export failure
+            // must redraw the last good image, never blink to the card hole.
+            const had_dmabuf = output.media_slide.video_wlr_buf == null and output.media_slide.video_buffer != null;
+            if (!had_dmabuf) {
+                if (output.media_slide.video_buffer) |sb| {
+                    sb.node.destroy();
+                    output.media_slide.video_buffer = null;
+                }
             }
             if (output.media_slide.video_wlr_buf) |old| {
                 wlr.Buffer.drop(old);
@@ -1664,7 +1817,10 @@ pub const Server = struct {
         }
 
         const sb = output.media_slide.video_buffer.?;
-        // Letterbox: scale video into target rect preserving aspect.
+        // PLAYBACK FULLSCREEN LAW: while playing, the slide tree sits at
+        // 0,0 and the card buffer IS the full output (see mediaSlideRefresh),
+        // so the video letterboxes straight into the output rect — no
+        // slide-local shifting. Covers the peeks, normal FULL SCREEN.
         const tw: f64 = @floatFromInt(target.width);
         const th: f64 = @floatFromInt(target.height);
         const vw: f64 = @floatFromInt(frame.w);
@@ -1674,12 +1830,8 @@ pub const Server = struct {
         const dh: i32 = @intFromFloat(vh * scale);
         const tw_i: i32 = @intCast(target.width);
         const th_i: i32 = @intCast(target.height);
-        // The video node is a CHILD of the slide tree, which is already
-        // positioned at target.x/target.y (see mediaSlideOpen). Use LOCAL
-        // coords here — adding target.x/y again double-offsets the video
-        // (the "shifted right, strip off-screen" bug).
-        const dx: i32 = @divTrunc(tw_i - dw, 2);
-        const dy: i32 = @divTrunc(th_i - dh, 2);
+        const dx: i32 = @divTrunc(tw_i - dw, 2) + target.x;
+        const dy: i32 = @divTrunc(th_i - dh, 2) + target.y;
         sb.setDestSize(dw, dh);
         sb.node.setPosition(dx, dy);
         // Z-ORDER: the video buffer sits BELOW the card buffer. The card's
@@ -1687,6 +1839,167 @@ pub const Server = struct {
         // but leaves the video rect transparent, so the video shows through
         // the hole while the progress bar / buttons stay visible on top.
         if (output.media_slide.card_buffer) |card| card.node.raiseToTop();
+    }
+
+    /// Zero-copy dmabuf import of the player's displayed VA frame into the
+    /// video scene buffer. Returns true when the scene buffer now holds a
+    /// live dmabuf; false → caller falls through to the memcpy path
+    /// (silently, per-frame). Mirrors the lab's three doors in Gl.zig:
+    /// door A = separate-layers export, door B = composed-layers whole
+    /// surface. Per-frame failure keeps the last good buffer on screen.
+    fn mediaVideoDmabufRefresh(self: *Server, output: *Output, va_frame: *kmedia_lib.av.AVFrame) bool {
+        _ = self;
+        const av = kmedia_lib.av;
+        const tree = output.media_slide.tree orelse return false;
+
+        // VA surface id from the hw frame (Player owns the frame; we never
+        // free it — borrowed ref per currentVaFrame()).
+        const surface_id: u32 = @intCast(@intFromPtr(va_frame.data[3]));
+
+        // CACHE HIT: this pool surface was already exported+imported on an
+        // earlier frame — just point the shared scene node at its buffer.
+        // No vaExport, no fd churn, no EGL re-import. This is the steady
+        // state; the decode pool is small (≤8 surfaces).
+        for (&output.media_slide.dmabuf_cache) |*entry| {
+            if (entry.buf != null and entry.surface == surface_id) {
+                // RENDER-ONCE LAW (fd-leak fix, 2026-09-08): the lab
+                // (Gl.zig) holds ONE import live and redraws it; the
+                // slide's per-frame setBuffer() made wlroots destroy +
+                // recreate the texture every frame and its dmabuf attribs
+                // copy leaked fds (render/dmabuf.c F_DUPFD_CLOEXEC →
+                // EMFILE → compositor wedge → power-button freeze). Only
+                // setBuffer when the scene node isn't already showing THIS
+                // surface's buffer; steady-state playback re-points at the
+                // same cached buffer and must NOT churn the texture.
+                const sb = output.media_slide.video_buffer orelse blk: {
+                    const new_sb = tree.createSceneBuffer(entry.buf.?) catch return false;
+                    output.media_slide.video_buffer = new_sb;
+                    break :blk new_sb;
+                };
+                if (sb.buffer != entry.buf.?) sb.setBuffer(entry.buf.?);
+                return true;
+            }
+        }
+
+        const fctx: *av.AVHWFramesContext = @ptrCast(@alignCast(va_frame.hw_frames_ctx.*.data));
+        const devctx: *av.AVHWDeviceContext = @ptrCast(@alignCast(fctx.device_ref.*.data));
+        const dctx: *av.AVVAAPIDeviceContext = @ptrCast(@alignCast(devctx.hwctx));
+        const va_display: av.VADisplay = dctx.display;
+
+        // Doors A (separate) then B (composed) — the lab's door order;
+        // do NOT reorder (iHD GR1616 quirk).
+        const door_flags = [2]u32{
+            av.VA_EXPORT_SURFACE_READ_ONLY | av.VA_EXPORT_SURFACE_SEPARATE_LAYERS,
+            av.VA_EXPORT_SURFACE_READ_ONLY | av.VA_EXPORT_SURFACE_COMPOSED_LAYERS,
+        };
+        var door: usize = 0;
+        while (door < 2) : (door += 1) {
+            var va_desc: av.VADRMPRIMESurfaceDescriptor = std.mem.zeroes(av.VADRMPRIMESurfaceDescriptor);
+            const rc = av.vaExportSurfaceHandle(va_display, surface_id, av.VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2, door_flags[door], &va_desc);
+            if (rc != av.VA_STATUS_SUCCESS) {
+                if (output.media_slide.dmabuf_fail_logs < 8) {
+                    output.media_slide.dmabuf_fail_logs += 1;
+                    std.log.info("[media] dmabuf FAIL door={s}: vaExportSurfaceHandle rc={d} surface=0x{x}", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", rc, @intFromPtr(va_frame.data[3]) });
+                }
+                continue;
+            }
+
+            // Walk the descriptor into wlr.DmabufAttributes. We DUP the
+            // object fds: the VA descriptor is closed right after this
+            // block (closeVaDesc hygiene), while the wlr buffer must keep
+            // valid fds for its own lifetime. wlroots does NOT take
+            // ownership of fds handed via wlr_dmabuf_attributes — the
+            // consumer dups again (wlr_dmabuf_attributes_copy) for the
+            // EGLImage import, and wlr_dmabuf_attributes_finish closes
+            // what it owns. Hence: dup here, close VA originals, buffer
+            // destroy() finishes (closes) our dups.
+            var attribs: wlr.DmabufAttributes = std.mem.zeroes(wlr.DmabufAttributes);
+            attribs.width = va_frame.width;
+            attribs.height = va_frame.height;
+            attribs.format = va_desc.fourcc;
+            attribs.modifier = va_desc.objects[0].drm_format_modifier;
+            const n_layers: usize = @min(va_desc.num_layers, 4);
+            var n_planes: usize = 0;
+            var ok = true;
+            for (0..n_layers) |layer_i| {
+                const layer = &va_desc.layers[layer_i];
+                for (0..@min(layer.num_planes, 4)) |plane_i| {
+                    if (n_planes >= 4) { ok = false; break; }
+                    attribs.offset[n_planes] = layer.offset[plane_i];
+                    attribs.stride[n_planes] = layer.pitch[plane_i];
+                    attribs.fd[n_planes] = std.c.dup(va_desc.objects[layer.object_index[plane_i]].fd);
+                    if (attribs.fd[n_planes] < 0) {
+                        ok = false;
+                        break;
+                    }
+                    n_planes += 1;
+                }
+                if (!ok) break;
+            }
+            // closeVaDesc: always close the VA originals now.
+            for (0..va_desc.num_objects) |i| _ = linux.close(va_desc.objects[i].fd);
+
+            if (!ok or n_planes == 0) {
+                for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
+                continue;
+            }
+            attribs.n_planes = @intCast(n_planes);
+
+            // Single modifier across planes (all objects share the same
+            // tiling on iHD; wlroots takes ONE modifier per buffer).
+            // Per-object mismatch → give up on this door quietly.
+            var mod_ok = true;
+            for (1..va_desc.num_objects) |i| {
+                if (va_desc.objects[i].drm_format_modifier != attribs.modifier) mod_ok = false;
+            }
+            if (!mod_ok) {
+                for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
+                continue;
+            }
+
+            const buf = DmabufBuffer.create(&attribs) catch |err| {
+                if (output.media_slide.dmabuf_fail_logs < 8) {
+                    output.media_slide.dmabuf_fail_logs += 1;
+                    std.log.info("[media] dmabuf FAIL door={s}: createBuffer err={s} fourcc=0x{x} planes={d} mod=0x{x} {d}x{d}", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", @errorName(err), attribs.format, n_planes, attribs.modifier, attribs.width, attribs.height });
+                }
+                for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
+                continue;
+            };
+
+            // Import succeeded: park this surface's buffer in the cache
+            // (evict the oldest slot if full — pool is small, this should
+            // never actually evict mid-stream) and point the shared scene
+            // node at it, creating the node on first use.
+            var slot: *@TypeOf(output.media_slide.dmabuf_cache[0]) = &output.media_slide.dmabuf_cache[0];
+            for (&output.media_slide.dmabuf_cache) |*entry| {
+                if (entry.buf == null) { slot = entry; break; }
+            }
+            if (slot.buf) |old| wlr.Buffer.drop(old);
+            slot.* = .{ .surface = surface_id, .buf = buf };
+
+            if (output.media_slide.video_buffer) |sb| {
+                sb.setBuffer(buf);
+            } else {
+                const sb = tree.createSceneBuffer(buf) catch {
+                    slot.* = .{};
+                    wlr.Buffer.drop(buf);
+                    continue;
+                };
+                output.media_slide.video_buffer = sb;
+            }
+
+            if (!output.media_slide.dmabuf_logged) {
+                output.media_slide.dmabuf_logged = true;
+                std.log.info("[media] dmabuf zero-copy live (fourcc=0x{x}, {s} layers, planes={d}, mod=0x{x})", .{
+                    attribs.format,
+                    if (door == 0) "separate" else "composed",
+                    n_planes,
+                    attribs.modifier,
+                });
+            }
+            return true;
+        }
+        return false;
     }
 
     /// Kill the live video scene path: scene node, wlr buffer ref, and the
@@ -1706,6 +2019,12 @@ pub const Server = struct {
             output.media_slide.video_pixels = &.{};
         }
         output.media_slide.last_display_serial = 0;
+        output.media_slide.dmabuf_logged = false;
+        output.media_slide.dmabuf_fail_logs = 0;
+        for (&output.media_slide.dmabuf_cache) |*entry| {
+            if (entry.buf) |buf| wlr.Buffer.drop(buf);
+            entry.* = .{};
+        }
     }
 
     fn mediaSlideClose(self: *Server, output: *Output) void {
@@ -2845,14 +3164,35 @@ pub const Server = struct {
                 sb.node.destroy();
                 output.wallpaper_scene_buffer = null;
             }
+            output.setupWallpaperReveal(server, null);
         }
+        if (server.wallpaper_reveal_wlr_buffer) |b| wlr.Buffer.drop(b);
+        server.wallpaper_reveal_wlr_buffer = null;
+        server.wallpaper_anim.active = false;
         if (server.background.image_buffer) |buffer| wlr.Buffer.drop(buffer);
         server.background.image_buffer = null;
 
-        // Palette-tinted copy: pull each pixel halfway toward the theme
-        // background colour. The reveal effects blend between these two
-        // copies, so every animation frame stays inside the palette.
+        // The permanent wallpaper buffer gets MASTER pixels from frame zero
+        // and is never touched by the animation again.
+        const buffer = DataBuffer.create(result.pixels, result.width, result.height, result.stride) catch return 0;
+        // Keep background.rect/node as the permanent bottom anchor: the
+        // rect still fills letterbox bars around the wallpaper, and
+        // setupWallpaper places the wallpaper node directly above it.
+        server.background.image_buffer = buffer;
+        server.background.image_scene_buffer = null;
+
+        var it2 = server.outputs.iterator(.forward);
+        while (it2.next()) |output| {
+            output.setupWallpaper(server);
+        }
+
+        // Boot reveal ("butterfly"): build a palette-tinted copy as a
+        // transient fullscreen overlay ABOVE the wallpaper, fading 1->0.
+        // Fade-only law (2026-09-07): opacity ramps are GPU-free (one float
+        // on the scene node); the per-pixel iris/wipe/whirlpool passes were
+        // the CPU storm, so they're gone for good.
         const tinted = std.heap.page_allocator.dupe(u8, result.pixels) catch null;
+        var reveal_buffer: ?*wlr.Buffer = null;
         if (tinted) |t| {
             const bg = server.background.color;
             const tr: u32 = @intFromFloat(@min(255, @max(0, bg[0] * 255)));
@@ -2865,30 +3205,25 @@ pub const Server = struct {
                 t[i + 1] = @intCast((@as(u32, t[i + 1]) + tg) / 2);
                 t[i + 2] = @intCast((@as(u32, t[i + 2]) + tr) / 2);
             }
+            if (DataBuffer.create(t, result.width, result.height, result.stride) catch null) |rb| {
+                // create() owns a copy of the pixels now — release our dupe.
+                std.heap.page_allocator.free(t);
+                reveal_buffer = rb;
+            } else {
+                std.heap.page_allocator.free(t);
+            }
         }
-        server.wallpaper_master_px = result.pixels;
-        server.wallpaper_tinted_px = tinted;
+        server.wallpaper_reveal_wlr_buffer = reveal_buffer;
 
-        // DIAG KILL SWITCH (2026-09-06): wallpaper reveal animations disabled
-        // to isolate the persistent "mist" veil + CPU-pinning frame storm.
-        // Buffer starts on MASTER pixels and the animation is never armed.
-        const start_px = result.pixels;
-        const buffer = DataBuffer.create(start_px, result.width, result.height, result.stride) catch return 0;
-        // Keep background.rect/node as the permanent bottom anchor: the
-        // rect still fills letterbox bars around the wallpaper, and
-        // setupWallpaper places the wallpaper node directly above it.
-        server.background.image_buffer = buffer;
-        server.background.image_scene_buffer = null;
+        var it3 = server.outputs.iterator(.forward);
+        while (it3.next()) |output| output.setupWallpaperReveal(server, reveal_buffer);
 
-        var it2 = server.outputs.iterator(.forward);
-        while (it2.next()) |output| {
-            output.setupWallpaper(server);
+        if (reveal_buffer != null) {
+            server.wallpaper_anim = .{ .active = true, .start_us = animation.nowUs(), .effect = .fade, .progress = 0 };
+            var it4 = server.outputs.iterator(.forward);
+            while (it4.next()) |output| output.wlr_output.scheduleFrame();
+            std.log.info("KidulWM: wallpaper reveal 'fade' started", .{});
         }
-
-        // DIAG: animation arming disabled — reveal stays off, master pixels
-        // shown from the start. tickWallpaperReveal() early-returns on
-        // active==false, so nothing else needs to change.
-        std.log.info("KidulWM: wallpaper reveal DISABLED (diag kill switch)", .{});
         return 0;
     }
 
@@ -2904,74 +3239,28 @@ pub const Server = struct {
         const p = t * t * (3.0 - 2.0 * t); // smoothstep
         self.wallpaper_anim.progress = p;
 
-        const master = self.wallpaper_master_px orelse return;
-        const tinted = self.wallpaper_tinted_px orelse master;
-        const buffer = self.background.image_buffer orelse return;
-        const db: *DataBuffer = @fieldParentPtr("base", buffer);
-        const out = db.pixels;
-        const w: usize = @intCast(buffer.width);
-        const h: usize = @intCast(buffer.height);
-        const stride: usize = @intCast(db.stride);
-        const effect = self.wallpaper_anim.effect;
-
-        switch (effect) {
-            .fade => {
-                // Cheap: per-buffer opacity ramp instead of a pixel pass.
-                var it = self.outputs.iterator(.forward);
-                while (it.next()) |output| {
-                    if (output.wallpaper_scene_buffer) |sb| {
-                        sb.setOpacity(@floatCast(p));
-                        output.wlr_output.scheduleFrame();
-                    }
-                }
-            },
-            .whirlpool, .wipe, .iris => {
-                const cx: f64 = @as(f64, @floatFromInt(w)) / 2;
-                const cy: f64 = @as(f64, @floatFromInt(h)) / 2;
-                const max_r = @sqrt(cx * cx + cy * cy);
-                var y: usize = 0;
-                while (y < h) : (y += 1) {
-                    const row = y * stride;
-                    var x: usize = 0;
-                    while (x < w) : (x += 1) {
-                        const dx = @as(f64, @floatFromInt(x)) - cx;
-                        const dy = @as(f64, @floatFromInt(y)) - cy;
-                        const reveal = switch (effect) {
-                            .iris => @sqrt(dx * dx + dy * dy) / max_r <= p,
-                            .wipe => (dx / (2 * cx) + dy / (2 * cy) + 1.0) / 2.0 <= p,
-                            .whirlpool => blk: {
-                                const angle = std.math.atan2(dy, dx) + std.math.pi; // 0..2π
-                                break :blk angle / (2 * std.math.pi) <= p;
-                            },
-                            else => true,
-                        };
-                        const src = if (reveal) master else tinted;
-                        const o = row + x * 4;
-                        out[o] = src[o];
-                        out[o + 1] = src[o + 1];
-                        out[o + 2] = src[o + 2];
-                        out[o + 3] = src[o + 3];
-                    }
-                }
-            },
+        // Fade-only: one opacity float per output overlay. No pixel passes,
+        // no mutation of the permanent wallpaper buffer.
+        const opacity: f32 = @floatCast(1.0 - p);
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (output.wallpaper_reveal_buffer) |sb| sb.setOpacity(opacity);
         }
 
         if (t >= 1.0) {
-            // Final state: master pixels, full opacity, animation off.
-            // The memcpy must run for EVERY effect — fade ramps opacity only
-            // and never writes pixels, so skipping it left the TINTED copy
-            // on screen forever: the grey "mist" veil of 2026-09-05.
-            @memcpy(out, master[0..@min(out.len, master.len)]);
-            var it = self.outputs.iterator(.forward);
-            while (it.next()) |output| {
-                if (output.wallpaper_scene_buffer) |sb| sb.setOpacity(1.0);
-            }
+            // Curtain law: at rest the overlay is GONE, not parked. Destroy
+            // the nodes and drop the tinted buffer; the wallpaper below has
+            // held master pixels since boot frame zero.
+            var it2 = self.outputs.iterator(.forward);
+            while (it2.next()) |output| output.setupWallpaperReveal(self, null);
+            if (self.wallpaper_reveal_wlr_buffer) |b| wlr.Buffer.drop(b);
+            self.wallpaper_reveal_wlr_buffer = null;
             self.wallpaper_anim.active = false;
             std.log.info("KidulWM: wallpaper reveal complete", .{});
         } else {
             // Re-arm so the reveal advances at the output's refresh rate.
-            var it = self.outputs.iterator(.forward);
-            while (it.next()) |output| output.wlr_output.scheduleFrame();
+            var it3 = self.outputs.iterator(.forward);
+            while (it3.next()) |output| output.wlr_output.scheduleFrame();
         }
     }
 
@@ -3066,7 +3355,16 @@ pub const Server = struct {
                     return 0;
                 }
 
-                output.media_slide.widget.player.tick();
+                // VSYNC GRID (media-collapse d0ce804/2d623e9): the audio-
+                // clocked playloop owns advance, but presentation still
+                // quantizes to the output's real vsync interval so 24fps
+                // film lands on even 2:3 slots instead of wandering.
+                const refresh_mhz = output.wlr_output.refresh;
+                const interval_us: i64 = if (refresh_mhz > 0)
+                    @intCast(@divTrunc(@as(i64, 1_000_000_000), @as(i64, refresh_mhz)))
+                else
+                    16_666;
+                output.media_slide.widget.player.tick(interval_us);
                 // Keep the widget's cached state fresh for the peek mirror.
                 output.media_slide.widget.update();
                 // Video presents only while the card can show it (view law).
@@ -3090,7 +3388,7 @@ pub const Server = struct {
                 self.disarmPlayTimer();
                 return 0;
             }
-            self.tray.media.player.tick();
+            self.tray.media.player.tick(0);
             // No video pixels for audio-only; no scheduleFrame needed here.
             // Arm scheduleFrame on the first output so the tray repaints its
             // now-playing metadata once per timer tick.

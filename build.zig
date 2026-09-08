@@ -150,6 +150,7 @@ pub fn build(b: *std.Build) void {
     root_mod.linkSystemLibrary("pulse", .{});
     root_mod.linkSystemLibrary("pulse-simple", .{});
     root_mod.linkSystemLibrary("pthread", .{});
+    root_mod.linkSystemLibrary("va", .{});
     root_mod.addCSourceFile(.{
         .file = b.path("src/core/kmedia_shim.c"),
         .flags = &.{

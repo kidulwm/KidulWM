@@ -187,7 +187,9 @@ pub const WeatherWidget = struct {
 
         // Weather condition icon below the min/max line.
         var icon_r: f64 = 48.0 * scale_f;
-        const icon_bottom_margin: f64 = 1.0 * scale_f;
+        // Percentage-of-container gap: fraction of the icon radius, so the
+        // same face proportions hold at scale 1 (1080p) and scale 2 (4K).
+        const icon_bottom_margin: f64 = 0.10 * icon_r;
         const max_icon_r = @min(w_d * 0.5 - 2.0 * scale_f, (h_d - (mm_y + icon_bottom_margin)) * 0.5);
         icon_r = @min(icon_r, @max(0.0, max_icon_r));
         if (icon_r >= 8.0 * scale_f) {

@@ -35,6 +35,10 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Return, .action = .{ .spawn = ghostty } }) catch {
         if (ghostty.len > 0) allocator.free(ghostty);
     };
+    const alacritty = allocator.dupe(u8, "/usr/bin/alacritty") catch &[_]u8{};
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.w, .action = .{ .spawn = alacritty } }) catch {
+        if (alacritty.len > 0) allocator.free(alacritty);
+    };
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.j, .action = .focus_next }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.k, .action = .focus_prev }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.t, .action = .tray_toggle }) catch {};

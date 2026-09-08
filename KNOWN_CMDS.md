@@ -120,7 +120,28 @@ virsh -c qemu:///system qemu-agent-command fresh-one --cmd '{"execute":"guest-ss
 
 If guest agent is not responsive, use the SPICE console or the serial console instead.
 
-## Deploy KidulWM to a VM
+## Deploy KidulWM — HOST FIRST (law, restated by Barticus 2026-09-07)
+
+ALL KidulWM work and deploys happen ON THE HOST unless Barticus explicitly
+says VM. Host deploy is: build ReleaseSafe, copy to /usr/local/bin, then
+restart the compositor SESSION (SDDM wayland session — restarting it kills
+the host session, so confirm with Barticus before bouncing it).
+
+WORKFLOW (locked 2026-09-07): Bob builds + installs the binary; Barticus
+restarts the session himself. Bob never bounces the host session.
+
+```bash
+cd /home/dad/dev/KidulWM
+zig build -Doptimize=ReleaseSafe
+sudo install -m 755 zig-out/bin/kidulwm /usr/local/bin/kidulwm.new
+sudo install -m 755 zig-out/bin/kidulwm-control /usr/local/bin/kidulwm-control.new
+sudo mv /usr/local/bin/kidulwm.new /usr/local/bin/kidulwm
+sudo mv /usr/local/bin/kidulwm-control.new /usr/local/bin/kidulwm-control
+# install+rename, not plain cp: the running compositor has the binary
+# mapped and cp fails with ETXTBSY. Then Barticus restarts the session.
+```
+
+## Deploy KidulWM to a VM (only when Barticus asks)
 
 ```bash
 cd /home/dad/dev/KidulWM

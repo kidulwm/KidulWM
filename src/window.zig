@@ -39,6 +39,13 @@ pub const Window = struct {
     last_surface_offset_x: i32 = std.math.minInt(i32),
     last_surface_offset_y: i32 = std.math.minInt(i32),
 
+    /// Last clip applied via applyContainment — lets the no-op guard skip
+    /// subsurfaceTreeSetClip on steady-state commits. minInt = never applied.
+    last_clip_x: i32 = std.math.minInt(i32),
+    last_clip_y: i32 = std.math.minInt(i32),
+    last_clip_w: i32 = std.math.minInt(i32),
+    last_clip_h: i32 = std.math.minInt(i32),
+
     output: ?*Output,
     id: u32,
     link: wl.list.Link,
@@ -354,6 +361,18 @@ pub const Window = struct {
         if (!surface.mapped) return;
         const geom = self.toplevel.base.geometry;
         if (geom.width <= 0 or geom.height <= 0) return;
+        // No-op guard: subsurfaceTreeSetClip damages the output even when the
+        // box is unchanged, and handleCommit calls us on EVERY client commit —
+        // an unconditional write here turns any redrawing client into a
+        // commit->damage->frame-done->redraw feedback loop that pins the CPU
+        // (the fans-on storm of 2026-09-07: 78-150 fps on both outputs with
+        // every animation flag false, clip box never changing).
+        if (self.last_clip_x == geom.x and self.last_clip_y == geom.y and
+            self.last_clip_w == geom.width and self.last_clip_h == geom.height) return;
+        self.last_clip_x = geom.x;
+        self.last_clip_y = geom.y;
+        self.last_clip_w = geom.width;
+        self.last_clip_h = geom.height;
         self.surface_tree.node.subsurfaceTreeSetClip(&wlr.Box{
             .x = geom.x,
             .y = geom.y,
@@ -442,8 +461,17 @@ pub const Window = struct {
     }
 
     pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
-        const w: i32 = @intFromFloat(@round(self.animation.cur_w));
-        const h: i32 = @intFromFloat(@round(self.animation.cur_h));
+        // Cache key is the animation TARGET, not the live cur_w/cur_h: the
+        // spring eases cur_* toward target over many frames and sub-pixel
+        // jitter makes @round(cur_*) alternate by 1px, so a cur-based key
+        // never hits — chrome regenerated on every client commit (the
+        // create/destroy churn of 2026-09-07, ~150 fps with all flags
+        // false). Target changes exactly when the real geometry does;
+        // tickAnimation re-calls us while a genuine move/resize animates,
+        // and on the settle frame cur == target so the final regen lands
+        // at exact size.
+        const w: i32 = @intFromFloat(@round(self.animation.target_w));
+        const h: i32 = @intFromFloat(@round(self.animation.target_h));
         if (w <= 0 or h <= 0) return;
 
         // Pick output scale from the output this window is on.
@@ -463,6 +491,29 @@ pub const Window = struct {
             self.chrome_style_generation == style_gen and
             std.mem.eql(u8, self.chrome_label.asSlice(), if (label) |l| l else "");
         if (same) return;
+
+        if (self.chrome_tree != null) {
+            // TEMP DIAG: which cache field actually missed? The 2026-09-07
+            // storm regens identical 1673x1064 chrome per commit — log the
+            // full old/new key so the culprit field names itself.
+            std.log.info("KidulWM: CHROME cache-miss id={d} wh {d}x{d}->{d}x{d} focus {}->{} edges {}->{} scale {d}->{d} gen {d}->{d} label '{s}'->'{s}'", .{
+                self.id,
+                self.chrome_width,
+                self.chrome_height,
+                w,
+                h,
+                self.chrome_focused,
+                focused,
+                self.chrome_edges,
+                edges,
+                self.chrome_scale,
+                scale,
+                self.chrome_style_generation,
+                style_gen,
+                self.chrome_label.asSlice(),
+                if (label) |l| l else "",
+            });
+        }
 
         if (self.chrome_tree) |tree| {
             tree.node.destroy();

@@ -638,6 +638,11 @@ pub const MediaWidget = struct {
     player: kmedia_lib.Player,
     watch: kmedia_lib.WatchState,
     player_active: bool = false,
+    /// Bumped on every ensureStopped — the compositor compares against its
+    /// own last-seen value and drops the dmabuf surface cache on change
+    /// (VA pool surface IDs are reused across opens; stale entries point
+    /// at a dead decoder's fds).
+    player_generation: u64 = 0,
     player_ws_key_buf: [256]u8 = std.mem.zeroes([256]u8),
 
     /// True while a music file started from the media slide is playing in the
@@ -1276,6 +1281,11 @@ pub const MediaWidget = struct {
             self.watch = kmedia_lib.WatchState.init(self.allocator);
             self.watch.load();
         }
+        // SECOND-VIDEO FREEZE LAW (2026-09-08): ANY stop bumps the
+        // generation so the compositor drops its dmabuf cache — the new
+        // decoder's VA pool reuses surface IDs, and a stale cache hit
+        // renders freed GPU surfaces at frame rate (hard system wedge).
+        self.player_generation +%= 1;
     }
 
     /// Enter on a TV channel card → live playback (live-tv.md). The LIVE
@@ -1341,6 +1351,10 @@ pub const MediaWidget = struct {
             std.log.err("libkmedia: failed to open {s}: {s}", .{ path, @errorName(err) });
             return;
         };
+        // The compositor-side dmabuf import (mediaVideoDmabufRefresh) is the
+        // always-present consumer — arm zero-copy like the standalone does
+        // after EGL bring-up, else currentVaFrame() never fires.
+        self.player.zero_copy_ok = true;
 
         self.player_active = true;
         self.cached = .{};
@@ -1750,7 +1764,7 @@ pub const MediaWidget = struct {
         const scale_f: f64 = @as(f64, scale);
         const corner_r = @as(f64, style_.corner_depth) * scale_f;
 
-        if (as_slide) {
+        if (as_slide and !self.player_active) {
             // Transparent outside the corner path.
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
             c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
@@ -1766,11 +1780,13 @@ pub const MediaWidget = struct {
         if (self.player_active) {
             if (self.player.embedder_owns_video) {
                 // The compositor draws the video itself in a dedicated scene
-                // buffer BELOW this card buffer. Paint the black matte here
-                // so the letterbox bars are black (not transparent), then
-                // punch a transparent hole exactly where the video goes so
-                // the scene buffer shows through. Chrome (Player.render's
-                // UI bar/buttons) draws after, so it stays visible on top.
+                // buffer BELOW this card buffer. While playing the card
+                // buffer is rendered at the FULL OUTPUT size and the slide
+                // tree sits at 0,0 (Server.mediaSlideRefresh), so this
+                // matte + hole cover the peeks and every widget beneath —
+                // normal FULL SCREEN. Paint the black matte, then punch a
+                // transparent hole exactly where the video goes so the
+                // scene buffer shows through. Chrome draws after, on top.
                 c.cairo_set_source_rgb(cr, 0, 0, 0);
                 c.cairo_paint(cr);
                 // Punch the hole from the STREAM dims (known at open), NOT
@@ -1781,6 +1797,8 @@ pub const MediaWidget = struct {
                 if (vsize.w > 0 and vsize.h > 0) {
                     const vw: f64 = @floatFromInt(vsize.w);
                     const vh: f64 = @floatFromInt(vsize.h);
+                    // Plain letterbox into this buffer's own rect — the
+                    // buffer IS the full output while playing.
                     const vscale = @min(w_d / vw, h_d / vh);
                     const dw = vw * vscale;
                     const dh = vh * vscale;
@@ -2309,7 +2327,7 @@ pub const MediaWidget = struct {
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
         // at the buffer edge (same tokens as window chrome).
-        if (as_slide) {
+        if (as_slide and !self.player_active) {
             c.cairo_restore(cr);
             const bw = @as(f64, style_.border_width) * scale_f;
             const half = bw * 0.5;
