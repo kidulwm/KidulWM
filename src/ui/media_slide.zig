@@ -32,6 +32,17 @@ pub const MediaSlide = struct {
     /// Failure-probe budget: log the first N dmabuf failures per playback
     /// (doorstep + error), then stay silent. Reset on teardown.
     dmabuf_fail_logs: u8 = 0,
+    /// Per-surface dmabuf buffer cache: VAAPI decodes through a small
+    /// surface pool, so export+import ONCE per pool surface instead of
+    /// every frame. Key = VASurfaceID; value = the wlr buffer holding the
+    /// dup'd fds. The scene node is shared (video_buffer) — per frame we
+    /// only setBuffer() the cached entry. Teardown drops all entries.
+    dmabuf_cache: [8]DmabufCacheEntry = [_]DmabufCacheEntry{.{}} ** 8,
+
+    pub const DmabufCacheEntry = struct {
+        surface: u32 = 0,
+        buf: ?*wlr.Buffer = null,
+    };
 
     pub fn isOpen(self: *const MediaSlide) bool {
         return self.tree != null;

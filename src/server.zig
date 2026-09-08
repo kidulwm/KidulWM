@@ -1822,9 +1822,22 @@ pub const Server = struct {
         const av = kmedia_lib.av;
         const tree = output.media_slide.tree orelse return false;
 
-        // VA surface + display from the hw frame chain (Player owns the
-        // frame; we never free it — borrowed ref per currentVaFrame()).
-        const surface_id: av.VASurfaceID = @intCast(@intFromPtr(va_frame.data[3]));
+        // VA surface id from the hw frame (Player owns the frame; we never
+        // free it — borrowed ref per currentVaFrame()).
+        const surface_id: u32 = @intCast(@intFromPtr(va_frame.data[3]));
+
+        // CACHE HIT: this pool surface was already exported+imported on an
+        // earlier frame — just point the shared scene node at its buffer.
+        // No vaExport, no fd churn, no EGL re-import. This is the steady
+        // state; the decode pool is small (≤8 surfaces).
+        for (&output.media_slide.dmabuf_cache) |*entry| {
+            if (entry.buf != null and entry.surface == surface_id) {
+                const sb = output.media_slide.video_buffer orelse return false;
+                sb.setBuffer(entry.buf.?);
+                return true;
+            }
+        }
+
         const fctx: *av.AVHWFramesContext = @ptrCast(@alignCast(va_frame.hw_frames_ctx.*.data));
         const devctx: *av.AVHWDeviceContext = @ptrCast(@alignCast(fctx.device_ref.*.data));
         const dctx: *av.AVVAAPIDeviceContext = @ptrCast(@alignCast(devctx.hwctx));
@@ -1901,17 +1914,6 @@ pub const Server = struct {
                 continue;
             }
 
-            // Replace any previous dmabuf buffer (drop old scene node +
-            // buffer; the memcpy pixel buffer stays as the fallback).
-            if (output.media_slide.video_buffer) |sb| {
-                sb.node.destroy();
-                output.media_slide.video_buffer = null;
-            }
-            if (output.media_slide.video_wlr_buf) |old| {
-                wlr.Buffer.drop(old);
-                output.media_slide.video_wlr_buf = null;
-            }
-
             const buf = DmabufBuffer.create(&attribs) catch |err| {
                 if (output.media_slide.dmabuf_fail_logs < 8) {
                     output.media_slide.dmabuf_fail_logs += 1;
@@ -1920,12 +1922,28 @@ pub const Server = struct {
                 for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
                 continue;
             };
-            const sb = tree.createSceneBuffer(buf) catch {
-                wlr.Buffer.drop(buf);
-                continue;
-            };
-            output.media_slide.video_wlr_buf = buf;
-            output.media_slide.video_buffer = sb;
+
+            // Import succeeded: park this surface's buffer in the cache
+            // (evict the oldest slot if full — pool is small, this should
+            // never actually evict mid-stream) and point the shared scene
+            // node at it, creating the node on first use.
+            var slot: *@TypeOf(output.media_slide.dmabuf_cache[0]) = &output.media_slide.dmabuf_cache[0];
+            for (&output.media_slide.dmabuf_cache) |*entry| {
+                if (entry.buf == null) { slot = entry; break; }
+            }
+            if (slot.buf) |old| wlr.Buffer.drop(old);
+            slot.* = .{ .surface = surface_id, .buf = buf };
+
+            if (output.media_slide.video_buffer) |sb| {
+                sb.setBuffer(buf);
+            } else {
+                const sb = tree.createSceneBuffer(buf) catch {
+                    slot.* = .{};
+                    wlr.Buffer.drop(buf);
+                    continue;
+                };
+                output.media_slide.video_buffer = sb;
+            }
 
             if (!output.media_slide.dmabuf_logged) {
                 output.media_slide.dmabuf_logged = true;
@@ -1960,6 +1978,10 @@ pub const Server = struct {
         output.media_slide.last_display_serial = 0;
         output.media_slide.dmabuf_logged = false;
         output.media_slide.dmabuf_fail_logs = 0;
+        for (&output.media_slide.dmabuf_cache) |*entry| {
+            if (entry.buf) |buf| wlr.Buffer.drop(buf);
+            entry.* = .{};
+        }
     }
 
     fn mediaSlideClose(self: *Server, output: *Output) void {
