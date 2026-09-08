@@ -121,6 +121,8 @@ const KeyboardDevice = struct {
         if (mod4_active or ctrl_active) {
             // Media slide owns Ctrl+Q (system quit) while open on the
             // focused deck: closing the slide IS closing the focused surface.
+            // The media slide is a normal deck slide (media-is-a-slide.md) —
+            // no sentinel, just the deck flag.
             if (server.currentDeckPub().media_slide_open and ctrl_active and base_sym == xkb.Keysym.q) {
                 server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "media_slide_ctrl_q");
                 server.mediaSlideToggle();
@@ -175,8 +177,8 @@ const KeyboardDevice = struct {
                 },
             }
         }
-        // Media slide owns keys while open on the focused deck (sibling
-        // sentinel on the before_first slot). INPUT LAW: ↑↓=focus, ←→=move,
+        // Media slide owns keys while open on the focused deck (a normal
+        // deck slide per media-is-a-slide.md). INPUT LAW: ↑↓=focus, ←→=move,
         // Enter=apply, Esc=back. NOTHING SWALLOWED: unconsumed keys fall
         // through to normal routing (card phase 2).
         if (server.currentDeckPub().media_slide_open) {

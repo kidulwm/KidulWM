@@ -72,12 +72,11 @@ pub const SlideDeck = struct {
     overview_slide_open: bool = false,
     /// The slide index to return to when the overview slide closes.
     overview_return_index: usize = 0,
-    /// Media player slide (sibling sentinel): occupies the before_first
-    /// virtual slot at the LEFT end of the row. Not a Slide in slides.items
-    /// — window-count invariants stay intact, same ruling as the overview.
+    /// Media player slide: a NORMAL deck slide (law: media-is-a-slide.md).
+    /// When true, the deck's CURRENT focused slot shows the compositor-owned
+    /// media card instead of the client window. No sentinel, no empty_slot
+    /// interaction, no focus movement — slides/focus are undisturbed.
     media_slide_open: bool = false,
-    /// The slide index to return to when the media slide closes.
-    media_return_index: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) SlideDeck {
         return .{
@@ -351,40 +350,25 @@ pub const SlideDeck = struct {
         return self.overview_slide_open and self.empty_slot == .after_last;
     }
 
-    /// Media player slide (sibling sentinel): occupies the before_first
-    /// virtual slot at the LEFT end of the row. Not a Slide in slides.items
-    /// — window-count invariants stay intact, same ruling as the overview.
+    /// Media player slide (law: media-is-a-slide.md): a normal deck slide.
+    /// Opening sets the flag only — the deck's slides/focus are UNDISTURBED
+    /// underneath; the current focused slot renders the media card instead
+    /// of its client window. On an empty deck the card still opens, into the
+    /// empty-slot rect (first-boot ruling).
     pub fn openMediaSlide(self: *SlideDeck) void {
-        // No slides.len==0 guard: the media player must open on an empty
-        // deck too (first boot, everything parked/closed).
         if (self.media_slide_open) return;
+        // Siblings never both: close the overview if it is open.
         if (self.overview_slide_open) {
             self.overview_slide_open = false;
         }
-        self.media_return_index = self.focused_index;
         self.media_slide_open = true;
-        self.empty_slot = .before_first;
-        std.log.info("SlideDeck: media slide opened (return_index={d}, slides={d})", .{ self.media_return_index, self.slides.items.len });
+        std.log.info("SlideDeck: media slide opened (focused_index={d}, slides={d})", .{ self.focused_index, self.slides.items.len });
     }
 
     pub fn closeMediaSlide(self: *SlideDeck) void {
         if (!self.media_slide_open) return;
+        // Flag only — focus/slides were never moved, so nothing to restore.
         self.media_slide_open = false;
-        self.empty_slot = .none;
-        if (self.slides.items.len > 0) {
-            self.focused_index = @min(self.media_return_index, self.slides.items.len - 1);
-            if (self.slides.items[self.focused_index].parked) {
-                if (self.nextUnparked(self.focused_index + 1)) |n| {
-                    self.focused_index = n;
-                } else if (self.prevUnparked(self.focused_index)) |p| {
-                    self.focused_index = p;
-                }
-            }
-        } else {
-            // Empty deck: after closing, focus stays on the virtual end slot
-            // (the state the deck boots in).
-            self.empty_slot = .after_last;
-        }
         std.log.info("SlideDeck: media slide closed (focused_index={d})", .{self.focused_index});
     }
 
@@ -392,9 +376,9 @@ pub const SlideDeck = struct {
         if (self.media_slide_open) self.closeMediaSlide() else self.openMediaSlide();
     }
 
-    /// True while the media slide occupies the left-end slot.
+    /// True while the media slide is open on this deck.
     pub fn mediaSlideOpen(self: *const SlideDeck) bool {
-        return self.media_slide_open and self.empty_slot == .before_first;
+        return self.media_slide_open;
     }
 
     /// The rect the compositor-owned media slide renders into.
@@ -814,6 +798,60 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     deck.closeOverviewSlide();
     try std.testing.expect(!deck.overviewSlideOpen());
     try std.testing.expectEqual(saved_focus, deck.focused_index);
+}
+
+test "media slide: normal deck slide, focus undisturbed" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    deck.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
+    deck.addWindow(1);
+    deck.addWindow(2);
+    deck.addWindow(3);
+    // Deck order 1,2,3 — focused index 2 (window 3).
+    const saved_focus = deck.focused_index;
+
+    deck.openMediaSlide();
+    try std.testing.expect(deck.mediaSlideOpen());
+    // No sentinel: empty_slot untouched, focus untouched.
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+    try std.testing.expectEqual(saved_focus, deck.focused_index);
+
+    // Focus next/prev still walks the 3 real slides; empty_slot stays .none.
+    deck.focusPrev();
+    try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+    deck.focusNext();
+    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+
+    // Close: flag clears, focused_index unchanged.
+    deck.closeMediaSlide();
+    try std.testing.expect(!deck.mediaSlideOpen());
+    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+
+    // Siblings never both: opening media closes the overview flag.
+    deck.openOverviewSlide();
+    try std.testing.expect(deck.overview_slide_open);
+    deck.openMediaSlide();
+    try std.testing.expect(!deck.overview_slide_open);
+    try std.testing.expect(deck.media_slide_open);
+    deck.closeMediaSlide();
+
+    // Empty deck: media still opens (first-boot ruling), no sentinel state.
+    var empty = SlideDeck.init(allocator);
+    defer empty.deinit();
+    empty.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
+    empty.openMediaSlide();
+    try std.testing.expect(empty.mediaSlideOpen());
+    try std.testing.expectEqual(EmptySlot.none, empty.empty_slot);
+    const t = empty.mediaSlideTarget(false);
+    try std.testing.expect(t.width > 0 and t.height > 0);
+    empty.closeMediaSlide();
+    try std.testing.expect(!empty.mediaSlideOpen());
+    try std.testing.expectEqual(EmptySlot.none, empty.empty_slot);
 }
 
 test "sentinel toggle round-trips" {

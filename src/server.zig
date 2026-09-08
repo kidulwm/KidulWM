@@ -663,13 +663,17 @@ pub const Server = struct {
                 var oit = self.outputs.iterator(.forward);
                 while (oit.next()) |o| {
                     if (o.media_slide.isOpen() and o.media_slide.widget_ready) {
+                        self.stopOtherPlayers(o);
                         o.media_slide.widget.play(p.path);
                         self.mediaSlideRefresh(o);
                         routed = true;
                         break;
                     }
                 }
-                if (!routed) self.tray.media.play(p.path);
+                if (!routed) {
+                    self.stopOtherPlayers(null);
+                    self.tray.media.play(p.path);
+                }
                 return .{ .ok = true, .message = "media play requested" };
             },
             .media_toggle => {
@@ -1614,6 +1618,28 @@ pub const Server = struct {
         std.log.info("KidulWM: overview slide closed", .{});
     }
 
+    /// ONE PLAYER PER SESSION (law: media-is-a-slide.md ruling 3): exactly
+    /// one player engine and one audio stream ever. Called before any widget
+    /// starts playback — stops any OTHER output's slide widget and the tray
+    /// music widget (take-over, granny-simple default). `keep` is the output
+    /// whose widget is about to play (null = the tray itself is starting).
+    /// Scene-buffer teardown for the stopped widget happens in handleFrame's
+    /// player_generation guard — never nest scene_mutex here (play paths can
+    /// be reached with the lock already held, e.g. applyLayout).
+    fn stopOtherPlayers(self: *Server, keep: ?*Output) void {
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |o| {
+            if (keep != null and o == keep.?) continue;
+            if (o.media_slide.widget_ready and o.media_slide.widget.player_active) {
+                o.media_slide.widget.ensureStopped();
+                if (o.media_slide.isOpen()) self.mediaSlideRefresh(o);
+            }
+        }
+        if (keep != null and self.tray.media.player_active) {
+            self.tray.media.ensureStopped();
+        }
+    }
+
     /// Toggle the media player slide.
     ///
     /// LAW (docs/law/playback.md, 2026-09-07): the mediaPlayer is a normal
@@ -1642,22 +1668,11 @@ pub const Server = struct {
             self.mediaSlideClose(output);
             deck.closeMediaSlide();
         } else {
-            // OPEN: one slide per SESSION, not per deck — the slide follows
-            // the cursor. If another output's deck holds the open slide,
-            // close that VIEW first (playback survives per audio authority);
-            // the slide reopens here, on the cursor's deck.
-            {
-                var it = self.outputs.iterator(.forward);
-                while (it.next()) |other| {
-                    if (other != output and other.deck.media_slide_open) {
-                        self.mediaSlideClose(other);
-                        other.deck.closeMediaSlide();
-                    }
-                }
-            }
-            // OPEN: deck state FIRST (openMediaSlide sets empty_slot), then
-            // the scene tree on the same output. Overview and media are
-            // sibling sentinels — never both.
+            // OPEN: per-output, no stealing (law: media-is-a-slide.md ruling
+            // 3) — other outputs' media cards stay open and usable. Deck
+            // state first (flag only — slides/focus undisturbed), then the
+            // scene tree on the same output. Overview and media are
+            // siblings — never both.
             deck.openMediaSlide();
             if (output.overview.isOpen()) self.overviewSlideClose(output);
             self.mediaSlideOpen(output);
@@ -2324,6 +2339,7 @@ pub const Server = struct {
                             const path = widget.selectedResultPath();
                             if (path.len > 0 and entry != null) {
                                 const e = entry.?;
+                                self.stopOtherPlayers(null);
                                 self.tray.media.playMusic(
                                     path,
                                     std.mem.sliceTo(e.title, 0),
@@ -2335,8 +2351,13 @@ pub const Server = struct {
                             return true;
                         }
                         // Movies / TV: existing play-in-slide path.
+                        // One player per session: take over from any other
+                        // output's widget (and the tray) first.
                         const path = widget.selectedResultPath();
-                        if (path.len > 0) widget.play(path);
+                        if (path.len > 0) {
+                            self.stopOtherPlayers(out);
+                            widget.play(path);
+                        }
                     },
                     .slider => {},
                 }
@@ -2734,6 +2755,11 @@ pub const Server = struct {
                 }
                 if (is_focused) {
                     // Focused slide: full screen, chrome border, surface scaled to fit.
+                    // LAW (media-is-a-slide.md): while this deck's media slide
+                    // is open, the media card renders in the focused slot — the
+                    // client window keeps its geometry but does NOT raise above
+                    // the media tree; the card is refreshed after window layout
+                    // and raised above this output's windows below.
                     window.scene_tree.node.setEnabled(true);
                     window.clearMiniScale();
                     if (size_changed) {
@@ -2743,14 +2769,29 @@ pub const Server = struct {
                     window.applyContainment();
                     focused_slide_window = window;
                     window.updateChrome(true, .all);
-                    window.scene_tree.node.raiseToTop();
-                    self.overlay_tree.node.raiseToTop();
+                    if (!output.deck.media_slide_open) {
+                        window.scene_tree.node.raiseToTop();
+                        self.overlay_tree.node.raiseToTop();
+                    }
                 } else {
                     // Non-focused slides: disabled, no rendering, no chrome.
                     window.scene_tree.node.setEnabled(false);
                     window.clearMiniScale();
                     window.clearChrome();
                 }
+            }
+
+            // Media card tracks slot geometry (law: media-is-a-slide.md):
+            // refresh AFTER window layout so the card lands on the current
+            // focused slot, then raise the media tree above this output's
+            // windows (not above the overlay — mediaSlideRefresh's playing
+            // branch handles the fullscreen-above-overlay case itself).
+            if (output.deck.media_slide_open and output.media_slide.isOpen()) {
+                self.mediaSlideRefresh(output);
+                if (output.media_slide.tree) |tree| {
+                    tree.node.raiseToTop();
+                }
+                self.overlay_tree.node.raiseToTop();
             }
 
             if (deck_ptr == active_deck) {
