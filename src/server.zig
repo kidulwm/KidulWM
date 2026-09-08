@@ -1843,7 +1843,7 @@ pub const Server = struct {
             if (rc != av.VA_STATUS_SUCCESS) {
                 if (output.media_slide.dmabuf_fail_logs < 8) {
                     output.media_slide.dmabuf_fail_logs += 1;
-                    std.debug.print("[media] dmabuf FAIL door={s}: vaExportSurfaceHandle rc={d} surface=0x{x}\n", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", rc, @intFromPtr(va_frame.data[3]) });
+                    std.log.info("[media] dmabuf FAIL door={s}: vaExportSurfaceHandle rc={d} surface=0x{x}", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", rc, @intFromPtr(va_frame.data[3]) });
                 }
                 continue;
             }
@@ -1915,7 +1915,7 @@ pub const Server = struct {
             const buf = DmabufBuffer.create(&attribs) catch |err| {
                 if (output.media_slide.dmabuf_fail_logs < 8) {
                     output.media_slide.dmabuf_fail_logs += 1;
-                    std.debug.print("[media] dmabuf FAIL door={s}: createBuffer err={s} fourcc=0x{x} planes={d} mod=0x{x} {d}x{d}\n", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", @errorName(err), attribs.format, n_planes, attribs.modifier, attribs.width, attribs.height });
+                    std.log.info("[media] dmabuf FAIL door={s}: createBuffer err={s} fourcc=0x{x} planes={d} mod=0x{x} {d}x{d}", .{ if (door == 0) @as([]const u8, "A-sep") else "B-comp", @errorName(err), attribs.format, n_planes, attribs.modifier, attribs.width, attribs.height });
                 }
                 for (0..n_planes) |i| _ = linux.close(attribs.fd[i]);
                 continue;
@@ -1929,7 +1929,7 @@ pub const Server = struct {
 
             if (!output.media_slide.dmabuf_logged) {
                 output.media_slide.dmabuf_logged = true;
-                std.debug.print("[media] dmabuf zero-copy live (fourcc=0x{x}, {s} layers, planes={d}, mod=0x{x})\n", .{
+                std.log.info("[media] dmabuf zero-copy live (fourcc=0x{x}, {s} layers, planes={d}, mod=0x{x})", .{
                     attribs.format,
                     if (door == 0) "separate" else "composed",
                     n_planes,
