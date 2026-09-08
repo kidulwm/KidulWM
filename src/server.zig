@@ -338,7 +338,15 @@ pub const Output = struct {
                 // the slide shrinks back from fullscreen to its slot rect.
                 self.server.mediaSlideRefresh(self);
             } else {
-                self.media_slide.widget.player.tick();
+                // VSYNC GRID: pass the output's real refresh interval so the
+                // player quantizes presentation to vsync slots (judder fix;
+                // wlr_output.refresh is millihertz, 0 = unknown -> 60Hz).
+                const refresh_mhz = self.wlr_output.refresh;
+                const interval_us: i64 = if (refresh_mhz > 0)
+                    @intCast(@divTrunc(@as(i64, 1_000_000_000), @as(i64, refresh_mhz)))
+                else
+                    16_666;
+                self.media_slide.widget.player.tick(interval_us);
                 const serial = self.media_slide.widget.player.display_serial;
                 if (serial != self.media_slide.last_display_serial) {
                     self.media_slide.last_display_serial = serial;
@@ -366,7 +374,8 @@ pub const Output = struct {
             if (self.server.tray.media.player.isDone()) {
                 self.server.tray.media.ensureStopped();
             } else {
-                self.server.tray.media.player.tick();
+                // Music-only pump: no video frames to quantize — legacy path.
+                self.server.tray.media.player.tick(0);
                 self.wlr_output.scheduleFrame();
             }
         }
@@ -1849,8 +1858,21 @@ pub const Server = struct {
         // state; the decode pool is small (≤8 surfaces).
         for (&output.media_slide.dmabuf_cache) |*entry| {
             if (entry.buf != null and entry.surface == surface_id) {
-                const sb = output.media_slide.video_buffer orelse return false;
-                sb.setBuffer(entry.buf.?);
+                // RENDER-ONCE LAW (fd-leak fix, 2026-09-08): the lab
+                // (Gl.zig) holds ONE import live and redraws it; the
+                // slide's per-frame setBuffer() made wlroots destroy +
+                // recreate the texture every frame and its dmabuf attribs
+                // copy leaked fds (render/dmabuf.c F_DUPFD_CLOEXEC →
+                // EMFILE → compositor wedge → power-button freeze). Only
+                // setBuffer when the scene node isn't already showing THIS
+                // surface's buffer; steady-state playback re-points at the
+                // same cached buffer and must NOT churn the texture.
+                const sb = output.media_slide.video_buffer orelse blk: {
+                    const new_sb = tree.createSceneBuffer(entry.buf.?) catch return false;
+                    output.media_slide.video_buffer = new_sb;
+                    break :blk new_sb;
+                };
+                if (sb.buffer != entry.buf.?) sb.setBuffer(entry.buf.?);
                 return true;
             }
         }
