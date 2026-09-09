@@ -1,9 +1,10 @@
 const std = @import("std");
 const Server = @import("server.zig").Server;
 const kmedia = @import("core/kmedia.zig");
+const build_stamp = @import("build_stamp");
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    std.log.info("KidulWM boot", .{});
+    std.log.info("KidulWM boot (kidulwm={s} kmedia={s})", .{ build_stamp.kidulwm_rev, build_stamp.kmedia_rev });
 
     // Ignore SIGCHLD so children spawned by keybindings are auto-reaped.
     var sa = std.os.linux.Sigaction{

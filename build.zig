@@ -5,6 +5,18 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // ── compile-time provenance stamps ─────────────────────────────────
+    // KidulWM statically includes kmedia as source modules (../kmedia/src)
+    // — a kmedia change is INVISIBLE at runtime until KidulWM is rebuilt
+    // and redeployed. Stamp both HEADs into the binary so session.log can
+    // always prove which player code is actually running (2026-09-09: the
+    // census hunt lost a morning to "deployed" probes that weren't).
+    const kidulwm_rev = b.run(&.{ "git", "-C", b.pathFromRoot("."), "rev-parse", "--short", "HEAD" });
+    const kmedia_rev = b.run(&.{ "git", "-C", b.pathFromRoot("../kmedia"), "rev-parse", "--short", "HEAD" });
+    const stamp = b.addOptions();
+    stamp.addOption([]const u8, "kidulwm_rev", std.mem.trim(u8, kidulwm_rev, " \n\r"));
+    stamp.addOption([]const u8, "kmedia_rev", std.mem.trim(u8, kmedia_rev, " \n\r"));
+
     const scanner = Scanner.create(b, .{});
 
     scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
@@ -133,6 +145,7 @@ pub fn build(b: *std.Build) void {
     root_mod.addImport("weather", weather_mod);
     root_mod.addImport("moon", moon_mod);
     root_mod.addImport("kmedia", libkmedia_mod);
+    root_mod.addOptions("build_stamp", stamp);
     root_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
 
     root_mod.linkSystemLibrary("wayland-server", .{});
