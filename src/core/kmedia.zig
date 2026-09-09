@@ -259,11 +259,40 @@ var pw_stream: ?*PwStream = null;
 var pw_thread: ?std.Thread = null;
 var stream_events: PwStreamEvents = .{};
 
+// FIX-AND-RECORD (census law amendment, 2026-09-09): stale-dot meter leak.
+// Verdict: onProcess simply stops being called when the sink goes quiet, so
+// rms_slot + band_slots + smooth keep their last LOUD values forever → the
+// butterfly widget (tray.zig drawMediaWidget: audio_live = level() > 0.03)
+// renders the live dot with no player open and nothing playing.
+// Fix: the capture thread timestamps every buffer; captureMain runs a
+// watchdog that, after 250ms of silence, writes zeros through the SAME
+// slots the loudness path uses. Silence is written by the thread that owns
+// loudness. ~8 lines, no interface change.
+var last_buffer_us: std.atomic.Value(i64) = std.atomic.Value(i64).init(0);
+
+fn nowUsMono() i64 {
+    var ts: std.os.linux.timespec = undefined;
+    _ = std.os.linux.clock_gettime(std.os.linux.CLOCK.MONOTONIC, &ts);
+    return @as(i64, @intCast(ts.sec)) * 1_000_000 + @divTrunc(@as(i64, @intCast(ts.nsec)), 1000);
+}
+
+fn publishSilence() void {
+    const idx = band_active.load(.acquire);
+    band_slots[1 - idx] = .{0} ** BAND_COUNT;
+    band_active.store(1 - idx, .release);
+    rms_slot.store(@bitCast(@as(f32, 0.0)), .release);
+    // NOTE: smooth[] is owned by analyzeFrame (capture thread) — resetting it
+    // here would race. The 0.12 down-coefficient decays it to zero within
+    // ~50ms once zeroed bands flow; not worth a lock for a cosmetic rung.
+}
+
 fn onProcess(user_data: ?*anyopaque) callconv(.c) void {
     _ = user_data;
     const stream = pw_stream orelse return;
     const buf = pw_stream_dequeue_buffer(stream) orelse return;
     defer _ = pw_stream_queue_buffer(stream, buf);
+
+    last_buffer_us.store(nowUsMono(), .release);
 
     const b = buf.buffer orelse return;
     if (b.n_datas == 0) return;
@@ -305,8 +334,28 @@ fn captureMain() void {
     std.log.info("kmedia: pipewire capture connected", .{});
 
     running.store(true, .release);
+    last_buffer_us.store(nowUsMono(), .release);
+    // Silence watchdog: pw_main_loop_run blocks, so poll from a sibling
+    // thread — after 250ms without a buffer, publish silence once.
+    const watchdog = struct {
+        fn run() void {
+            var silent = false;
+            while (running.load(.acquire)) {
+                var ts: std.os.linux.timespec = .{ .sec = 0, .nsec = 50 * std.time.ns_per_ms };
+                _ = std.os.linux.nanosleep(&ts, null);
+                const age = nowUsMono() - last_buffer_us.load(.acquire);
+                if (age > 250_000) {
+                    if (!silent) publishSilence();
+                    silent = true;
+                } else silent = false;
+            }
+        }
+    };
+    const wd = std.Thread.spawn(.{}, watchdog.run, .{}) catch null;
     _ = pw_main_loop_run(loop);
     running.store(false, .release);
+    if (wd) |t| t.join();
+    publishSilence(); // stream dead → meter reads zero, never a stale dot
     std.log.info("kmedia: capture loop exited", .{});
 }
 
