@@ -655,3 +655,39 @@ FLAT after pool warmup (~<400MB), [present] cache=hit after the first
 ~16 frames, zero CACHE-THRASH lines, no F_DUPFD errors, no wedge.
 Live fd check during playback: ls /proc/$(pgrep -x kidulwm)/fd | wc -l
 must stay bounded (~150-250), not climb to 2048.
+
+## 2026-09-12 VERDICT 17 (FIX-AND-RECORD #9): THE PREWARM OOM — card repaint guard
+Barticus: crash "a little different, survives a few seconds longer" after
+verdicts 15+16. coderBob (session 20260912_214946_a87f5c, cut off by HTTP
+402 at 166 msgs — report lost, commit landed and signed before the cut).
+Watchdog window (17:22 session): RSS 356→523MB over 17s while
+media_open=true ready=true active=FALSE (the prewarm window between
+media_play IPC and player active=true), then +216MB on active=true
+(dmabuf pool warmup, expected), dead at 773MB. Same shape every crash
+window: RSS climbs BEFORE active=true — verdict 16's guard only covered
+the playing phase.
+Root cause: mediaSlideRefresh is called from applyLayout on EVERY layout
+event while the slide is open. renderToBuffer allocates a 33MB ARGB32
+cairo surface per call; prewarm layout re-fires pile up simultaneous
+GPU-held bufs → 20-35MB/s RSS growth → OOM.
+FIX (KidulWM 417aecc, B&B signed): card repaint guard in
+mediaSlideRefresh (!playing branch) — skip renderToBuffer when target
+geometry AND widget.state_generation are unchanged and card_dirty=false;
+guard-skipped calls still reposition the existing card node.
+state_generation bumped on every real mutation (key/play/stop/art);
+card_dirty belt-and-suspenders on open/play/stop paths.
+Result: one fixed 33MB card buffer held instead of a new one per layout
+event; prewarm RSS growth eliminated. Fullscreen-fill geometry, VSYNC
+SELF-PERPETUATION, no-stills reconcile, isDone teardown, slideless music
+pump all preserved (guard touches only the !playing renderToBuffer path).
+BUILD: zig build Debug exit 0; ReleaseSafe exit 0 (verified independently
+by orchestrator, sha256 d230e07c13c7322c…).
+DEPLOY: /usr/local/bin/kidulwm = sha256 d230e07c… (kidulwm 417aecc),
+sudo install, 2026-09-12 ~22:10 AEST. REPRO after reload: open slide,
+idle on card 60s+ — RSS must sit FLAT while active=false (no 20-35MB/s
+climb), then one bounded jump on play (pool warmup only), then flat.
+STILL OPEN: (a) mpv-style timings — the current timer cadence is
+vsync-derived (playTimerMs(), TIMER CADENCE LAW 2026-09-08 comment);
+true sleep-until-due off the audio clock + playback-rate combos (0.5x/2x)
+were on coderBob's card but NOT landed when credits died — next dispatch.
+(b) kidul-browser input on engine & pages — separate card, not started.

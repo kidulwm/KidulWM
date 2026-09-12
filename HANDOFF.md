@@ -1,6 +1,41 @@
 # KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
 
 ---
+## ADDENDUM — Sep 12 2026 night (session 22: VERDICT 17 DEPLOYED — prewarm OOM killed)
+
+Deployed state: /usr/local/bin/kidulwm sha256 d230e07c… = KidulWM 417aecc
+(card repaint guard, B&B signed). Orchestrator verified build + deploy.
+
+Barticus repro verdict on prior state: geometry FIXED — "black movie
+edges" gone, videos fill the screen true fullscreen. That behavior is
+LOCKED: fill = always fill, no stretch/zoom variants (options later).
+Crash was still present, "a little different, seconds longer."
+
+Verdict 17 (fix-and-record #9): the crash was the PREWARM OOM —
+mediaSlideRefresh fired from applyLayout on every layout event while the
+slide sat open-but-not-yet-playing (active=false), allocating a 33MB
+cairo surface per call → 20-35MB/s RSS climb → OOM ~773MB. Watchdog
+window showed RSS climbing BEFORE active=true; verdict 16's guard only
+covered the playing phase. Fix: card repaint guard (417aecc) — one fixed
+card buffer, repaint only on real content change (state_generation /
+card_dirty).
+
+coderBob dispatched (card coder-bob-mediaplayer-crash-timings-2026-09-12)
+but his session died at 166 msgs on HTTP 402 (credits) AFTER landing
+417aecc, BEFORE the timings item. Orchestrator verified, deployed, and
+recorded (CENSUS-NOTES verdict 17, handoff report in bob-farm
+handoff/out/mediaplayer-crash-timings-2026-09-12.md).
+
+STILL OPEN, next dispatch(es):
+  1. mpv-style timings: current cadence is vsync-derived (playTimerMs,
+     TIMER CADENCE LAW 2026-09-08) — true sleep-until-due off the audio
+     clock + playback-rate combos (0.5x/2x, rate as input) NOT landed.
+  2. kidul-browser input on engine & pages — not started.
+  3. Barticus reload repro (see CENSUS-NOTES verdict 17 checklist):
+     slide open idle 60s+ RSS flat while active=false; one bounded jump
+     on play; no F_DUPFD, no CACHE-THRASH.
+
+---
 ## ADDENDUM — Sep 11 2026 (session 21: media hunt PAUSED, browser next)
 
 Deployed state: /usr/local/bin/kidulwm sha256 be466344 = KidulWM 286a76b /
