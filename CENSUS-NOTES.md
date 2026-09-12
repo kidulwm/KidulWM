@@ -457,6 +457,31 @@ WORK ORDER (search & destroy per census law):
      dot dead with nothing playing; butterfly breathes while playing;
      title sits in its own space above.
 
+## 2026-09-12 VERDICT 11 LANDED (reload pending):
+- ksound c2d0500  pw_watch.audioLive() + audio_live socket verb.
+  VERIFIED LIVE: '0' with empty floor; '1' with a real pacat stream;
+  an orphaned pacat (killed wrapper, ppid=1) honestly reported '1' —
+  the truth includes ghosts, exactly as the law wants. FFT monitor tap
+  (Stream/Input) correctly ignored. NOTE: hit the HANDOFF cold-cache
+  trap — warm zig-cache shipped a binary WITHOUT the new verb; rm -rf
+  zig-out .zig-cache is the build protocol. Pre-existing ksoundtest
+  floor5 failures (2) confirmed on clean HEAD, not from this change.
+- KidulWM 24eff5a  core/kmedia.zig audioLive() (unix socket, 100ms
+  cache, 50ms io deadline, daemon-absent = not live) + tray.zig &
+  media.zig FFT-liveness derivations DELETED + movie/TV title moved
+  to the reserved title lane above the helix (own space).
+- ksound.service: enabled + active (ExecStart dev path zig-out/bin).
+  Daemon must be running for the widget to light — intended: no
+  daemon, no truth, butterfly rests (never hallucinates).
+DEPLOY: /usr/local/bin/kidulwm = sha256 830e6604… via mv-aside
+(.bak-pre-onetruth kept). REPRO after reload:
+  1. Nothing playing → no dot, no rung lines, within ~1s (100ms cache).
+  2. Play music → butterfly breathes, title ABOVE the butterfly.
+  3. Play movie → title in the same top lane, not the bottom half.
+  4. Boot stamp proves kmedia=7d2b169 + new kidulwm commit.
+PENDING: sound.md law-lock amendment — "The face asks the floor table
+for liveness; the meter answers loudness, never liveness." (Barticus)
+
 ## STANDING OPEN (from HANDOFFs, not this hunt)
 - pause-pill chrome placement (letterbox gutter anchor) — cosmetic, parked.
 - backups owed: 67+ commits ahead (sda1/Codeberg/Apocalypse).
