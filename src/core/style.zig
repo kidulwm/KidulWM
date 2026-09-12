@@ -5,8 +5,8 @@ const std = @import("std");
 /// or widgets that display chrome reads from this structure.
 pub const Style = struct {
     gap: u32 = 8,
-    border_width: f32 = 2.0,
-    corner_style: CornerStyle = .round,
+    border_width: f32 = 1.0,
+    corner_style: CornerStyle = .chamfer,
     corner_depth: f32 = 16.0,
     card_mat_depth: f32 = 14.0,
     card_mat_border_width: f32 = 2.0,

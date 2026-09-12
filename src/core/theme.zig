@@ -259,8 +259,8 @@ const TypeTokens = struct {
 };
 
 const SpacingTokens = struct {
-    border_width: i32 = 2,
-    corner_style: []const u8 = "round",
+    border_width: i32 = 1,
+    corner_style: []const u8 = "chamfer",
     button_height: i32 = 44,
     button_gap: i32 = 8,
     corner_radius: i32 = 8,

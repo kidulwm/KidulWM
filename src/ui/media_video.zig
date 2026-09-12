@@ -352,8 +352,21 @@ pub fn dmabufRefresh(output: *Output, va_frame: *kmedia_lib.av.AVFrame) bool {
         const s = slot orelse &output.media_slide.dmabuf_cache[0];
         if (s.buf) |old| wlr.Buffer.drop(old);
         s.* = .{ .surface = surface_id, .gen = gen, .buf = buf };
+        // Miss probe (verdict 15): bounded misses (pool warmup, one
+        // per surface) are fine; UNBOUNDED misses = cache too small for
+        // the live surface set = per-frame texture churn = the fd leak
+        // that kills the box ~20s in. Log loud so the census sees the
+        // thrash before EMFILE does.
         output.media_slide.present_miss += 1;
         output.media_slide.last_dmabuf_hit = false;
+        if (output.media_slide.present_miss > 48 and
+            @rem(output.media_slide.present_miss, 24) == 0)
+        {
+            std.log.info("[media] CACHE-THRASH: miss={d} hit={d} — dmabuf cache too small for live VA surface set", .{
+                output.media_slide.present_miss,
+                output.media_slide.present_hit,
+            });
+        }
 
         if (output.media_slide.video_buffer) |sb| {
             sb.setBuffer(buf);

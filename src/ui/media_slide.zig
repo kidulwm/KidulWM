@@ -40,7 +40,16 @@ pub const MediaSlide = struct {
     /// every frame. Key = VASurfaceID; value = the wlr buffer holding the
     /// dup'd fds. The scene node is shared (video_buffer) — per frame we
     /// only setBuffer() the cached entry. Teardown drops all entries.
-    dmabuf_cache: [8]DmabufCacheEntry = [_]DmabufCacheEntry{.{}} ** 8,
+    /// SIZE LAW (2026-09-12 verdict 15): the cache MUST cover every
+    /// surface that can be live at once: kmedia VIDEO_RING_SIZE (16) +
+    /// the displayed frame + the decoder DPB refs (~4-8). At 8 slots the
+    /// pool outgrew the cache the moment the ring went 8→16: EVERY frame
+    /// missed → export+create+evict+setBuffer per frame → wlroots
+    /// texture destroy/create churn leaked fds (render/dmabuf.c
+    /// F_DUPFD_CLOEXEC → EMFILE ≈ 20s in → compositor dead, the "20s
+    /// crash"). 32 slots = ring 16 + headroom; entries are tiny, the
+    /// cost is the ~32 pinned GEM buffers we already paid at 16.
+    dmabuf_cache: [32]DmabufCacheEntry = [_]DmabufCacheEntry{.{}} ** 32,
 
     /// Last widget player_generation the frame handler has seen; a mismatch
     /// means the player was stopped/reopened and every cached dmabuf buffer

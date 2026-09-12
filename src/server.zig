@@ -2261,6 +2261,21 @@ pub const Server = struct {
         var ny: f64 = undefined;
         const node = self.scene.tree.node.at(self.cursor_x, self.cursor_y, &nx, &ny);
         if (node == null or node.?.type != .buffer) {
+            // PTR-MISS probe (rate-limited via logPointerDiagnostic): global
+            // node.at() failed over a window — compare against the per-window
+            // hit focusAtCursor uses, to prove the two trees disagree.
+            var wit = self.windows.iterator(.forward);
+            while (wit.next()) |window| {
+                const wnode = &window.scene_tree.node;
+                if (!window.toplevel.base.surface.mapped or !wnode.enabled) continue;
+                var wnx: f64 = undefined;
+                var wny: f64 = undefined;
+                if (wnode.at(self.cursor_x, self.cursor_y, &wnx, &wny)) |hit| {
+                    std.log.info("KidulWM: PTR-MISS id={d} x={d:.0} y={d:.0} global=null window-hit={*} wnx={d:.0} wny={d:.0}", .{ window.id, self.cursor_x, self.cursor_y, hit, wnx, wny });
+                    self.logPointerDiagnostic("miss", self.cursor_x, self.cursor_y);
+                    break;
+                }
+            }
             if (self.seat.pointer_state.focused_surface != null) {
                 self.seat.pointerNotifyClearFocus();
             }
