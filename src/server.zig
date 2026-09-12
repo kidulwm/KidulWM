@@ -2672,6 +2672,32 @@ pub const Server = struct {
         }
     }
 
+    /// POINTER-ENTER FIX (2026-09-12): the compositor called
+    /// pointerNotifyMotion but NEVER pointerNotifyEnter — wlroots drops
+    /// pointer events with no focused pointer surface, so clicks/motion
+    /// died silently on every client (keyboard worked only because
+    /// keyboardNotifyEnter was wired). Resolve the scene node under the
+    /// cursor to its wlr.Surface and enter it; guard on surface identity
+    /// so we don't spam enter/leave per motion event.
+    pub fn pointerEnterAtCursor(self: *Server) void {
+        var nx: f64 = undefined;
+        var ny: f64 = undefined;
+        const node = self.scene.tree.node.at(self.cursor_x, self.cursor_y, &nx, &ny);
+        if (node == null or node.?.type != .buffer) {
+            if (self.seat.pointer_state.focused_surface != null) {
+                self.seat.pointerNotifyClearFocus();
+            }
+            return;
+        }
+        const scene_buffer: *wlr.SceneBuffer = @fieldParentPtr("node", node.?);
+        const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse return;
+        const surface = scene_surface.surface;
+        if (self.seat.pointer_state.focused_surface != surface) {
+            std.log.info("KidulWM: PTR-ENTER surface={*} nx={d:.0} ny={d:.0}", .{ surface, nx, ny });
+            self.seat.pointerNotifyEnter(surface, nx, ny);
+        }
+    }
+
     /// Focus-follows-cursor half of "follow the leader": on pointer motion,
     /// if the cursor has crossed onto a different output than the one holding
     /// keyboard focus, hand focus to whatever window is under the cursor.
@@ -2737,6 +2763,9 @@ pub const Server = struct {
         _ = self.cursor.warp(null, cx, cy);
         self.cursor_x = cx;
         self.cursor_y = cy;
+        // Enter the surface before notifying motion — wlroots drops
+        // pointerNotifyMotion when no pointer surface is focused.
+        self.pointerEnterAtCursor();
         self.seat.pointerNotifyMotion(0, cx, cy);
         self.suppress_focus_follow = false;
     }
@@ -3864,9 +3893,16 @@ pub const Server = struct {
 
     pub fn handlePointerMove(self: *Server, x: f64, y: f64) bool {
         if (self.spyglass) |sg| {
-            if (sg.handlePointerMove(x, y)) return true;
+            if (sg.handlePointerMove(x, y)) {
+                std.log.info("KidulWM: PTR-CLAIM spyglass x={d:.0} y={d:.0}", .{ x, y });
+                return true;
+            }
         }
-        return self.tray.handlePointerMove(x, y);
+        if (self.tray.handlePointerMove(x, y)) {
+            std.log.info("KidulWM: PTR-CLAIM tray x={d:.0} y={d:.0}", .{ x, y });
+            return true;
+        }
+        return false;
     }
 
     pub fn handlePointerClick(self: *Server, x: f64, y: f64) bool {
@@ -3898,11 +3934,14 @@ pub const Server = struct {
         }
         if (self.spyglass) |sg| {
             if (sg.handlePointerClick(x, y)) |side| {
+                std.log.info("KidulWM: PTR-CLAIM spyglass-click x={d:.0} y={d:.0}", .{ x, y });
                 self.activateSpyglass(side);
                 return true;
             }
         }
-        return self.tray.handlePointerClick(x, y);
+        const tray_hit = self.tray.handlePointerClick(x, y);
+        if (tray_hit) std.log.info("KidulWM: PTR-CLAIM tray-click x={d:.0} y={d:.0}", .{ x, y });
+        return tray_hit;
     }
 
     /// Spyglass click — navigate to the adjacent slide in the given direction.

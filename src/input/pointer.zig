@@ -87,6 +87,10 @@ const PointerDevice = struct {
             server.logPointerDiagnostic("motion", server.cursor_x, server.cursor_y);
             return;
         }
+        // PTR-PASS probe (rate-limited in logPointerDiagnostic): motion was
+        // NOT claimed by spyglass/tray — it goes to the seat/surface here.
+        server.logPointerDiagnostic("pass", server.cursor_x, server.cursor_y);
+        server.pointerEnterAtCursor();
         server.seat.pointerNotifyMotion(timeMsec(), server.cursor_x, server.cursor_y);
         server.focusFollowsCursor();
     }
@@ -103,6 +107,7 @@ const PointerDevice = struct {
             server.logPointerDiagnostic("abs", server.cursor_x, server.cursor_y);
             return;
         }
+        server.pointerEnterAtCursor();
         server.seat.pointerNotifyMotion(event.time_msec, server.cursor_x, server.cursor_y);
         server.focusFollowsCursor();
     }
@@ -116,7 +121,11 @@ const PointerDevice = struct {
                 return;
             }
         }
-        _ = server.seat.pointerNotifyButton(event.time_msec, event.button, event.state);
+        // Belt-and-braces: a click can land without any prior motion event
+        // (e.g. touch or a fresh seat), so ensure the surface is entered.
+        server.pointerEnterAtCursor();
+        const result = server.seat.pointerNotifyButton(event.time_msec, event.button, event.state);
+        std.log.info("KidulWM: BTN-NOTIFY btn=0x{x} state={s} serial={d} focused={}", .{ event.button, @tagName(event.state), result, server.seat.pointer_state.focused_surface != null });
         if (event.state == .pressed) {
             server.focusAtCursor();
         }
