@@ -1286,6 +1286,7 @@ pub const MediaWidget = struct {
         // decoder's VA pool reuses surface IDs, and a stale cache hit
         // renders freed GPU surfaces at frame rate (hard system wedge).
         self.player_generation +%= 1;
+        std.log.info("[media] ensureStopped: gen now {d} (was_active={})", .{ self.player_generation, self.player_active });
     }
 
     /// Enter on a TV channel card → live playback (live-tv.md). The LIVE
@@ -1358,6 +1359,7 @@ pub const MediaWidget = struct {
 
         self.player_active = true;
         self.cached = .{};
+        std.log.info("[media] play(): opened {s} gen={d} active=true", .{ path, self.player_generation });
         self.cached.available = true;
         self.cached.playing = true;
         self.cached.duration = @as(f64, @floatFromInt(self.player.durationUs())) / 1_000_000.0;
@@ -1477,8 +1479,11 @@ pub const MediaWidget = struct {
         c.cairo_text_extents(cr, &np_buf, &np_ext);
         const np_fits = music_active and np_len > 0 and np_ext.width < band_w - 4.0 * scale_f;
 
-        // text_reserve: vertical space above helix for the now-playing line.
-        const text_reserve: f64 = if (np_fits) (font_h + margin) else 0.0;
+        // text_reserve: the title's OWN SPACE above the helix — reserved
+        // whenever ANY title will draw (music now-playing OR movie title),
+        // so the butterfly never shares its lane with text (verdict 11).
+        const movie_title_fits = !music_active and self.cached.title[0] != 0;
+        const text_reserve: f64 = if (np_fits or movie_title_fits) (font_h + margin) else 0.0;
 
         const lane_h = h_d - margin * 2.0 - text_reserve;
         const cx = margin + band_w * 0.5;
@@ -1491,10 +1496,11 @@ pub const MediaWidget = struct {
         self.last_helix_us = now;
 
         // kmedia band data: 7 octave bands on the 432 Hz ladder (A2..A8).
+        // ONE-TRUTH (verdict 11): liveness = ksound's floor table, once.
+        // bands() = loudness food for the rungs; never a liveness oracle.
         const kmedia = @import("../core/kmedia.zig");
         const kb = kmedia.bands();
-        const audio_level = kmedia.level();
-        const audio_live = audio_level > 0.03;
+        const audio_live = kmedia.audioLive();
 
         // Vertical infinity symbol: a Lissajous figure-8 (x=sin θ, y=sin 2θ)
         // traced as two interleaved dot chains — one continuous line that
@@ -1576,15 +1582,16 @@ pub const MediaWidget = struct {
             c.cairo_move_to(cr, margin, margin + font_h);
             c.cairo_show_text(cr, &np_buf);
         } else if (!music_active) {
-            // Non-music path: preserve the original title-at-bottom behaviour
-            // (title only, no artist, for movies/TV position display).
+            // Title's OWN SPACE (verdict 11, Barticus): song/movie details
+            // live above the butterfly in their reserved lane, never in the
+            // butterfly's space (the old bottom-half draw is dead law).
             const txt = if (self.cached.title[0] != 0) std.mem.sliceTo(&self.cached.title, 0) else "";
             if (txt.len > 0) {
                 var ext: c.cairo_text_extents_t = undefined;
                 c.cairo_text_extents(cr, txt.ptr, &ext);
                 if (ext.width < band_w - 4.0 * scale_f) {
                     c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.75);
-                    c.cairo_move_to(cr, margin, h_d - margin);
+                    c.cairo_move_to(cr, margin, margin + font_h);
                     c.cairo_show_text(cr, txt.ptr);
                 }
             }

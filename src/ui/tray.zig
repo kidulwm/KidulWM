@@ -2939,10 +2939,15 @@ pub const Tray = struct {
                 self.closeAllCards();
                 return true;
             }
-            // Click inside a media card that misses every interactive region is ignored,
-            // so the card stays open for hover inspection.
-            if (self.media_card_open) return true;
+            // Click OUTSIDE the card box: dismiss the card, consume once.
+            // (The old "media card miss = stay open" rule lived here and ate
+            // every click on the screen while the flag was stuck open.)
             need_close_card = true;
+        }
+        // A card with a degenerate (zero-size) box is invisible — it must not
+        // hold input. Close it and let the click through to the surface below.
+        if (self.anyCardOpen()) {
+            self.closeAllCards();
         }
         if (need_close_card) {
             self.closeAllCards();
@@ -3672,8 +3677,9 @@ pub const Tray = struct {
         // while audio is live (level > 0.03, media.zig renderPeek); idle
         // or paused, the peek is a static render of cached state.
         const kmedia = @import("../core/kmedia.zig");
-        const audio_level = kmedia.level();
-        const audio_live = audio_level > 0.03;
+        // ONE-TRUTH (verdict 11): liveness comes from ksound's floor table
+        // via kmedia.audioLive() — the tray derives NOTHING from FFT levels.
+        const audio_live = kmedia.audioLive();
         const playing = self.media.player_active and self.media.cached.playing;
         var peek_key = title_hash;
         peek_key = peek_key *% 31 +% theme_gen;
@@ -3686,9 +3692,10 @@ pub const Tray = struct {
         peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media.cached.playing));
         peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media_card_open));
         if (audio_live) {
-            // Quantise the level so a live helix keeps redrawing while the
-            // music breathes, without keying on unbounded phase floats.
-            peek_key = peek_key *% 31 +% @as(u64, @intFromFloat(@as(f64, audio_level) * 64.0));
+            // Quantise the loudness so a live helix keeps redrawing while
+            // the music breathes, without keying on unbounded phase floats.
+            // Loudness (not liveness) is the FFT's legitimate answer.
+            peek_key = peek_key *% 31 +% @as(u64, @intFromFloat(@as(f64, kmedia.level()) * 64.0));
         }
         const redraw = widget.scene_buffer == null or
             widget.last_peek_key != peek_key or

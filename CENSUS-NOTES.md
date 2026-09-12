@@ -72,12 +72,12 @@ only real cost is player-crash = compositor-crash; accepted.
 - kmedia ffc8877  Player.zig  start-PTS normalisation (invisible-video)
 - kmedia 6af6ea5  Player.zig  vsync-ceil + stale-backlog drain (stutter)
 - KidulWM build.zig + main.zig (UNCOMMITTED) provenance stamps
-- CENSUS-NOTES.md (this file) updated per change
-DEPLOY: KidulWM ReleaseSafe rebuilt with BOTH kmedia fixes baked in
-(zig-out/bin/kidulwm, stamps 2e37c87/6af6ea5). NOT YET DEPLOYED to
-/usr/local/bin — the running compositor is still the old binary.
-Deploy + reload + repro (Raya for stutter, Bob.Marley for invisible)
-closes symptoms 1 and 2.
+- KidulWM 286a76b  src/core/kmedia.zig  silence watchdog (stale dot)
+- CENSUS-NOTES.md (this file) updated per change + law amendment
+DEPLOY: /usr/local/bin/kidulwm = sha256 ad1de802… = 286a76b/6af6ea5,
+deployed 11:47 via mv-aside. Takes effect on compositor reload. Old binary
+kept as /usr/local/bin/kidulwm.bak-pre-silencewd.
+Reload + repro closes: stale dot (watchdog), and re-tests symptoms 1+2.
 
 
 ## THE THREE SYMPTOMS (Barticus, 2026-09-09)
@@ -94,6 +94,230 @@ closes symptoms 1 and 2.
 - Census first, fix second. NO PATCHES on theory. The scorecard names the
   boundary, THEN we fix.
 - Yesterday's failure mode was: symptom→theory→patch→new symptom. BANNED.
+- AMENDMENT (Barticus, 2026-09-09): FIX-AND-RECORD. When the verdict is
+  already proven (root cause named, mechanism shown in code/logs — NOT a
+  theory) and the fix is small (a few lines, same function, no interface
+  change), fix it immediately instead of waiting for approval. Waiting
+  produces stale notes and stale running state. Rules:
+    1. Evidence first — the exception only fires on a recorded verdict.
+    2. Small only — crosses a file/subsystem boundary → back to census.
+    3. Annotate in code (what/why; comment out old code when clearer) and
+       log it under WHAT CHANGED with the commit.
+    4. Repro still closes the symptom — early fix ≠ skip verification.
+  That should be the way this works.
+
+## 2026-09-09 VERDICT 3 (FIX-AND-RECORD #1): stale butterfly dot
+Symptom (Barticus): live dot in the media widget with no player open and
+nothing playing. Holder: kmedia FFT monitor (src/core/kmedia.zig) taps the
+mixed sink output; onProcess just STOPS when the sink goes quiet, so
+rms_slot/band_slots kept their last loud values forever and tray.zig
+drawMediaWidget (audio_live = level() > 0.03) kept the widget live.
+FIX (KidulWM 286a76b, src/core/kmedia.zig): capture thread timestamps every
+buffer; a sibling watchdog publishes zeros through the SAME slots after
+250ms of silence and on stream exit. smooth[] left to decay naturally
+(capture-thread owned; resetting from watchdog would race). Deployed
+/usr/local/bin/kidulwm sha256 ad1de802… (stamps 286a76b/6af6ea5).
+REPRO after reload: dot must die within ~1s of audio stopping.
+
+## 2026-09-09 VERDICT 4 (OPEN, census resumes): fixes live, symptoms persist
+11:26 repro on the FIXED binary (boot stamp kidulwm=54ab4bc kmedia=6af6ea5,
+proves BOTH ffc8877 start-PTS + 6af6ea5 vsync-ceil/drain were running):
+- Raya open: PRES p50=199ms (ideal 41.7), DROP=648, STARVE=1618 vq=0 while
+  aq=31 (audio ring FULL, video queue EMPTY) → video decode starves, not a
+  display-grid problem. Stutter NOT fixed by 6af6ea5 — verdict 2 was wrong
+  or incomplete; the vsync grid was never the bottleneck.
+- Bob Marley open: PRES=0, 3223 AUGAPs growing ~4ms/32ms (133% clock rate),
+  [present] committed=0 gen=3 → start-PTS fix did NOT cure invisible-video.
+  AUWR shows pts=790880000 (ABSOLUTE) with AUPTS jump=+443951000 — the
+  rebasing from ffc8877 is not what the audio writer is emitting, or the
+  clock-vs-frame comparison still mixes absolute/normalised domains.
+Next census question: why does vq starve with the decoder clean (VA-API ~2%
+CPU) — READ cadence? demux thread? And where does AUGAP's 133% rate come
+from (DAC anchor domain)? Both point at the demux/clock seam, not display.
+
+## 2026-09-09 VERDICT 5 (FIX-AND-RECORD #2): invisible-B clock + stutter rings
+Barticus law change: fix & record is the way of the land. No more
+"what to fix next" round-trips — search & destroy, reload to verify.
+
+Root cause invisible-B (CONFIRMED, kmedia 58e6514):
+ffc8877 rebased each stream against its OWN first timestamp
+(vid_base_pts_us / aud_base_pts_us) — two different 0-based timelines
+compared in one expression. Evidence (OPEN5+6): the ~196 frames that
+DID present all showed lag ≈ +703ms constant (clock 703ms ahead of
+frame pts), then every later frame drain-dropped as stale
+(DROP=363, then vq=0 for the rest of the open; compositor committed=0
+gen=3). 703ms is the video-first-frame offset past audio-first —
+video rebased ~703ms later than audio, permanently behind a clock it
+could never catch. FIX: single stream_origin_us = EARLIEST
+first-timestamp across both streams; both rebase against it; audio
+clock = chunk.pts - origin. One timeline, no mixed domains. Same-file
+fix, all 28 playertests PASS.
+
+Root cause stutter refinement (verdict 2 incomplete, now mechanical):
+the vsync-ceil fix (6af6ea5) WAS correct but never the bottleneck.
+READ census: video packets arrive in bursts ~1ms wide then a
+213-300ms gap, EVERY cycle, both files. Audio ring = 32 chunks ≈
+680ms; pkt_ring back-pressure blocks the reader until audio drains;
+video ring was 8 frames ≈ 330ms → empty inside every gap →
+STARVE=3728, PRES p50~150ms. FIX: VIDEO_RING_SIZE 8→16 (~660ms).
+No interface change.
+
+WHAT CHANGED (running list, newest last):
+- kmedia 58e6514  Player.zig  unified stream_origin_us clock + ring 8→16
+DEPLOY: /usr/local/bin/kidulwm = sha256 f4775fc7… = 286a76b/58e6514,
+deployed 12:1x via mv-aside (.bak-pre-origin kept). Reload + repro:
+Raya must present p50≈41.7ms with STARVE≈0; Bob Marley must show
+frames from t=0 (committed>0 gen>3).
+
+## 2026-09-09 VERDICT 6 (FIX-AND-RECORD #3): pre-seek-target frames poison the clock
+Barticus question this session: "have we exhausted ALL the how-does-mpv-do-it
+avenues? maybe just a line of code, BUT IT IS KILLING THE MEDIA PLAYER."
+Yes — it was one missing mpv law, and the 12:17 repro proves it.
+
+Repro on the VERIFIED-FRESH binary (boot stamp kidulwm=286a76b kmedia=58e6514,
+sha256 f4775fc7 — verdict 5's fixes were RUNNING):
+- OPEN8 (Raya, resume ~23s): PRES p50=84ms, lag pinned at +707ms CONSTANT for
+  the entire 36s open, 1736 audio underrun refills, 555 DROPs, 3191 STARVEs.
+- OPEN9 (next file, audio-only symptom): AUGAP grows to 6.5s and keeps
+  growing after the ring drains; video never presents; AUPTS jump=-58.78s
+  (carrying OPEN8's clock).
+
+The 707ms constant lag is the fingerprint. Numbers from the log:
+  resume target        = 23.000s  (watch-state; STARVE clock=23000000 fallback)
+  first video keyframe = 22.233s  (BACKWARD seek lands on the keyframe)
+  first audio chunk    = 22.940s  (AUWR pts=22940000 absolute)
+  22940 - 22233        = 707ms    = EXACTLY the pinned lag.
+
+Mechanism (the missing mpv line): mpv's hr-seek decodes from the keyframe
+but DISCARDS every decoded frame/sample whose pts < seek target. kmedia
+PRESENTED them. Those pre-target frames learned stream_origin_us from the
+keyframe (22.233s); audio's first chunk (22.94s) rebased against it lands at
++707ms; the DAC anchor starts the clock at 707ms the instant video frame 0
+displays — a permanent, constant A/V offset baked in from frame zero. Every
+frame reads "late by 707ms" → drop-storm → ring drains → STARVE → bursty
+refill → 707ms again. The clock rate itself was perfect (AUWR pts rate
+1.004 vs wall). The vsync grid, the ring sizes, the drain fix — all correct
+and all fighting a clock that was born 707ms in the future.
+On files where the keyframe-to-target gap exceeds the ring budget the video
+ring drains as "stale" faster than decode can refill → committed=0 → the
+TRANSPARENT next-movie. Same line of code, both symptoms.
+
+FIX (kmedia/src/Player.zig): hr-seek law — after a resume/mid-play seek,
+remember seek_floor_us (the normalised seek target); decodeVideoPacket and
+decodeAudioPacket DISCARD decoded output with rebased pts < seek_floor_us;
+floor clears on the first frame/chunk at-or-after it. Bases then learn from
+post-target timestamps, origin converges on the real shared start, clock is
+born at ~0. ~20 lines, same file, no interface change.
+
+WHAT CHANGED (running list, newest last):
+- kmedia 698fa75  Player.zig  hr-seek: drop decoded output pts < seek target
+DEPLOY: /usr/local/bin/kidulwm = sha256 f027d90c… = 286a76b/698fa75,
+deployed ~12:3x via rename-swap (.bak-pre-hrseek kept). Live at next
+compositor reload — boot stamp must read kmedia=698fa75. Reload + repro:
+lag must be ~0 (not +707ms), PRES p50 ≈ 41.7ms, DROP/STARVE ≈ 0, next
+file must show frames immediately (committed>0).
+
+## 2026-09-09 VERDICT 7 (FIX-AND-RECORD #4): the floor died one stream too early
+13:0x repro on VERIFIED-FRESH 698fa75 (boot stamp proven): lag pinned at
++707ms CONSTANT again — identical fingerprint to verdict 6. The floor WAS
+running; it just didn't live long enough.
+
+Mechanism: 698fa75 tied seek_floor_us lifetime to seek_armed, and
+seek_armed disarmed on `aud_ring.count > 0 OR stream_origin_us >= 0`.
+Video sets stream_origin_us on its first post-target frame — ALWAYS
+before audio decodes its first post-target chunk (keyframe packet leads,
+audio packets follow). Next tick: disarm, floor=-1, and the audio
+decoder's queued pre-target chunks (keyframe→target = exactly 707ms)
+walked through the dead floor into the ring. First AUWR pts=35000000 =
+the resume target (floor worked for the LEADING chunk) but the ring
+behind it was pre-target backlog; the DAC anchored from it and the clock
+was born 707ms in the future. Again.
+
+What mpv actually does (the missing half of the law): the pre-target
+discard stays armed across ALL streams until AUDIO has re-primed — video
+display gated on the audio clock existing, not on video having produced
+a frame. FIX (kmedia d2b7113): seek_armed disarms ONLY on
+aud_ring.count > 0 (or no audio stream — aud_codec_ctx == null);
+stream_origin_us no longer factors in. Floor lives exactly as long as
+the gate. ~8 lines, same function. playertest CLEAN EXIT.
+
+Compositor cross-examined and INNOCENT (again): per-frame [present]
+late=682-685ms mirrors the poisoned clock faithfully; gen=3 (Ratatouille,
+the "transparent next movie") shows committed=0 dropped=~100/s where
+dropped = "vsync, no new serial" = empty player ring = STARVE upstream.
+Cache/gen guards held all day.
+
+WHAT CHANGED (running list, newest last):
+- kmedia d2b7113  Player.zig  hr-seek floor gated on audio re-prime
+DEPLOY: /usr/local/bin/kidulwm = sha256 4b9fb9fc… = 286a76b/d2b7113,
+deployed 13:37 via mv-aside (.bak-pre-hrseek2 kept). Reload + repro:
+lag ≈ 0 (NOT +707ms), PRES p50 ≈ 41.7ms, next file committed>0 from t=0.
+Boot stamp must read kmedia=d2b7113.
+
+## 2026-09-09 VERDICT 8 (OPEN, probe deployed): d2b7113 ran, +707ms survives
+13:3x repro on VERIFIED-FRESH d2b7113 (boot stamp + sha 4b9fb9fc proven):
+- OPEN (Raya, resume 25.0s): first AUWR pts=25005000 at +4ms, aq=31 —
+  audio primed EXACTLY at target; the verdict-7 gate held on the audio
+  side. Yet first PRES (+644ms) lag=+718ms, p50 lag=+708ms constant
+  across all 279 presents, DROP=505 (drop-lag p50=808ms), STARVE=2960,
+  PRES delta p50=66ms. Same fingerprint, third binary.
+- OPEN (next movie): PRES=0, AUPTS jump=-57.3s (cross-generation clock
+  leak in the discontinuity detector), video never presented.
+- Demux cross-examined INNOCENT: 823/830 video packets delivered over
+  the 34.6s open (24fps honoured, one 1.4s gap at +33s), audio 40154
+  pkts. Reader/decoder are not starving — frames die between decode and
+  present, drained as "stale" by a clock born keyframe→target ahead.
+
+Where that leaves the hunt: the gate now provably holds for AUDIO, so
+the surviving pre-target teacher is on the VIDEO side — some frame with
+pts below the floor still reaches `stream_origin_us = pts_us` (video
+packets lead audio after a seek; the only value 707ms below 25.005s is
+the keyframe). Inference has hit its limit; the next repro must NAME
+the packet. Probe deployed for exactly that.
+
+WHAT CHANGED (running list, newest last):
+- kmedia 0b8b773  Player.zig + Timing.zig:
+  1. FIX (proven in code): mid-play seek in readerLoop passed the
+     NORMALISED target raw to av_seek_frame while open-resume adds
+     cont_start — a seek in a start_time!=0 container (Bob Marley 790s)
+     landed ~790s early on the absolute axis. Both doors same law now.
+  2. PROBE: Timing.vfpts logs abs/cont_start/floor/PASS|DROP per decoded
+     video frame while seek_armed — names the packet teaching the origin.
+  3. FIX (evidence): openInternal resets last_auwr_pts_us/end so AUPTS
+     stops carrying the previous player's clock into a fresh open.
+DEPLOY: /usr/local/bin/kidulwm = sha256 212d89f7… = 286a76b/0b8b773,
+deployed ~14:0x via mv-aside (.bak-pre-vfpts kept). Reload + repro:
+watch for VFPTS lines after the Raya resume — the DROP/PASS sequence
+pinpoints the origin teacher; lag must be ≈0 once that door closes.
+Boot stamp must read kmedia=0b8b773.
+
+## 2026-09-09 VERDICT 9 (FIX-AND-RECORD #5): ONE-CLOCK law — origin is derived, never learned
+Credits ran out mid-run yesterday; the edit was found complete in the
+kmedia worktree (verified: build clean, playertest CLEAN EXIT) and
+committed this session.
+
+Root cause (final form of the +707ms fingerprint, four binaries):
+stream_origin_us was LEARNED from first decoded output. After a
+BACKWARD seek the pre-target keyframe always decodes first and taught
+the origin keyframe→target µs too early; the audio clock was born that
+far in the future and every frame read exactly that much late, forever.
+Fix: the origin is DERIVED at seek/open from the one value both doors
+already agree on:
+  origin = cont_start + seek_floor  (post-seek)
+  origin = cont_start               (fresh open from t=0)
+Live streams keep the learn path (no container timeline). The video-path
+learning code is deleted; the old learn lines elsewhere are now dead
+code (origin always set first) — left for the close-out sweep per
+Barticus.
+
+WHAT CHANGED (running list, newest last):
+- kmedia 7d2b169  Player.zig  ONE-CLOCK law (committed 2026-09-11)
+DEPLOY: /usr/local/bin/kidulwm = sha256 be466344… = 286a76b/7d2b169
+ReleaseSafe, deployed 23:4x (.bak-pre-oneclock kept). Reload + repro:
+resume Raya — lag must be ≈ 0 from frame zero (NOT +707ms), PRES p50
+≈ 41.7ms, DROP/STARVE ≈ 0; next file committed>0 from t=0. VFPTS probe
+from 0b8b773 still in the build if a packet needs naming.
+Boot stamp must read kmedia=7d2b169.
 
 ## PRIME SUSPECT (stutter) — playTimerMs() ceil bug, KidulWM src/server.zig
   143.998Hz panel → 6.945ms vsync → @divTrunc(+999) ceil → 7ms timer.
@@ -139,6 +363,99 @@ closes symptoms 1 and 2.
 ## REPRO SCRIPT (Barticus runs, Bob watches live)
   play video A ~30s → close slide → reopen → play video B.
   Bob tails: ~/.local/state/kidulwm/session.log + watchdog + timing log.
+
+## 2026-09-11 VERDICT 10 (OPEN, recorded for HANDOFF): fixes ran, ALL symptoms persist
+Repro (Barticus, fresh session on the deployed 7d2b169 binary — sha256
+be466344 = KidulWM 286a76b / kmedia 7d2b169, ONE-CLOCK law live):
+- Raya STILL stutters.
+- Second video STILL invisible.
+- Butterfly widget STILL out of whack: movement stops & starts, shows
+  media when media is no longer playing (verdict-3 silence watchdog did
+  NOT kill it), song names render in the BOTTOM half of the butterfly
+  instead of ON TOP of it.
+- MEDIA SLIDE IS NOT A SLIDE (law violated): moving through the deck,
+  the media slide STAYS in the focused area above or below the focused
+  slide. It does not ride with the others. 8cd0a02 ("retire the
+  sentinel, normal deck slide") did not deliver the actual behavior.
+
+BARTICUS DIAGNOSIS (accepted): "our problem is a complexity that we
+made, that needs to be gone." Nine verdicts on the clock seam; every
+fix was individually verified yet the session symptoms never died.
+The slide-not-a-slide integration is the structural smell — the media
+slide still has special-case positioning/lifecycle instead of being
+one more slide in the deck.
+
+DECISION: media player investigation PAUSED per Barticus. Fresh eyes
+after the browser works. No more patches on this seam until then.
+
+TODO when the hunt resumes (fresh-eyes checklist):
+  1. Slide geometry: why does the media slide pin above/below focus
+     instead of riding the deck? Diff 8cd0a02's intent against the
+     actual slide-layout code path (slide deck focus/scroll vs the
+     media slide's position source).
+  2. Butterfly widget: (a) liveness still not dying on stop — the
+     verdict-3 watchdog path did not hold in real use; (b) song name
+     placement = on TOP of the butterfly, not bottom half.
+  3. Clock seam: verdict 9 (ONE-CLOCK) unverified-in-session — the
+     stutter/invisible pair survived it. Next repro reads VFPTS lines.
+
+## 2026-09-12 VERDICT 11 (IN PROGRESS): ONE-TRUTH architecture — the stale dot's real name
+Session triggered by Barticus: butterfly shows dot + lines with NOTHING
+playing, all sink-inputs empty. Live census proved it:
+- pactl: zero sink-inputs; monitor tap records rms=0.000000 peak=0.000000
+  (3s direct capture) — PipeWire is feeding the FFT pure silence.
+- The only "holder" is our own tap: source-output "kidulwm-kmedia" on the
+  analog sink monitor (core/kmedia.zig capture thread, permanent by design).
+- Watchdog heartbeats: media_open=false active=false; player fully closed.
+So the lit widget is compositor-internal state, not audio.
+
+THE ROACH (Barticus): "how can a movie that relies on ms timed sound have
+2 or more sound timelines?" We had THREE "is it live" answers:
+  1. ksound's floor table (the real one — dead service, never consulted)
+  2. FFT rms_slot residue in core/kmedia.zig (the lying one — sampled
+     loudness re-purposed as liveness; verdict-3 watchdog didn't hold)
+  3. player_active/player cached state in the media slide
+The butterfly (a REACTOR, never a participant) was drawing whichever was
+stalest. Same family as the +707ms clock fight: state re-derived in
+consumer code instead of read from its owner.
+
+THE ONE-TRUTH ARCHITECTURE (locked in-session, Barticus):
+  - TALKING (is audio live): ksound's stream table ONLY. pw_watch already
+    tracks every stream with class/role/corked. ksound gains an
+    audio_live socket verb answering 1/0 over that table (non-corked
+    output streams with live owners; LISTENING taps excluded by class).
+  - LISTENING (FFT monitor tap): loudness food ONLY — rung energies while
+    ksound says live. level()/bands() stop being a liveness oracle.
+  - CLOCK: kmedia Player.zig DAC anchor, ONE timeline (verdict 9 stands).
+    ksound carries NO clock — it arbitrates, never timestamps.
+  - TRAY: zero media-liveness derivation. Both tray.zig:3680 and
+    media.zig:1498 delete their local `level() > 0.03` duplications and
+    read one bool: kmedia.audioLive() (ksound socket, ~100ms cache,
+    non-blocking; daemon absent = not live).
+  - BUTTERFLY: pure reaction — breathes with what plays, owns nothing.
+    "The butterfly should never stop" while ksound says someone talks.
+  - TITLE/SONG DETAILS: own dedicated space ABOVE the butterfly, never
+    drawn inside the helix lane (kills verdict-10's "song names in the
+    BOTTOM half"); that space may be interactive, but it is its own
+    region, not the butterfly's.
+
+Law audit (sound.md, full re-read 2026-09-12): clean of everything we've
+been fighting — no tray invitation (face owns ONE control + chime
+button), LAW 7 already writes honest-clock as law, LISTENING vocab
+already defines the FFT tap as floor-less. ONE GAP: the law never says
+who answers "is audio live?" for the face — the hole this bug grew in.
+Lock amendment to add when this lands: "The face asks the floor table
+for liveness; the meter answers loudness, never liveness."
+
+WORK ORDER (search & destroy per census law):
+  1. ksound: audioLive() over the table + `audio_live` socket verb.
+  2. ksound.service: enable + start; verify socket answers 0/1 live.
+  3. KidulWM core/kmedia.zig: pub fn audioLive() (ksound, cached).
+  4. tray.zig + media.zig: delete both level()>0.03 derivations → bool.
+  5. media.zig renderPeek: title lane moves ABOVE the helix, own space.
+  6. ReleaseSafe build, deploy, Barticus reloads, repro closes:
+     dot dead with nothing playing; butterfly breathes while playing;
+     title sits in its own space above.
 
 ## STANDING OPEN (from HANDOFFs, not this hunt)
 - pause-pill chrome placement (letterbox gutter anchor) — cosmetic, parked.

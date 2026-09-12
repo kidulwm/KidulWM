@@ -128,6 +128,91 @@ pub fn isRunning() bool {
 }
 
 // ---------------------------------------------------------------------------
+// ONE-TRUTH liveness (CENSUS-NOTES verdict 11, 2026-09-12)
+// "Is audio live?" is answered by ksound's floor table and NOWHERE ELSE.
+// The FFT slots above answer loudness only. Both tray.zig and media.zig
+// used to re-derive liveness as `level() > 0.03` — two consumers, one
+// lying source, stale dots. Now: one bool, from the daemon, cached
+// 100ms so render threads never block on the socket. Daemon absent
+// (socket error/timeout) = not live: the widget rests rather than
+// hallucinates.
+// ---------------------------------------------------------------------------
+
+var live_cache: std.atomic.Value(u32) = std.atomic.Value(u32).init(0); // 0/1
+var live_cache_at_us: std.atomic.Value(i64) = std.atomic.Value(i64).init(0);
+const LIVE_CACHE_TTL_US: i64 = 100_000;
+
+fn ksoundAskAudioLive() bool {
+    var path_buf: [128]u8 = undefined;
+    const path = ksoundSocketPath(&path_buf) orelse return false;
+
+    var addr: std.os.linux.sockaddr.un = .{ .family = std.os.linux.AF.UNIX, .path = [_]u8{0} ** 108 };
+    if (path.len > addr.path.len - 1) return false;
+    @memcpy(addr.path[0..path.len], path);
+
+    const fd_rc = std.os.linux.socket(std.os.linux.AF.UNIX, std.os.linux.SOCK.STREAM | std.os.linux.SOCK.NONBLOCK, 0);
+    const fd_signed: isize = @bitCast(fd_rc);
+    if (fd_signed < 0) return false;
+    const fd: i32 = @intCast(fd_rc);
+    defer _ = std.os.linux.close(fd);
+
+    // 50ms deadline on connect+io: the render thread must never stall.
+    var tv: std.os.linux.timeval = .{ .sec = 0, .usec = 50_000 };
+    _ = std.os.linux.setsockopt(fd, std.os.linux.SOL.SOCKET, std.os.linux.SO.RCVTIMEO, std.mem.asBytes(&tv), @sizeOf(std.os.linux.timeval));
+    _ = std.os.linux.setsockopt(fd, std.os.linux.SOL.SOCKET, std.os.linux.SO.SNDTIMEO, std.mem.asBytes(&tv), @sizeOf(std.os.linux.timeval));
+
+    const rc = std.os.linux.connect(fd, @ptrCast(&addr), @sizeOf(std.os.linux.sockaddr.un));
+    if (std.os.linux.errno(rc) != .SUCCESS and std.os.linux.errno(rc) != .INPROGRESS) return false;
+    if (std.os.linux.errno(rc) == .INPROGRESS) {
+        var pfd = [1]std.os.linux.pollfd{.{ .fd = fd, .events = std.os.linux.POLL.OUT, .revents = 0 }};
+        const prc = std.os.linux.poll(&pfd, 1, 50);
+        if (@as(isize, @bitCast(prc)) <= 0) return false;
+        var serr: c_int = 0;
+        var slen: std.os.linux.socklen_t = @sizeOf(c_int);
+        _ = std.os.linux.getsockopt(fd, std.os.linux.SOL.SOCKET, std.os.linux.SO.ERROR, @ptrCast(&serr), &slen);
+        if (serr != 0) return false;
+    }
+    const cmd = "audio_live\n";
+    var off: usize = 0;
+    while (off < cmd.len) {
+        const w = std.os.linux.write(fd, cmd[off..].ptr, cmd.len - off);
+        const wi: isize = @bitCast(w);
+        if (wi <= 0) return false;
+        off += w;
+    }
+    _ = std.os.linux.shutdown(fd, std.os.linux.SHUT.WR);
+    var rbuf: [8]u8 = undefined;
+    var got: usize = 0;
+    while (got < rbuf.len) {
+        const r = std.os.linux.read(fd, rbuf[got..].ptr, rbuf.len - got);
+        const ri: isize = @bitCast(r);
+        if (ri <= 0) break;
+        got += r;
+        if (rbuf[got - 1] == '\n') break;
+    }
+    return got >= 1 and rbuf[0] == '1';
+}
+
+fn ksoundSocketPath(buf: []u8) ?[]const u8 {
+    if (std.c.getenv("XDG_RUNTIME_DIR")) |d| {
+        return std.fmt.bufPrint(buf, "{s}/ksound.sock", .{d}) catch null;
+    }
+    return std.fmt.bufPrint(buf, "/run/user/{d}/ksound.sock", .{std.os.linux.getuid()}) catch null;
+}
+
+/// The face's ONLY liveness question. ksound floor table, cached 100ms.
+pub fn audioLive() bool {
+    const now = nowUsMono();
+    if (now - live_cache_at_us.load(.acquire) < LIVE_CACHE_TTL_US) {
+        return live_cache.load(.acquire) == 1;
+    }
+    const live = ksoundAskAudioLive();
+    live_cache.store(if (live) 1 else 0, .release);
+    live_cache_at_us.store(now, .release);
+    return live;
+}
+
+// ---------------------------------------------------------------------------
 // FFT — iterative radix-2, Hann window, magnitude spectrum
 // ---------------------------------------------------------------------------
 
