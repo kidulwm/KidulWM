@@ -1673,6 +1673,12 @@ pub const Server = struct {
         if (playing) {
             if (output.media_slide.card_buffer) |old| old.node.destroy();
             output.media_slide.card_buffer = null;
+            // The video path (media_video.zig) letterboxes into the FULL
+            // OUTPUT RECT assuming this tree sits at 0,0. The card phase
+            // parks it at the gap-inset slot rect, and this early return
+            // skips the setPosition below — so without this the video is
+            // shoved off-centre/right by the slot offset on every play.
+            tree.node.setPosition(0, 0);
             tree.node.raiseToTop();
             return;
         }
