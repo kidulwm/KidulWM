@@ -602,6 +602,7 @@ pub const Server = struct {
                     if (o.media_slide.isOpen() and o.media_slide.widget_ready) {
                         self.stopOtherPlayers(o);
                         o.media_slide.widget.play(p.path);
+                        o.media_slide.card_dirty = true; // new playback: card content changed
                         self.mediaSlideRefresh(o);
                         routed = true;
                         break;
@@ -1569,7 +1570,10 @@ pub const Server = struct {
             if (keep != null and o == keep.?) continue;
             if (o.media_slide.widget_ready and o.media_slide.widget.player_active) {
                 o.media_slide.widget.ensureStopped();
-                if (o.media_slide.isOpen()) self.mediaSlideRefresh(o);
+                if (o.media_slide.isOpen()) {
+                    o.media_slide.card_dirty = true; // stop: card content changed
+                    self.mediaSlideRefresh(o);
+                }
             }
         }
         if (keep != null and self.tray.media.player_active) {
@@ -1688,6 +1692,32 @@ pub const Server = struct {
         const buf_h: i32 = @intCast(target.height);
         const pos_x: i32 = target.x;
         const pos_y: i32 = target.y;
+        // CARD REPAINT GUARD (verdict 17, 2026-09-12): applyLayout fires on
+        // every layout event (window commit, focus change, etc.) while the
+        // slide is open. renderToBuffer allocates a 33 MB ARGB32 cairo surface
+        // each call; rapid re-fires pile up simultaneous GPU-held bufs →
+        // 20-35 MB/s RSS growth in the prewarm window (active=false) → OOM.
+        // Skip when geometry is unchanged AND no widget mutation has dirtied
+        // the content. card_dirty is set on open, on key mutations in
+        // mediaSlideKey, and on mediaSlideRefresh callers that know content
+        // changed (art load, play stop, etc.).
+        const geom_same = (buf_w == output.media_slide.card_last_w and
+            buf_h == output.media_slide.card_last_h);
+        const gen_same = (widget.state_generation == output.media_slide.card_last_gen);
+        if (geom_same and gen_same and !output.media_slide.card_dirty and output.media_slide.card_buffer != null) {
+            // Position may have changed even if size is the same (e.g. output
+            // was repositioned). Move the existing buffer rather than repaint.
+            if (output.media_slide.card_buffer) |card| {
+                output.media_slide.tree.?.node.setPosition(pos_x, pos_y);
+                card.node.raiseToTop();
+            }
+            self.overlay_tree.node.raiseToTop();
+            return;
+        }
+        output.media_slide.card_last_w = buf_w;
+        output.media_slide.card_last_h = buf_h;
+        output.media_slide.card_last_gen = widget.state_generation;
+        output.media_slide.card_dirty = false;
         const buffer = media_slide_mod.renderToBuffer(widget, self.theme, buf_w, buf_h, scale) orelse return;
         if (output.media_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
@@ -1865,6 +1895,7 @@ pub const Server = struct {
                     widget.ensureStopped();
                     self.mediaVideoTeardown(out);
                 }
+                out.media_slide.card_dirty = true; // player key: state may have changed
                 self.mediaSlideRefresh(out);
                 return true;
             }
@@ -1934,7 +1965,10 @@ pub const Server = struct {
                     }
                 },
             }
-            if (dirty) self.mediaSlideRefresh(out);
+            if (dirty) {
+                out.media_slide.card_dirty = true;
+                self.mediaSlideRefresh(out);
+            }
             return true;
         }
 
@@ -2111,7 +2145,10 @@ pub const Server = struct {
                 }
             },
         }
-        if (dirty) self.mediaSlideRefresh(out);
+        if (dirty) {
+            out.media_slide.card_dirty = true;
+            self.mediaSlideRefresh(out);
+        }
         return true;
     }
 
@@ -3208,6 +3245,7 @@ pub const Server = struct {
                     output.media_slide.widget.ensureStopped();
                     if (output.media_slide.isOpen()) {
                         self.mediaVideoTeardown(output);
+                        output.media_slide.card_dirty = true; // playback ended: card must repaint
                         self.mediaSlideRefresh(output);
                     }
                     self.disarmPlayTimer();

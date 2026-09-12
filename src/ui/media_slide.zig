@@ -20,6 +20,25 @@ pub const MediaSlide = struct {
     /// the frame handler ticks the player every vsync and only refreshes
     /// the video buffer when this moves.
     last_display_serial: u64 = 0,
+    /// Card buffer geometry and content guard (verdict 17, 2026-09-12):
+    /// mediaSlideRefresh is called from applyLayout on EVERY layout event
+    /// (window focus, commit, etc.) while the slide is open. renderToBuffer
+    /// allocates a 33MB ARGB32 surface each call; with many rapid re-fires
+    /// the GPU pipeline holds multiple 33MB bufs simultaneously → ~20-35
+    /// MB/s RSS growth in the prewarm window (active=false) → OOM.
+    /// Guard: re-render only when the target rect changed OR card_dirty is
+    /// set (set by any widget mutation that changes pixel content).
+    /// The playing-branch already skips renderToBuffer entirely.
+    card_last_w: i32 = 0,
+    card_last_h: i32 = 0,
+    card_dirty: bool = true,
+    /// Widget state_generation at the last card render. When art loads or
+    /// any widget mutation bumps state_generation, this diverges from the
+    /// widget's current value and the guard treats it as dirty — so art
+    /// appears on the card without needing explicit dirty-setting at every
+    /// art-load call site. Initialised to max-value so the first render
+    /// always fires (state_generation starts at 0 → always differs).
+    card_last_gen: u32 = std.math.maxInt(u32),
     /// Dedicated scene buffer for the live video frame. Updated per-frame
     /// from Player.currentFrame(); the card buffer above carries only chrome.
     video_buffer: ?*wlr.SceneBuffer = null,
@@ -130,6 +149,7 @@ pub const MediaSlide = struct {
                 server.disarmPlayTimer();
                 // Player ended — refresh the card so the slide shrinks back
                 // from fullscreen to its slot rect (media-collapse).
+                self.card_dirty = true; // content changed: card must repaint
                 server.mediaSlideRefresh(output);
             } else {
                 // AUDIO-CLOCKED PLAYLOOP (main): tick() is owned by the
