@@ -618,3 +618,40 @@ DEPLOY: /usr/local/bin/kidulwm = sha256 293ca6e1… via mv-aside
      If live HDMI path shows position-counter drift, next census is
      tlength/PipeWire quantum interaction. KMEDIA_TIMING=1 is live in
      the session wrapper — /tmp/kmedia-timing.log has LAT/ANCH/WR.
+
+## 2026-09-12 VERDICT 15 (FIX-AND-RECORD #8): THE 20s CRASH — dmabuf cache vs ring size
+Barticus: "media player is still crashing after 20sec." Search & destroy
+granted. The watchdog log told it in one window, same shape EVERY boot:
+- 17:22:14 media slide open, rss=357MB. RSS sprints ~15-35MB/s
+  (+216MB in ONE second at 17:22:34), 774MB at 17:22:37 — last
+  heartbeat. 17:24:00: [ERROR] [render/dmabuf.c:23]
+  fcntl(F_DUPFD_CLOEXEC) failed: Too many open files ×4 → compositor
+  dead, session restarts. Boot -2: identical at 16:19:49-52.
+- Not OOM — the compositor runs out of FILE DESCRIPTORS (soft
+  RLIMIT_NOFILE=2048). ~5 fds/frame at 24fps ≈ EMFILE in 17-20s =
+  "crashes after 20 seconds", exactly.
+Root cause (PROVEN in code): kmedia VIDEO_RING_SIZE went 8→16 (verdict
+5/13) but the slide's dmabuf_cache stayed [8] (media_slide.zig). The
+live VA surface set = ring 16 + displayed frame + decoder DPB refs
+(~4-8) — it outgrew the cache the moment the ring doubled. EVERY frame
+became a cache MISS: vaExportSurfaceHandle + DmabufBuffer.create +
+evict-drop + setBuffer with a different buffer → wlroots texture
+destroy/create churn → render/dmabuf.c F_DUPFD_CLOEXEC leak — the
+EXACT 2026-09-08 fd-leak mechanism, re-armed by the ring resize. The
+09-08 RENDER-ONCE fix only guarded the hit path; with a thrashing
+cache the hit path never ran. Leaked fds pin GEM buffers = the RSS
+sprint. One seam, both numbers (fd count AND RSS).
+FIX (KidulWM 0dfbc46): dmabuf_cache 8→32 (ring 16 + headroom; SIZE LAW
+comment in media_slide.zig), plus a CACHE-THRASH probe in
+media_video.zig: misses >48 and climbing logs "[media] CACHE-THRASH"
+loud — the census sees the next size mismatch before EMFILE does.
+Also rode along in the commit (previously uncommitted in tree):
+6309562's pointer-enter fix state + docs/law/kvis.md + theme/style
+edits — noted so the record is honest.
+DEPLOY: /usr/local/bin/kidulwm = sha256 df5ace07… = kidulwm 0dfbc46 +
+kmedia c704ce5 (kvis seal; in-binary stamp verified), via mv-aside
+(.bak-pre-cache32 kept). REPRO after reload: play 60s+ — RSS must sit
+FLAT after pool warmup (~<400MB), [present] cache=hit after the first
+~16 frames, zero CACHE-THRASH lines, no F_DUPFD errors, no wedge.
+Live fd check during playback: ls /proc/$(pgrep -x kidulwm)/fd | wc -l
+must stay bounded (~150-250), not climb to 2048.
