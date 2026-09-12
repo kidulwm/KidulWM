@@ -74,6 +74,90 @@ pub const MediaSlide = struct {
         return self.tree != null;
     }
 
+    /// Per-output playback driving, called once per vsync from
+    /// Output.handleFrame (render thread, scene_mutex held). KVIS LAW:
+    /// "the media slide is just a slide" — the slide owns its playback
+    /// presentation state; server.zig only provides the lifecycle entries
+    /// (mediaVideoRefresh/Teardown delegations, play timer, slide refresh).
+    pub fn tickPlayback(self: *MediaSlide, server: anytype, output: anytype, now_us: u64) void {
+        // ── Play-timer arm (reactive) ────────────────────────────────────
+        // The compositor-level play_timer (Server.handlePlayTimer) owns
+        // tick() and mediaVideoRefresh() — this output just presents whatever
+        // frame is already due (see below). Arm the timer here the first time
+        // we see player activity, so playback that starts while no timer is
+        // running still gets clocked. The timer self-re-arms; a spurious extra
+        // arm from a second output is harmless (timerUpdate resets the delay).
+        //
+        // Stage 2 — audio-clocked playloop (2026-09-07): advance is now driven
+        // by a single compositor-level wl_event_loop timer, not by a specific
+        // output's frame callback. Outputs only PRESENT the due frame on their
+        // own vsync. See Server.handlePlayTimer, Server.armPlayTimer.
+        const any_playing = (self.widget_ready and
+            self.widget.player_active) or
+            server.tray.media.player_active;
+        if (any_playing and server.play_timer == null) {
+            server.armPlayTimer();
+        }
+
+        // ── isDone / no-stills teardown (render-thread guards) ───────────
+        // The play_timer checks isDone too, but the render thread must also
+        // guard here: if the timer fires and calls disarmPlayTimer between
+        // vsync edges we still need to catch a done state and clean up scene
+        // nodes (which must happen on the render thread while holding the lock).
+        if (self.isOpen() and self.widget_ready and self.widget.player_active) {
+            // PLAYER-INSTANCE GUARD: a stop/reopen cycle (second video)
+            // bumps player_generation; the dmabuf cache is keyed on VA
+            // surface IDs which the new decoder's pool reuses — drop all
+            // compositor-side video state before touching the new player,
+            // or a stale cache hit renders freed GPU surfaces (the 2026-09-08
+            // power-button freeze).
+            if (self.widget.player_generation != self.seen_player_generation) {
+                self.seen_player_generation = self.widget.player_generation;
+                server.mediaVideoTeardown(output);
+            }
+            if (self.widget.player.isDone()) {
+                self.widget.ensureStopped();
+                server.mediaVideoTeardown(output);
+                server.disarmPlayTimer();
+                // Player ended — refresh the card so the slide shrinks back
+                // from fullscreen to its slot rect (media-collapse).
+                server.mediaSlideRefresh(output);
+            } else {
+                // AUDIO-CLOCKED PLAYLOOP (main): tick() is owned by the
+                // play_timer, NOT this per-output frame callback. Here we
+                // only PRESENT what the playloop advanced.
+                // VSYNC GRID (media-collapse): the play_timer's tick() carries
+                // the interval; the display_serial check here is the
+                // present-edge.
+                const serial = self.widget.player.display_serial;
+                if (serial != self.last_display_serial) {
+                    self.last_display_serial = serial;
+                    server.mediaVideoRefresh(output);
+                } else {
+                    // [present] DROP: video active on this vsync period but
+                    // the playloop produced no new frame — the display edge
+                    // will re-show the previous buffer.
+                    self.present_dropped += 1;
+                }
+                server.presentAggregateFlush(output, now_us);
+            }
+        } else if (self.video_buffer != null) {
+            // Reconcile: player stopped on a path the server didn't drive
+            // (widget.update(), play() switching tracks, widget deinit) —
+            // the ghost frame must not outlive playback. LAW: no stills.
+            server.mediaVideoTeardown(output);
+        }
+
+        // ── Slideless isDone guard ───────────────────────────────────────
+        // Mirror of the above for the tray music path (slide closed).
+        if (!self.isOpen() and server.tray.media.player_active) {
+            if (server.tray.media.player.isDone()) {
+                server.tray.media.ensureStopped();
+                server.disarmPlayTimer();
+            }
+        }
+    }
+
     pub fn ensureWidget(self: *MediaSlide, allocator: std.mem.Allocator) *media_mod.MediaWidget {
         if (!self.widget_ready) {
             self.widget = media_mod.MediaWidget.init(allocator);
