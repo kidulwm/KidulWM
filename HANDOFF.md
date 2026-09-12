@@ -1,6 +1,73 @@
 # KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
 
 ---
+## ADDENDUM — Sep 11 2026 (session 21: media hunt PAUSED, browser next)
+
+Deployed state: /usr/local/bin/kidulwm sha256 be466344 = KidulWM 286a76b /
+kmedia 7d2b169 (ONE-CLOCK law). Verified in binary strings.
+
+Repro verdict (Barticus): NOT WORKING. Raya stutters, second video
+invisible, butterfly widget broken (stop-start motion, shows media after
+playback stopped, song names bottom-half instead of on top), and — the
+structural one — the MEDIA SLIDE IS STILL NOT A SLIDE: it pins
+above/below the focused slide instead of riding the deck. 8cd0a02 did
+not deliver "media-is-a-slide" in behavior.
+
+Nine census verdicts (see CENSUS-NOTES.md, verdicts 1-10) each fixed a
+proven door; session symptoms survived all of them. Barticus law: "our
+problem is a complexity that we made, that needs to be gone." The slide
+integration is the prime suspect for that complexity.
+
+STATE: media player hunt PAUSED per Barticus 2026-09-11. No more
+patches on the media seam until fresh eyes. Next session agenda:
+  1. BROWSER FIRST — Barticus needs a working browser inside KidulWM so
+     niri is no longer required. Start here.
+  2. Then resume media with the CENSUS-NOTES verdict-10 checklist
+     (slide geometry, butterfly liveness/placement, VFPTS repro).
+
+UNCOMMITTED at pause: CENSUS-NOTES.md (this record), HANDOFF.md,
+src/ui/media.zig (2 debug log lines). All three belong to the hunt;
+commit them together when the hunt closes or when the browser work
+needs a clean tree.
+
+---
+## ADDENDUM — Sep 08 2026 night (session 20: SECOND-VIDEO BUG KILLED STRUCTURALLY)
+
+Commit `5e84470`, DEPLOYED ReleaseSafe → /usr/local/bin/kidulwm
+(hash ca3091f7…, .bak-fe427cc kept). Takes effect on compositor restart.
+
+THE LESSON OF THE WHOLE ARC: the second-video defect was root-caused
+THREE times at three different doors —
+1. 91b2509: generation guard in the vsync frame handler.
+2. fe427cc: seen_player_generation aliasing on slide reopen (headless
+   music → video confusion), plus video-quit=audio-quit law.
+Each fix patched one call-site path and left the next. Do NOT add a
+fourth call-site guard — the class is now closed structurally:
+
+  dmabuf cache entries are keyed on (VA surface id, player_generation).
+  A hit requires BOTH to match. VA pools reuse surface ids across
+  decoders, so surface-only keys could always alias the dead decoder's
+  freed surfaces; with gen in the key a stale entry can NEVER hit,
+  regardless of which teardown path was missed.
+
+Also in 5e84470: cache eviction prefers stale-gen slots (a full cache
+sheds dead entries first), and mediaVideoRefresh carries the generation
+guard itself so a stale live scene node can't be presented even if every
+call-site guard is bypassed. fe427cc's call-site guards stay as belt.
+
+INVARIANT (never violate again): a dmabuf cache entry may never outlive
+the decoder/player generation that produced its VA surface ids. This is
+now a property of the cache key, not a discipline of the callers.
+
+VERDICT PENDING (Barticus host test, after restart):
+play video A ~30s → close slide → reopen → play video B. Picture on B =
+the class is dead, not just the instance.
+
+OPEN (unchanged): pause-pill chrome placement bug (letterbox gutter
+anchor); first-video stutter eyeball; backups owed (now 63+ commits
+ahead: sda1/Codeberg/Apocalypse); ksound sound.md law lock.
+
+---
 ## ADDENDUM — Sep 08 2026 late (media-is-a-slide: sentinel RETIRED)
 
 LAW: docs/law/media-is-a-slide.md LOCKED by Barticus ("lock it in & build

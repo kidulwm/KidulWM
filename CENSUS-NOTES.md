@@ -482,8 +482,139 @@ DEPLOY: /usr/local/bin/kidulwm = sha256 830e6604… via mv-aside
 PENDING: sound.md law-lock amendment — "The face asks the floor table
 for liveness; the meter answers loudness, never liveness." (Barticus)
 
+## 2026-09-12 VERDICT 12 (FIX-AND-RECORD #6): the clock is born in the future — host PROVEN innocent
+Barticus: "maybe a single test to see if it is our player or the host."
+New harness: kmedia test_clockprobe.zig (`zig build clockprobe`) —
+headless Player.open(resume Raya 23s) + real host sink + tick() at
+vsync cadence, NO compositor, NO PipeWire mixer in the decision path.
+lag = masterClockUs - displayed_pts_us per present.
+
+HEAD (7d2b169, ONE-CLOCK live): lag p50 = +923ms, CONSTANT, aq=0.
+0c5308c ("ZERO-COPY" known-good): same shape, worse (no rebase at all).
+The bug reproduces with zero host involvement → Player.zig, always was.
+
+Mechanism (probe data, not theory):
+- AUWR wall-delta p50 = 7µs per 833µs chunk — pa_simple_write returns
+  INSTANTLY into PipeWire's 100ms tlength; the aud_ring drains to 0
+  while the DAC has played almost nothing.
+- The anchor then stamps pts + dur as if the DAC had played it → the
+  clock is born ~(all queued audio) in the future and every video
+  frame reads that much late, forever. Drop-storm → STARVE → burst →
+  stutter; on next-file open, born ~1s ahead → frames dropped →
+  committed=0 → the transparent movie. ONE mechanism, both symptoms.
+- Why 4K/60Hz shows it and 144Hz hides it: same constant offset, but
+  the 4K present path has no refresh headroom to mask the judder.
+- Sink latency probe: PipeWire honestly reports 45-99ms unplayed
+  (tlength) while letting us sprint ~1s ahead. We just never asked.
+
+FIX (kmedia 03e4e6f): anchor subtracts pa_simple_get_latency() — "what
+the DAC is playing NOW", mpv's audio-law line we never implemented.
+Recovers ~80-90ms (the sink's own queue). PARTIAL: the remaining
+constant is the ring-drain history at clock birth — the throttle +
+anchor + latency submission arithmetic is three patches over one
+missing truth: THE GRAPH MUST PACE THE CLOCK, not the other way round
+(Barticus: "we have been anchoring off the sound when we should be
+doing the reverse"). That rewrite is next, with clockprobe as harness.
+
+WHAT CHANGED (running list, newest last):
+- kmedia 03e4e6f  Player.zig DAC-latency anchor + test_clockprobe.zig
+DEPLOY: /usr/local/bin/kidulwm = sha256 0729cfb0… = 27eeddd/03e4e6f,
+deployed 12:0x via mv-aside (.bak-pre-latency kept). Reload + repro:
+lag must DROP by the sink's latency; stutter/invisible persist =
+verdict 13's graph-paced clock. Boot stamp must read kmedia=03e4e6f.
+
+## 2026-09-12 VERDICT 14 (FIX-AND-RECORD #7): THE FREEZE — pkt ring storage
+Two boots, same death: smoothest playback yet (~30s), then whole-machine
+wedge, power-button recovery, ZERO journal (journal tail: kmedia stream
+appears 13:31:26, then silence; watchdog: RSS 350MB→1.1GB in 7s at open,
+stable 1.1GB, then heartbeat ends mid-line). A userspace crash leaves a
+journal; this was kernel-side (zram + VA-API dmabuf pressure + i915).
+Root cause (PROVEN in code): verdict 13 raised PKT_RING_FILE 64→2048 but
+pktRingType's array, head/tail modulo AND clear loop all stayed 256.
+count climbed toward 2048 against 256 slots — head lapped tail,
+counted-queued packets overwritten/leaked, back-pressure fired ~8x late,
+reader sprinted the demux/decode buffers into memory death. Both freezes
+occurred only on the graph-paced build — the only one carrying 2048.
+FIX (kmedia 67f77a0, dac-paced-clock): PKT_RING_STORAGE = PKT_RING_FILE;
+array, both modulos and clear loop use STORAGE; caps stay 256 live /
+2048 file below it. playertest CLEAN EXIT.
+DEPLOY: /usr/local/bin/kidulwm = sha256 073c423d… = kidulwm 27eeddd +
+kmedia 67f77a0 (stamp 67f77a0 verified in-binary), via mv-aside
+(.bak-pre-ringfix kept). REPRO: same playback that froze twice must now
+run past 60s+ with RSS stable and no wedge. Boot stamp kmedia=67f77a0.
+
 ## STANDING OPEN (from HANDOFFs, not this hunt)
 - pause-pill chrome placement (letterbox gutter anchor) — cosmetic, parked.
 - backups owed: 67+ commits ahead (sda1/Codeberg/Apocalypse).
 - 2 uncommitted debug log lines in KidulWM src/ui/media.zig (gen logging)
   + HANDOFF.md addendum — leave them, commit when hunt closes.
+
+## 2026-09-12 VERDICT 13 (IN PROGRESS): graph-paced clock + screens census
+Branch dac-paced-clock (kmedia). Clock-patch pile (ffc8877→03e4e6f, eight
+commits) DELETED and replaced with: absolute pts end-to-end + ONE anchor
+line (pts_anchor = chunk_end_pts - pa_simple_get_latency) + seek_armed
+gate. playertest CLEAN EXIT; clockprobe STILL shows +800ms constant —
+but the LAT probe acquitted the sink (honest 80-100ms) and AUWR showed
+audio pts advancing at rate 0.609 vs wall (bursty underrun feeding, NOT
+a racing clock). The constant is NOT DAC sprint — census continues.
+SCREENS CENSUS (Barticus questions, this session): NO master/slave
+exists today — every output owns a full media_slide + tray widget +
+player, and playTimerMs() SEARCHES outputs for an owner. Two seams
+named: (A) playTimerMs ceil ms-timer vs exact µs grid = ~1.14Hz beat
+(PRIME SUSPECT since 09-08, still live); (B) timer follows first-found
+owner. Barticus law (locked in speech): ONE Master screen holds ALL
+widgets + controls + truth; slaves present slides only; slides ride
+focus; grid borrows the presenting screen's crystal. "One computer, one
+compositor, one player, one clock — screens are windows." Latency of
+Master ownership = ZERO (intra-process; HDMI carries pixels only).
+LAW DOC: KidulWM docs/law/screens.md (DRAFT, awaits Barticus lock).
+The crawl (Star-Wars app launcher, bottom-center, big white letters,
+border-colour idle / white focus) = Barticus design, tray-as-we-know-it
+retired to a later date — parked as future taskcard.
+Seek & destroy mandate granted 2026-09-12; keep notes along the way.
+
+## 2026-09-12 LAW EVOLUTION: Master/slave-screens REPLACED by Boss/slaves/pack
+Barticus: "Master & slave screen is the wrong metaphor — the Master is
+the COMPUTER; all screens are slaves, numbered (1,2,3...); slave 1 gets
+the PACK (widgets+controls+crawl) by default; users can move the pack;
+headless = 0 slaves." "1 boss 1 truth — we have been saying this all
+along; giving it to anything else is actually silly. The Boss sends the
+visuals to the screen & sound to the speakers — on time every time."
+docs/law/screens.md rewritten in the new vocabulary (6 laws: Boss /
+slaves are addresses / the pack / slides ride focus / one clock
+borrowed crystals / latency honesty). DRAFT — awaits Barticus lock.
+
+## 2026-09-12 VERDICT 13 (CONT'D): rings fixed, lag cut to ~20ms, drift named
+dac-paced-clock branch state: AUDIO_RING 32→1024 (was a 27ms buffer
+pace-locking the decode thread — chunks on Raya are ~1ms NOT 21ms),
+PKT_RING_FILE 64→2048 (was ~1.5 video frames — every demux audio-run
+starved video: 54v vs 2671a packets in 2s), anchor = chunk_end −
+pa_simple_get_latency (LAT probe: honest 80-100ms), absolute pts
+end-to-end, hr-seek floor as pure presentation filter, clock clamps
+deleted. clockprobe: first-present lag fell +800ms → ~20-60ms at wall
+1.5s (was 775ms). presents 133→213/10s. REMAINING: audio pts_rate
+decays 1.01→0.89 after ~4s (PipeWire pulling at ~0.89× while honestly
+reporting 80-90ms occupancy; WR probe: writes succeed in ~8µs, stream
+live+uncorked on the real analog sink). Video stays glued to audio
+(skew constant) so a/v sync itself is FINE — the drift is clock-rate
+vs wall, only visible as lag growth vs pts. Suspects: PipeWire rate-
+match/resample bookkeeping vs pa_simple_get_latency, or tlength=100ms
+starving the mixer quantum. Live session repro will tell whether the
+deployed path (HDMI sink) shows it at all — probe uses analog.
+
+## 2026-09-12 VERDICT 13 DEPLOYED (reload pending)
+- kmedia cf68efd (dac-paced-clock branch, SIGNED): graph-paced clock,
+  ring pile deleted. Committed with full census mechanism in the message.
+- KidulWM rebuilt ReleaseSafe (27eeddd + kmedia cf68efd statically
+  included; stamps verified in-binary: cf68efd + 27eeddd present).
+DEPLOY: /usr/local/bin/kidulwm = sha256 293ca6e1… via mv-aside
+(.bak-pre-graphpaced kept). Barticus reloads + repro:
+  1. Raya resume 23s: lag ≈ 0 from early presents (NOT +700ms pinned),
+     PRES p50 ≈ 41.7ms, DROP/STARVE ≈ 0.
+  2. Next video: committed>0 frames from t=0 (no transparent movie).
+  3. Boot stamp must read kmedia=cf68efd.
+  4. WATCH: drift — probe showed audio rate 0.89× vs wall on the
+     ANALOG sink after ~4s (a/v sync holds; video glued to audio).
+     If live HDMI path shows position-counter drift, next census is
+     tlength/PipeWire quantum interaction. KMEDIA_TIMING=1 is live in
+     the session wrapper — /tmp/kmedia-timing.log has LAT/ANCH/WR.
