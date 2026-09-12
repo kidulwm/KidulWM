@@ -1622,9 +1622,19 @@ pub const Server = struct {
         while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.scene_mutex.unlock();
         if (output.media_slide.isOpen()) return;
-        // Every open is FRESH: rebuild the widget so quit-clears is
-        // structural, not a flag-reset that can miss a field.
-        if (output.media_slide.widget_ready) {
+        // Reopen-lands-on-the-card LAW (Barticus, 2026-09-12): closing the
+        // slide during MUSIC is view-only (audio-authority law) — the album
+        // keeps playing and reopening must land on THAT card, mid-track.
+        // The widget IS the card reference (cached title/art/selection), so
+        // keep it alive across close/reopen while its music player lives.
+        // VIDEO close is a quit (video carve-out): the widget's player is
+        // already stopped, and every open is FRESH (rebuild below) so
+        // quit-clears stays structural, not a flag-reset that can miss a
+        // field.
+        const keep_widget = output.media_slide.widget_ready and
+            output.media_slide.widget.player_active and
+            output.media_slide.widget.is_music;
+        if (output.media_slide.widget_ready and !keep_widget) {
             output.media_slide.widget.deinit();
             output.media_slide.widget = media_mod.MediaWidget.init(self.allocator);
         }
@@ -1652,12 +1662,22 @@ pub const Server = struct {
         const tree = output.media_slide.tree orelse return;
         const deck = &output.deck;
         const widget = output.media_slide.ensureWidget(self.allocator);
-        // Fullscreen is a SIZE (playback.md): a playing player renders into
-        // the full output rect; the card renders into the deck's focused
-        // slot (gap-inset, same as a focused client window).
-        const target = deck.mediaSlideTarget(widget.player_active);
-        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         const playing = widget.player_active;
+        // PLAYBACK LAW (Barticus, 2026-09-12): THE SLIDE IS GONE WHILE THE
+        // PLAYER PLAYS. The card buffer is a 33MB (4K×scale ARGB32) full-
+        // output surface whose only job while playing is a black matte with
+        // a transparent hole for the dmabuf video node — and repainting it
+        // per layout event IS the ~90MB/s RSS sprint → OOM crash. mpv's
+        // playbook: playing = video + chrome ONLY, no card surface. Tear
+        // the card down once and never repaint it until playback stops.
+        if (playing) {
+            if (output.media_slide.card_buffer) |old| old.node.destroy();
+            output.media_slide.card_buffer = null;
+            tree.node.raiseToTop();
+            return;
+        }
+        const target = deck.mediaSlideTarget(false);
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         const buf_w: i32 = @intCast(target.width);
         const buf_h: i32 = @intCast(target.height);
         const pos_x: i32 = target.x;
@@ -1677,9 +1697,8 @@ pub const Server = struct {
         card.setDestSize(buf_w, buf_h);
         tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
-        // Fullscreen means over EVERYTHING — the overlay tree (tray/widgets)
-        // normally sits above the slide.
-        if (playing) tree.node.raiseToTop() else self.overlay_tree.node.raiseToTop();
+        // Not playing: the overlay tree (tray/widgets) sits above the slide.
+        self.overlay_tree.node.raiseToTop();
     }
 
     /// Flush the per-output [present] aggregate once per second while video

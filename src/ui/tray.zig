@@ -3680,7 +3680,6 @@ pub const Tray = struct {
         // ONE-TRUTH (verdict 11): liveness comes from ksound's floor table
         // via kmedia.audioLive() — the tray derives NOTHING from FFT levels.
         const audio_live = kmedia.audioLive();
-        const playing = self.media.player_active and self.media.cached.playing;
         var peek_key = title_hash;
         peek_key = peek_key *% 31 +% theme_gen;
         peek_key = peek_key *% 31 +% @as(u64, @intFromFloat(@as(f64, scale) * 1024.0));
@@ -3699,7 +3698,7 @@ pub const Tray = struct {
         }
         const redraw = widget.scene_buffer == null or
             widget.last_peek_key != peek_key or
-            (playing and audio_live);
+            audio_live;
         widget.last_peek_key = peek_key;
 
         if (!redraw) {
