@@ -738,6 +738,11 @@ pub const Tray = struct {
         self.open = false;
         self.pinned = false;
         self.hovered = false;
+        // Arm the hover-reopen lock: while the close animation runs the pointer
+        // is usually still over the panel, and handlePointerMove would otherwise
+        // set hovered=true again and re-open the tray mid-close. Cleared when
+        // the pointer leaves the panel.
+        self.close_lock = true;
         self.close_after_us = 0;
         self.selected_index = 0;
         self.hover_index = null;
@@ -2178,6 +2183,20 @@ pub const Tray = struct {
                     const idx: usize = @as(usize, @intFromFloat(@floor(dist / (item_h + gap)))) + 1;
                     if (idx <= self.items.len) new_hover = idx;
                 }
+            }
+        }
+
+        // Honor the close lock: after a deliberate close (spawn, IPC close,
+        // card action), pointer-still-over-panel must NOT re-arm hover and
+        // re-open the tray mid-animation. Lock releases only when the pointer
+        // fully exits the panel.
+        if (self.close_lock) {
+            if (!inside_panel) {
+                self.close_lock = false;
+            } else {
+                self.hovered = false;
+                self.hover_index = null;
+                return inside_panel;
             }
         }
 
