@@ -50,9 +50,24 @@ pub const TrayHost = struct {
     focused_window_box: *const fn (ctx: *anyopaque) ?wlr.Box,
     is_kfiles_open: *const fn (ctx: *anyopaque) bool,
     media_slide_toggle: *const fn (ctx: *anyopaque) void,
+    /// The media PLAYER lives on the Server (Barticus law 2026-09-15) —
+    /// the tray renders the media card + peek from it but owns nothing.
+    media: *MediaWidget,
     theme: *const theme_mod.Theme,
 };
 
+// == LAUNCHER PAYLOAD (survives the CFC cut) ==
+// The tray→CFC-launcher refactor (docs/log/launcher-cfc-spec.md, DRAFT)
+// splits this file in two conceptual halves. THIS half is the payload:
+// the item list, their actions, selection/ordering/scroll state, and the
+// toggle door. It survives the cut and will drive the future center-screen
+// CFC launcher overlay.
+//
+// kidulButton (alias "rkt-button"): the bottom-right-peek logo button.
+// The tray toggle door is keyboard-only (SW / Super / Mod4 → tray.toggle,
+// server.zig tray_toggle -> tray.toggle()) plus the IPC tray_toggle tag.
+// Barticus law 2026-09-15: the RAM cauldron gauge click no longer toggles
+// the tray — gauges are pure telemetry display with no click actions.
 const Action = union(enum) {
     toggle_tray,
     cycle_animation,
@@ -270,7 +285,6 @@ pub const Tray = struct {
     gauge: GaugeWidget,
     drives: DrivesWidget,
     network: NetworkWidget,
-    media: MediaWidget,
     files: FilesWidget,
     media_card_open: bool = false,
     network_card_open: bool = false,
@@ -358,7 +372,6 @@ pub const Tray = struct {
             .weather = WeatherWidget.init(allocator),
             .gauge = GaugeWidget.init(allocator),
             .drives = DrivesWidget.init(allocator),
-            .media = MediaWidget.init(allocator),
             .network = NetworkWidget.init(allocator),
             .files = FilesWidget.init(allocator),
             .notifications = NotificationWidget.init(allocator),
@@ -387,7 +400,6 @@ pub const Tray = struct {
         self.weather.deinit();
         self.gauge.deinit();
         self.drives.deinit();
-        self.media.deinit();
         self.network.deinit();
         self.files.deinit();
         self.notifications.deinit();
@@ -646,6 +658,11 @@ pub const Tray = struct {
         self.last_update_us = 0;
     }
 
+    /// kidulButton door. This is the single toggle shared by both doors:
+    /// the SW (Super/Mod4) crosspad key and the bottom-right-peek
+    /// kidulButton (alias "rkt-button"). In the pre-cut codebase the
+    /// kidulButton's pointer hit zone is the cauldron click path; the CFC
+    /// cut gives it a dedicated logo hit zone at the bottom of the peek.
     pub fn toggle(self: *Self) void {
         self.open = !self.open;
         self.pinned = self.open;
@@ -686,7 +703,7 @@ pub const Tray = struct {
         self.signals_card_open = false;
         self.network.card.close();
         self.weather.card.open = false;
-        self.media.setCardOpen(false);
+        self.host.media.setCardOpen(false);
         self.files.card.open = false;
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
@@ -730,7 +747,7 @@ pub const Tray = struct {
         }
         if (self.media_card_open) {
             self.media_card_open = false;
-            self.media.setCardOpen(false);
+            self.host.media.setCardOpen(false);
         }
         if (self.network_card_open) {
             self.network_card_open = false;
@@ -757,7 +774,7 @@ pub const Tray = struct {
         }
         if (self.media_card_open) {
             self.media_card_open = false;
-            self.media.setCardOpen(false);
+            self.host.media.setCardOpen(false);
         }
         self.network_card_open = !self.network_card_open;
         if (self.network_card_open) {
@@ -781,7 +798,7 @@ pub const Tray = struct {
         }
         if (self.media_card_open) {
             self.media_card_open = false;
-            self.media.setCardOpen(false);
+            self.host.media.setCardOpen(false);
         }
         if (self.network_card_open) {
             self.network_card_open = false;
@@ -808,11 +825,11 @@ pub const Tray = struct {
             self.weather.card.open = false;
         }
         self.media_card_open = !self.media_card_open;
-        self.media.setCardOpen(self.media_card_open);
+        self.host.media.setCardOpen(self.media_card_open);
         if (self.media_card_open) {
             self.card_mode = .media;
             self.setCardCloseDirection(.media);
-            self.media.focusSearch();
+            self.host.media.focusSearch();
         }
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
@@ -997,6 +1014,13 @@ pub const Tray = struct {
         }
     }
 
+    // == END LAUNCHER PAYLOAD / BEGIN PEEK PANEL (dies in the CFC cut) ==
+    // Everything below here is the peek PANEL: per-output scene buffers,
+    // cairo drawing of the side panel + stack buttons, underline springs,
+    // peek widgets (clock/weather/gauges/drives/media/network), cards, and
+    // pointer hit-testing against panel geometry. In the CFC cut the panel
+    // dies and is replaced by a center-screen overlay; only the payload
+    // above (items/actions/ordering/toggle) is lifted over.
     pub fn update(self: *Self) void {
         const now_us = animation.nowUs();
         const prev = self.last_update_us;
@@ -1004,7 +1028,7 @@ pub const Tray = struct {
 
         const dt = if (prev == 0) 0.0 else @as(f64, @floatFromInt(now_us - prev)) / 1_000_000.0;
 
-        self.media.stepSliderReveal(dt);
+        self.host.media.stepSliderReveal(dt);
 
         // Use the shared tray preset: snap open quickly, ease closed slowly.
         self.tray_anim.setTarget(if (self.open or self.pinned or self.hovered) 1.0 else 0.0);
@@ -1092,7 +1116,7 @@ pub const Tray = struct {
         }
 
         // Update media backend and draw bottom-right peek widget.
-        self.media.update();
+        self.host.media.update();
         for (self.media_widgets.items) |*media_widget| {
             media_widget.info = self.host.output_info(self.host.ctx, mediaWidgetIndex(self, media_widget));
             self.drawMediaWidget(media_widget);
@@ -1123,7 +1147,7 @@ pub const Tray = struct {
             needs_redraw = true;
         }
 
-        if (self.media_card_open or self.media.cached.playing) {
+        if (self.media_card_open or self.host.media.cached.playing) {
             needs_redraw = true;
         }
         for (self.notification_widgets.items) |*notification_widget| {
@@ -1161,7 +1185,7 @@ pub const Tray = struct {
                         },
                         notify_changed,
                         self.signals_card_open,
-                        self.media_card_open or self.media.cached.playing,
+                        self.media_card_open or self.host.media.cached.playing,
                     });
                 }
             }
@@ -1543,8 +1567,8 @@ pub const Tray = struct {
                 ly <= @as(f64, @floatFromInt(click.cat_y[i] + click.cat_h[i])) and
                 lx >= @as(f64, @floatFromInt(click.cat_x[i])) and
                 lx <= @as(f64, @floatFromInt(click.cat_x[i] + click.cat_w[i]))) {
-                self.media.setCategory(click.cat_for_index[i]);
-                self.media.focusControl(.category);
+                self.host.media.setCategory(click.cat_for_index[i]);
+                self.host.media.focusControl(.category);
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
                 return true;
@@ -1556,7 +1580,7 @@ pub const Tray = struct {
             ly >= @as(f64, @floatFromInt(click.search_y)) and
             lx <= @as(f64, @floatFromInt(click.search_x + click.search_w)) and
             ly <= @as(f64, @floatFromInt(click.search_y + click.search_h))) {
-            self.media.focusSearch();
+            self.host.media.focusSearch();
             self.requestUpdate();
             self.host.request_frame(self.host.ctx);
             return true;
@@ -1575,8 +1599,8 @@ pub const Tray = struct {
                 const row = @as(usize, @intFromFloat(@floor(local_y / (@as(f64, @floatFromInt(click.tile_h)) + gap))));
                 const cols = @as(usize, @intCast(click.cols));
                 const idx = (click.scroll_offset_at_render + row) * cols + col;
-                self.media.focusSearch();
-                self.media.selected_result = idx;
+                self.host.media.focusSearch();
+                self.host.media.selected_result = idx;
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
                 return true;
@@ -1592,8 +1616,8 @@ pub const Tray = struct {
             const track_len = @as(f64, @floatFromInt(click.scroll_h - click.scroll_w));
             const rel_y = ly - @as(f64, @floatFromInt(click.scroll_y)) - @as(f64, @floatFromInt(click.scroll_w)) * 0.5;
             const ratio = @max(0.0, @min(1.0, rel_y / track_len));
-            const max_off = self.media.max_scroll_offset;
-            self.media.list_scroll_offset = @intFromFloat(@round(ratio * @as(f64, @floatFromInt(max_off))));
+            const max_off = self.host.media.max_scroll_offset;
+            self.host.media.list_scroll_offset = @intFromFloat(@round(ratio * @as(f64, @floatFromInt(max_off))));
             self.requestUpdate();
             self.host.request_frame(self.host.ctx);
             return true;
@@ -1605,17 +1629,17 @@ pub const Tray = struct {
             ly >= @as(f64, @floatFromInt(click.scroll_y)) and
             lx <= @as(f64, @floatFromInt(click.scroll_x + click.scroll_w)) and
             ly <= @as(f64, @floatFromInt(click.scroll_y + click.scroll_h));
-        self.media.slider_hover = in_scrollbar;
+        self.host.media.slider_hover = in_scrollbar;
         if (in_scrollbar) {
             const rel_y = ly - @as(f64, @floatFromInt(click.scroll_y));
             const ratio = rel_y / @as(f64, @floatFromInt(click.scroll_h));
-            const max_off = self.media.max_scroll_offset;
+            const max_off = self.host.media.max_scroll_offset;
             if (ratio < 0.5) {
-                self.media.list_scroll_offset = 0;
+                self.host.media.list_scroll_offset = 0;
             } else {
-                self.media.list_scroll_offset = max_off;
+                self.host.media.list_scroll_offset = max_off;
             }
-            self.media.focusSlider();
+            self.host.media.focusSlider();
             self.requestUpdate();
             self.host.request_frame(self.host.ctx);
             return true;
@@ -1659,7 +1683,7 @@ pub const Tray = struct {
         _ = @import("std");
         if (!self.media_card_open) return false;
         const xkb = @import("xkbcommon");
-        const focused = self.media.focus;
+        const focused = self.host.media.focus;
 
         // Printable keys feed the search box when focused or auto-focus search.
         const printable = blk: {
@@ -1669,52 +1693,52 @@ pub const Tray = struct {
                 v == @intFromEnum(xkb.Keysym.space) or v == @intFromEnum(xkb.Keysym.minus) or
                 v == @intFromEnum(xkb.Keysym.period);
         };
-        if (self.media.search_focused) {
+        if (self.host.media.search_focused) {
             switch (sym) {
                 .Left => {
-                    if (self.media.search_len > 0 and self.media.search_caret > 0) {
-                        self.media.moveSearchCaret(-1);
+                    if (self.host.media.search_len > 0 and self.host.media.search_caret > 0) {
+                        self.host.media.moveSearchCaret(-1);
                     } else {
-                        self.media.focusControl(.category);
+                        self.host.media.focusControl(.category);
                     }
                     self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
                 },
                 .Right => {
-                    if (self.media.search_caret < self.media.search_len) {
-                        self.media.moveSearchCaret(1);
+                    if (self.host.media.search_caret < self.host.media.search_len) {
+                        self.host.media.moveSearchCaret(1);
                     } else {
-                        self.media.focusSlider();
+                        self.host.media.focusSlider();
                     }
                     self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
                 },
-                .Home => { self.media.search_caret = 0; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .End => { self.media.search_caret = self.media.search_len; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .BackSpace => { self.media.backspaceSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .Delete => { self.media.deleteSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Home => { self.host.media.search_caret = 0; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .End => { self.host.media.search_caret = self.host.media.search_len; self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .BackSpace => { self.host.media.backspaceSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Delete => { self.host.media.deleteSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 .Return, .KP_Enter => {
-                    const text = self.media.acceptSearch();
+                    const text = self.host.media.acceptSearch();
                     // Secret category easter egg: two-letter codes jump to category pills.
                     if (text.len == 2) {
-                        const code = std.ascii.lowerString(&self.media.search_buf, text);
-                        if (std.mem.eql(u8, code, "mo")) { self.media.setCategory(.movies); }
-                        else if (std.mem.eql(u8, code, "tv")) { self.media.setCategory(.tv); }
-                        else if (std.mem.eql(u8, code, "mu")) { self.media.setCategory(.music); }
-                        else { self.media.jumpToSearchPrefix(text); }
+                        const code = std.ascii.lowerString(&self.host.media.search_buf, text);
+                        if (std.mem.eql(u8, code, "mo")) { self.host.media.setCategory(.movies); }
+                        else if (std.mem.eql(u8, code, "tv")) { self.host.media.setCategory(.tv); }
+                        else if (std.mem.eql(u8, code, "mu")) { self.host.media.setCategory(.music); }
+                        else { self.host.media.jumpToSearchPrefix(text); }
                     } else if (text.len > 0) {
-                        self.media.jumpToSearchPrefix(text);
+                        self.host.media.jumpToSearchPrefix(text);
                     }
-                    self.media.focusControl(.result);
+                    self.host.media.focusControl(.result);
                     self.requestUpdate();
                     self.host.request_frame(self.host.ctx);
                     return true;
                 },
-                .Escape => { self.media.cancelSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .Tab => { self.media.focusSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-                .Up => { self.media.focusControl(.category); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Escape => { self.host.media.cancelSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Tab => { self.host.media.focusSearch(); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+                .Up => { self.host.media.focusControl(.category); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
                 .Down => {
-                    self.media.focusControl(.result);
-                    self.media.selected_result = self.media.grid_cols / 2;
-                    self.media.adjustScrollToSelection();
+                    self.host.media.focusControl(.result);
+                    self.host.media.selected_result = self.host.media.grid_cols / 2;
+                    self.host.media.adjustScrollToSelection();
                     self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
                 },
                 else => {
@@ -1733,7 +1757,7 @@ pub const Tray = struct {
                             ch = '.';
                         }
                         if (ch != 0) {
-                            self.media.appendSearch(ch);
+                            self.host.media.appendSearch(ch);
                             self.requestUpdate();
                             self.host.request_frame(self.host.ctx);
                             return true;
@@ -1750,24 +1774,24 @@ pub const Tray = struct {
                 switch (focused) {
                     // HARD STOP at the left edge — INPUT LAW says ←→ moves
                     // and Esc goes back, not the other way round.
-                    .category => self.media.moveCategory(-1),
-                    .subcategory => self.media.moveSubcategory(-1),
-                    .search => self.media.moveSearchCaret(-1),
-                    .result => self.media.moveResultSelection(-1),
-                    .slider => self.media.focusControl(.result),
+                    .category => self.host.media.moveCategory(-1),
+                    .subcategory => self.host.media.moveSubcategory(-1),
+                    .search => self.host.media.moveSearchCaret(-1),
+                    .result => self.host.media.moveResultSelection(-1),
+                    .slider => self.host.media.focusControl(.result),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
             .Right => {
                 switch (focused) {
-                    .category => self.media.moveCategory(1),
-                    .subcategory => self.media.moveSubcategory(1),
-                    .search => self.media.moveSearchCaret(1),
+                    .category => self.host.media.moveCategory(1),
+                    .subcategory => self.host.media.moveSubcategory(1),
+                    .search => self.host.media.moveSearchCaret(1),
                     .result => {
-                        if (self.media.isResultLastColumn()) {
-                            self.media.focusSlider();
+                        if (self.host.media.isResultLastColumn()) {
+                            self.host.media.focusSlider();
                         } else {
-                            self.media.moveResultSelection(1);
+                            self.host.media.moveResultSelection(1);
                         }
                     },
                     .slider => {},
@@ -1777,81 +1801,81 @@ pub const Tray = struct {
             .Up => {
                 switch (focused) {
                     .category => {},
-                    .subcategory => self.media.closeSubcategory(),
-                    .search => self.media.focusControl(.category),
+                    .subcategory => self.host.media.closeSubcategory(),
+                    .search => self.host.media.focusControl(.category),
                     .result => {
-                        if (self.media.atResultTopRow()) {
-                            self.media.focusControl(.search);
+                        if (self.host.media.atResultTopRow()) {
+                            self.host.media.focusControl(.search);
                         } else {
-                            self.media.moveResultVertical(-1);
+                            self.host.media.moveResultVertical(-1);
                         }
                     },
-                    .slider => self.media.moveSliderVertical(-1),
+                    .slider => self.host.media.moveSliderVertical(-1),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
             .Down => {
                 switch (focused) {
                     .category => {
-                        if (self.media.subcategory_open) {
-                            self.media.focusControl(.subcategory);
+                        if (self.host.media.subcategory_open) {
+                            self.host.media.focusControl(.subcategory);
                         } else {
-                            self.media.focusControl(.search);
+                            self.host.media.focusControl(.search);
                         }
                     },
-                    .subcategory => self.media.focusControl(.search),
+                    .subcategory => self.host.media.focusControl(.search),
                     .search => {
-                        if (self.media.hasResults()) {
-                            self.media.focusControl(.result);
-                            self.media.selected_result = self.media.grid_cols / 2;
-                            self.media.adjustScrollToSelection();
+                        if (self.host.media.hasResults()) {
+                            self.host.media.focusControl(.result);
+                            self.host.media.selected_result = self.host.media.grid_cols / 2;
+                            self.host.media.adjustScrollToSelection();
                         } else {
-                            self.media.focusControl(.slider);
+                            self.host.media.focusControl(.slider);
                         }
                     },
-                    .result => self.media.moveResultVertical(1),
-                    .slider => self.media.moveSliderVertical(1),
+                    .result => self.host.media.moveResultVertical(1),
+                    .slider => self.host.media.moveSliderVertical(1),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
             .Tab => {
                 switch (focused) {
-                    .category => self.media.focusControl(.search),
-                    .subcategory => self.media.focusControl(.search),
+                    .category => self.host.media.focusControl(.search),
+                    .subcategory => self.host.media.focusControl(.search),
                     .search => {
-                        if (self.media.hasResults()) {
-                            self.media.focusControl(.result);
+                        if (self.host.media.hasResults()) {
+                            self.host.media.focusControl(.result);
                         } else {
-                            self.media.focusControl(.slider);
+                            self.host.media.focusControl(.slider);
                         }
                     },
-                    .result => self.media.focusControl(.category),
-                    .slider => self.media.focusControl(.category),
+                    .result => self.host.media.focusControl(.category),
+                    .slider => self.host.media.focusControl(.category),
                 }
                 self.requestUpdate(); self.host.request_frame(self.host.ctx); return true;
             },
-            .Page_Up => { self.media.pageList(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
-            .Page_Down => { self.media.pageList(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Page_Up => { self.host.media.pageList(-1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
+            .Page_Down => { self.host.media.pageList(1); self.requestUpdate(); self.host.request_frame(self.host.ctx); return true; },
             .space, .Return, .KP_Enter => {
                 switch (focused) {
                     .category => {
-                        if (self.media.canOpenSubcategory()) {
-                            self.media.openSubcategory();
+                        if (self.host.media.canOpenSubcategory()) {
+                            self.host.media.openSubcategory();
                         }
                     },
-                    .subcategory => self.media.closeSubcategory(),
+                    .subcategory => self.host.media.closeSubcategory(),
                     .search => {},
                     .result => {
-                        if (self.media.category == .tv) {
+                        if (self.host.media.category == .tv) {
                             // TV pill = live ONLY: Enter opens the stream
                             // via Player.openLive (LIVE chrome + signal-lost
                             // state machine already built). Never a file.
-                            if (self.media.selectedLiveChannel()) |ch| {
-                                self.media.playLive(ch.url, ch.id);
+                            if (self.host.media.selectedLiveChannel()) |ch| {
+                                self.host.media.playLive(ch.url, ch.id);
                             }
                         } else {
-                            const path = self.media.selectedResultPath();
-                            if (path.len > 0) self.media.play(path);
+                            const path = self.host.media.selectedResultPath();
+                            if (path.len > 0) self.host.media.play(path);
                         }
                     },
                     .slider => {},
@@ -1878,10 +1902,10 @@ pub const Tray = struct {
                     }
                     if (ch != 0) {
                         if (focused == .search) {
-                            self.media.appendSearch(ch);
+                            self.host.media.appendSearch(ch);
                         } else {
-                            self.media.focusControl(.result);
-                            self.media.jumpToLetter(if (ch >= 'a' and ch <= 'z') std.ascii.toUpper(ch) else ch);
+                            self.host.media.focusControl(.result);
+                            self.host.media.jumpToLetter(if (ch >= 'a' and ch <= 'z') std.ascii.toUpper(ch) else ch);
                         }
                         self.requestUpdate();
                         self.host.request_frame(self.host.ctx);
@@ -1947,33 +1971,6 @@ pub const Tray = struct {
             if (px >= x0 and px < x1 and py >= y0 and py < y1) return true;
         }
         return false;
-    }
-
-    const GaugeHit = enum {
-        cauldron,
-    };
-
-    fn pointInsideGaugeWidget(self: *const Self, px: f64, py: f64) ?GaugeHit {
-        for (self.gauge_widgets.items) |w| {
-            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
-            const b = w.click_box;
-            const oh: i32 = widget_hit_overhang;
-            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
-                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
-                py >= @as(f64, @floatFromInt(b.y - oh)) and
-                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh)))
-            {
-                if (w.cauldron_box.width > 0 and w.cauldron_box.height > 0 and
-                    px >= @as(f64, @floatFromInt(w.cauldron_box.x)) and
-                    px < @as(f64, @floatFromInt(w.cauldron_box.x + w.cauldron_box.width)) and
-                    py >= @as(f64, @floatFromInt(w.cauldron_box.y)) and
-                    py < @as(f64, @floatFromInt(w.cauldron_box.y + w.cauldron_box.height)))
-                {
-                    return .cauldron;
-                }
-            }
-        }
-        return null;
     }
 
     fn pointInsideDrivesWidget(self: *const Self, px: f64, py: f64) ?usize {
@@ -2165,15 +2162,8 @@ pub const Tray = struct {
             self.toggleMediaCard();
             return true;
         }
-        // Click on the RAM cauldron toggles the tray.
-        if (self.pointInsideGaugeWidget(px, py)) |hit| {
-            switch (hit) {
-                .cauldron => {
-                    self.toggle();
-                    return true;
-                },
-            }
-        }
+        // Gauges are pure telemetry display — no click actions
+        // (Barticus law 2026-09-15: the cauldron must NOT toggle the tray).
         // Click on a drive pill navigates kfiles to that mount.
         if (self.pointInsideDrivesWidget(px, py)) |idx| {
             var drives_buf: [8]DriveInfo = undefined;
@@ -2937,7 +2927,7 @@ pub const Tray = struct {
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
         const pill_y = box.y + box.height - pill_h - @max(peek_vmargin, 10);
 
-        const title = std.mem.sliceTo(&self.media.cached.title, 0);
+        const title = std.mem.sliceTo(&self.host.media.cached.title, 0);
         const title_hash: u64 = std.hash.Crc32.hash(title);
         // Gate the redraw on actual state change: the unconditional
         // `redraw = true` ("helix animates every frame") allocated and
@@ -2957,8 +2947,8 @@ pub const Tray = struct {
         peek_key = peek_key *% 31 +% @as(u64, @as(u32, @bitCast(pill_h)));
         peek_key = peek_key *% 31 +% @as(u64, @as(u32, @bitCast(pill_x)));
         peek_key = peek_key *% 31 +% @as(u64, @as(u32, @bitCast(pill_y)));
-        peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media.player_active));
-        peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media.cached.playing));
+        peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.host.media.player_active));
+        peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.host.media.cached.playing));
         peek_key = peek_key *% 31 +% @as(u64, @intFromBool(self.media_card_open));
         if (audio_live) {
             // Quantise the loudness so a live helix keeps redrawing while
@@ -3012,7 +3002,7 @@ pub const Tray = struct {
         c.cairo_paint(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-        self.media.renderPeek(cr, .{
+        self.host.media.renderPeek(cr, .{
             .x = pill_x,
             .y = pill_y,
             .width = dev_w,
@@ -3410,7 +3400,7 @@ pub const Tray = struct {
             @abs(self.card_last_open - self.card_anim.value) > 0.0001 or
             more or
             self.files.state_generation != self.files_state_generation or
-            self.media.state_generation != self.media_state_generation or
+            self.host.media.state_generation != self.media_state_generation or
             self.network_card_last_state != self.network.state or
             (self.signals_card_open and self.signalHash() != self.signal_last_hash);
 
@@ -3439,7 +3429,7 @@ pub const Tray = struct {
             self.card_last_generation = self.host.theme.generation;
             self.card_last_mode = current_mode;
             self.files_state_generation = self.files.state_generation;
-            self.media_state_generation = self.media.state_generation;
+            self.media_state_generation = self.host.media.state_generation;
             self.network_card_last_state = self.network.state;
             self.signal_last_hash = self.signalHash();
             const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, w);

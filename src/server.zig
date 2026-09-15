@@ -403,6 +403,11 @@ pub const Server = struct {
     next_window_id: u32 = 1,
 
     tray: ui.Tray,
+    /// The media PLAYER's home (Barticus law 2026-09-15): Server owns the
+    /// MediaWidget (play/pause/next/prev/seek, player_active, cached
+    /// metadata). The tray renders its media card + peek from it via the
+    /// TrayHost.media pointer — the tray owns nothing of the player.
+    media_player: media_mod.MediaWidget,
     spyglass: ?*spyglass_mod.Spyglass = null,
     // Overview lens: virtual cursor (recency position among unparked minis).
     // The ring node lives per-output (Output.overview_ring) — the lens is
@@ -610,24 +615,24 @@ pub const Server = struct {
                 }
                 if (!routed) {
                     self.stopOtherPlayers(null);
-                    self.tray.media.play(p.path);
+                    self.media_player.play(p.path);
                 }
                 return .{ .ok = true, .message = "media play requested" };
             },
             .media_toggle => {
-                self.tray.media.playPause();
+                self.media_player.playPause();
                 return .{ .ok = true };
             },
             .media_next => {
-                self.tray.media.next();
+                self.media_player.next();
                 return .{ .ok = true };
             },
             .media_prev => {
-                self.tray.media.prev();
+                self.media_player.prev();
                 return .{ .ok = true };
             },
             .media_seek => |p| {
-                self.tray.media.seek(p.seconds);
+                self.media_player.seek(p.seconds);
                 return .{ .ok = true };
             },
             .notification_test => |p| {
@@ -835,6 +840,7 @@ pub const Server = struct {
             .outputs = undefined,
             .chrome_style_generation = 0,
             .tray = undefined,
+            .media_player = undefined,
         };
 
         server.outputs.init();
@@ -852,6 +858,7 @@ pub const Server = struct {
         const overlay_tree = try server.scene.tree.createSceneTree();
         server.overlay_tree = overlay_tree;
 
+        server.media_player = media_mod.MediaWidget.init(server.allocator);
         server.tray = try ui.Tray.init(server.allocator, Server.makeTrayHost(server), overlay_tree);
         server.spyglass = spyglass_mod.Spyglass.create(server.allocator, overlay_tree, server.theme) catch |err| blk: {
             std.log.err("failed to create spyglass: {}", .{err});
@@ -975,6 +982,7 @@ pub const Server = struct {
         self.ipc_server.destroy();
 
         self.tray.deinit();
+        self.media_player.deinit();
         if (self.spyglass) |sg| {
             sg.destroy();
             self.spyglass = null;
@@ -1576,8 +1584,8 @@ pub const Server = struct {
                 }
             }
         }
-        if (keep != null and self.tray.media.player_active) {
-            self.tray.media.ensureStopped();
+        if (keep != null and self.media_player.player_active) {
+            self.media_player.ensureStopped();
         }
     }
 
@@ -2110,7 +2118,7 @@ pub const Server = struct {
                             if (path.len > 0 and entry != null) {
                                 const e = entry.?;
                                 self.stopOtherPlayers(null);
-                                self.tray.media.playMusic(
+                                self.media_player.playMusic(
                                     path,
                                     std.mem.sliceTo(e.title, 0),
                                     std.mem.sliceTo(e.artist, 0),
@@ -3215,7 +3223,7 @@ pub const Server = struct {
                 break;
             }
         }
-        if (!slide_playing and self.tray.media.player_active) {
+        if (!slide_playing and self.media_player.player_active) {
             slideless_playing = true;
         }
 
@@ -3284,12 +3292,12 @@ pub const Server = struct {
         // ── Slideless music advance ───────────────────────────────────────────
         // Slide closed, music still playing in the tray MediaWidget.
         if (slideless_playing) {
-            if (self.tray.media.player.isDone()) {
-                self.tray.media.ensureStopped();
+            if (self.media_player.player.isDone()) {
+                self.media_player.ensureStopped();
                 self.disarmPlayTimer();
                 return 0;
             }
-            self.tray.media.player.tick(0);
+            self.media_player.player.tick(0);
             // No video pixels for audio-only; no scheduleFrame needed here.
             // Arm scheduleFrame on the first output so the tray repaints its
             // now-playing metadata once per timer tick.
@@ -3304,14 +3312,14 @@ pub const Server = struct {
         // owns the player (card closed behind it), mirror its state into the
         // tray widget's cached view so the peek lights. Tray-owned playback
         // already feeds its own cache; never overwrite that.
-        if (slide_playing and !self.tray.media.player_active) {
+        if (slide_playing and !self.media_player.player_active) {
             var mit = self.outputs.iterator(.forward);
             while (mit.next()) |output| {
                 if (!output.media_slide.widget_ready or
                     !output.media_slide.widget.player_active) continue;
                 const src = &output.media_slide.widget;
-                self.tray.media.cached = src.cached;
-                self.tray.media.cached.available = true;
+                self.media_player.cached = src.cached;
+                self.media_player.cached.available = true;
                 if (self.outputs.first()) |first_out| {
                     first_out.wlr_output.scheduleFrame();
                 }
@@ -3493,6 +3501,7 @@ pub const Server = struct {
                     s.mediaSlideToggle();
                 }
             }.f,
+            .media = &self.media_player,
             .theme = &self.theme_runtime,
         };
     }

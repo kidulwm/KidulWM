@@ -122,7 +122,7 @@ pub const MediaSlide = struct {
         // own vsync. See Server.handlePlayTimer, Server.armPlayTimer.
         const any_playing = (self.widget_ready and
             self.widget.player_active) or
-            server.tray.media.player_active;
+            server.media_player.player_active;
         if (any_playing and server.play_timer == null) {
             server.armPlayTimer();
         }
@@ -179,9 +179,9 @@ pub const MediaSlide = struct {
 
         // ── Slideless isDone guard ───────────────────────────────────────
         // Mirror of the above for the tray music path (slide closed).
-        if (!self.isOpen() and server.tray.media.player_active) {
-            if (server.tray.media.player.isDone()) {
-                server.tray.media.ensureStopped();
+        if (!self.isOpen() and server.media_player.player_active) {
+            if (server.media_player.player.isDone()) {
+                server.media_player.ensureStopped();
                 server.disarmPlayTimer();
             }
         }
