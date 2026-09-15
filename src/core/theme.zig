@@ -23,7 +23,6 @@ pub const Theme = struct {
     tray_top_margin: i32 = 48,
     tray_bottom_margin: i32 = 10,
     tray_hmargin: i32 = 8,
-    barry_button_height: i32 = 84,
     corner_style: []const u8 = "round",
 
     // Animation state scalars exposed to any module that needs them.
@@ -31,7 +30,6 @@ pub const Theme = struct {
     tray_close_snap_s: f64 = 0.125,
     tray_settle_pulse_s: f64 = 0.170,
     underline_spring_stiffness: f64 = 80.0,
-    barry_follow_delay_s: f64 = 3.0,
 
     const Self = @This();
 
@@ -147,7 +145,6 @@ pub const Theme = struct {
         self.tray_top_margin = cfg.spacing.tray_top_margin;
         self.tray_bottom_margin = cfg.spacing.tray_bottom_margin;
         self.tray_hmargin = cfg.spacing.tray_hmargin;
-        self.barry_button_height = cfg.spacing.barry_button_height;
         self.corner_style = cfg.spacing.corner_style;
 
         // Animation timers are seconds/float.
@@ -155,7 +152,6 @@ pub const Theme = struct {
         self.tray_close_snap_s = @as(f64, @floatFromInt(cfg.animation.tray_close_snap_ms)) / 1000.0;
         self.tray_settle_pulse_s = @as(f64, @floatFromInt(cfg.animation.tray_settle_pulse_ms)) / 1000.0;
         self.underline_spring_stiffness = cfg.animation.underline_spring_stiffness;
-        self.barry_follow_delay_s = cfg.animation.barry_follow_delay_s;
     }
 
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
@@ -272,7 +268,6 @@ const SpacingTokens = struct {
     tray_top_margin: i32 = 48,
     tray_bottom_margin: i32 = 10,
     tray_hmargin: i32 = 8,
-    barry_button_height: i32 = 84,
     char_buffer_m: f64 = 16.0,
     weather_widget_min_width: i32 = 72,
 };
@@ -282,7 +277,6 @@ const AnimationTokens = struct {
     tray_close_snap_ms: i32 = 125,
     tray_settle_pulse_ms: i32 = 170,
     underline_spring_stiffness: f64 = 80.0,
-    barry_follow_delay_s: f64 = 3.0,
     window_transition_ms: i32 = 120,
     weather_peek_anim_duration_ms: u32 = 3000,
 };

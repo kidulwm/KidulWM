@@ -28,75 +28,6 @@ const DriveInfo = @import("./drives.zig").DriveInfo;
 const card_frame = @import("card_frame.zig");
 const gauge_data = @import("../core/gauge_data.zig");
 
-// Logo assets: top-of-tray emblem (Bob) and bottom text wordmark.
-const bob_logo_png = @embedFile("assets/bob/logo.png");
-const bob_text_png = @embedFile("assets/bob/text.png");
-const bob_text_mask_png = @embedFile("assets/bob/text_mask.png");
-const bob_emblem_mask_png = @embedFile("assets/bob/emblem_mask.png");
-
-// Archived Barry pose assets (tag tray-logo-animation-backup).
-const lay_png = @embedFile("assets/barry/lay.png");
-const sit_png = @embedFile("assets/barry/sit.png");
-const stand_png = @embedFile("assets/barry/stand.png");
-const puppy_lay_png = @embedFile("assets/barry/puppy-lay.png");
-const puppy_sit_png = @embedFile("assets/barry/puppy-sit.png");
-const puppy_stand_png = @embedFile("assets/barry/puppy-stand.png");
-
-const BarryPngStream = struct {
-    data: []const u8,
-    offset: usize,
-};
-
-fn readBarryPngStream(closure: *anyopaque, out: [*c]u8, len: c_uint) callconv(.c) c.cairo_status_t {
-    const ctx: *BarryPngStream = @ptrCast(@alignCast(closure));
-    const l: usize = len;
-    if (ctx.offset >= ctx.data.len) {
-        @memset(out[0..l], 0);
-    } else {
-        const remaining = ctx.data.len - ctx.offset;
-        const copy = @min(remaining, l);
-        if (copy > 0) {
-            @memcpy(out[0..copy], ctx.data[ctx.offset .. ctx.offset + copy]);
-            ctx.offset += copy;
-        }
-        if (copy < l) {
-            @memset(out[copy..l], 0);
-        }
-    }
-    return c.CAIRO_STATUS_SUCCESS;
-}
-
-fn loadPngFromBytes(bytes: []const u8) !*c.cairo_surface_t {
-    var ctx = BarryPngStream{ .data = bytes, .offset = 0 };
-    const surf = c.cairo_image_surface_create_from_png_stream(
-        @ptrCast(&readBarryPngStream),
-        @ptrCast(&ctx),
-    ) orelse return error.OutOfMemory;
-    if (c.cairo_surface_status(surf) != c.CAIRO_STATUS_SUCCESS) {
-        c.cairo_surface_destroy(surf);
-        return error.InvalidPng;
-    }
-    const format = c.cairo_image_surface_get_format(surf);
-    if (format == c.CAIRO_FORMAT_ARGB32) return surf;
-
-    const w = c.cairo_image_surface_get_width(surf);
-    const h = c.cairo_image_surface_get_height(surf);
-    const argb = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, w, h) orelse {
-        c.cairo_surface_destroy(surf);
-        return error.OutOfMemory;
-    };
-    const cr = c.cairo_create(argb) orelse {
-        c.cairo_surface_destroy(argb);
-        c.cairo_surface_destroy(surf);
-        return error.OutOfMemory;
-    };
-    defer c.cairo_destroy(cr);
-    c.cairo_set_source_surface(cr, surf, 0, 0);
-    c.cairo_paint(cr);
-    c.cairo_surface_destroy(surf);
-    return argb;
-}
-
 pub const OutputInfo = struct {
     x: i32,
     y: i32,
@@ -287,20 +218,7 @@ const SignalEntry = struct {
 
 const MAX_SIGNALS: usize = 8;
 
-const BarryPet = struct {
-    output_ctx: *anyopaque,
-    tree: *wlr.SceneTree,
-    scene_buffer: ?*wlr.SceneBuffer,
-    buffer: ?*wlr.Buffer,
-    info: OutputInfo,
-    last_w: i32 = 0,
-    last_h: i32 = 0,
-    last_barry_state: BarryState = .laying,
-};
-
 pub const OrderMode = enum { manual, alphabetical, preset };
-
-const BarryState = enum { laying, sitting, standing };
 
 pub const Tray = struct {
     allocator: std.mem.Allocator,
@@ -321,33 +239,9 @@ pub const Tray = struct {
 
     order_mode: OrderMode = .preset,
 
-    // Desired pose for Bob (immediate) and Barry (delayed).
-    barry_state_target: BarryState = .laying,
-
-    // Bob's pose interpolation.
-    bob_state_t: f32 = 0.0,
-    bob_state_vel: f32 = 0.0,
-
-    // Barry's pose interpolation.
-    barry_state: BarryState = .laying,
-    barry_state_t: f32 = 0.0,
-    barry_state_vel: f32 = 0.0,
-
-    barry_breath_t: f64 = 0.0,
-    bob_breath_amp: f64 = 0.0,
-    bob_bob_amp: f64 = 0.0,
-    barry_breath_amp: f64 = 0.0,
-    barry_bob_amp: f64 = 0.0,
-    bob_was_moving: bool = false,
-    bob_settle_t: f64 = 0.0,
-    barry_was_moving: bool = false,
-    barry_settle_t: f64 = 0.0,
     underline_x: f32 = 0.0,
     underline_vel: f32 = 0.0,
     close_after_us: u64 = 0,
-
-    // Lazy Barry mirror state.
-    barry_follow_deadline_us: u64 = 0,
 
     // Focused-slide card (clock/calendar/weather).
     calendar_card_open: bool = false,
@@ -413,24 +307,11 @@ pub const Tray = struct {
     signals_card_open: bool = false,
 
     outputs: std.ArrayList(PerOutput),
-    barry_pets: std.ArrayList(BarryPet),
     items: []TrayItem,
     manual_order: std.ArrayList(usize),
     icon_cache: std.StringHashMap(*c.cairo_surface_t),
-    barry_lay: *c.cairo_surface_t,
-    barry_sit: *c.cairo_surface_t,
-    barry_stand: *c.cairo_surface_t,
-    barry_puppy_lay: *c.cairo_surface_t,
-    barry_puppy_sit: *c.cairo_surface_t,
-    barry_puppy_stand: *c.cairo_surface_t,
-    // Simplified static logos (pose animation archived under tag tray-logo-animation-backup).
-    bob_logo: *c.cairo_surface_t,
-    bob_text: *c.cairo_surface_t,
-    bob_text_mask: *c.cairo_surface_t,
-    bob_emblem_mask: *c.cairo_surface_t,
 
     const button_height: i32 = 44;
-    const barry_button_height: i32 = 95;
     const button_gap: i32 = 8;
     const hmargin: i32 = 8;
     const bottom_margin: i32 = 10;
@@ -456,28 +337,6 @@ pub const Tray = struct {
             errdefer manual_order.deinit(allocator);
             try manual_order.appendSlice(allocator, &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 });
 
-        const barry_lay = try loadPngFromBytes(lay_png);
-        errdefer c.cairo_surface_destroy(barry_lay);
-        const barry_sit = try loadPngFromBytes(sit_png);
-        errdefer c.cairo_surface_destroy(barry_sit);
-        const barry_stand = try loadPngFromBytes(stand_png);
-        errdefer c.cairo_surface_destroy(barry_stand);
-        const barry_puppy_lay = try loadPngFromBytes(puppy_lay_png);
-        errdefer c.cairo_surface_destroy(barry_puppy_lay);
-        const barry_puppy_sit = try loadPngFromBytes(puppy_sit_png);
-        errdefer c.cairo_surface_destroy(barry_puppy_sit);
-        const barry_puppy_stand = try loadPngFromBytes(puppy_stand_png);
-        errdefer c.cairo_surface_destroy(barry_puppy_stand);
-
-        const bob_logo = try loadPngFromBytes(bob_logo_png);
-        errdefer c.cairo_surface_destroy(bob_logo);
-        const bob_text = try loadPngFromBytes(bob_text_png);
-        errdefer c.cairo_surface_destroy(bob_text);
-        const bob_text_mask = try loadPngFromBytes(bob_text_mask_png);
-        errdefer c.cairo_surface_destroy(bob_text_mask);
-        const bob_emblem_mask = try loadPngFromBytes(bob_emblem_mask_png);
-        errdefer c.cairo_surface_destroy(bob_emblem_mask);
-
         const card_shadow_tree = root.createSceneTree() catch null;
         const card_tree = root.createSceneTree() catch null;
         var now: c.time_t = c.time(null);
@@ -489,7 +348,6 @@ pub const Tray = struct {
             .host = host,
             .root = root,
             .outputs = .empty,
-            .barry_pets = .empty,
             .widgets = .empty,
             .weather_widgets = .empty,
             .gauge_widgets = .empty,
@@ -514,22 +372,11 @@ pub const Tray = struct {
             .items = items,
             .manual_order = manual_order,
             .icon_cache = std.StringHashMap(*c.cairo_surface_t).init(allocator),
-            .barry_lay = barry_lay,
-            .barry_sit = barry_sit,
-            .barry_stand = barry_stand,
-            .barry_puppy_lay = barry_puppy_lay,
-            .barry_puppy_sit = barry_puppy_sit,
-            .barry_puppy_stand = barry_puppy_stand,
-            .bob_logo = bob_logo,
-            .bob_text = bob_text,
-            .bob_text_mask = bob_text_mask,
-            .bob_emblem_mask = bob_emblem_mask,
         };
     }
 
     pub fn deinit(self: *Self) void {
         for (self.outputs.items) |*po| self.destroyPerOutput(po);
-        for (self.barry_pets.items) |*pet| self.destroyPet(pet);
         for (self.widgets.items) |*w| self.destroyWidget(w);
         for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
         for (self.gauge_widgets.items) |*w| self.destroyGaugeWidget(w);
@@ -545,7 +392,6 @@ pub const Tray = struct {
         self.files.deinit();
         self.notifications.deinit();
         self.outputs.deinit(self.allocator);
-        self.barry_pets.deinit(self.allocator);
         self.widgets.deinit(self.allocator);
         self.weather_widgets.deinit(self.allocator);
         self.gauge_widgets.deinit(self.allocator);
@@ -558,15 +404,6 @@ pub const Tray = struct {
             c.cairo_surface_destroy(entry.value_ptr.*);
         }
         self.icon_cache.deinit();
-        c.cairo_surface_destroy(self.barry_lay);
-        c.cairo_surface_destroy(self.barry_sit);
-        c.cairo_surface_destroy(self.barry_stand);
-        c.cairo_surface_destroy(self.barry_puppy_lay);
-        c.cairo_surface_destroy(self.barry_puppy_sit);
-        c.cairo_surface_destroy(self.barry_puppy_stand);
-        c.cairo_surface_destroy(self.bob_logo);
-        c.cairo_surface_destroy(self.bob_text);
-        c.cairo_surface_destroy(self.bob_text_mask);
         if (self.card_shadow_scene_buffer) |sb| sb.node.destroy();
         if (self.card_shadow_buffer) |buf| wlr.Buffer.drop(buf);
         if (self.card_shadow_tree) |tree| tree.node.destroy();
@@ -590,15 +427,9 @@ pub const Tray = struct {
             .buffer = null,
             .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
         };
-        const pet_tree = self.root.createSceneTree() catch |err| {
-            std.log.err("KidulWM: failed to create barry pet scene tree: {}", .{err});
-            tree.node.destroy();
-            return;
-        };
         self.outputs.append(self.allocator, po) catch |err| {
             std.log.err("KidulWM: failed to append tray output: {}", .{err});
             tree.node.destroy();
-            pet_tree.node.destroy();
             return;
         };
         const widget_tree = self.root.createSceneTree() catch |err| {
@@ -707,18 +538,6 @@ pub const Tray = struct {
             std.log.err("KidulWM: failed to append notification widget: {}", .{err});
             notification_tree.node.destroy();
         };
-        const pet = BarryPet{
-            .output_ctx = output_ctx,
-            .tree = pet_tree,
-            .scene_buffer = null,
-            .buffer = null,
-            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
-        };
-        self.barry_pets.append(self.allocator, pet) catch |err| {
-            std.log.err("KidulWM: failed to append barry pet: {}", .{err});
-            pet_tree.node.destroy();
-            return;
-        };
         self.requestUpdate();
         self.update();
     }
@@ -780,21 +599,6 @@ pub const Tray = struct {
                 break;
             }
         }
-        for (self.barry_pets.items, 0..) |*pet, i| {
-            if (pet.output_ctx == output_ctx) {
-                self.destroyPet(pet);
-                _ = self.barry_pets.orderedRemove(i);
-                return;
-            }
-        }
-    }
-
-    fn destroyPet(_: *Self, pet: *BarryPet) void {
-        if (pet.scene_buffer) |sb| sb.node.destroy();
-        if (pet.buffer) |buf| wlr.Buffer.drop(buf);
-        pet.tree.node.destroy();
-        pet.scene_buffer = null;
-        pet.buffer = null;
     }
 
     fn destroyWidget(_: *Self, widget: *PerOutputWidget) void {
@@ -851,12 +655,10 @@ pub const Tray = struct {
             self.keepOpen();
             self.selected_index = 1;
             self.hover_index = 1;
-            self.bobChangedState(.sitting);
         } else {
             self.close_after_us = 0;
             self.selected_index = 0;
             self.hover_index = null;
-            self.bobChangedState(.laying);
         }
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
@@ -870,7 +672,6 @@ pub const Tray = struct {
         self.close_after_us = 0;
         self.selected_index = 0;
         self.hover_index = null;
-        self.bobChangedState(.laying);
         self.requestUpdate();
         self.host.request_frame(self.host.ctx);
     }
@@ -1041,11 +842,6 @@ pub const Tray = struct {
         if (self.selected_index < self.items.len) {
             self.selected_index += 1;
         }
-        if (self.selected_index == 0) {
-            self.bobChangedState(.sitting);
-        } else {
-            self.bobChangedState(.standing);
-        }
         self.hover_index = self.selected_index;
         self.ensureSelectedVisible();
         self.requestUpdate();
@@ -1059,11 +855,6 @@ pub const Tray = struct {
         }
         if (self.selected_index > 0) {
             self.selected_index -= 1;
-        }
-        if (self.selected_index == 0) {
-            self.bobChangedState(.sitting);
-        } else {
-            self.bobChangedState(.standing);
         }
         self.hover_index = self.selected_index;
         self.ensureSelectedVisible();
@@ -1122,9 +913,6 @@ pub const Tray = struct {
         if (!self.isOpen()) return;
         const max_scroll = self.maxScroll();
         self.scroll_offset = std.math.clamp(self.scroll_offset - delta, 0.0, max_scroll);
-        if (self.scroll_offset > 0.1) {
-            self.bobChangedState(.standing);
-        }
         self.requestUpdate();
     }
 
@@ -1141,23 +929,6 @@ pub const Tray = struct {
 
     fn keepOpen(self: *Self) void {
         self.close_after_us = animation.nowUs() + 4_000_000; // 4 s idle timeout
-    }
-
-    fn bobChangedState(self: *Self, state: BarryState) void {
-        if (self.barry_state_target == state) return;
-        self.barry_state_target = state;
-        self.bob_state_vel = 0.0;
-        // Barry waits until Bob has fully settled, then follows ~3 s later.
-        const delay_us: u64 = if (state == .laying) 3_500_000 else 3_000_000;
-        self.barry_follow_deadline_us = animation.nowUs() + delay_us;
-        self.requestUpdate();
-    }
-
-    fn setBarryState(self: *Self, state: BarryState) void {
-        if (self.barry_state == state) return;
-        self.barry_state = state;
-        self.barry_state_vel = 0.0;
-        self.requestUpdate();
     }
 
     fn ensureSelectedVisible(self: *Self) void {
@@ -1189,7 +960,7 @@ pub const Tray = struct {
         const total_h = @as(f32, @floatFromInt(stack_count)) * item_size;
         var max_v = total_h;
         for (self.outputs.items) |po| {
-            const avail: f32 = @floatFromInt(po.info.height - top_margin - bottom_margin - barry_button_height);
+            const avail: f32 = @floatFromInt(po.info.height - top_margin - bottom_margin);
             const view_h: f32 = @as(f32, @floatFromInt(@min(max_stack_items_visible, stack_count))) * item_size;
             const local_max = @max(0.0, total_h - @min(view_h, avail));
             if (local_max < max_v) max_v = local_max;
@@ -1262,113 +1033,12 @@ pub const Tray = struct {
             }
         }
 
-        // Freeze Bob/Barry while slides/windows are moving so they stay rock solid.
+        // Freeze the underline while slides/windows are moving so it stays rock solid.
         const windows_moving = self.host.is_transition_active(self.host.ctx);
-
-        var bob_settled: bool = true;
-        var barry_settled: bool = true;
-
-        if (!windows_moving) {
-            const target_state: f32 = switch (self.barry_state_target) {
-                .laying => 0.0,
-                .sitting => 1.0,
-                .standing => 2.0,
-            };
-
-            // Bob snaps to the target pose.
-            const bob_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
-            const bob_state_step = bob_state_spring.step(self.bob_state_t, self.bob_state_vel, target_state, dt);
-            self.bob_state_t = @floatCast(bob_state_step.value);
-            self.bob_state_vel = @floatCast(bob_state_step.velocity);
-            bob_settled = bob_state_step.settled;
-
-            // Barry follows Bob after his lazy delay.
-            const barry_state_spring = animation.Spring{ .stiffness = 28.0, .damping = 0.92, .epsilon = 0.005 };
-            const barry_state_step = barry_state_spring.step(self.barry_state_t, self.barry_state_vel, target_state, dt);
-            self.barry_state_t = @floatCast(barry_state_step.value);
-            self.barry_state_vel = @floatCast(barry_state_step.velocity);
-            barry_settled = barry_state_step.settled;
-
-            if (animation.nowUs() >= self.barry_follow_deadline_us and self.barry_follow_deadline_us != 0) {
-                self.barry_follow_deadline_us = 0;
-                self.setBarryState(self.barry_state_target);
-            }
-
-            // Bob animates during tray/underline/state movement; short settle pulse after.
-            const tray_moving = !self.tray_anim.isSettled();
-            const bob_moving = tray_moving or !bob_state_step.settled or underline_moving;
-            if (bob_moving) {
-                self.barry_breath_t += dt * 1.5;
-                self.bob_breath_amp = @min(0.04, self.bob_breath_amp + dt * 0.4);
-                self.bob_bob_amp = @min(1.0, self.bob_bob_amp + dt * 5.0);
-                self.bob_was_moving = true;
-            } else if (self.bob_was_moving) {
-                const settle_dur: f64 = 0.17;
-                self.bob_settle_t += dt;
-                if (self.bob_settle_t >= settle_dur) {
-                    self.bob_was_moving = false;
-                    self.bob_settle_t = 0.0;
-                    self.bob_breath_amp = 0.0;
-                    self.bob_bob_amp = 0.0;
-                } else {
-                    const pulse = std.math.sin((self.bob_settle_t / settle_dur) * std.math.pi);
-                    self.bob_breath_amp = 0.025 * pulse;
-                    self.bob_bob_amp = 0.9 * pulse;
-                    self.barry_breath_t += dt * 0.7;
-                }
-            } else {
-                self.bob_breath_amp = 0.0;
-                self.bob_bob_amp = 0.0;
-            }
-
-            // Barry mirrors Bob's pose with a delay, then does his own short pulse.
-            const barry_moving = !barry_state_step.settled;
-            if (barry_moving) {
-                self.barry_breath_t += dt * 1.5;
-                self.barry_breath_amp = @min(0.04, self.barry_breath_amp + dt * 0.4);
-                self.barry_bob_amp = @min(1.0, self.barry_bob_amp + dt * 5.0);
-                self.barry_was_moving = true;
-            } else if (self.barry_was_moving) {
-                const settle_dur: f64 = 0.17;
-                self.barry_settle_t += dt;
-                if (self.barry_settle_t >= settle_dur) {
-                    self.barry_was_moving = false;
-                    self.barry_settle_t = 0.0;
-                    self.barry_breath_amp = 0.0;
-                    self.barry_bob_amp = 0.0;
-                } else {
-                    const pulse = std.math.sin((self.barry_settle_t / settle_dur) * std.math.pi);
-                    self.barry_breath_amp = 0.025 * pulse;
-                    self.barry_bob_amp = 0.9 * pulse;
-                    self.barry_breath_t += dt * 0.7;
-                }
-            } else {
-                self.barry_breath_amp = 0.0;
-                self.barry_bob_amp = 0.0;
-            }
-        } else {
-            // Slides/windows moving: keep poses and amplitudes frozen.
-            self.bob_state_vel = 0.0;
-            self.barry_state_vel = 0.0;
-            self.bob_breath_amp = 0.0;
-            self.bob_bob_amp = 0.0;
-            self.barry_breath_amp = 0.0;
-            self.barry_bob_amp = 0.0;
-            self.bob_was_moving = false;
-            self.bob_settle_t = 0.0;
-            self.barry_was_moving = false;
-            self.barry_settle_t = 0.0;
-            // Push Barry's deadline so he doesn't start until motion has stopped.
-            if (self.barry_follow_deadline_us != 0) {
-                const delay_us: u64 = if (self.barry_state_target == .laying) 3_500_000 else 3_000_000;
-                self.barry_follow_deadline_us = animation.nowUs() + delay_us;
-            }
-        }
+        _ = windows_moving;
 
         var needs_redraw = prev == 0 or
             (self.tray_anim.value > 0.001 and self.tray_anim.value < 0.999) or
-            !bob_settled or
-            !barry_settled or
             underline_moving;
 
         for (self.outputs.items, 0..) |*po, i| {
@@ -1461,21 +1131,6 @@ pub const Tray = struct {
             self.drawNotificationWidget(notification_widget);
         }
 
-        for (self.barry_pets.items, 0..) |*pet, i| {
-            pet.info = self.host.output_info(self.host.ctx, i);
-            const pw = self.panelWidth(pet.info);
-            const ph = petHeight();
-            if (pet.last_w != pw or pet.last_h != ph or
-                pet.last_barry_state != self.barry_state)
-            {
-                needs_redraw = true;
-            }
-            pet.last_w = pw;
-            pet.last_h = ph;
-            pet.last_barry_state = self.barry_state;
-            self.updatePetPerOutput(pet, needs_redraw);
-        }
-
         if (needs_redraw) {
             // TEMP DIAG (Stage 0.5): name which needs_redraw condition is
             // flapping, rate-limited to one line per second. Keep until the
@@ -1487,11 +1142,9 @@ pub const Tray = struct {
                 const now_ms: i64 = @intCast(@divTrunc(now_us, 1000));
                 if (now_ms - S.last_log_ms >= 1000) {
                     S.last_log_ms = now_ms;
-                    std.log.info("KidulWM: DIAG tray needs_redraw: first={} tray_anim={} bob={} barry={} underline={} per_output={} notify={} signals_card={} media={}", .{
+                    std.log.info("KidulWM: DIAG tray needs_redraw: first={} tray_anim={} underline={} per_output={} notify={} signals_card={} media={}", .{
                         prev == 0,
                         self.tray_anim.value > 0.001 and self.tray_anim.value < 0.999,
-                        !bob_settled,
-                        !barry_settled,
                         underline_moving,
                         blk: {
                             var f = false;
@@ -1521,7 +1174,8 @@ pub const Tray = struct {
         const item_size: f32 = @floatFromInt(button_height + button_gap);
         // Center the stack in the panel, then shift up by one button height.
         const stack_content_h: f32 = @as(f32, @floatFromInt(self.items.len)) * item_size - @as(f32, @floatFromInt(button_gap));
-        const stack_origin: f32 = (@as(f32, @floatFromInt(petHeight())) - stack_content_h) * 0.5;
+        const panel_h: f32 = @floatFromInt(self.panelHeightFor(self.outputs.items[0].info));
+        const stack_origin: f32 = (panel_h - stack_content_h) * 0.5;
         return stack_origin + @as(f32, @floatFromInt(stack_sel)) * item_size;
     }
 
@@ -1539,86 +1193,11 @@ pub const Tray = struct {
         const item_size = button_height + button_gap;
         const stack_buffer = item_size;
         const max_stack_h = @min(
-            info.height - top_margin - bottom_margin - barry_button_height,
+            info.height - top_margin - bottom_margin,
             @as(i32, @intCast(visible_items)) * item_size - button_gap + stack_buffer,
         );
         const actual_stack_h: i32 = @intFromFloat(@round(@as(f32, @floatFromInt(max_stack_h)) * self.tray_anim.value));
-        // Panel height is just the stack — no barry button padding.
         return actual_stack_h;
-    }
-
-    fn petWidth(self: *const Self, info: OutputInfo) i32 {
-        // Keep Barry exactly within the left peek panel width, not wider.
-        return self.panelWidth(info);
-    }
-
-    fn petHeight() i32 {
-        return barry_button_height + bottom_margin * 2;
-    }
-
-    fn updatePetPerOutput(self: *Self, pet: *BarryPet, should_redraw: bool) void {
-        const info = pet.info;
-        const s = info.scale;
-        const w = self.petWidth(info);
-        const h = petHeight();
-        const x: i32 = info.x;
-        const y: i32 = info.y + info.height - h;
-
-        pet.tree.node.setPosition(x, y);
-
-        if (w <= 0 or h <= 0) return;
-        if (!should_redraw) return;
-
-        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(w)) * s));
-        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(h)) * s));
-
-        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
-        if (stride <= 0) return;
-        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
-        const temp = self.allocator.alloc(u8, buf_size) catch |err| {
-            std.log.err("KidulWM: barry pet buffer alloc failed: {}", .{err});
-            return;
-        };
-        defer self.allocator.free(temp);
-
-        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
-        defer c.cairo_surface_destroy(surface);
-        const cr = c.cairo_create(surface) orelse {
-            std.log.err("KidulWM: failed to create cairo context for barry pet", .{});
-            return;
-        };
-        defer c.cairo_destroy(cr);
-
-        const scale_d: f64 = @as(f64, s);
-        const bw: f64 = @as(f64, dev_w);
-
-        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
-        c.cairo_paint(cr);
-        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-
-        const bh: f64 = @as(f64, barry_button_height) * scale_d;
-        const bmargin: f64 = @as(f64, bottom_margin) * scale_d;
-        const by: f64 = @as(f64, dev_h) - bh - bmargin;
-        self.drawPetButton(cr, 0.0, by, bw, bh, scale_d);
-
-        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
-        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch |err| {
-            std.log.err("KidulWM: failed to create barry pet buffer: {}", .{err});
-            return;
-        };
-        if (pet.buffer) |old| wlr.Buffer.drop(old);
-        pet.buffer = buffer;
-        if (pet.scene_buffer) |old| old.node.destroy();
-        const sb = pet.tree.createSceneBuffer(buffer) catch |err| {
-            std.log.err("KidulWM: failed to create barry pet scene buffer: {}", .{err});
-            wlr.Buffer.drop(buffer);
-            pet.buffer = null;
-            return;
-        };
-        sb.setDestSize(w, h);
-        pet.scene_buffer = sb;
-        pet.tree.node.raiseToTop();
     }
 
     fn updatePerOutput(self: *Self, po: *PerOutput, should_redraw: bool) void {
@@ -1663,13 +1242,6 @@ pub const Tray = struct {
         c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
         c.cairo_paint(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-
-        // Barry lozenge at top is disabled; the single Kidul button at the
-        // bottom-left of the left peek is now the tray toggle.
-        // const bh: f64 = @as(f64, barry_button_height) * scale_d;
-        // const bmargin: f64 = @as(f64, bottom_margin) * scale_d;
-        // const by: f64 = bmargin;
-        // self.drawBarryButton(cr, 0.0, by, bw, bh, scale_d);
 
         // Stack is centered vertically in the panel buffer, shifted up by one button height.
         if (self.tray_anim.value > 0.001 and self.items.len > 0) {
@@ -1719,280 +1291,6 @@ pub const Tray = struct {
     fn easeOutCubic(t: f32) f32 {
         const u = 1.0 - t;
         return 1.0 - u * u * u;
-    }
-
-    fn drawBarryButton(self: *Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const margin: f64 = @as(f64, hmargin) * s;
-        const rx: f64 = h / 3.0;
-        const loz_w: f64 = w - 2.0 * margin;
-        const loz_x: f64 = x + margin;
-
-        c.cairo_save(cr);
-        roundedRect(cr, loz_x, y, loz_w, h, rx);
-        c.cairo_clip(cr);
-        self.drawBarry(cr, loz_x, y, loz_w, h, s);
-        c.cairo_restore(cr);
-    }
-    fn drawBarry(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const surf = self.bob_logo;
-        const img_w = @as(f64, @floatFromInt(c.cairo_image_surface_get_width(surf)));
-        const img_h = @as(f64, @floatFromInt(c.cairo_image_surface_get_height(surf)));
-        if (img_w <= 0.0 or img_h <= 0.0) return;
-
-        const margin: f64 = 4.0 * s;
-        const avail_w = w - 2.0 * margin;
-        const scale = @min(avail_w / img_w, h * 0.90 / img_h);
-        const draw_x = x + (w - img_w * scale) / 2.0;
-        const draw_y = y + (h - img_h * scale) / 2.0;
-
-        c.cairo_save(cr);
-        c.cairo_translate(cr, draw_x, draw_y);
-        c.cairo_scale(cr, scale, scale);
-        c.cairo_set_source_surface(cr, surf, 0, 0);
-        c.cairo_paint(cr);
-        c.cairo_restore(cr);
-    }
-
-
-    fn drawPetButton(self: *Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        _ = hmargin; // no lozenge margin needed; logo spans button bounds
-        self.drawPet(cr, x, y, w, h, s);
-    }
-    fn drawPet(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, s: f64) void {
-        const margin: f64 = 18.0 * s;
-        const avail_w = w - 2.0 * margin;
-        const avail_h = h - 2.0 * margin;
-        const icon_r = @min(avail_w, avail_h) * 0.35 * 1.63;
-        const center_x = x + w * 0.5 - 12.0 * s + 17.0 * s - 3.0 * s;
-        const bottom_above_border: f64 = (@as(f64, @floatCast(self.host.theme.style.border_width)) + 1.0) * s;
-        const pet_bottom_pad: f64 = @as(f64, @floatFromInt(bottom_margin)) * s;
-        _ = bottom_above_border;
-        // Anchor the belly bottom 17px above the screen edge. In drawGenieBottle
-        // the belly bottom sits at cy + body_h * 0.68, so place cy accordingly.
-        // (y + h + pet_bottom_pad == buffer bottom.)
-        const body_h = icon_r * 1.05;
-        const gap_above_screen: f64 = 17.0 * s;
-        const center_y = y + h + pet_bottom_pad - gap_above_screen - body_h * 0.68;
-
-        // Genie bottle: static at rest; wisp animates only while the tray is moving.
-        const open_amt: f64 = @floatCast(self.tray_anim.value);
-        const moving = !self.tray_anim.isSettled();
-        self.drawGenieBottle(cr, center_x, center_y, icon_r, s, self.host.theme.style.color_border.toF64(), open_amt, moving);
-    }
-
-    fn drawGenieBottle(self: *const Self, cr: *c.cairo_t, cx: f64, cy: f64, icon_r: f64, s: f64, border_color: [4]f64, open_amt: f64, moving: bool) void {
-        _ = self;
-        const body_w = icon_r * 1.30;
-        const body_h = icon_r * 1.05;
-        const neck_w = icon_r * 0.34;
-        const neck_h = icon_r * 0.42;
-        const lip_w = icon_r * 0.52;
-        const lip_h = icon_r * 0.10;
-
-        // Geometry: belly sits at cy; neck rises above; stopper crowns it.
-        const belly_cy = cy + body_h * 0.18;
-        const belly_rx = body_w * 0.5;
-        const belly_ry = body_h * 0.5;
-        const neck_top = belly_cy - belly_ry - neck_h;
-        const stopper_r = neck_w * 0.62;
-
-        c.cairo_save(cr);
-
-        // --- Wisp (only while tray is moving) -------------------------------
-        if (moving) {
-            var ts: c.timespec = undefined;
-            _ = c.clock_gettime(c.CLOCK_MONOTONIC, &ts);
-            const t: f64 = @as(f64, @floatFromInt(ts.tv_sec)) + @as(f64, @floatFromInt(ts.tv_nsec)) / 1.0e9;
-            const mouth_y = neck_top - lip_h - stopper_r;
-            const rise = icon_r * 2.4 * open_amt;
-            const wisps = 3;
-            var wi: usize = 0;
-            while (wi < wisps) : (wi += 1) {
-                const fwi = @as(f64, @floatFromInt(wi));
-                const phase = @mod(t * 0.9 + fwi * 0.33, 1.0);
-                const wy = mouth_y - rise * phase;
-                const curl = std.math.sin(phase * 6.0 + fwi * 2.4) * icon_r * 0.28 * phase;
-                const wx = cx + curl;
-                const wr = (1.4 + 2.6 * phase) * s;
-                const fade = (1.0 - phase) * 0.55 * open_amt;
-                c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], fade);
-                c.cairo_arc(cr, wx, wy, wr, 0, 2.0 * std.math.pi);
-                c.cairo_fill(cr);
-            }
-            // Bright thread of smoke connecting mouth to the wisp field.
-            c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.45 * open_amt);
-            c.cairo_set_line_width(cr, 1.2 * s);
-            c.cairo_move_to(cr, cx, mouth_y);
-            c.cairo_curve_to(cr,
-                cx + std.math.sin(t * 2.0) * icon_r * 0.10, mouth_y - rise * 0.33,
-                cx - std.math.sin(t * 1.6) * icon_r * 0.14, mouth_y - rise * 0.66,
-                cx + std.math.sin(t * 1.2) * icon_r * 0.10, mouth_y - rise);
-            c.cairo_stroke(cr);
-        }
-
-        // --- Stopper ---------------------------------------------------------
-        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 1.0);
-        c.cairo_set_line_width(cr, 2.2 * s);
-        // Dome.
-        c.cairo_arc(cr, cx, neck_top - lip_h - stopper_r * 0.4, stopper_r, std.math.pi, 0);
-        c.cairo_stroke(cr);
-        // Knob.
-        c.cairo_arc(cr, cx, neck_top - lip_h - stopper_r * 1.1, stopper_r * 0.28, 0, 2.0 * std.math.pi);
-        c.cairo_fill(cr);
-
-        // --- One continuous vessel silhouette ----------------------------------
-        // Right lip tip -> flare into neck -> S-curve down the neck -> sweep out
-        // around the belly -> back up the left side in mirror image. Single path
-        // so the glass fill and gold stroke share the same whispy outline.
-        const belly_top = belly_cy - belly_ry;
-        const belly_bot = belly_cy + belly_ry;
-        const lip_top = neck_top - lip_h;
-
-        // One continuous vessel silhouette, shared by fill, stroke and clips.
-        const bottlePath = struct {
-            fn trace(cr2: *c.cairo_t, cx2: f64, lip_w2: f64, lip_h2: f64, lip_top2: f64, neck_w2: f64, neck_top2: f64, neck_h2: f64, belly_rx2: f64, belly_ry2: f64, belly_top2: f64, belly_cy2: f64, belly_bot2: f64) void {
-                c.cairo_move_to(cr2, cx2 + lip_w2 * 0.5, lip_top2 + lip_h2 * 0.5);
-                c.cairo_curve_to(cr2,
-                    cx2 + lip_w2 * 0.52, lip_top2 + lip_h2,
-                    cx2 + neck_w2 * 0.55, neck_top2 + neck_h2 * 0.08,
-                    cx2 + neck_w2 * 0.42, neck_top2 + neck_h2 * 0.30);
-                c.cairo_curve_to(cr2,
-                    cx2 + neck_w2 * 0.38, neck_top2 + neck_h2 * 0.55,
-                    cx2 + neck_w2 * 0.42, neck_top2 + neck_h2 * 0.85,
-                    cx2 + belly_rx2 * 0.62, belly_top2 + belly_ry2 * 0.12);
-                c.cairo_curve_to(cr2,
-                    cx2 + belly_rx2 * 0.85, belly_top2 + belly_ry2 * 0.32,
-                    cx2 + belly_rx2 * 1.05, belly_top2 + belly_ry2 * 0.50,
-                    cx2 + belly_rx2 * 1.05, belly_cy2);
-                c.cairo_curve_to(cr2,
-                    cx2 + belly_rx2 * 1.05, belly_bot2 - belly_ry2 * 0.28,
-                    cx2 + belly_rx2 * 0.70, belly_bot2 + belly_ry2 * 0.02,
-                    cx2 + belly_rx2 * 0.38, belly_bot2 + belly_ry2 * 0.04);
-                c.cairo_curve_to(cr2,
-                    cx2 + belly_rx2 * 0.14, belly_bot2 + belly_ry2 * 0.07,
-                    cx2 - belly_rx2 * 0.14, belly_bot2 + belly_ry2 * 0.07,
-                    cx2 - belly_rx2 * 0.38, belly_bot2 + belly_ry2 * 0.04);
-                c.cairo_curve_to(cr2,
-                    cx2 - belly_rx2 * 0.70, belly_bot2 + belly_ry2 * 0.02,
-                    cx2 - belly_rx2 * 1.05, belly_bot2 - belly_ry2 * 0.28,
-                    cx2 - belly_rx2 * 1.05, belly_cy2);
-                c.cairo_curve_to(cr2,
-                    cx2 - belly_rx2 * 1.05, belly_top2 + belly_ry2 * 0.50,
-                    cx2 - belly_rx2 * 0.85, belly_top2 + belly_ry2 * 0.32,
-                    cx2 - belly_rx2 * 0.62, belly_top2 + belly_ry2 * 0.12);
-                c.cairo_curve_to(cr2,
-                    cx2 - neck_w2 * 0.42, neck_top2 + neck_h2 * 0.85,
-                    cx2 - neck_w2 * 0.38, neck_top2 + neck_h2 * 0.55,
-                    cx2 - neck_w2 * 0.42, neck_top2 + neck_h2 * 0.30);
-                c.cairo_curve_to(cr2,
-                    cx2 - neck_w2 * 0.55, neck_top2 + neck_h2 * 0.08,
-                    cx2 - lip_w2 * 0.52, lip_top2 + lip_h2,
-                    cx2 - lip_w2 * 0.5, lip_top2 + lip_h2 * 0.5);
-                c.cairo_close_path(cr2);
-            }
-        }.trace;
-
-        bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
-
-        // Reversed scheme: body is the unfocused border color, shading is black.
-        // Keep it muted so it reads as dark gold, not porcelain.
-        const glass = c.cairo_pattern_create_linear(cx, lip_top, cx, belly_bot).?;
-        c.cairo_pattern_add_color_stop_rgba(glass, 0.0, border_color[0] * 0.92, border_color[1] * 0.92, border_color[2] * 0.92, 1.0);
-        c.cairo_pattern_add_color_stop_rgba(glass, 0.4, border_color[0] * 0.72, border_color[1] * 0.72, border_color[2] * 0.72, 1.0);
-        c.cairo_pattern_add_color_stop_rgba(glass, 1.0, border_color[0] * 0.48, border_color[1] * 0.48, border_color[2] * 0.48, 1.0);
-        c.cairo_set_source(cr, glass);
-        c.cairo_fill_preserve(cr);
-        c.cairo_pattern_destroy(glass);
-
-        // Black 3D shading, clipped to the vessel: shadow lower-right,
-        // soft occlusion at the bottom, gentle dark edge on the neck.
-        c.cairo_save(cr);
-        bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
-        c.cairo_clip(cr);
-        // Shadow side.
-        const shade = c.cairo_pattern_create_linear(cx + belly_rx, belly_bot, cx - belly_rx * 0.3, belly_cy).?;
-        c.cairo_pattern_add_color_stop_rgba(shade, 0.0, 0.0, 0.0, 0.0, 0.45);
-        c.cairo_pattern_add_color_stop_rgba(shade, 1.0, 0.0, 0.0, 0.0, 0.0);
-        c.cairo_set_source(cr, shade);
-        c.cairo_paint(cr);
-        c.cairo_pattern_destroy(shade);
-        // Highlight side: gentle border-color lift, no white (avoids porcelain).
-        const light = c.cairo_pattern_create_linear(cx - belly_rx, belly_top, cx + belly_rx * 0.4, belly_cy).?;
-        c.cairo_pattern_add_color_stop_rgba(light, 0.0, border_color[0], border_color[1], border_color[2], 0.18);
-        c.cairo_pattern_add_color_stop_rgba(light, 1.0, border_color[0], border_color[1], border_color[2], 0.0);
-        c.cairo_set_source(cr, light);
-        c.cairo_paint(cr);
-        c.cairo_pattern_destroy(light);
-        // Bottom ambient occlusion.
-        const ao = c.cairo_pattern_create_linear(cx, belly_bot - belly_ry * 0.5, cx, belly_bot + belly_ry * 0.1).?;
-        c.cairo_pattern_add_color_stop_rgba(ao, 0.0, 0.0, 0.0, 0.0, 0.0);
-        c.cairo_pattern_add_color_stop_rgba(ao, 1.0, 0.0, 0.0, 0.0, 0.40);
-        c.cairo_set_source(cr, ao);
-        c.cairo_paint(cr);
-        c.cairo_pattern_destroy(ao);
-        c.cairo_restore(cr);
-
-        // Rim stroke in darkened border color so the edge reads on the light body.
-        c.cairo_set_source_rgba(cr, border_color[0] * 0.45, border_color[1] * 0.45, border_color[2] * 0.45, 1.0);
-        c.cairo_set_line_width(cr, 2.6 * s);
-        c.cairo_stroke(cr);
-
-        // Lip mouth line (the opening the wisp pours from).
-        c.cairo_set_line_width(cr, 1.6 * s);
-        c.cairo_move_to(cr, cx - lip_w * 0.42, lip_top + lip_h * 0.5);
-        c.cairo_curve_to(cr,
-            cx - lip_w * 0.15, lip_top + lip_h * 0.15,
-            cx + lip_w * 0.15, lip_top + lip_h * 0.15,
-            cx + lip_w * 0.42, lip_top + lip_h * 0.5);
-        c.cairo_stroke(cr);
-
-        // --- Static contents: thin gold crescent at RAM level -----------------
-        const ram_value = ramUsageFraction() catch 0.0;
-        const level = @max(0.05, @min(1.0, ram_value));
-        c.cairo_save(cr);
-        // Clip to the vessel silhouette so liquid respects the new shape.
-        bottlePath(cr, cx, lip_w, lip_h, lip_top, neck_w, neck_top, neck_h, belly_rx, belly_ry, belly_top, belly_cy, belly_bot);
-        c.cairo_clip(cr);
-        // Liquid: quiet black, no motion (reversed scheme on light body).
-        const fill_top = belly_cy + belly_ry - 2.0 * belly_ry * level;
-        const liquid = c.cairo_pattern_create_linear(cx, fill_top, cx, belly_cy + belly_ry).?;
-        c.cairo_pattern_add_color_stop_rgba(liquid, 0.0, 0.0, 0.0, 0.0, 0.25);
-        c.cairo_pattern_add_color_stop_rgba(liquid, 1.0, 0.0, 0.0, 0.0, 0.55);
-        c.cairo_set_source(cr, liquid);
-        c.cairo_rectangle(cr, cx - belly_rx, fill_top, belly_rx * 2.0, belly_cy + belly_ry - fill_top);
-        c.cairo_fill(cr);
-        c.cairo_pattern_destroy(liquid);
-        // Hairline surface line.
-        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.65);
-        c.cairo_set_line_width(cr, 1.0 * s);
-        c.cairo_move_to(cr, cx - belly_rx * 0.8, fill_top);
-        c.cairo_line_to(cr, cx + belly_rx * 0.8, fill_top);
-        c.cairo_stroke(cr);
-        c.cairo_restore(cr);
-
-        // --- Glass highlights (border color, no white) --------------------------
-        // Slim vertical highlight on the upper-left belly.
-        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.16);
-        c.cairo_set_line_width(cr, 3.0 * s);
-        c.cairo_move_to(cr, cx - belly_rx * 0.45, belly_cy - belly_ry * 0.55);
-        c.cairo_curve_to(cr,
-            cx - belly_rx * 0.62, belly_cy - belly_ry * 0.15,
-            cx - belly_rx * 0.60, belly_cy + belly_ry * 0.15,
-            cx - belly_rx * 0.45, belly_cy + belly_ry * 0.45);
-        c.cairo_stroke(cr);
-        // Small specular dot near the neck shoulder.
-        c.cairo_set_source_rgba(cr, border_color[0], border_color[1], border_color[2], 0.22);
-        c.cairo_arc(cr, cx - belly_rx * 0.30, belly_cy - belly_ry * 0.62, 1.6 * s, 0, 2.0 * std.math.pi);
-        c.cairo_fill(cr);
-
-        c.cairo_restore(cr);
-    }
-
-
-    fn ramUsageFraction() !f64 {
-        var data = gauge_data.GaugeData.init(std.heap.page_allocator);
-        const v = try data.sample(.ram_usage);
-        return @max(0.0, @min(1.0, v.value));
     }
 
     fn drawStackButton(self: *const Self, cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, stack_index: usize, focused: bool, hovered: bool, alpha: f64, s: f64) void {
@@ -2720,21 +2018,6 @@ pub const Tray = struct {
         _ = c_std.system(script.ptr);
     }
 
-    fn pointInsidePet(self: *const Self, px: f64, py: f64) bool {
-        for (self.barry_pets.items) |pet| {
-            const pw = pet.last_w;
-            const ph = pet.last_h;
-            if (pw <= 0 or ph <= 0) continue;
-            const px_ = pet.info.x;
-            const py_ = pet.info.y + pet.info.height - ph;
-            if (px >= @as(f64, @floatFromInt(px_)) and
-                px < @as(f64, @floatFromInt(px_ + pw)) and
-                py >= @as(f64, @floatFromInt(py_)) and
-                py < @as(f64, @floatFromInt(py_ + ph))) return true;
-        }
-        return false;
-    }
-
     fn fit_and_draw(
         cr: *c.cairo_t,
         font: [*:0]const u8,
@@ -2803,12 +2086,12 @@ pub const Tray = struct {
             self.card_hover_col = null;
         }
 
-        // Tray hover: only the bottom-left pet logo opens the tray from a closed
-        // state, but while the tray is open the whole panel keeps it open.
-        const inside_pet = self.pointInsidePet(px, py);
-        var inside_panel = inside_pet;
+        // Tray hover: while the tray is open the whole panel keeps it open.
+        // There is no hover-open hit zone — the tray opens via the RAM
+        // cauldron click or the keyboard toggle path only.
+        var inside_panel = false;
         var new_hover: ?usize = null;
-        if (!inside_panel and (self.open or self.pinned or self.tray_anim.value > 0.01)) {
+        if (self.open or self.pinned or self.tray_anim.value > 0.01) {
             for (0..out_count) |i| {
                 const info = self.host.output_info(self.host.ctx, i);
                 if (i < self.outputs.items.len) self.outputs.items[i].info = info;
@@ -2837,21 +2120,12 @@ pub const Tray = struct {
         self.hovered = inside_panel;
         if (new_hover) |hi| self.hover_index = hi;
 
-        if (inside_pet and !self.open and !self.pinned) {
-            self.open = true;
-            self.keepOpen();
-            self.selected_index = 1;
-            self.hover_index = 1;
-            self.setBarryState(.sitting);
-            self.requestUpdate();
-            self.host.request_frame(self.host.ctx);
-        } else if (!inside_panel and self.open and !self.pinned) {
+        if (!inside_panel and self.open and !self.pinned) {
             if (animation.nowUs() >= self.close_after_us) {
                 self.open = false;
                 self.close_after_us = 0;
                 self.hover_index = null;
                 self.selected_index = 0;
-                self.setBarryState(.laying);
                 self.closeAllCards();
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
@@ -2860,7 +2134,7 @@ pub const Tray = struct {
                 self.host.request_frame(self.host.ctx);
             }
         }
-        return inside_pet or inside_panel;
+        return inside_panel;
     }
 
     pub fn handlePointerClick(self: *Self, px: f64, py: f64) bool {
@@ -2954,12 +2228,8 @@ pub const Tray = struct {
             return true;
         }
 
-        // Bottom-left pet/logo button toggles the tray. This is the ONLY spot
-        // that opens the tray, so it can never overlap the weather widget.
-        if (self.pointInsidePet(px, py)) {
-            self.toggle();
-            return true;
-        }
+        // The bottom-left corner where the tray pet used to sit is a plain
+        // no-op: no hit box, clicks fall through to the compositor below.
 
         const out_count = self.host.output_count(self.host.ctx);
         var inside_panel = false;
@@ -2981,7 +2251,6 @@ pub const Tray = struct {
                 self.hovered = false;
                 self.hover_index = null;
                 self.selected_index = 0;
-                self.setBarryState(.laying);
                 self.closeAllCards();
                 self.requestUpdate();
                 self.host.request_frame(self.host.ctx);
@@ -3456,8 +2725,9 @@ pub const Tray = struct {
         widget.last_scale = scale;
         widget.last_theme_generation = theme_gen;
 
-        // Clickable cauldron box removed: cauldron is now the bottom pet button icon.
-        widget.cauldron_box = .{ .x = 0, .y = 0, .width = 0, .height = 0 };
+        // Clickable cauldron box: the RAM cauldron area in the left-peek gauge
+        // pill is the pointer tray toggle (keyboard paths also toggle).
+        widget.cauldron_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
 
         const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
         const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));

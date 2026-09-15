@@ -1,5 +1,11 @@
 # KidulWM Tray — Creative Spec for coderBob
 
+> **Addendum 2026-09-15 — Barry removed (Barticus verdict).** Barry the
+> bulldog tray pet has been completely removed from the codebase: toy pets
+> hold no input handles. The tray is now opened by clicking the RAM cauldron
+> zone in the left-peek gauge pill, or via the existing keyboard toggle
+> paths. All sections below that mention Barry are historical record only.
+
 ## 1. Goal
 
 Build a beautiful, smooth, classy settings tray for KidulWM centered around a 3D-feeling animated line-art bulldog logo named Barry. The tray must feel premium: transparent background, black-glass stack buttons, gold-leaf lettering, and a subtle animated gradient sheen. The MAIN/Hide button is Barry — not a text label. The stack above it is reorderable and can fall back to alphabetical or preset order.
