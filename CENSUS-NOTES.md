@@ -2,6 +2,57 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
+## 2026-09-15 VERDICT 20: dead click/scroll/hover SYSTEM-WIDE — split-brain
+cursor bookkeeping, FIXED (6d84450, deployed ecf973bb). The 'browser can
+type but not click/scroll/backspace' hunt ended one layer down, in KidulWM,
+and it explains the same dead-pointer class in terminals + media player:
+- server.cursor_x/y accumulated relative deltas UNCLAMPED while wlr.Cursor
+  clamps to the output layout. After any warp (boot park at 960,1620,
+  focus jumps, Mod4+O) the two diverged permanently — log showed cursor
+  coords down to x=-1181, y=-254, off every output.
+- Scene node.at(negative) missed every window → zero PTR-ENTER in the
+  entire log → wlroots dropped ALL button/axis events (BTN-NOTIFY
+  serial=0 focused=false flood). Keyboard sailed through via
+  keyboardNotifyEnter — that asymmetry IS the symptom split.
+- FIX (6d84450): wlr.Cursor is the single writer of record. Motion and
+  absolute handlers resync the mirror from cursor.x/y after every move;
+  all cursor-consuming entry points (claim chain, pointerEnterAtCursor,
+  focusFollowsCursor, focusAtCursor, axis) call syncCursorMirror() first.
+  Claim-chain params now ignored in favour of the clamped truth.
+- Tray two-screens checked and CLEARED: one Tray, per-output panels with
+  correct layout coords — by design, not an input doubler.
+- Law recorded in ksd-input-claim-law skill: never accumulate deltas into
+  a parallel cursor position.
+REPRO after reload: first motion logs PTR-ENTER surface=...; clicks show
+serial!=0 focused=true; browser hover lights, links click, wheel scrolls,
+Backspace/arrows work in fields (renderer-side gtk_widget_grab_focus +
+GDK_SCROLL_SMOOTH fixes deployed to /usr/local/bin/kidul-browser* same
+session, md5-matched). Terminals + media player pointer input restored.
+
+## 2026-09-15 VERDICT 18: faint-tray ghost + dead left-peek inputs — BARRY
+REMOVED (bbd9628, deployed 3e71454c). Symptom: faint tray visible in left
+peek, browser/page inputs dead over that strip. Root cause: the Barry pet's
+input machinery — pointInsidePet = always-live hit box over the left peek
+(tray open or closed); hover-to-open could latch `hovered`, pinning
+tray_anim > 0.001 draw floor → ghost panel + clicks eaten before
+focusAtCursor. Log: BTN-NOTIFY focused=false flood, zero PTR-ENTER.
+Barticus verdict: pet deleted from code entirely (toy pets hold no input
+handles; art archived ~/brain/shelf/barry/). Tray opener now = RAM cauldron
+gauge-pill click (re-enabled) + keyboard paths. Hover-open gone.
+REPRO after reload: no ghost in left peek; clicks pass through; cauldron
+toggles tray; browser pointer (verdict-18) still live.
+
+## 2026-09-15 VERDICT 19: media player EVICTED from tray; cauldron severed
+(bd2f089 + cf2697f, deployed ccc5bb39). The weeks-long fight's prime
+structural suspect is gone: the player was a FIELD of the tray UI struct
+(tray.media, ~104 uses); kill-switches (ensureStopped on slide change)
+routed through it. Now Server.media_player owns the player; tray reads
+via TrayHost.media pointer for card/peek display only. Cauldron→tray
+click DELETED — gauges are pure telemetry now. Tray opens by keybind/IPC
+only (peek has no mouse door until the CFC launcher build gives
+kidulButton its own zone). REPRO: music IPC/keys unchanged; slide-change
+ensureStopped still fires (rewired — watch); cauldron click = no-op.
+
 ## 2026-09-09 VERDICT: invisible-video root cause FOUND + FIXED (kmedia)
 The census logs told the whole story once read per-stream instead of
 aggregated:
@@ -691,3 +742,40 @@ vsync-derived (playTimerMs(), TIMER CADENCE LAW 2026-09-08 comment);
 true sleep-until-due off the audio clock + playback-rate combos (0.5x/2x)
 were on coderBob's card but NOT landed when credits died — next dispatch.
 (b) kidul-browser input on engine & pages — separate card, not started.
+
+## 2026-09-15 VERDICT 18: BROWSER POINTER — compositor never called pointerNotifyEnter
+Symptom (Barticus): browser pages take NO mouse at all (no hover/click/
+scroll), keyboard reaches chrome but page typing dead; 'google' page
+autofocuses its searchbar yet nothing types.
+Chain: wlroots drops pointer events when no focused pointer surface.
+pointerNotifyMotion was being called but pointerNotifyEnter never was —
+keyboard worked only because keyboardNotifyEnter was wired. Zero
+wl_pointer events ever reached the browser surface.
+FIX: commit 6309562 (found uncommitted after the 2026-09-12 credit-death,
+committed as-is per rescue law). server.zig pointerEnterAtCursor()
+resolves the scene node under the cursor to its wlr.Surface and enters
+it (guarded on surface identity); pointer.zig enter-before-notify on
+motion/abs/button. PTR-PASS/BTN-NOTIFY probe logging still live.
+Deploy was the missing piece: the fix sat committed-but-unbuilt for 3
+days; pre-fix binary d230e07c kept running. Built ReleaseSafe and
+deployed by orchestrator 2026-09-15 ~08:07 AEST:
+/usr/local/bin/kidulwm = sha256 09a12fa9e0a26dc0… (main cde8b2d incl.
+6309562). Takes effect on session reload.
+BROWSER SIDE (kidul-browser repo, deployed 2026-09-12, sha256 shell
+026e08d6 / renderer 93aaa64d): ALL JS input injection deleted
+(synthetic KeyboardEvent / elementFromPoint().click() / window.scrollBy
+— engines ignore untrusted events, hence autofocus-but-no-typing).
+Renderer now fabricates genuine GdkEvents (window, time, keymap-resolved
+keycodes, button/modifier tracking) delivered via gtk_widget_event()
+straight to the WebKitWebView + gtk_widget_grab_focus on realize.
+gtk_main_do_event was tried first and died silently (GDK dispatches via
+focus/grab bookkeeping the renderer holds none of) — renderer input law
+in the kidul-browser skill now records this. IPC gained pointer_motion,
+pointer_button press/release, key_release; real wheel events.
+REPRO (Barticus, after reload): load page → move/click/scroll, click a
+field and type, Tab between fields. If pointer still dies:
+grep -a 'PTR-\|BTN-' ~/.local/state/kidulwm/session.log — the probes
+name the claimer. On success: strip probes and close the verdict.
+STILL OPEN: (a) mpv-style timings (verdict 17 tail, unchanged).
+(b) tray.zig removeOutput listener-lifetime crash on deinit (2026-09-12
+autopsy item 1). (c) probe strip pending repro.

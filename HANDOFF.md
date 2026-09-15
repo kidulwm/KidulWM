@@ -1,6 +1,144 @@
 # KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
 
 ---
+## ADDENDUM — Sep 15 2026 (SINGLE CURSOR TRUTH — system-wide dead pointer fixed)
+
+/usr/local/bin/kidulwm = md5 ecf973bb… = main 6d84450 (GPG-signed B&B),
+built ReleaseSafe, deployed ~12:30 AEST via rename swap. Live at next
+session start. Full narrative: CENSUS-NOTES.md VERDICT 20.
+
+Root cause of 'browser types but won't click/scroll/backspace' (+ same
+dead-pointer class in terminals and the media player): split-brain cursor
+bookkeeping. server.cursor_x/y accumulated relative deltas unclamped while
+wlr.Cursor clamps to the output layout; after any warp the two diverged
+permanently (log: cursor coords negative to -1181). Scene hit-tests used
+the diverged copy → node.at() missed everything → zero pointer enters →
+wlroots dropped every button/axis event. Keyboard unaffected (separate
+notify path) — the exact asymmetry reported.
+
+Fix: wlr.Cursor is the single writer of record; cursor_x/y are now a
+read-only mirror resynced from cursor.x/y at every motion event and at
+every hit-test entry point (syncCursorMirror). Drift structurally
+impossible. Law saved in ksd-input-claim-law skill.
+
+Same session, kidul-browser renderer fixes deployed (uncommitted in that
+tree as of this note — trusted-input law v2 follow-ups):
+- do_button grabs GTK focus on press (unlocks link activation + editing
+  keys: Backspace/arrows were focus-gated, bare text wasn't).
+- do_scroll now emits GDK_SCROLL_SMOOTH with pixel deltas (discrete
+  fabricated events were dropped by the WebProcess).
+- do_key grabs focus on press (covers page-focus-via-Return).
+Binaries at /usr/local/bin/kidul-browser{,-webkitgtk-renderer}, md5-matched
+to zig-out. NOTE: kidul-browser tree still dirty (Sep-12 input work +
+these) — needs a commit next session.
+
+REPRO after reload: pointer hover lights web buttons; PTR-ENTER in log;
+clicks serial!=0; wheel scrolls pages; Backspace/arrows edit fields;
+terminals + media player pointer input restored.
+
+---
+## ADDENDUM — Sep 15 2026 (MEDIA PLAYER EVICTED FROM TRAY; CAULDRON SEVERED)
+
+/usr/local/bin/kidulwm = sha256 ccc5bb39… = main bd2f089 (+cf2697f under
+it), GPG-signed B&B, clean ReleaseSafe build, deployed ~11:05 AEST by
+orchestrator. Backup: /usr/local/bin/kidulwm.bak-pre-cfc.
+
+Barticus law 2026-09-15: "the tray's hold on things" cut at the root.
+1. MEDIA PLAYER EVICTED: Server.media_player (media_mod.MediaWidget field,
+   server.zig:410) owns the player now — play/pause/next/prev/seek,
+   player_active, cached, ensureStopped. Tray holds ZERO player state; it
+   reaches the player through TrayHost.media (*MediaWidget host pointer)
+   for card/peek display only. All consumers rewired: server.zig IPC
+   (~618-635), slide-transition ensureStopped (1587), media_slide.zig
+   (125,182-184). Judgement call: MediaWidget stays in src/ui/media.zig
+   (MediaSlide shares the module — splitting churned diff for no ownership
+   gain). This is the seam the weeks-long media hunt kept pointing at:
+   the player was a field of a UI struct; kill-switches routed through
+   the tray. Now the player is Server-owned like every other subsystem.
+2. CAULDRON SEVERED: `.cauldron => self.toggle()` and the whole gauge
+   click path (pointInsideGaugeWidget, cauldron_box) DELETED. Gauges are
+   pure telemetry — no input handles. (Future: gauges are an optional pack,
+   toggle or warning-threshold triggered — see launcher-cfc-spec §5.)
+3. TRAY OPENER NOW: keyboard (tray.toggle etc.) + IPC only. The kidulButton
+   (bottom-right-peek logo, alias rkt-button) rename landed comment-level
+   in cf2697f; its pointer door was the cauldron path which is now gone —
+   SO: the peek currently has NO mouse door to the tray. The CFC launcher
+   build (next session) must give kidulButton its own click zone. Barticus
+   should know: until then, tray opens by keybind/SW button only.
+4. docs/log/launcher-cfc-spec.md (DRAFT, awaiting Barticus lock) captures
+   the CFC cut: center-screen overlay, instant + ~120-180ms cosmetic fade,
+   uniform font size (no ramp), soft-white focused line, two doors
+   (kidulButton + SW key), gauges optional pack, Server-owned player.
+   tray.zig now carries '// == LAUNCHER PAYLOAD (survives) ==' /
+   '// == PEEK PANEL (dies) ==' section markers for the lift.
+
+REPRO (Barticus, after reload): music play/pause/next via IPC + keys
+unchanged; slide-change still stops headless music (ensureStopped path
+rewired, watch for regressions); tray toggles by keybind; cauldron click
+does nothing; gauges still draw.
+
+Still open: CFC launcher build (spec lock first), mpv timings (v17 tail),
+tray removeOutput deinit crash, corner-bleed commit (kidul-browser),
+15:50 hang (watchdog), kfiles font ramp (typography law, polish pass),
+bobPI cleanup (later job).
+
+---
+## ADDENDUM — Sep 15 2026 (BARRY REMOVED — toy pets hold no input handles)
+
+/usr/local/bin/kidulwm = sha256 3e71454c… = main bbd9628 (GPG-signed B&B),
+built ReleaseSafe from clean tree (rm -rf zig-out .zig-cache), deployed
+~10:30 AEST by orchestrator. Takes effect on session reload. Backup:
+/usr/local/bin/kidulwm.bak-barry.
+
+Barticus verdict 2026-09-15: Barry the bulldog (the bobHat's pet) removed
+from the code entirely. "A toy pet shouldn't have any handle on any part of
+the running system." Art + spec archived to ~/brain/shelf/barry/ with
+resurrection law: if a mascot ever returns, ZERO input handles — decoration
+only.
+
+Root cause of the day's hunt ("faint tray in left peek, browser inputs
+dead"): the pet's input machinery — pointInsidePet was an always-live hit
+box over the left peek (tray open or closed), and hover-to-open could latch
+`hovered`, pinning tray_anim above the 0.001 draw floor → faint ghost panel
++ clicks eaten before focusAtCursor. Live log showed the downstream flood:
+BTN-NOTIFY focused=false, zero PTR-ENTER. Second incident of the class
+(cf. stuck media-card click-eater). Deletion, not a gate patch, closes it.
+
+Removed (bbd9628, +25/-755, 15 files): BarryPet/BarryState structs,
+setBarryState/bobChangedState, all barry_* state + breath/spring animation,
+per-output pet scene trees, pointInsidePet, updatePetPerOutput, drawBarry*/
+drawPet*/drawGenieBottle, barry PNG embeds + both asset dirs, bob_* pose
+springs (only fed Barry), barry_button_height/barry_follow_delay_s from
+theme.zig, hover-open entirely. strings(binary)|grep -ci barry = 0.
+
+Tray opener NOW: click the left-peek gauge pill (RAM cauldron — click box
+re-enabled; it had been zeroed when the pet took over, 12ae160) or existing
+keyboard paths (tray.toggle/selectNext/selectPrev/activateSelected in
+src/input/keyboard.zig). Bottom-left pet zone = inert, no hit box.
+
+REPRO (Barticus, after reload): no faint tray ghost in the left peek;
+clicks through the peek strip reach whatever is beneath; tray opens/closes
+via cauldron click; browser page pointer still works (verdict-18 repro).
+Probes still live: grep -a 'PTR-\|BTN-' ~/.local/state/kidulwm/session.log.
+
+Still open (unchanged): mpv timings (v17 tail), tray removeOutput deinit
+crash, corner-bleed commit (kidul-browser tree), 15:50 hang (watchdog).
+
+---
+## ADDENDUM — Sep 15 2026 (VERDICT 18 DEPLOYED — browser pointer-enter)
+
+/usr/local/bin/kidulwm = sha256 09a12fa9e0a26dc0… = main cde8b2d incl.
+6309562 (pointerEnterAtCursor — compositor never called
+pointerNotifyEnter; wlroots drops pointer events with no focused pointer
+surface). Built ReleaseSafe, deployed ~08:07 AEST by orchestrator.
+Takes effect on session reload. Pairs with kidul-browser trusted-input
+renderer (026e08d6/93aaa64d, deployed Sep 12): real GdkEvents via
+gtk_widget_event, all JS injection deleted.
+REPRO: page mouse move/click/scroll + field typing + Tab. Probes live:
+grep -a 'PTR-\|BTN-' ~/.local/state/kidulwm/session.log. Strip on pass.
+Still open: mpv timings (v17 tail), tray removeOutput deinit crash.
+
+---
 ## ADDENDUM — Sep 12 2026 night (session 22: VERDICT 17 DEPLOYED — prewarm OOM killed)
 
 Deployed state: /usr/local/bin/kidulwm sha256 d230e07c… = KidulWM 417aecc
