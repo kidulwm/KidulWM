@@ -147,6 +147,21 @@ const PerOutputGauge = struct {
     last_theme_generation: u32 = 0,
 };
 
+const PerOutputLogo = struct {
+    output_ctx: *anyopaque,
+    tree: *wlr.SceneTree,
+    scene_buffer: ?*wlr.SceneBuffer,
+    buffer: ?*wlr.Buffer,
+    info: OutputInfo,
+    last_w: i32 = 0,
+    last_h: i32 = 0,
+    last_x: i32 = 0,
+    last_y: i32 = 0,
+    click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
+    last_scale: f32 = 0.0,
+    last_theme_generation: u32 = 0,
+};
+
 const PerOutputDrives = struct {
     output_ctx: *anyopaque,
     tree: *wlr.SceneTree,
@@ -277,6 +292,11 @@ pub const Tray = struct {
     weather_widgets: std.ArrayList(PerOutputWeather),
     // Left peek widget (gauges), stacked below weather.
     gauge_widgets: std.ArrayList(PerOutputGauge),
+    // Bottom-left-peek KSD logo — static, loaded once, click toggles the tray.
+    logo_widgets: std.ArrayList(PerOutputLogo),
+    logo_surface: ?*c.cairo_surface_t = null,
+    logo_w: i32 = 0,
+    logo_h: i32 = 0,
     drives_widgets: std.ArrayList(PerOutputDrives),
     media_widgets: std.ArrayList(PerOutputMedia),
     network_widgets: std.ArrayList(PerOutputNetwork),
@@ -364,6 +384,7 @@ pub const Tray = struct {
             .widgets = .empty,
             .weather_widgets = .empty,
             .gauge_widgets = .empty,
+            .logo_widgets = .empty,
             .drives_widgets = .empty,
             .media_widgets = .empty,
             .network_widgets = .empty,
@@ -392,6 +413,7 @@ pub const Tray = struct {
         for (self.widgets.items) |*w| self.destroyWidget(w);
         for (self.weather_widgets.items) |*w| self.destroyWeatherWidget(w);
         for (self.gauge_widgets.items) |*w| self.destroyGaugeWidget(w);
+        for (self.logo_widgets.items) |*w| self.destroyLogoWidget(w);
         for (self.drives_widgets.items) |*w| self.destroyDrivesWidget(w);
         for (self.media_widgets.items) |*w| self.destroyMediaWidget(w);
         for (self.network_widgets.items) |*w| self.destroyNetworkWidget(w);
@@ -406,6 +428,9 @@ pub const Tray = struct {
         self.widgets.deinit(self.allocator);
         self.weather_widgets.deinit(self.allocator);
         self.gauge_widgets.deinit(self.allocator);
+        self.logo_widgets.deinit(self.allocator);
+        if (self.logo_surface) |surf| c.cairo_surface_destroy(surf);
+        self.logo_surface = null;
         self.drives_widgets.deinit(self.allocator);
         self.media_widgets.deinit(self.allocator);
         self.network_widgets.deinit(self.allocator);
@@ -488,6 +513,21 @@ pub const Tray = struct {
         self.gauge_widgets.append(self.allocator, gauge_widget) catch |err| {
             std.log.err("KidulWM: failed to append gauge widget: {}", .{err});
             gauge_tree.node.destroy();
+        };
+        const logo_tree = self.root.createSceneTree() catch |err| {
+            std.log.err("KidulWM: failed to create logo widget scene tree: {}", .{err});
+            return;
+        };
+        const logo_widget = PerOutputLogo{
+            .output_ctx = output_ctx,
+            .tree = logo_tree,
+            .scene_buffer = null,
+            .buffer = null,
+            .info = .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 },
+        };
+        self.logo_widgets.append(self.allocator, logo_widget) catch |err| {
+            std.log.err("KidulWM: failed to append logo widget: {}", .{err});
+            logo_tree.node.destroy();
         };
         const drives_tree = self.root.createSceneTree() catch |err| {
             std.log.err("KidulWM: failed to create drives widget scene tree: {}", .{err});
@@ -582,6 +622,13 @@ pub const Tray = struct {
                 break;
             }
         }
+        for (self.logo_widgets.items, 0..) |*w, i| {
+            if (w.output_ctx == output_ctx) {
+                self.destroyLogoWidget(w);
+                _ = self.logo_widgets.orderedRemove(i);
+                break;
+            }
+        }
         for (self.drives_widgets.items, 0..) |*w, i| {
             if (w.output_ctx == output_ctx) {
                 self.destroyDrivesWidget(w);
@@ -630,6 +677,14 @@ pub const Tray = struct {
     }
 
     fn destroyGaugeWidget(_: *Self, widget: *PerOutputGauge) void {
+        if (widget.scene_buffer) |sb| sb.node.destroy();
+        if (widget.buffer) |buf| wlr.Buffer.drop(buf);
+        widget.tree.node.destroy();
+        widget.scene_buffer = null;
+        widget.buffer = null;
+    }
+
+    fn destroyLogoWidget(_: *Self, widget: *PerOutputLogo) void {
         if (widget.scene_buffer) |sb| sb.node.destroy();
         if (widget.buffer) |buf| wlr.Buffer.drop(buf);
         widget.tree.node.destroy();
@@ -1106,6 +1161,14 @@ pub const Tray = struct {
             self.drawGaugeWidget(gauge_widget);
         }
 
+        // Draw the KSD logo at the bottom of the left peek. Static:
+        // redraws only when layout/theme/scale change — zero idle cost.
+        self.ensureLogoSurface();
+        for (self.logo_widgets.items) |*logo_widget| {
+            logo_widget.info = self.host.output_info(self.host.ctx, logoWidgetIndex(self, logo_widget));
+            self.drawLogoWidget(logo_widget);
+        }
+
         // Draw drives widget below gauges.
         for (self.drives_widgets.items) |*drives_widget| {
             drives_widget.info = self.host.output_info(self.host.ctx, drivesWidgetIndex(self, drives_widget));
@@ -1473,6 +1536,13 @@ pub const Tray = struct {
 
     fn gaugeWidgetIndex(self: *const Self, widget: *PerOutputGauge) usize {
         for (self.gauge_widgets.items, 0..) |*w, i| {
+            if (w == widget) return i;
+        }
+        return 0;
+    }
+
+    fn logoWidgetIndex(self: *const Self, widget: *PerOutputLogo) usize {
+        for (self.logo_widgets.items, 0..) |*w, i| {
             if (w == widget) return i;
         }
         return 0;
@@ -2159,6 +2229,13 @@ pub const Tray = struct {
             self.toggleMediaCard();
             return true;
         }
+        // Click on the KSD logo (bottom-left peek) toggles the tray — the
+        // same door as the SW key and IPC tray_toggle. Cheap to wire now;
+        // it will open the future CFC'd tray through the same toggle().
+        if (self.pointInsideLogoWidget(px, py)) {
+            self.toggle();
+            return true;
+        }
         // Gauges are pure telemetry display — no click actions
         // (Barticus law 2026-09-15: the cauldron must NOT toggle the tray).
         // Click on a drive pill navigates kfiles to that mount.
@@ -2665,6 +2742,137 @@ pub const Tray = struct {
         widget.scene_buffer = sb;
         widget.tree.node.setPosition(pill_x, pill_y);
         widget.tree.node.raiseToTop();
+    }
+
+    /// Load the KSD logo mask once (first frame it is needed) and keep it
+    /// for the tray's lifetime. LOW-POWER LAW (Barticus 2026-09-15): the
+    /// logo is a static image — no polling, no timers, no animation. It
+    /// repaints only when its layout box, scale, or theme generation
+    /// changes, exactly like the other static peek widgets.
+    fn ensureLogoSurface(self: *Self) void {
+        if (self.logo_surface != null) return;
+        const png = @embedFile("assets/ksd_logo_mask.png");
+        const fd = std.posix.memfd_create("ksd_logo", 0) catch return;
+        defer _ = std.c.close(fd);
+        _ = std.c.ftruncate(fd, @intCast(png.len));
+        const mem = std.c.mmap(null, png.len, std.os.linux.PROT{ .READ = true, .WRITE = true }, .{ .TYPE = .SHARED }, fd, 0);
+        const MAP_FAILED: *anyopaque = @ptrFromInt(std.math.maxInt(usize));
+        if (mem == MAP_FAILED) return;
+        defer _ = std.c.munmap(@alignCast(mem), png.len);
+        const mem_slice = @as([*]u8, @ptrCast(mem))[0..png.len];
+        @memcpy(mem_slice, png);
+        var path_buf: [64]u8 = undefined;
+        const path = std.fmt.bufPrintZ(&path_buf, "/proc/self/fd/{d}", .{fd}) catch return;
+        const surf = c.cairo_image_surface_create_from_png(path.ptr);
+        if (surf == null) return;
+        if (c.cairo_surface_status(surf) != c.CAIRO_STATUS_SUCCESS) {
+            c.cairo_surface_destroy(surf);
+            return;
+        }
+        self.logo_surface = surf;
+        self.logo_w = c.cairo_image_surface_get_width(surf);
+        self.logo_h = c.cairo_image_surface_get_height(surf);
+    }
+
+    fn drawLogoWidget(self: *Self, widget: *PerOutputLogo) void {
+        const full_box = self.host.left_peek_box(self.host.ctx, logoWidgetIndex(self, widget)) orelse return;
+        if (full_box.width <= 0 or full_box.height <= 0) return;
+        const surf = self.logo_surface orelse return;
+        if (self.logo_w <= 0 or self.logo_h <= 0) return;
+
+        const style_ = self.host.theme.style;
+        const theme_gen = self.host.theme.generation;
+        const scale = widget.info.scale;
+
+        // Fit the logo to the peek width and center it at the bottom.
+        const margin: i32 = @max(4, @as(i32, @intFromFloat(8.0 * @as(f64, scale))));
+        const avail_w: f64 = @floatFromInt(full_box.width - 2 * margin);
+        const avail_h: f64 = @floatFromInt(@min(full_box.width, @max(24, full_box.height)));
+        const src_w: f64 = @floatFromInt(self.logo_w);
+        const src_h: f64 = @floatFromInt(self.logo_h);
+        const fit = @min(avail_w / src_w, avail_h / src_h);
+        const draw_w: i32 = @max(1, @as(i32, @intFromFloat(@round(src_w * fit))));
+        const draw_h: i32 = @max(1, @as(i32, @intFromFloat(@round(src_h * fit))));
+        const bx = full_box.x + @divTrunc(full_box.width - draw_w, 2);
+        const by = full_box.y + full_box.height - draw_h - margin;
+
+        const redraw = widget.scene_buffer == null or
+            widget.last_w != draw_w or
+            widget.last_h != draw_h or
+            widget.last_x != bx or
+            widget.last_y != by or
+            widget.last_scale != scale or
+            widget.last_theme_generation != theme_gen;
+
+        if (!redraw) {
+            widget.tree.node.setPosition(bx, by);
+            widget.tree.node.raiseToTop();
+            return;
+        }
+
+        widget.last_w = draw_w;
+        widget.last_h = draw_h;
+        widget.last_x = bx;
+        widget.last_y = by;
+        widget.click_box = .{ .x = bx, .y = by, .width = @intCast(draw_w), .height = @intCast(draw_h) };
+        widget.last_scale = scale;
+        widget.last_theme_generation = theme_gen;
+
+        const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(draw_w)) * scale));
+        const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(draw_h)) * scale));
+        const stride = c.cairo_format_stride_for_width(c.CAIRO_FORMAT_ARGB32, dev_w);
+        if (stride <= 0) return;
+        const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(dev_h));
+        const temp = self.allocator.alloc(u8, buf_size) catch return;
+        defer self.allocator.free(temp);
+        @memset(temp, 0);
+
+        const surface = c.cairo_image_surface_create_for_data(temp.ptr, c.CAIRO_FORMAT_ARGB32, dev_w, dev_h, stride);
+        defer c.cairo_surface_destroy(surface);
+        const cr = c.cairo_create(surface) orelse return;
+        defer c.cairo_destroy(cr);
+
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
+        c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        c.cairo_paint(cr);
+        c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
+
+        // Tint the alpha mask with the theme border color (white of the
+        // source became transparent in the mask; black became the glyph,
+        // so the visible ink IS the border color — per the asset law).
+        const bc = style_.color_border.toF64();
+        c.cairo_scale(cr, @as(f64, @floatFromInt(dev_w)) / src_w, @as(f64, @floatFromInt(dev_h)) / src_h);
+        c.cairo_set_source_rgba(cr, bc[0], bc[1], bc[2], 0.9);
+        c.cairo_mask_surface(cr, surf, 0.0, 0.0);
+
+        const DataBuffer = @import("../render/buffer.zig").DataBuffer;
+        const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch return;
+        if (widget.buffer) |old| wlr.Buffer.drop(old);
+        widget.buffer = buffer;
+        if (widget.scene_buffer) |old| old.node.destroy();
+        const sb = widget.tree.createSceneBuffer(buffer) catch |err| {
+            std.log.err("KidulWM: failed to create logo scene buffer: {}", .{err});
+            wlr.Buffer.drop(buffer);
+            widget.buffer = null;
+            return;
+        };
+        sb.setDestSize(draw_w, draw_h);
+        widget.scene_buffer = sb;
+        widget.tree.node.setPosition(bx, by);
+        widget.tree.node.raiseToTop();
+    }
+
+    fn pointInsideLogoWidget(self: *const Self, px: f64, py: f64) bool {
+        for (self.logo_widgets.items) |w| {
+            if (w.click_box.width <= 0 or w.click_box.height <= 0) continue;
+            const b = w.click_box;
+            const oh: i32 = widget_hit_overhang;
+            if (px >= @as(f64, @floatFromInt(b.x - oh)) and
+                px < @as(f64, @floatFromInt(b.x + @as(i32, @intCast(b.width)) + oh)) and
+                py >= @as(f64, @floatFromInt(b.y - oh)) and
+                py < @as(f64, @floatFromInt(b.y + @as(i32, @intCast(b.height)) + oh))) return true;
+        }
+        return false;
     }
 
     fn drawGaugeWidget(self: *Self, widget: *PerOutputGauge) void {
