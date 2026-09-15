@@ -2359,6 +2359,9 @@ pub const Server = struct {
         }
         if (self.seat.pointer_state.focused_surface != null) {
             self.seat.pointerNotifyClearFocus();
+            // No client under the pointer — re-assert the default cursor
+            // or the last client's image (e.g. a text field's ibeam) sticks.
+            self.cursor.setXcursor(self.xcursor_manager, "left_ptr");
         }
     }
 
@@ -2544,8 +2547,31 @@ pub const Server = struct {
                     (output.deck.empty_slot == .after_last and output.deck.slides.items.len > 0);
                 const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < output.deck.slides.items.len) or
                     (output.deck.empty_slot == .before_first and output.deck.slides.items.len > 0);
+                // Slide count on each side of the current slide — printed
+                // at the screen edge next to the EXIT signs.
+                // LAW: guard the empty deck — at first layout slides.len==0
+                // and empty_slot==.none, and the unchecked
+                // (len - focused_index - 1) underflows usize (boot crash,
+                // 2026-09-15).
+                const n_slides = output.deck.slides.items.len;
+                const left_count: u32 = if (n_slides == 0)
+                    0
+                else if (output.deck.empty_slot == .after_last)
+                    @intCast(n_slides)
+                else if (output.deck.empty_slot == .before_first)
+                    0
+                else
+                    @intCast(output.deck.focused_index);
+                const right_count: u32 = if (n_slides == 0)
+                    0
+                else if (output.deck.empty_slot == .before_first)
+                    @intCast(n_slides)
+                else if (output.deck.empty_slot == .after_last)
+                    0
+                else
+                    @intCast(n_slides - output.deck.focused_index - 1);
                 sg.updateOutput(width, height, scale);
-                sg.setNeighbors(has_left, has_right);
+                sg.setNeighbors(has_left, has_right, left_count, right_count);
             }
 
             if (output.deck.slides.items.len == 0) continue;
@@ -2554,7 +2580,7 @@ pub const Server = struct {
             // slides' scene trees are REPARENTED into the card with tile
             // geometry — the row layout below must not touch them.
             if (output.deck.overviewSlideOpen() and output.overview.isOpen()) {
-                if (self.spyglass) |sg| sg.setNeighbors(false, false);
+                if (self.spyglass) |sg| sg.setNeighbors(false, false, 0, 0);
                 continue;
             }
 
