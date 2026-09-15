@@ -1190,7 +1190,8 @@ pub const MediaWidget = struct {
     }
 
     /// Return the focused library entry, or null when out of range.
-    /// Used by the music-OK handler to copy title + artist into tray.media.
+    /// Used by the music-OK handler to copy title + artist into the
+    /// server-owned media player (Server.media_player.cached).
     pub fn selectedResultEntry(self: *const MediaWidget) ?LibraryEntry {
         const library = getLibrary(self.category);
         if (self.selected_result >= library.len) return null;

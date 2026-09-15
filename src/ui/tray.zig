@@ -143,7 +143,6 @@ const PerOutputGauge = struct {
     last_x: i32 = 0,
     last_y: i32 = 0,
     click_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
-    cauldron_box: wlr.Box = .{ .x = 0, .y = 0, .width = 0, .height = 0 },
     last_scale: f32 = 0.0,
     last_theme_generation: u32 = 0,
 };
@@ -658,11 +657,9 @@ pub const Tray = struct {
         self.last_update_us = 0;
     }
 
-    /// kidulButton door. This is the single toggle shared by both doors:
-    /// the SW (Super/Mod4) crosspad key and the bottom-right-peek
-    /// kidulButton (alias "rkt-button"). In the pre-cut codebase the
-    /// kidulButton's pointer hit zone is the cauldron click path; the CFC
-    /// cut gives it a dedicated logo hit zone at the bottom of the peek.
+    /// kidulButton door. This is the single toggle shared by the doors:
+    /// the SW (Super/Mod4) crosspad key and the IPC tray_toggle tag.
+    /// (The cauldron pointer hit zone is gone — Barticus law 2026-09-15.)
     pub fn toggle(self: *Self) void {
         self.open = !self.open;
         self.pinned = self.open;
@@ -2084,8 +2081,8 @@ pub const Tray = struct {
         }
 
         // Tray hover: while the tray is open the whole panel keeps it open.
-        // There is no hover-open hit zone — the tray opens via the RAM
-        // cauldron click or the keyboard toggle path only.
+        // There is no hover-open hit zone — the tray opens via the
+        // keyboard toggle path or IPC tray_toggle only.
         var inside_panel = false;
         var new_hover: ?usize = null;
         if (self.open or self.pinned or self.tray_anim.value > 0.01) {
@@ -2714,10 +2711,6 @@ pub const Tray = struct {
         widget.click_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
         widget.last_scale = scale;
         widget.last_theme_generation = theme_gen;
-
-        // Clickable cauldron box: the RAM cauldron area in the left-peek gauge
-        // pill is the pointer tray toggle (keyboard paths also toggle).
-        widget.cauldron_box = .{ .x = pill_x, .y = pill_y, .width = @intCast(pill_w), .height = @intCast(pill_h) };
 
         const dev_w: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_w)) * scale));
         const dev_h: i32 = @intFromFloat(@ceil(@as(f32, @floatFromInt(pill_h)) * scale));
