@@ -2330,45 +2330,35 @@ pub const Server = struct {
         }
     }
 
-    /// POINTER-ENTER FIX (2026-09-12): the compositor called
-    /// pointerNotifyMotion but NEVER pointerNotifyEnter — wlroots drops
-    /// pointer events with no focused pointer surface, so clicks/motion
-    /// died silently on every client (keyboard worked only because
-    /// keyboardNotifyEnter was wired). Resolve the scene node under the
-    /// cursor to its wlr.Surface and enter it; guard on surface identity
-    /// so we don't spam enter/leave per motion event.
+    /// POINTER-ENTER FIX v2 (2026-09-15): never hit-test the GLOBAL scene
+    /// tree for pointer-enter. The chrome overlay is a raw DataBuffer raised
+    /// above every window at the same coords; a global node.at() returns the
+    /// chrome buffer first, and SceneSurface.tryFromBuffer() on it is null —
+    /// so pointer enter silently never happened and wlroots dropped every
+    /// button/axis event (BTN-NOTIFY serial=0 focused=false flood). Walk the
+    /// per-window trees instead (they contain only the client xdg surface;
+    /// chrome lives in overlay_tree, outside them), mirroring focusAtCursor.
     pub fn pointerEnterAtCursor(self: *Server) void {
         self.syncCursorMirror();
-        var nx: f64 = undefined;
-        var ny: f64 = undefined;
-        const node = self.scene.tree.node.at(self.cursor_x, self.cursor_y, &nx, &ny);
-        if (node == null or node.?.type != .buffer) {
-            // PTR-MISS probe (rate-limited via logPointerDiagnostic): global
-            // node.at() failed over a window — compare against the per-window
-            // hit focusAtCursor uses, to prove the two trees disagree.
-            var wit = self.windows.iterator(.forward);
-            while (wit.next()) |window| {
-                const wnode = &window.scene_tree.node;
-                if (!window.toplevel.base.surface.mapped or !wnode.enabled) continue;
-                var wnx: f64 = undefined;
-                var wny: f64 = undefined;
-                if (wnode.at(self.cursor_x, self.cursor_y, &wnx, &wny)) |hit| {
-                    std.log.info("KidulWM: PTR-MISS id={d} x={d:.0} y={d:.0} global=null window-hit={*} wnx={d:.0} wny={d:.0}", .{ window.id, self.cursor_x, self.cursor_y, hit, wnx, wny });
-                    self.logPointerDiagnostic("miss", self.cursor_x, self.cursor_y);
-                    break;
-                }
-            }
-            if (self.seat.pointer_state.focused_surface != null) {
-                self.seat.pointerNotifyClearFocus();
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            const wnode = &window.scene_tree.node;
+            if (!window.toplevel.base.surface.mapped or !wnode.enabled) continue;
+            var nx: f64 = undefined;
+            var ny: f64 = undefined;
+            const node = wnode.at(self.cursor_x, self.cursor_y, &nx, &ny) orelse continue;
+            if (node.type != .buffer) continue;
+            const scene_buffer: *wlr.SceneBuffer = @fieldParentPtr("node", node);
+            const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse continue;
+            const surface = scene_surface.surface;
+            if (self.seat.pointer_state.focused_surface != surface) {
+                std.log.info("KidulWM: PTR-ENTER id={d} surface={*} nx={d:.0} ny={d:.0}", .{ window.id, surface, nx, ny });
+                self.seat.pointerNotifyEnter(surface, nx, ny);
             }
             return;
         }
-        const scene_buffer: *wlr.SceneBuffer = @fieldParentPtr("node", node.?);
-        const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse return;
-        const surface = scene_surface.surface;
-        if (self.seat.pointer_state.focused_surface != surface) {
-            std.log.info("KidulWM: PTR-ENTER surface={*} nx={d:.0} ny={d:.0}", .{ surface, nx, ny });
-            self.seat.pointerNotifyEnter(surface, nx, ny);
+        if (self.seat.pointer_state.focused_surface != null) {
+            self.seat.pointerNotifyClearFocus();
         }
     }
 
