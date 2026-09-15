@@ -80,9 +80,15 @@ const PointerDevice = struct {
     fn handleMotion(listener: *wl.Listener(*wlr.Pointer.event.Motion), event: *wlr.Pointer.event.Motion) void {
         const self: *PointerDevice = @fieldParentPtr("motion", listener);
         const server = self.manager.server;
-        server.cursor_x += event.delta_x;
-        server.cursor_y += event.delta_y;
         server.cursor.move(null, event.delta_x, event.delta_y);
+        // SINGLE CURSOR TRUTH (2026-09-15): never accumulate deltas into a
+        // parallel cursor_x/cursor_y — wlroots clamps the real cursor to the
+        // output layout, the parallel copies didn't, and after any warp the
+        // two diverged permanently (negative coords → node.at() always missed
+        // → zero pointer enters → dead clicks/scroll/hover system-wide while
+        // keyboard kept working). Read the clamped truth back from wlroots.
+        server.cursor_x = server.cursor.x;
+        server.cursor_y = server.cursor.y;
         if (server.handlePointerMove(server.cursor_x, server.cursor_y)) {
             server.logPointerDiagnostic("motion", server.cursor_x, server.cursor_y);
             return;
@@ -100,9 +106,10 @@ const PointerDevice = struct {
         const server = self.manager.server;
         var box: wlr.Box = undefined;
         server.output_layout.getBox(null, &box);
-        server.cursor_x = event.x * @as(f64, @floatFromInt(box.width));
-        server.cursor_y = event.y * @as(f64, @floatFromInt(box.height));
-        server.cursor.warpAbsolute(null, server.cursor_x, server.cursor_y);
+        server.cursor.warpAbsolute(null, event.x * @as(f64, @floatFromInt(box.width)), event.y * @as(f64, @floatFromInt(box.height)));
+        // Same law as handleMotion: wlroots owns the position, we mirror it.
+        server.cursor_x = server.cursor.x;
+        server.cursor_y = server.cursor.y;
         if (server.handlePointerMove(server.cursor_x, server.cursor_y)) {
             server.logPointerDiagnostic("abs", server.cursor_x, server.cursor_y);
             return;

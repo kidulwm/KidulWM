@@ -2302,7 +2302,18 @@ pub const Server = struct {
         self.syncDeckFocus();
     }
 
+    /// Mirror wlroots' clamped cursor position into the legacy cursor_x/y
+    /// fields. SINGLE CURSOR TRUTH (2026-09-15): those fields are a read-only
+    /// mirror for the many hit-test call sites; the wlr.Cursor is the only
+    /// writer of record. Every cursor-consuming entry point syncs first so a
+    /// missed mirror update can never again drift hit-testing off the screen.
+    pub fn syncCursorMirror(self: *Server) void {
+        self.cursor_x = self.cursor.x;
+        self.cursor_y = self.cursor.y;
+    }
+
     pub fn focusAtCursor(self: *Server) void {
+        self.syncCursorMirror();
         const deck = self.currentDeck();
         if (deck.empty_slot != .none) return;
         var it = self.windows.iterator(.forward);
@@ -2327,6 +2338,7 @@ pub const Server = struct {
     /// cursor to its wlr.Surface and enter it; guard on surface identity
     /// so we don't spam enter/leave per motion event.
     pub fn pointerEnterAtCursor(self: *Server) void {
+        self.syncCursorMirror();
         var nx: f64 = undefined;
         var ny: f64 = undefined;
         const node = self.scene.tree.node.at(self.cursor_x, self.cursor_y, &nx, &ny);
@@ -2367,6 +2379,7 @@ pub const Server = struct {
     /// the old focus — no flapping on bare wallpaper).
     pub fn focusFollowsCursor(self: *Server) void {
         if (self.suppress_focus_follow) return;
+        self.syncCursorMirror();
         var cursor_output: ?*Output = null;
         var oit = self.outputs.iterator(.forward);
         while (oit.next()) |output| {
@@ -3562,21 +3575,29 @@ pub const Server = struct {
         linux.exit(127);
     }
 
-    pub fn handlePointerMove(self: *Server, x: f64, y: f64) bool {
+    pub fn handlePointerMove(self: *Server, _: f64, _: f64) bool {
+        // Params ignored: wlroots owns the cursor; hit-test the clamped truth.
+        self.syncCursorMirror();
+        const cx = self.cursor_x;
+        const cy = self.cursor_y;
         if (self.spyglass) |sg| {
-            if (sg.handlePointerMove(x, y)) {
-                std.log.info("KidulWM: PTR-CLAIM spyglass x={d:.0} y={d:.0}", .{ x, y });
+            if (sg.handlePointerMove(cx, cy)) {
+                std.log.info("KidulWM: PTR-CLAIM spyglass x={d:.0} y={d:.0}", .{ cx, cy });
                 return true;
             }
         }
-        if (self.tray.handlePointerMove(x, y)) {
-            std.log.info("KidulWM: PTR-CLAIM tray x={d:.0} y={d:.0}", .{ x, y });
+        if (self.tray.handlePointerMove(cx, cy)) {
+            std.log.info("KidulWM: PTR-CLAIM tray x={d:.0} y={d:.0}", .{ cx, cy });
             return true;
         }
         return false;
     }
 
-    pub fn handlePointerClick(self: *Server, x: f64, y: f64) bool {
+    pub fn handlePointerClick(self: *Server, _: f64, _: f64) bool {
+        // Params ignored: wlroots owns the cursor; hit-test the clamped truth.
+        self.syncCursorMirror();
+        const x = self.cursor_x;
+        const y = self.cursor_y;
         // Sentinel overview slide open: click a tile to focus that slide
         // (unpark if needed), or click empty card space to close.
         const deck = self.currentDeck();
@@ -3624,8 +3645,9 @@ pub const Server = struct {
         }
     }
 
-    pub fn handlePointerAxis(self: *Server, x: f64, y: f64, delta: f64) bool {
-        return self.tray.handleAxis(x, y, delta);
+    pub fn handlePointerAxis(self: *Server, _: f64, _: f64, delta: f64) bool {
+        self.syncCursorMirror();
+        return self.tray.handleAxis(self.cursor_x, self.cursor_y, delta);
     }
 
     pub fn logPointerDiagnostic(self: *Server, tag: []const u8, x: f64, y: f64) void {
