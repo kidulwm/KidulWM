@@ -58,6 +58,17 @@ pub fn refresh(server: *Server, output: *Output) void {
         output.media_slide.seen_player_generation = widget.player_generation;
         teardown(server, output);
     }
+    // FREEZE PROBE (2026-09-16, third second-video wedge): heartbeat at
+    // every refresh entry — the watchdog tails the last session.log line,
+    // so this survives a hard GPU hang and tells us the exact gen/serial/
+    // surface the compositor was presenting when it died.
+    std.log.info("[media] refresh tick: gen={d} seen={d} serial={d} va={} open={}", .{
+        widget.player_generation,
+        output.media_slide.seen_player_generation,
+        widget.player.display_serial,
+        widget.player.currentVaFrame() != null,
+        output.media_slide.isOpen(),
+    });
 
     // ── ZERO-COPY DMABUF BRANCH ─────────────────────────────────────
     // If the player is in hw zero-copy mode, import the displayed VA
@@ -249,6 +260,10 @@ pub fn dmabufRefresh(output: *Output, va_frame: *kmedia_lib.av.AVFrame) bool {
     }
 
     const fctx: *av.AVHWFramesContext = @ptrCast(@alignCast(va_frame.hw_frames_ctx.*.data));
+    // FREEZE PROBE: log every cache MISS with the surface about to be
+    // exported/imported — if the wedge happens mid-import, the last
+    // miss line names the exact poison surface + gen.
+    std.log.info("[media] dmabuf MISS: surface=0x{x} gen={d} miss_count={d}", .{ surface_id, gen, output.media_slide.present_miss });
     const devctx: *av.AVHWDeviceContext = @ptrCast(@alignCast(fctx.device_ref.*.data));
     const dctx: *av.AVVAAPIDeviceContext = @ptrCast(@alignCast(devctx.hwctx));
     const va_display: av.VADisplay = dctx.display;
@@ -398,6 +413,22 @@ pub fn dmabufRefresh(output: *Output, va_frame: *kmedia_lib.av.AVFrame) bool {
 /// so the last frame does NOT linger as a ghost behind the wall and
 /// other windows. Safe to call when already torn down.
 pub fn teardown(server: *Server, output: *Output) void {
+    // FREEZE PROBE (2026-09-16): teardown is the last safe point before a
+    // gen transition re-arms the import path — its presence/absence in the
+    // post-mortem log splits "teardown never ran" from "teardown ran and
+    // the fresh import still wedged".
+    std.log.info("[media] teardown: gen={d} seen={d} had_node={} cache_filled={d}", .{
+        output.media_slide.widget.player_generation,
+        output.media_slide.seen_player_generation,
+        output.media_slide.video_buffer != null,
+        blk: {
+            var n: usize = 0;
+            for (&output.media_slide.dmabuf_cache) |*e| {
+                if (e.buf != null) n += 1;
+            }
+            break :blk n;
+        },
+    });
     // SCENE LOCK LAW: callers must hold scene_mutex (mediaSlideClose
     // on the IPC thread; handleFrame on the render thread; Output.deinit
     // on the main thread at teardown). Never lock here — nested.
