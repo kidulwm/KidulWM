@@ -2,6 +2,39 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
+## 2026-09-15 VERDICT 21: dead click/scroll AGAIN after verdict-20 — the
+CHROME BUFFER was eating the pointer (dd9709e, deployed 79e1900b).
+Verdict-20 fixed the cursor coords (passes now sane, clamped, over the
+window), but the SAME log still showed zero PTR-ENTER, zero PTR-MISS,
+all BTN-NOTIFY serial=0 focused=false. The two probes being absent
+together was the fingerprint: pointerEnterAtCursor was returning on the
+ONE branch with no log line — the tryFromBuffer orelse.
+ROOT CAUSE: the chrome overlay is a raw DataBuffer scene buffer
+(window.zig updateChrome: createSceneBuffer + setDestSize(w,h)), placed
+at the SAME coords as the client surface and raised to the top of
+overlay_tree, which applyLayout raises ABOVE all windows. Global
+scene.tree.node.at() walks top-down → first buffer under the cursor
+anywhere over a window is ALWAYS the chrome buffer. Chrome is not an
+xdg surface → wlr.SceneSurface.tryFromBuffer() = null → silent return,
+no pointer enter ever, wlroots drops all buttons/axis. Keyboard and
+click-FOCUS sailed through because focusAtCursor walks the PER-WINDOW
+trees, which never contain chrome — that asymmetry named the culprit.
+FIX: pointerEnterAtCursor no longer hit-tests the global scene at all;
+it walks per-window trees exactly like focusAtCursor, resolving the hit
+buffer to its xdg surface. PTR-MISS probe deleted (its diagnostic
+branch is gone; PTR-ENTER log kept, now with window id).
+LAW (ksd-input-claim-law): compositor-drawn scene buffers that share
+geometry with client surfaces poison every global hit-test that expects
+a client surface. Pointer-enter must walk per-window trees; the global
+tree is for RENDER order, not input resolution.
+Also noted same session: compositor hot-loop on Ghostty id=5 (6.5k
+handleCommit/CHROME cache-miss floods, 75% CPU, fans) — updateChrome
+cache-miss diag shows identical old/new keys, cache-miss culprit field
+still unfound; orphaned dev-tree ksound pid 7014 likely behind the
+stale media "playing" dot (media slide closed, no player alive).
+REPRO after reload: hover page → PTR-ENTER id=N; click → BTN-NOTIFY
+serial!=0 focused=true; wheel scrolls; browser clicks/links work.
+
 ## 2026-09-15 VERDICT 20: dead click/scroll/hover SYSTEM-WIDE — split-brain
 cursor bookkeeping, FIXED (6d84450, deployed ecf973bb). The 'browser can
 type but not click/scroll/backspace' hunt ended one layer down, in KidulWM,

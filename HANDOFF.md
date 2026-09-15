@@ -1,6 +1,38 @@
 # KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
 
 ---
+## ADDENDUM — Sep 15 2026 (CHROME BUFFER ATE THE POINTER — verdict 21)
+
+/usr/local/bin/kidulwm = sha256 79e1900b… = main dd9709e (GPG-signed B&B),
+built ReleaseSafe, deployed ~13:20 AEST via rename swap. Live at next
+session start. Backup: /usr/local/bin/kidulwm.bak-ptr-chrome.
+Full narrative: CENSUS-NOTES.md VERDICT 21.
+
+Root cause of 'browser still won't click/scroll after the single-cursor
+fix': pointerEnterAtCursor hit-tested the GLOBAL scene tree. The chrome
+overlay is a raw DataBuffer scene buffer at the same coords as the
+client surface, raised above all windows — node.at() always returned
+the chrome buffer, SceneSurface.tryFromBuffer() = null, silent return,
+zero pointer enters, wlroots dropped every button/axis event. Keyboard
++ click-focus worked because focusAtCursor walks per-window trees
+(chrome lives in overlay_tree, outside them). Fix: pointerEnterAtCursor
+now walks per-window trees identically. PTR-MISS probe deleted with the
+dead branch.
+
+Same-session sightings (open, not fixed here):
+- Fans: compositor hot-loop on focused Ghostty — 6.5k handleCommit +
+  CHROME cache-miss floods (identical old/new keys in the diag line),
+  75% CPU. updateChrome cache-miss culprit field still unnamed.
+- Media 'playing' dot: stale. No player alive, media slide closed;
+  orphaned dev-tree ksound pid 7014 still holds /tmp/kmedia-timing.log.
+- Browser address bar: left/right arrows never reach the shell log
+  while focused=address — suspected shell-side dispatch gap
+  (kidul-browser repo), needs a repro there.
+
+REPRO after reload: hover page → PTR-ENTER id=N; click → serial!=0
+focused=true; wheel scrolls; Backspace/arrows edit fields.
+
+---
 ## ADDENDUM — Sep 15 2026 (SINGLE CURSOR TRUTH — system-wide dead pointer fixed)
 
 /usr/local/bin/kidulwm = md5 ecf973bb… = main 6d84450 (GPG-signed B&B),
