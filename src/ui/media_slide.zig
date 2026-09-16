@@ -6,9 +6,10 @@ const media_mod = @import("media.zig");
 const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
 /// Compositor-owned media player slide: one scene tree per output holding
-/// the Cairo-rendered media UI as a single buffer. Lives on the virtual
-/// before_first deck slot (sibling of the after_last overview sentinel).
-/// Not a window, never parked, INPUT LAW applies while open.
+/// the Cairo-rendered media UI as a single buffer. The slide is a REAL
+/// deck.slides entry (kind .media_player, TASKCARD-3 stage 3) — it walks,
+/// peeks, parks and quits through the stock paths; this struct carries only
+/// the render state (tree + buffers + repaint guards) and the widget.
 pub const MediaSlide = struct {
     tree: ?*wlr.SceneTree = null,
     card_buffer: ?*wlr.SceneBuffer = null,
@@ -147,8 +148,9 @@ pub const MediaSlide = struct {
                 self.widget.ensureStopped();
                 server.mediaVideoTeardown(output);
                 server.disarmPlayTimer();
-                // Player ended — refresh the card so the slide shrinks back
-                // from fullscreen to its slot rect (media-collapse).
+                // Player ended — the video slide quits (deck settles back
+                // onto the player) and the card repaints.
+                server.videoSlideClose();
                 self.card_dirty = true; // content changed: card must repaint
                 server.mediaSlideRefresh(output);
             } else {

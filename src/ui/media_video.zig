@@ -45,8 +45,9 @@ pub fn refresh(server: *Server, output: *Output) void {
     }
     const deck = &output.deck;
     // Video plays fullscreen (playback.md): the letterbox target is the
-    // full output rect while the player is active.
-    const target = deck.mediaSlideTarget(true);
+    // .video slide's rect — fullscreen at spawn, its windowed rect mid-row
+    // while walked away from (A4 plays ball via the stock path).
+    const target = if (deck.findKind(.video)) |vidx| deck.targetForSlide(vidx) else deck.targetForSlide(0);
 
     // GENERATION GUARD (structural): the dmabuf cache is keyed on
     // (surface, gen), but the live video_buffer node may still point

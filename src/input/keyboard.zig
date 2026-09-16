@@ -119,15 +119,8 @@ const KeyboardDevice = struct {
         ) > 0;
 
         if (mod4_active or ctrl_active) {
-            // Media slide owns Ctrl+Q (system quit) while open on the
-            // focused deck: closing the slide IS closing the focused surface.
-            // The media slide is a normal deck slide (media-is-a-slide.md) —
-            // no sentinel, just the deck flag.
-            if (server.currentDeckPub().media_slide_open and ctrl_active and base_sym == xkb.Keysym.q) {
-                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "media_slide_ctrl_q");
-                server.mediaSlideToggle();
-                return;
-            }
+            // The media PLAYER is a real deck slide now (TASKCARD-3):
+            // Ctrl+Q falls through to close_focused like any slide.
             const action = server.keybinds.match(mod4_active, ctrl_active, base_sym);
             if (action) |a| {
                 server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, @tagName(a));
@@ -177,11 +170,11 @@ const KeyboardDevice = struct {
                 },
             }
         }
-        // Media slide owns keys while open on the focused deck (a normal
-        // deck slide per media-is-a-slide.md). INPUT LAW: ↑↓=focus, ←→=move,
-        // Enter=apply, Esc=back. NOTHING SWALLOWED: unconsumed keys fall
-        // through to normal routing (card phase 2).
-        if (server.currentDeckPub().media_slide_open) {
+        // Media player slide owns keys while focused on this deck (a real
+        // deck slide, TASKCARD-3). INPUT LAW: ↑↓=focus, ←→=move, Enter=apply,
+        // Esc=back. NOTHING SWALLOWED: unconsumed keys fall through to
+        // normal routing.
+        if (server.currentDeckPub().findKind(.media_player) != null) {
             if (server.mediaSlideKey(sym)) return;
             // fall through — no swallow
         }
@@ -191,7 +184,9 @@ const KeyboardDevice = struct {
     fn handleAction(server: *Server, action: @import("../config/keybinds.zig").Action) bool {
         switch (action) {
             .spawn => |cmd| {
-                server.spawnCommand(cmd);
+                // EPHEMERAL LAW: a spawn while the home slide holds this row
+                // self-ejects it (successful launch = home destroys itself).
+                server.homeSlideLaunch(cmd);
                 return true;
             },
             .focus_next => {
@@ -210,9 +205,9 @@ const KeyboardDevice = struct {
                 return true;
             },
             .media_card_toggle => {
-                // Same target for now (stage 1): focus/spawn the home slide.
-                // The real media readout section is a later stage.
-                server.homeSlideFocusOrSpawn();
+                // REDIRECT (TASKCARD-3): focus-or-spawn the media player
+                // slide (a real deck slide).
+                server.mediaSlideFocusOrSpawn();
                 return true;
             },
             .signals_card_toggle => {
@@ -226,13 +221,29 @@ const KeyboardDevice = struct {
                 return true;
             },
             .close_focused => {
-                // A7: the home slide is QUITABLE — the standard quit keybind
-                // closes it like any slide (instead of killing a client) when
-                // focus rests on the home sentinel slot.
+                // Stock quit on the focused slide (A7): compositor-owned
+                // slides destroy themselves through the same door as client
+                // windows — no sentinel bookkeeping.
                 const deck = server.currentDeckPub();
-                if (deck.homeSlideOpen()) {
-                    server.homeSlideClose();
-                    return true;
+                if (deck.empty_slot == .none and deck.focused_index < deck.slides.items.len) {
+                    const slide = deck.slides.items[deck.focused_index];
+                    switch (slide.kind) {
+                        .home => {
+                            server.homeSlideClose();
+                            return true;
+                        },
+                        .media_player => {
+                            server.mediaSlideClose();
+                            return true;
+                        },
+                        .video => {
+                            // Quit on the video slide destroys it; the deck
+                            // settles back onto the player naturally.
+                            server.videoSlideClose();
+                            return true;
+                        },
+                        .app => {},
+                    }
                 }
                 if (server.focused_window) |win| {
                     win.toplevel.sendClose();

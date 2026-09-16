@@ -73,11 +73,12 @@ pub const NotificationStore = struct {
     }
 };
 
-/// Compositor-owned tray/home slide (tray-slide birth, stage 1): one scene
-/// tree per output holding the home card. Lives on the virtual before_first
-/// deck slot (sentinel sibling of the after_last overview slide). Not a
-/// client window, never parked, NOT in deck.slides — window-count invariants
-/// stay intact.
+/// Compositor-owned HOME slide content painter (TASKCARD-3 stage 2): one
+/// scene tree per output holding the home card. The home slide is a REAL
+/// deck.slides entry at index 0 (kind .home, ephemeral) — it walks, peeks,
+/// parks and quits through the stock paths; this struct only carries the
+/// render state (tree + buffers + repaint guards), painted at the slide's
+/// layout rect like any slide.
 ///
 /// A1 PROPER SLIDE: real border + background via the STOCK chrome renderer —
 /// the same border/background every focused slide gets. Specialness is the

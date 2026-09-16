@@ -39,7 +39,7 @@ const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
 const media_video = @import("ui/media_video.zig");
 const media_mod = @import("ui/media.zig");
-const spyglass_mod = @import("./ui/spyglass.zig");
+const band_mod = @import("ui/band.zig");
 const keybinds = @import("config/keybinds.zig");
 const c = @cImport({
     @cInclude("stdio.h");
@@ -47,6 +47,40 @@ const c = @cImport({
 
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn unsetenv(name: [*:0]const u8) c_int;
+
+/// Placeholder black surface for the video slide (TASKCARD-3 stage 3):
+/// deck mechanics only — real kmedia/mpv playback wiring is a later card.
+fn renderBlackToBuffer(width: i32, height: i32, scale: u32) ?*wlr.Buffer {
+    if (width <= 0 or height <= 0) return null;
+    const s: i32 = @max(1, @as(i32, @intCast(scale)));
+    const pw: i32 = width * s;
+    const ph: i32 = height * s;
+    const surface = cairo.cairo_image_surface_create(cairo.CAIRO_FORMAT_ARGB32, pw, ph) orelse return null;
+    if (cairo.cairo_surface_status(surface) != cairo.CAIRO_STATUS_SUCCESS) {
+        cairo.cairo_surface_destroy(surface);
+        return null;
+    }
+    const cr = cairo.cairo_create(surface) orelse {
+        cairo.cairo_surface_destroy(surface);
+        return null;
+    };
+    defer cairo.cairo_destroy(cr);
+    cairo.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
+    cairo.cairo_paint(cr);
+    cairo.cairo_surface_flush(surface);
+    const data = cairo.cairo_image_surface_get_data(surface) orelse {
+        cairo.cairo_surface_destroy(surface);
+        return null;
+    };
+    const stride = cairo.cairo_image_surface_get_stride(surface);
+    const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(ph));
+    const buf = DataBuffer.create(data[0..buf_size], pw, ph, stride) catch {
+        cairo.cairo_surface_destroy(surface);
+        return null;
+    };
+    cairo.cairo_surface_destroy(surface);
+    return buf;
+}
 
 fn applyTitleBarEnvironment(show_title_bars: bool) void {
     if (show_title_bars) {
@@ -91,10 +125,18 @@ pub const Output = struct {
     deck: slidedeck.SlideDeck,
     /// Sentinel overview slide for THIS output's deck (per-output by ruling).
     overview: overview_slide_mod.OverviewSlide = .{},
-    /// Sentinel home (tray) slide for THIS output's deck (before_first slot).
-    tray_slide: tray_slide_mod.TraySlide = .{},
-    /// Media player slide (left-end sentinel sibling).
+    /// Home slide content painter state (TASKCARD-3): the slide itself is a
+    /// real deck.slides entry (kind .home); this holds tree + buffers only.
+    home_slide: tray_slide_mod.TraySlide = .{},
+    /// Media player slide content painter state (kind .media_player slide).
     media_slide: media_slide_mod.MediaSlide = .{},
+    /// Fullscreen video slide surface (kind .video slide, spawned right of
+    /// the player on playback start; placeholder black surface for now).
+    video_slide: tray_slide_mod.TraySlide = .{},
+    /// Permanent per-output edge bands (TASKCARD-3 stage 1): EXIT dots +
+    /// counts, one click router, clock painter. Born on output birth, never
+    /// hidden, never focused.
+    band: band_mod.Band = undefined,
     /// Per-output wallpaper scene buffer (fill-contain, no crop). The master
     /// pixel buffer lives on server.background.image_buffer; each output gets
     /// its own scene buffer referencing it, sized to that output's logical
@@ -116,8 +158,10 @@ pub const Output = struct {
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
             .deck = slidedeck.SlideDeck.init(server.allocator),
             .overview = .{},
-            .tray_slide = .{},
+            .home_slide = .{},
             .media_slide = .{},
+            .video_slide = .{},
+            .band = band_mod.Band.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,
         };
@@ -171,7 +215,7 @@ pub const Output = struct {
         // which veiled the whole screen in the wallpaper image whenever an
         // output's wallpaper was (re)created after clients mapped (the
         // "mythical mist" bug, 2026-09-05). Lower it explicitly, then
-        // re-assert overlay-topmost so widgets/spyglass stay visible.
+        // re-assert overlay-topmost so the bands and widgets stay visible.
         scene_buffer.node.lowerToBottom();
         // lowerToBottom puts the wallpaper under the solid bg_rect too —
         // raise it back to sit directly above the background colour.
@@ -224,14 +268,21 @@ pub const Output = struct {
         while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.server.scene_mutex.unlock();
         self.server.mediaVideoTeardown(self);
-        // Home slide dies with the output (its scene tree lives in the
-        // output's render path).
-        if (self.tray_slide.tree) |tree| {
+        // Home/media/video slide surfaces die with the output (their scene
+        // trees live in the output's render path).
+        if (self.home_slide.tree) |tree| {
             tree.node.destroy();
-            self.tray_slide.tree = null;
-            self.tray_slide.card_buffer = null;
-            self.tray_slide.chrome_buffer = null;
+            self.home_slide.tree = null;
+            self.home_slide.card_buffer = null;
+            self.home_slide.chrome_buffer = null;
         }
+        if (self.video_slide.tree) |tree| {
+            tree.node.destroy();
+            self.video_slide.tree = null;
+            self.video_slide.card_buffer = null;
+            self.video_slide.chrome_buffer = null;
+        }
+        self.band.deinit();
     }
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -417,13 +468,20 @@ pub const Server = struct {
     /// MediaWidget (play/pause/next/prev/seek, player_active, cached
     /// metadata).
     media_player: media_mod.MediaWidget,
-    spyglass: ?*spyglass_mod.Spyglass = null,
     // Overview lens: virtual cursor (recency position among unparked minis).
     // The ring node lives per-output (Output.overview_ring) — the lens is
     // per-output by ruling.
     overview_cursor: usize = 0,
     input_device_counts: InputDeviceCounts,
     backend_started: bool = false,
+    /// A5 boot ladder latch: the media PLAYER slide is spawned once, on the
+    /// first output to land.
+    boot_player_spawned: bool = false,
+    /// Output that owns the live video slide (one per session — the player's
+    /// row). Null while no .video slide exists.
+    video_slide_output: ?*Output = null,
+    /// Band clock refresh timer (right-band clock painter, on the minute).
+    band_clock_timer: ?*wl.EventSource = null,
     chrome_style_generation: u32,
 
     /// Last N pressed key events for the bobPI/debug probe. Lock-free enough:
@@ -567,7 +625,7 @@ pub const Server = struct {
             },
             .tray_toggle => {
                 // Remote/IPC target (A6): same as the keybind — focus the
-                // home slide, or spawn one at before_first if none (A7).
+                // home slide if this row has one, else spawn one at index 0.
                 self.homeSlideFocusOrSpawn();
                 return .{ .ok = true };
             },
@@ -591,21 +649,28 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .media_card_toggle => {
-                // Media player is a deck SLIDE now, not a card.
-                self.mediaSlideToggle();
+                // REDIRECT (TASKCARD-3): focus the media player slide if
+                // this row has one, else spawn it — a real deck slide.
+                self.mediaSlideFocusOrSpawn();
                 return .{ .ok = true };
             },
             .media_play => |p| {
-                // Route through the open media slide's widget (phase-2 path);
-                // fall back to the slideless server widget if no slide is open.
+                // Route through the player slide's widget; fall back to the
+                // slideless server widget if no player slide exists.
                 var routed = false;
                 var oit = self.outputs.iterator(.forward);
                 while (oit.next()) |o| {
-                    if (o.media_slide.isOpen() and o.media_slide.widget_ready) {
+                    if (o.deck.findKind(.media_player) != null and o.media_slide.isOpen() and o.media_slide.widget_ready) {
                         self.stopOtherPlayers(o);
                         o.media_slide.widget.play(p.path);
                         o.media_slide.card_dirty = true; // new playback: card content changed
                         self.mediaSlideRefresh(o);
+                        // VIDEO = REAL SLIDE (stage 3): playback start
+                        // spawns the fullscreen .video slide right of the
+                        // player and walks focus to it.
+                        if (!o.media_slide.widget.is_music) {
+                            self.videoSlideSpawnRightOfPlayer(o);
+                        }
                         routed = true;
                         break;
                     }
@@ -855,10 +920,6 @@ pub const Server = struct {
         server.overlay_tree = overlay_tree;
 
         server.media_player = media_mod.MediaWidget.init(server.allocator);
-        server.spyglass = spyglass_mod.Spyglass.create(server.allocator, overlay_tree, server.theme) catch |err| blk: {
-            std.log.err("failed to create spyglass: {}", .{err});
-            break :blk null;
-        };
 
         const bg_rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
         server.background.rect = bg_rect;
@@ -919,7 +980,28 @@ pub const Server = struct {
         };
         server.layout_source = try event_loop.addFd(*Server, server.layout_pipe[0], .{ .readable = true }, handleLayoutEventFd, server);
 
+        // Band clock painter: refreshed on the minute (widget painter v1).
+        server.band_clock_timer = try event_loop.addTimer(*Server, handleBandClockTimer, server);
+        try server.band_clock_timer.?.timerUpdate(msToNextMinute());
+
         return server;
+    }
+
+    fn msToNextMinute() c_int {
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(linux.CLOCK.REALTIME, &ts);
+        const into_min: i64 = @mod(@as(i64, ts.sec), 60);
+        return @intCast((60 - into_min) * 1000);
+    }
+
+    fn handleBandClockTimer(self: *Server) c_int {
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            output.band.refreshClock();
+            output.wlr_output.scheduleFrame();
+        }
+        self.band_clock_timer.?.timerUpdate(msToNextMinute()) catch {};
+        return 0;
     }
 
     pub fn createIpcSocket(self: *Server, path: []const u8) !void {
@@ -977,10 +1059,6 @@ pub const Server = struct {
         self.ipc_server.destroy();
 
         self.media_player.deinit();
-        if (self.spyglass) |sg| {
-            sg.destroy();
-            self.spyglass = null;
-        }
         self.keybinds.deinit();
         self.overlay_tree.node.destroy();
 
@@ -1373,11 +1451,10 @@ pub const Server = struct {
             deck.closeOverviewSlide();
             self.focusReturnFromOverview(deck);
         } else {
-            // Siblings never both: if the home sentinel holds this row, close
-            // its scene tree before the overview takes over the slot state.
-            if (deck.home_slide_open) {
-                if (owner) |output| self.traySlideClose(output);
-                deck.home_slide_open = false;
+            // Siblings never both: if a home slide holds this row, destroy
+            // it before the overview takes over the slot state.
+            if (deck.findKind(.home) != null) {
+                self.homeSlideClose();
             }
             deck.openOverviewSlide();
             self.overview_cursor = 0;
@@ -1556,9 +1633,10 @@ pub const Server = struct {
         std.log.info("KidulWM: overview slide closed", .{});
     }
 
-    // ── Home (tray) slide — before_first sentinel ────────────────────────
+    // ── Home slide — REAL deck slide at index 0 (TASKCARD-3 stage 2) ─────
 
-    /// Return the output that owns the given deck (home slide render target).
+    /// Return the output that owns the given deck (compositor slide render
+    /// target).
     fn outputForDeck(self: *Server, deck: *slidedeck.SlideDeck) ?*Output {
         var it = self.outputs.iterator(.forward);
         while (it.next()) |output| {
@@ -1568,79 +1646,90 @@ pub const Server = struct {
     }
 
     /// Focus the output that owns the given deck so follow-up focus changes
-    /// (focusReturnFromHome and future deck walks) keep landing on this row.
+    /// keep landing on this row.
     fn focusOutputForDeck(self: *Server, deck: *slidedeck.SlideDeck) void {
         if (self.outputForDeck(deck)) |output| {
             self.focused_output = output;
         }
     }
 
-    /// tray_toggle / media_card_toggle target (A7): focus the home slide, or
-    /// spawn one at before_first if this row has none. At most one per row;
-    /// never auto-respawned.
+    /// tray_toggle / weather_card / media_card target (A7): focus the home
+    /// slide if this row has one, else spawn one at index 0 and focus it.
+    /// At most one per row; never auto-respawned; standard quit destroys it.
     pub fn homeSlideFocusOrSpawn(self: *Server) void {
         const deck = self.currentDeck();
-        if (deck.homeSlideOpen()) return; // already focused on it — no-op
         // Siblings never both: if the overview sentinel is open on this row,
-        // close its scene tree before the home slide takes the slot state.
+        // close its scene tree before the home slide spawns into the row.
         if (deck.overview_slide_open) {
             if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
+            deck.overview_slide_open = false;
+            deck.empty_slot = .none;
         }
-        deck.openHomeSlide();
         self.focusOutputForDeck(deck);
-        self.clearFocus();
-        if (self.outputForDeck(deck)) |output| {
-            self.traySlideOpen(output);
+        if (deck.findKind(.home)) |idx| {
+            deck.focusWindowByIndex(idx);
+        } else {
+            _ = deck.addCompositorSlide(.home, 0, true);
+            if (self.outputForDeck(deck)) |output| {
+                self.homeSlideOpen(output);
+            }
         }
+        self.clearFocus();
         self.requestLayout();
     }
 
-    /// Standard quit on the home slide (A7): close the sentinel and return
-    /// focus to the slide that opened it. Never auto-respawned.
+    /// Standard quit on the home slide (A7): destroy it like any slide.
+    /// Never auto-respawned; tray_toggle re-spawns on demand.
     pub fn homeSlideClose(self: *Server) void {
         const deck = self.currentDeck();
-        if (!deck.home_slide_open) return;
+        if (deck.findKind(.home) == null) return;
         if (self.outputForDeck(deck)) |output| {
-            self.traySlideClose(output);
+            self.homeSlideCloseOn(output);
         }
-        deck.closeHomeSlide();
-        self.focusOutputForDeck(deck);
-        self.focusReturnFromHome(deck);
+        _ = deck.removeCompositorSlide(.home);
         self.requestLayout();
     }
 
-    fn focusReturnFromHome(self: *Server, deck: *slidedeck.SlideDeck) void {
-        if (deck.slides.items.len == 0) {
-            self.clearFocus();
-            return;
-        }
-        const slide = deck.slides.items[deck.focused_index];
-        self.focused_window_id = slide.window_id;
-        if (self.windowById(slide.window_id)) |window| {
-            if (window.toplevel.base.surface.mapped) self.focusWindow(window);
+    /// EPHEMERAL LAW: activating a home-slide launcher item spawn/focuses
+    /// the target slide, then the home slide destroys itself. v1: the
+    /// launcher is keyboard-only CFC — wire the SELF-EJECT on any
+    /// successful launch so the law exists.
+    pub fn homeSlideLaunch(self: *Server, cmd: []const u8) void {
+        const deck = self.currentDeck();
+        const has_home = deck.findKind(.home) != null;
+        self.spawnCommand(cmd);
+        if (has_home) {
+            // The spawn maps a client which takes focus via handleMap; the
+            // home slide self-ejects NOW (successful launch = litter
+            // otherwise). One flag, not an architecture.
+            self.homeSlideClose();
         }
     }
 
     /// Create the home slide's scene tree on the output (card + stock chrome
-    /// border — A1). Deck flag is set by the caller (homeSlideFocusOrSpawn).
-    fn traySlideOpen(self: *Server, output: *Output) void {
-        if (output.tray_slide.isOpen()) return;
+    /// border — A1). Deck entry is created by the caller.
+    fn homeSlideOpen(self: *Server, output: *Output) void {
+        if (output.home_slide.isOpen()) return;
         const tree = self.scene.tree.createSceneTree() catch return;
-        output.tray_slide.tree = tree;
+        output.home_slide.tree = tree;
         tree.node.raiseToTop();
-        self.traySlideRefresh(output);
+        self.homeSlidePaint(output);
         std.log.info("KidulWM: home slide open on output", .{});
     }
 
-    /// (Re)render the home slide card + stock chrome into the before_first
-    /// focused-slot rect. Called on open and from applyLayout on every layout
-    /// event while the slide is open; the repaint guard skips unchanged
-    /// geometry so walking (slide position changes) re-positions, not
-    /// re-renders.
-    pub fn traySlideRefresh(self: *Server, output: *Output) void {
-        const tree = output.tray_slide.tree orelse return;
+    /// (Re)render the home slide card + stock chrome into the slide's stock
+    /// deck rect. Called on open and from applyLayout on every layout event
+    /// while the slide exists; the repaint guard skips unchanged geometry so
+    /// walking (slide position changes) re-positions, not re-renders.
+    pub fn homeSlidePaint(self: *Server, output: *Output) void {
+        const tree = output.home_slide.tree orelse return;
         const deck = &output.deck;
-        var target = deck.homeSlideTarget();
+        const idx = deck.findKind(.home) orelse {
+            // The deck entry died but the scene tree lives — teardown.
+            self.homeSlideCloseOn(output);
+            return;
+        };
+        var target = deck.targetForSlide(idx);
         var box: wlr.Box = undefined;
         self.output_layout.getBox(output.wlr_output, &box);
         target.x += box.x;
@@ -1649,31 +1738,31 @@ pub const Server = struct {
         const buf_w: i32 = @intCast(target.width);
         const buf_h: i32 = @intCast(target.height);
         if (buf_w <= 0 or buf_h <= 0) return;
-        const geom_same = (buf_w == output.tray_slide.card_last_w and
-            buf_h == output.tray_slide.card_last_h);
-        const feed_same = (self.notifications.generation == output.tray_slide.card_last_notif_gen);
-        if (!geom_same or !feed_same or output.tray_slide.card_buffer == null) {
+        const geom_same = (buf_w == output.home_slide.card_last_w and
+            buf_h == output.home_slide.card_last_h);
+        const feed_same = (self.notifications.generation == output.home_slide.card_last_notif_gen);
+        if (!geom_same or !feed_same or output.home_slide.card_buffer == null) {
             const buffer = tray_slide_mod.renderToBuffer(self.theme, buf_w, buf_h, scale, &self.notifications) orelse return;
-            if (output.tray_slide.card_buffer) |old| old.node.destroy();
+            if (output.home_slide.card_buffer) |old| old.node.destroy();
             const card = tree.createSceneBuffer(buffer) catch {
                 wlr.Buffer.drop(buffer);
                 return;
             };
-            output.tray_slide.card_buffer = card;
+            output.home_slide.card_buffer = card;
             // Rendered at physical pixels; pin the display size back to the
             // logical target rect (same scale law as the media slide).
             card.setDestSize(buf_w, buf_h);
             card.node.raiseToTop();
-            output.tray_slide.card_last_w = buf_w;
-            output.tray_slide.card_last_h = buf_h;
-            output.tray_slide.card_last_notif_gen = self.notifications.generation;
+            output.home_slide.card_last_w = buf_w;
+            output.home_slide.card_last_h = buf_h;
+            output.home_slide.card_last_notif_gen = self.notifications.generation;
 
             // A1: stock chrome border ring on top of the card.
             const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
             if (chrome_buf) |cb| {
-                if (output.tray_slide.chrome_buffer) |old| old.node.destroy();
+                if (output.home_slide.chrome_buffer) |old| old.node.destroy();
                 if (tree.createSceneBuffer(cb) catch null) |chrome| {
-                    output.tray_slide.chrome_buffer = chrome;
+                    output.home_slide.chrome_buffer = chrome;
                     chrome.setDestSize(buf_w, buf_h);
                     chrome.node.raiseToTop();
                 } else {
@@ -1684,16 +1773,16 @@ pub const Server = struct {
         tree.node.setPosition(target.x, target.y);
     }
 
-    fn traySlideClose(self: *Server, output: *Output) void {
+    fn homeSlideCloseOn(self: *Server, output: *Output) void {
         _ = self;
-        if (!output.tray_slide.isOpen()) return;
-        output.tray_slide.tree.?.node.destroy();
-        output.tray_slide.tree = null;
-        output.tray_slide.card_buffer = null;
-        output.tray_slide.chrome_buffer = null;
-        output.tray_slide.card_last_w = 0;
-        output.tray_slide.card_last_h = 0;
-        output.tray_slide.card_last_notif_gen = 0;
+        if (!output.home_slide.isOpen()) return;
+        output.home_slide.tree.?.node.destroy();
+        output.home_slide.tree = null;
+        output.home_slide.card_buffer = null;
+        output.home_slide.chrome_buffer = null;
+        output.home_slide.card_last_w = 0;
+        output.home_slide.card_last_h = 0;
+        output.home_slide.card_last_notif_gen = 0;
         std.log.info("KidulWM: home slide closed", .{});
     }
 
@@ -1723,43 +1812,54 @@ pub const Server = struct {
         }
     }
 
-    /// Toggle the media player slide.
-    ///
-    /// LAW (docs/law/playback.md, 2026-09-07): the mediaPlayer is a normal
-    /// deck slide. It opens on the CURRENT-FOCUS output's deck and lives
-    /// nowhere else — no cross-output scanning, no special authority.
-    /// The deck flag is the single source of truth for open/closed.
+    /// Toggle the media player slide (TASKCARD-3 stage 3): the player is a
+    /// NORMAL compositor-owned app slide in the deck. Open = focus it if
+    /// this row has one, else spawn one at index 0 (A5 boot also spawns it).
+    /// Close = destroy it through the stock path — NO return-index
+    /// bookkeeping; the deck settles back naturally.
     pub fn mediaSlideToggle(self: *Server) void {
-        // Find the output that owns the current focus deck. Deck law: the
-        // slide follows the cursor, like every other slide.
         const deck = self.currentDeck();
-        var focus_output: ?*Output = null;
-        {
-            var it = self.outputs.iterator(.forward);
-            while (it.next()) |output| {
-                if (&output.deck == deck) {
-                    focus_output = output;
-                    break;
-                }
-            }
+        if (deck.findKind(.media_player) != null) {
+            self.mediaSlideClose();
+            return;
         }
-        const output = focus_output orelse return;
-
-        if (deck.media_slide_open) {
-            // CLOSE: view-only per audio-authority LAW — playback (if any)
-            // survives the card leaving; the peek carries the label.
-            self.mediaSlideClose(output);
-            deck.closeMediaSlide();
-        } else {
-            // OPEN: per-output, no stealing (law: media-is-a-slide.md ruling
-            // 3) — other outputs' media cards stay open and usable. Deck
-            // state first (flag only — slides/focus undisturbed), then the
-            // scene tree on the same output. Overview and media are
-            // siblings — never both.
-            deck.openMediaSlide();
-            if (output.overview.isOpen()) self.overviewSlideClose(output);
+        // Spawn: the player slide lands at index 0 of the current row.
+        if (deck.overview_slide_open) {
+            if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
+            deck.overview_slide_open = false;
+            deck.empty_slot = .none;
+        }
+        self.focusOutputForDeck(deck);
+        _ = deck.addCompositorSlide(.media_player, 0, false);
+        if (self.outputForDeck(deck)) |output| {
             self.mediaSlideOpen(output);
         }
+        self.clearFocus();
+        self.requestLayout();
+    }
+
+    /// Focus the media player slide (spawn if missing) — the
+    /// media_card_toggle redirect target.
+    pub fn mediaSlideFocusOrSpawn(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.findKind(.media_player)) |idx| {
+            deck.focusWindowByIndex(idx);
+            self.clearFocus();
+            self.requestLayout();
+            return;
+        }
+        self.mediaSlideToggle();
+    }
+
+    /// Destroy the media player slide: stock removeWindow path; focus
+    /// settles on the neighbor — NO return-index bookkeeping.
+    pub fn mediaSlideClose(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.findKind(.media_player) == null) return;
+        if (self.outputForDeck(deck)) |output| {
+            self.mediaSlideCloseOn(output);
+        }
+        _ = deck.removeCompositorSlide(.media_player);
         self.requestLayout();
     }
 
@@ -1768,15 +1868,9 @@ pub const Server = struct {
         while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.scene_mutex.unlock();
         if (output.media_slide.isOpen()) return;
-        // Reopen-lands-on-the-card LAW (Barticus, 2026-09-12): closing the
-        // slide during MUSIC is view-only (audio-authority law) — the album
-        // keeps playing and reopening must land on THAT card, mid-track.
-        // The widget IS the card reference (cached title/art/selection), so
-        // keep it alive across close/reopen while its music player lives.
-        // VIDEO close is a quit (video carve-out): the widget's player is
-        // already stopped, and every open is FRESH (rebuild below) so
-        // quit-clears stays structural, not a flag-reset that can miss a
-        // field.
+        // Reopen-lands-on-the-card LAW (Barticus, 2026-09-12): the widget IS
+        // the card reference (cached title/art/selection), so keep it alive
+        // across destroy/respawn while its music player lives.
         const keep_widget = output.media_slide.widget_ready and
             output.media_slide.widget.player_active and
             output.media_slide.widget.is_music;
@@ -1784,14 +1878,6 @@ pub const Server = struct {
             output.media_slide.widget.deinit();
             output.media_slide.widget = media_mod.MediaWidget.init(self.allocator);
         }
-        // SECOND-VIDEO BLANK LAW (2026-09-08): a fresh widget restarts its
-        // player_generation from 0 — if seen_player_generation still holds
-        // the previous widget's value and they alias, handleFrame's
-        // generation guard never fires and the stale dmabuf cache (keyed on
-        // the DEAD decoder's VA surface ids, which the new pool reuses)
-        // renders freed GPU surfaces = transparent hole where video should
-        // be. Drop all compositor-side video state on open so the new
-        // widget's first frame walks the cache-miss door cleanly.
         self.mediaVideoTeardown(output);
         output.media_slide.seen_player_generation = 0;
         const tree = self.scene.tree.createSceneTree() catch return;
@@ -1799,41 +1885,30 @@ pub const Server = struct {
         tree.node.raiseToTop();
         self.overlay_tree.node.raiseToTop();
         self.mediaSlideRefresh(output);
-        std.log.info("KidulWM: media slide open on output", .{});
+        std.log.info("KidulWM: media player slide open on output", .{});
     }
 
-    /// (Re)render the media widget into the slide's card buffer. Called on
-    /// open and whenever the widget's state_generation moves.
+    /// (Re)render the media widget into the slide's card buffer at the
+    /// slide's stock deck rect. Called on open and whenever the widget's
+    /// state_generation moves.
     pub fn mediaSlideRefresh(self: *Server, output: *Output) void {
         const tree = output.media_slide.tree orelse return;
         const deck = &output.deck;
         const widget = output.media_slide.ensureWidget(self.allocator);
-        const playing = widget.player_active;
-        // PLAYBACK LAW (Barticus, 2026-09-12): THE SLIDE IS GONE WHILE THE
-        // PLAYER PLAYS. The card buffer is a 33MB (4K×scale ARGB32) full-
-        // output surface whose only job while playing is a black matte with
-        // a transparent hole for the dmabuf video node — and repainting it
-        // per layout event IS the ~90MB/s RSS sprint → OOM crash. mpv's
-        // playbook: playing = video + chrome ONLY, no card surface. Tear
-        // the card down once and never repaint it until playback stops.
-        if (playing) {
-            if (output.media_slide.card_buffer) |old| old.node.destroy();
-            output.media_slide.card_buffer = null;
-            // The video path (media_video.zig) letterboxes into the FULL
-            // OUTPUT RECT assuming this tree sits at 0,0. The card phase
-            // parks it at the gap-inset slot rect, and this early return
-            // skips the setPosition below — so without this the video is
-            // shoved off-centre/right by the slot offset on every play.
-            tree.node.setPosition(0, 0);
-            tree.node.raiseToTop();
+        const idx = deck.findKind(.media_player) orelse {
+            // The deck entry died but the scene tree lives — teardown.
+            self.mediaSlideCloseOn(output);
             return;
-        }
-        const target = deck.mediaSlideTarget(false);
+        };
+        const target = deck.targetForSlide(idx);
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
         const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
         const buf_w: i32 = @intCast(target.width);
         const buf_h: i32 = @intCast(target.height);
-        const pos_x: i32 = target.x;
-        const pos_y: i32 = target.y;
+        const pos_x: i32 = target.x + box.x;
+        const pos_y: i32 = target.y + box.y;
+        if (buf_w <= 0 or buf_h <= 0) return;
         // CARD REPAINT GUARD (verdict 17, 2026-09-12): applyLayout fires on
         // every layout event (window commit, focus change, etc.) while the
         // slide is open. renderToBuffer allocates a 33 MB ARGB32 cairo surface
@@ -1847,8 +1922,7 @@ pub const Server = struct {
             buf_h == output.media_slide.card_last_h);
         const gen_same = (widget.state_generation == output.media_slide.card_last_gen);
         if (geom_same and gen_same and !output.media_slide.card_dirty and output.media_slide.card_buffer != null) {
-            // Position may have changed even if size is the same (e.g. output
-            // was repositioned). Move the existing buffer rather than repaint.
+            // Position may have changed even if size is the same (deck walk).
             if (output.media_slide.card_buffer) |card| {
                 output.media_slide.tree.?.node.setPosition(pos_x, pos_y);
                 card.node.raiseToTop();
@@ -1875,7 +1949,7 @@ pub const Server = struct {
         card.setDestSize(buf_w, buf_h);
         tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
-        // Not playing: the overlay tree (widgets) sits above the slide.
+        // Not playing: the overlay tree (bands) sits above the slide.
         self.overlay_tree.node.raiseToTop();
     }
 
@@ -1946,28 +2020,18 @@ pub const Server = struct {
         media_video.teardown(self, output);
     }
 
-    fn mediaSlideClose(self: *Server, output: *Output) void {
-        // SCENE LOCK: this runs on the IPC thread; the render thread may be
-        // mid-draw on the same nodes (2026-09-06 pixman abort).
+    fn mediaSlideCloseOn(self: *Server, output: *Output) void {
+        // SCENE LOCK: this can run on the IPC thread; the render thread may
+        // be mid-draw on the same nodes (2026-09-06 pixman abort).
         while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.scene_mutex.unlock();
         if (!output.media_slide.isOpen()) return;
-        // AUDIO AUTHORITY LAW (docs/law/playback.md): closing the card is a
-        // VIEW change only for MUSIC — the album keeps playing, the peek
-        // label stays live, reopening lands mid-track.
-        //
-        // VIDEO CARVE-OUT (Barticus, 2026-09-08): closing the slide while a
-        // VIDEO (movie or live TV) plays IS a quit — the sound dies with the
-        // picture. A video playing headless is nonsense: nobody "listens" to
-        // a film from another workspace, and the orphaned audio confused the
-        // reopen path (stale generation aliasing → second-video blank).
+        // VIDEO CARVE-OUT (Barticus, 2026-09-08): destroying the slide while
+        // a VIDEO plays IS a quit — the sound dies with the picture.
         if (output.media_slide.widget_ready and output.media_slide.widget.player_active) {
             if (!output.media_slide.widget.is_music) {
                 output.media_slide.widget.ensureStopped();
             }
-            // The dedicated video scene path is a view regardless: video
-            // pixels only exist while the card can show them. Teardown stops
-            // the GPU-side present; reopening re-arms from currentFrame().
             self.mediaVideoTeardown(output);
         }
         // Destroy the card buffer node FIRST (leaking it left a stale frame
@@ -1976,7 +2040,105 @@ pub const Server = struct {
         output.media_slide.tree.?.node.destroy();
         output.media_slide.tree = null;
         output.media_slide.card_buffer = null;
-        std.log.info("KidulWM: media slide closed (playback continues if active)", .{});
+        std.log.info("KidulWM: media player slide closed", .{});
+    }
+
+    // ── Video slide — REAL fullscreen slide right of the player (stage 3) ──
+
+    /// Playback start on the player slide spawns a fullscreen compositor-
+    /// owned .video slide IMMEDIATELY RIGHT of the player and walks focus
+    /// onto it; the player slips left into the peek, alive. A4 applies via
+    /// the stock path. v1 deck mechanics only: black placeholder surface —
+    /// real kmedia/mpv wiring is a later card.
+    pub fn videoSlideSpawnRightOfPlayer(self: *Server, output: *Output) void {
+        const deck = &output.deck;
+        if (deck.findKind(.video) != null) return;
+        const pidx = deck.findKind(.media_player) orelse return;
+        _ = deck.addCompositorSlideRightOf(.video, pidx);
+        // Fullscreen is a SIZE (playback.md): the video slide fills the
+        // whole output through the stock fullscreen path.
+        deck.slides.items[deck.focused_index].fullscreen = true;
+        const tree = self.scene.tree.createSceneTree() catch return;
+        output.video_slide.tree = tree;
+        tree.node.raiseToTop();
+        self.video_slide_output = output;
+        self.clearFocus();
+        self.videoSlidePaint(output);
+        std.log.info("KidulWM: video slide spawned right of player", .{});
+    }
+
+    /// Paint the video slide at its stock deck rect (placeholder black
+    /// surface v1 — deck mechanics only). A4: walking away drops it to its
+    /// windowed rect mid-row via targetForSlide, dwell re-expands.
+    pub fn videoSlidePaint(self: *Server, output: *Output) void {
+        const tree = output.video_slide.tree orelse return;
+        const deck = &output.deck;
+        const idx = deck.findKind(.video) orelse {
+            self.videoSlideCloseOn(output);
+            return;
+        };
+        var target = deck.targetForSlide(idx);
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        target.x += box.x;
+        target.y += box.y;
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        const buf_w: i32 = @intCast(target.width);
+        const buf_h: i32 = @intCast(target.height);
+        if (buf_w <= 0 or buf_h <= 0) return;
+        const geom_same = (buf_w == output.video_slide.card_last_w and
+            buf_h == output.video_slide.card_last_h);
+        if (!geom_same or output.video_slide.card_buffer == null) {
+            const buffer = renderBlackToBuffer(buf_w, buf_h, scale) orelse return;
+            if (output.video_slide.card_buffer) |old| old.node.destroy();
+            const card = tree.createSceneBuffer(buffer) catch {
+                wlr.Buffer.drop(buffer);
+                return;
+            };
+            output.video_slide.card_buffer = card;
+            card.setDestSize(buf_w, buf_h);
+            card.node.raiseToTop();
+            output.video_slide.card_last_w = buf_w;
+            output.video_slide.card_last_h = buf_h;
+
+            // Stock chrome border ring, like every focused slide (A1/A4).
+            const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
+            if (chrome_buf) |cb| {
+                if (output.video_slide.chrome_buffer) |old| old.node.destroy();
+                if (tree.createSceneBuffer(cb) catch null) |chrome| {
+                    output.video_slide.chrome_buffer = chrome;
+                    chrome.setDestSize(buf_w, buf_h);
+                    chrome.node.raiseToTop();
+                } else {
+                    wlr.Buffer.drop(cb);
+                }
+            }
+        }
+        tree.node.setPosition(target.x, target.y);
+    }
+
+    /// Quit on the video slide destroys it; the deck settles back onto the
+    /// player naturally — NO return-index bookkeeping (the walk IS the
+    /// state machine).
+    pub fn videoSlideClose(self: *Server) void {
+        if (self.video_slide_output) |output| {
+            self.videoSlideCloseOn(output);
+            _ = output.deck.removeCompositorSlide(.video);
+            self.video_slide_output = null;
+            self.requestLayout();
+        }
+    }
+
+    fn videoSlideCloseOn(self: *Server, output: *Output) void {
+        _ = self;
+        if (!output.video_slide.isOpen()) return;
+        output.video_slide.tree.?.node.destroy();
+        output.video_slide.tree = null;
+        output.video_slide.card_buffer = null;
+        output.video_slide.chrome_buffer = null;
+        output.video_slide.card_last_w = 0;
+        output.video_slide.card_last_h = 0;
+        std.log.info("KidulWM: video slide closed (deck settles on player)", .{});
     }
 
     /// True while any output's media slide is open (keyboard routing).
@@ -2009,7 +2171,7 @@ pub const Server = struct {
         // FOCUS output only. No cross-output scanning — if the slide lives
         // somewhere else, the cursor isn't there, and neither is the typing.
         const deck = self.currentDeck();
-        if (!deck.media_slide_open) return false;
+        if (deck.findKind(.media_player) == null) return false;
         var out_opt: ?*Output = null;
         {
             var it = self.outputs.iterator(.forward);
@@ -2263,13 +2425,15 @@ pub const Server = struct {
                             self.mediaSlideToggle();
                             return true;
                         }
-                        // Movies / TV: existing play-in-slide path.
-                        // One player per session: take over from any other
-                        // output's widget (or the slideless player) first.
+                        // Movies / TV: play-in-slide path → VIDEO = REAL
+                        // SLIDE (stage 3): spawn a fullscreen .video slide
+                        // IMMEDIATELY RIGHT of the player and walk focus to
+                        // it; the player slips left into the peek, alive.
                         const path = widget.selectedResultPath();
                         if (path.len > 0) {
                             self.stopOtherPlayers(out);
                             widget.play(path);
+                            self.videoSlideSpawnRightOfPlayer(out);
                         }
                     },
                     .slider => {},
@@ -2586,10 +2750,9 @@ pub const Server = struct {
 
     /// Toggle fullscreen on the focused slide (Mod4+f / F11). Fullscreen is
     /// a SIZE, not a mode: the slide fills the whole output until toggled
-    /// back. Media slides auto-fullscreen and are excluded here.
+    /// back. Stock path — the video slide uses it too (A4 plays ball).
     pub fn fullscreenToggleFocused(self: *Server) void {
         const deck = self.currentDeck();
-        if (deck.media_slide_open) return;
         const state = deck.fullscreenToggleFocused() orelse return;
         std.log.info("KidulWM: fullscreen toggle -> {s} (focused_index={d})", .{
             if (state) @as([]const u8, "FULL") else "windowed",
@@ -2697,56 +2860,39 @@ pub const Server = struct {
             const height = @as(u32, @intCast(box.height));
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
-            // Update spyglass icon positions and neighbor availability.
-            if (self.spyglass) |sg| {
-                const scale: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
-                // WIDGETS-OFF-IN-FULLSCREEN LAW (Barticus 2026-09-16, GSI):
-                // when the focused slide is fullscreen (or the media slide is
-                // playing — it auto-fullscreens), ALL widgets hide: spyglass
-                // EXIT signs, weather. The apps behind them stay one
-                // hotkey / Granny-button away. Disabling the icons kills both
-                // render AND the peek-edge hitboxes, so fullscreen apps own
-                // the screen edges.
-                const fs_slide = output.deck.empty_slot == .none and
-                    output.deck.focused_index < output.deck.slides.items.len and
-                    output.deck.slides.items[output.deck.focused_index].fullscreen;
-                const media_fs = output.deck.media_slide_open and output.media_slide.isOpen();
-                if (fs_slide or media_fs) {
-                    sg.setNeighbors(false, false, 0, 0);
-                } else {
-                    // In empty-slot state, the nearest real slide is on the
-                    // side it sits: after_last -> neighbor is to the left,
-                    // before_first -> neighbor is to the right.
-                    const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
-                        (output.deck.empty_slot == .after_last and output.deck.slides.items.len > 0);
-                    const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < output.deck.slides.items.len) or
-                        (output.deck.empty_slot == .before_first and output.deck.slides.items.len > 0);
-                    // Slide count on each side of the current slide — printed
-                    // at the screen edge next to the EXIT signs.
-                    // LAW: guard the empty deck — at first layout slides.len==0
-                    // and empty_slot==.none, and the unchecked
-                    // (len - focused_index - 1) underflows usize (boot crash,
-                    // 2026-09-15).
-                    const n_slides = output.deck.slides.items.len;
-                    const left_count: u32 = if (n_slides == 0)
-                        0
-                    else if (output.deck.empty_slot == .after_last)
-                        @intCast(n_slides)
-                    else if (output.deck.empty_slot == .before_first)
-                        0
-                    else
-                        @intCast(output.deck.focused_index);
-                    const right_count: u32 = if (n_slides == 0)
-                        0
-                    else if (output.deck.empty_slot == .before_first)
-                        @intCast(n_slides)
-                    else if (output.deck.empty_slot == .after_last)
-                        0
-                    else
-                        @intCast(n_slides - output.deck.focused_index - 1);
-                    sg.updateOutput(width, height, scale);
-                    sg.setNeighbors(has_left, has_right, left_count, right_count);
-                }
+            // BAND (TASKCARD-3): permanent per-output edge bands. Signage
+            // follows the deck state; bands NEVER hide — the
+            // widgets-off-in-fullscreen law is repealed (a fullscreen slide
+            // is just a wide slide; the bands stay).
+            {
+                const bs: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
+                const n_slides = output.deck.slides.items.len;
+                const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
+                    (output.deck.empty_slot == .after_last and n_slides > 0);
+                const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < n_slides) or
+                    (output.deck.empty_slot == .before_first and n_slides > 0);
+                // LAW: guard the empty deck — at first layout slides.len==0
+                // and empty_slot==.none, and the unchecked
+                // (len - focused_index - 1) underflows usize (boot crash,
+                // 2026-09-15).
+                const left_count: u32 = if (n_slides == 0)
+                    0
+                else if (output.deck.empty_slot == .after_last)
+                    @intCast(n_slides)
+                else if (output.deck.empty_slot == .before_first)
+                    0
+                else
+                    @intCast(output.deck.focused_index);
+                const right_count: u32 = if (n_slides == 0)
+                    0
+                else if (output.deck.empty_slot == .before_first)
+                    @intCast(n_slides)
+                else if (output.deck.empty_slot == .after_last)
+                    0
+                else
+                    @intCast(n_slides - output.deck.focused_index - 1);
+                output.band.updateOutput(width, height, bs, box.x, box.y);
+                output.band.setNeighbors(has_left, has_right, left_count, right_count);
             }
 
             if (output.deck.slides.items.len == 0) continue;
@@ -2755,24 +2901,22 @@ pub const Server = struct {
             // slides' scene trees are REPARENTED into the card with tile
             // geometry — the row layout below must not touch them.
             if (output.deck.overviewSlideOpen() and output.overview.isOpen()) {
-                if (self.spyglass) |sg| sg.setNeighbors(false, false, 0, 0);
                 continue;
             }
 
-            // While the sentinel home slide is open on this output, the
-            // before_first slot is focused — no client slide is. Every real
-            // slide gets its non-focused treatment (disabled, no chrome);
-            // the home card walks/peeks with the deck like any slide.
-            if (output.deck.homeSlideOpen() and output.tray_slide.isOpen()) {
-                self.traySlideRefresh(output);
-                if (output.tray_slide.tree) |tree| {
-                    tree.node.raiseToTop();
-                }
-            }
-
             var focused_slide_window: ?*Window = null;
+            var active_compositor: ?*Output = null;
             const deck_ptr = &output.deck;
             for (output.deck.slides.items, 0..) |slide, slide_idx| {
+                // Compositor-owned slides (home / media player / video) have
+                // no client window — they are painted after the loop, at
+                // their stock deck rect.
+                if (slide.kind != .app) {
+                    if (output.deck.empty_slot == .none and slide_idx == output.deck.focused_index and !slide.parked) {
+                        active_compositor = output;
+                    }
+                    continue;
+                }
                 const window = self.windowById(slide.window_id) orelse continue;
                 if (!window.toplevel.base.surface.mapped) continue;
 
@@ -2795,11 +2939,6 @@ pub const Server = struct {
                 }
                 if (is_focused) {
                     // Focused slide: full screen, chrome border, surface scaled to fit.
-                    // LAW (media-is-a-slide.md): while this deck's media slide
-                    // is open, the media card renders in the focused slot — the
-                    // client window keeps its geometry but does NOT raise above
-                    // the media tree; the card is refreshed after window layout
-                    // and raised above this output's windows below.
                     window.scene_tree.node.setEnabled(true);
                     window.clearMiniScale();
                     if (size_changed) {
@@ -2809,14 +2948,8 @@ pub const Server = struct {
                     window.applyContainment();
                     focused_slide_window = window;
                     window.updateChrome(true, .all);
-                    if (!output.deck.media_slide_open) {
-                        window.scene_tree.node.raiseToTop();
-                        // FULLSCREEN: the fullscreen slide covers everything,
-                        // overlay included — no EXIT signs floating on top.
-                        if (!slide.fullscreen) {
-                            self.overlay_tree.node.raiseToTop();
-                        }
-                    }
+                    window.scene_tree.node.raiseToTop();
+                    self.overlay_tree.node.raiseToTop();
                 } else {
                     // Non-focused slides: disabled, no rendering, no chrome.
                     window.scene_tree.node.setEnabled(false);
@@ -2825,14 +2958,23 @@ pub const Server = struct {
                 }
             }
 
-            // Media card tracks slot geometry (law: media-is-a-slide.md):
-            // refresh AFTER window layout so the card lands on the current
-            // focused slot, then raise the media tree above this output's
-            // windows (not above the overlay — mediaSlideRefresh's playing
-            // branch handles the fullscreen-above-overlay case itself).
-            if (output.deck.media_slide_open and output.media_slide.isOpen()) {
+            // Compositor-owned slides paint at their stock deck rect (the
+            // same targetForSlide geometry a client window gets — walks,
+            // peeks, A4 fullscreen all through stock machinery), refreshed
+            // after window layout and raised above this output's windows.
+            if (output.home_slide.isOpen()) {
+                self.homeSlidePaint(output);
+            }
+            if (output.media_slide.isOpen()) {
                 self.mediaSlideRefresh(output);
                 if (output.media_slide.tree) |tree| {
+                    tree.node.raiseToTop();
+                }
+                self.overlay_tree.node.raiseToTop();
+            }
+            if (output.video_slide.isOpen()) {
+                self.videoSlidePaint(output);
+                if (output.video_slide.tree) |tree| {
                     tree.node.raiseToTop();
                 }
                 self.overlay_tree.node.raiseToTop();
@@ -2840,7 +2982,11 @@ pub const Server = struct {
 
             if (deck_ptr == active_deck) {
                 if (deck_ptr.empty_slot == .none) {
-                    if (focused_slide_window) |window| {
+                    if (active_compositor != null) {
+                        // Focus rests on a compositor-owned slide: no client
+                        // surface owns the seat.
+                        self.clearFocus();
+                    } else if (focused_slide_window) |window| {
                         self.focusWindow(window);
                     }
                 }
@@ -2887,7 +3033,7 @@ pub const Server = struct {
             }
         }
 
-        if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen() and !active_deck.homeSlideOpen())) {
+        if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen())) {
             self.clearFocus();
         }
 
@@ -3095,6 +3241,29 @@ pub const Server = struct {
         // Compute layout immediately so window panels appear on the first frame,
         // instead of waiting for the asynchronous layout-event loop tick.
         self.applyLayout();
+        // BAND BIRTH (TASKCARD-3): permanent per-output edge bands render
+        // from the first frame, REGARDLESS of deck state. Born here, never
+        // hidden afterwards.
+        {
+            var b: wlr.Box = undefined;
+            self.output_layout.getBox(wlr_output, &b);
+            const bs: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
+            output.band.updateOutput(@intCast(b.width), @intCast(b.height), bs, b.x, b.y);
+            // EXIT signage for whatever the deck already holds (first frame:
+            // empty deck, both signs off — ends are where the sign is
+            // loudest, a missing sign means nowhere to walk).
+            const n0 = output.deck.slides.items.len;
+            output.band.setNeighbors(false, false, 0, @intCast(n0));
+            output.band.refreshClock();
+        }
+        // BOOT LADDER (A5): the first output to land spawns the media
+        // PLAYER appliance as a normal compositor-owned app slide — first
+        // frame, first focus. No home slide exists at keyless boot.
+        if (!self.boot_player_spawned) {
+            self.boot_player_spawned = true;
+            _ = output.deck.addCompositorSlide(.media_player, 0, false);
+            self.mediaSlideOpen(output);
+        }
         // Tell any windows already on this output about the committed scale
         // (they may have mapped while the output was still at scale 1).
         self.syncOutputScaleToWindows(wlr_output, scale);
@@ -3635,15 +3804,9 @@ pub const Server = struct {
 
     pub fn handlePointerMove(self: *Server, _: f64, _: f64) bool {
         // Params ignored: wlroots owns the cursor; hit-test the clamped truth.
+        // The band has NO hover state (furniture, not a widget) — motion is
+        // never claimed here.
         self.syncCursorMirror();
-        const cx = self.cursor_x;
-        const cy = self.cursor_y;
-        if (self.spyglass) |sg| {
-            if (sg.handlePointerMove(cx, cy)) {
-                std.log.info("KidulWM: PTR-CLAIM spyglass x={d:.0} y={d:.0}", .{ cx, cy });
-                return true;
-            }
-        }
         return false;
     }
 
@@ -3678,23 +3841,26 @@ pub const Server = struct {
             self.requestLayout();
             return true;
         }
-        if (self.spyglass) |sg| {
-            if (sg.handlePointerClick(x, y)) |side| {
-                std.log.info("KidulWM: PTR-CLAIM spyglass-click x={d:.0} y={d:.0}", .{ x, y });
-                self.activateSpyglass(side);
+        // BAND click router (one router): click = walk to the neighbor on
+        // that side. Hit-test the output under the cursor's band.
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            const lx = x - @as(f64, @floatFromInt(box.x));
+            const ly = y - @as(f64, @floatFromInt(box.y));
+            if (lx < 0 or ly < 0 or lx >= @as(f64, @floatFromInt(box.width)) or ly >= @as(f64, @floatFromInt(box.height))) continue;
+            if (output.band.handleClick(lx, ly)) |side| {
+                std.log.info("KidulWM: PTR-CLAIM band-click side={s} x={d:.0} y={d:.0}", .{ @tagName(side), x, y });
+                self.focused_output = output;
+                switch (side) {
+                    .left => self.focusPrev(),
+                    .right => self.focusNext(),
+                }
                 return true;
             }
         }
         return false;
-    }
-
-    /// Spyglass click — navigate to the adjacent slide in the given direction.
-    fn activateSpyglass(self: *Server, side: spyglass_mod.Side) void {
-        std.log.info("KidulWM: spyglass click {s}", .{if (side == .left) "left" else "right"});
-        switch (side) {
-            .left => self.focusPrev(),
-            .right => self.focusNext(),
-        }
     }
 
     pub fn handlePointerAxis(self: *Server, _: f64, _: f64, _: f64) bool {

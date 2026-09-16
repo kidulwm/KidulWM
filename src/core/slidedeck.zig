@@ -39,6 +39,12 @@ pub const Split = struct {
     }
 };
 
+/// Compositor-owned slide kinds (TASKCARD-3): home, media player, and the
+/// fullscreen video slide are REAL deck.slides entries — no sentinel flags,
+/// no empty-slot tricks. `window_id` holds a compositor-generated id that
+/// never collides with a client window id (see SlideDeck.compositor_id_base).
+pub const SlideKind = enum { app, home, media_player, video };
+
 pub const Slide = struct {
     window_id: u32,
     /// Parked slides stay in the deck (the client is alive) but are hidden
@@ -48,6 +54,13 @@ pub const Slide = struct {
     /// output on a hotkey, in and out. Same law as playback.md — fullscreen
     /// is a SIZE, not a mode. Media auto-fullscreens; other apps use this.
     fullscreen: bool = false,
+    /// Slide species. `.app` = backed by a real client window; the rest are
+    /// compositor-owned surfaces rendered by a ui/ module.
+    kind: SlideKind = .app,
+    /// EPHEMERAL LAW (session-and-deck-spec): activating a home-slide
+    /// launcher item spawn/focuses the target, then the home slide destroys
+    /// itself. The only self-closing slide; one flag, not an architecture.
+    ephemeral: bool = false,
 };
 
 pub const EmptySlot = enum { none, before_first, after_last };
@@ -76,20 +89,11 @@ pub const SlideDeck = struct {
     overview_slide_open: bool = false,
     /// The slide index to return to when the overview slide closes.
     overview_return_index: usize = 0,
-    /// Media player slide: a NORMAL deck slide (law: media-is-a-slide.md).
-    /// When true, the deck's CURRENT focused slot shows the compositor-owned
-    /// media card instead of the client window. No sentinel, no empty_slot
-    /// interaction, no focus movement — slides/focus are undisturbed.
-    media_slide_open: bool = false,
-    /// Sentinel home (tray) slide (tray-slide birth, 2026-09-16): when true,
-    /// the before_first empty slot is OCCUPIED by the compositor-owned home
-    /// slide instead of emptiness. Not a Slide in slides.items — window-count
-    /// invariants (slide_count == real client count) stay intact. At most one
-    /// per row (flag-guarded); quitable via the standard quit path (A7); never
-    /// auto-respawned.
-    home_slide_open: bool = false,
-    /// The slide index to return to when the home slide closes.
-    home_return_index: usize = 0,
+    next_compositor_id: u32 = compositor_id_base,
+
+    /// Compositor-owned slide ids live in a disjoint range from client
+    /// window ids (clients count up from 1). Generated per spawn.
+    pub const compositor_id_base: u32 = 0xC000_0000;
 
     pub fn init(allocator: std.mem.Allocator) SlideDeck {
         return .{
@@ -322,6 +326,50 @@ pub const SlideDeck = struct {
         }
     }
 
+    /// Spawn a compositor-owned slide (home / media player / video) at
+    /// `index`, and focus it. Returns the generated compositor id.
+    /// TASKCARD-3: these are REAL deck.slides entries — they walk, peek,
+    /// park and quit through the stock paths.
+    pub fn addCompositorSlide(self: *SlideDeck, kind: SlideKind, index: usize, ephemeral: bool) u32 {
+        const id = self.next_compositor_id;
+        self.next_compositor_id +%= 1;
+        const at = @min(index, self.slides.items.len);
+        self.slides.insert(self.allocator, at, .{ .window_id = id, .kind = kind, .ephemeral = ephemeral }) catch {
+            std.log.err("SlideDeck: failed to insert compositor slide", .{});
+            return 0;
+        };
+        self.focused_index = at;
+        self.empty_slot = .none;
+        return id;
+    }
+
+    /// Index of the first slide of the given kind, or null.
+    pub fn findKind(self: *const SlideDeck, kind: SlideKind) ?usize {
+        for (self.slides.items, 0..) |slide, i| {
+            if (slide.kind == kind) return i;
+        }
+        return null;
+    }
+
+    /// Destroy a compositor-owned slide by kind. Focus settles through the
+    /// stock removeWindow path — NO return-index bookkeeping.
+    pub fn removeCompositorSlide(self: *SlideDeck, kind: SlideKind) bool {
+        const idx = self.findKind(kind) orelse return false;
+        _ = self.slides.orderedRemove(idx);
+        if (idx < self.focused_index) {
+            self.focused_index -|= 1;
+        } else {
+            self.clampFocus();
+        }
+        return true;
+    }
+
+    /// Insert a new slide immediately right of `index` and focus it
+    /// (video spawns RIGHT of the player, TASKCARD-3 stage 3).
+    pub fn addCompositorSlideRightOf(self: *SlideDeck, kind: SlideKind, index: usize) u32 {
+        return self.addCompositorSlide(kind, @min(index + 1, self.slides.items.len), false);
+    }
+
     /// Open the sentinel overview slide at the end of the row. The focused
     /// slide index is remembered for the return trip; focus moves onto the
     /// virtual after_last slot, which now displays the card grid.
@@ -361,112 +409,6 @@ pub const SlideDeck = struct {
     /// True while the sentinel occupies the end slot.
     pub fn overviewSlideOpen(self: *const SlideDeck) bool {
         return self.overview_slide_open and self.empty_slot == .after_last;
-    }
-
-    /// Open the sentinel home slide at the start of the row (before_first
-    /// sibling of the overview sentinel). The focused slide index is
-    /// remembered for the return trip; focus moves onto the virtual
-    /// before_first slot, which now displays the home card.
-    /// A7: at most ONE home slide per row — no-op when already open.
-    pub fn openHomeSlide(self: *SlideDeck) void {
-        if (self.home_slide_open) return;
-        // Siblings never both: close the overview sentinel if it is open.
-        if (self.overview_slide_open) {
-            self.overview_slide_open = false;
-        }
-        self.home_return_index = self.focused_index;
-        self.home_slide_open = true;
-        self.empty_slot = .before_first;
-        std.log.info("SlideDeck: home slide opened (return_index={d}, slides={d})", .{ self.home_return_index, self.slides.items.len });
-    }
-
-    /// Close the home sentinel (A7: standard quit destroys it like any
-    /// slide) and return focus to the slide that opened it (clamped — the
-    /// deck may have changed while the home slide was open). Never
-    /// auto-respawned; tray_toggle re-spawns on demand.
-    pub fn closeHomeSlide(self: *SlideDeck) void {
-        if (!self.home_slide_open) return;
-        self.home_slide_open = false;
-        self.empty_slot = .none;
-        if (self.slides.items.len > 0) {
-            self.focused_index = @min(self.home_return_index, self.slides.items.len - 1);
-            // Never land back on a parked slide.
-            if (self.slides.items[self.focused_index].parked) {
-                if (self.nextUnparked(self.focused_index + 1)) |n| {
-                    self.focused_index = n;
-                } else if (self.prevUnparked(self.focused_index)) |p| {
-                    self.focused_index = p;
-                }
-            }
-        }
-        std.log.info("SlideDeck: home slide closed (focused_index={d})", .{self.focused_index});
-    }
-
-    pub fn toggleHomeSlide(self: *SlideDeck) void {
-        if (self.home_slide_open) self.closeHomeSlide() else self.openHomeSlide();
-    }
-
-    /// True while the sentinel occupies the before_first slot.
-    pub fn homeSlideOpen(self: *const SlideDeck) bool {
-        return self.home_slide_open and self.empty_slot == .before_first;
-    }
-
-    /// The rect the compositor-owned home slide renders into: the focused
-    /// slot band (delta 0, same geometry a focused client window gets),
-    /// gap-inset. Output-local coords; the caller adds the output box offset.
-    pub fn homeSlideTarget(self: *SlideDeck) Rect {
-        const result = switch (self.orientation) {
-            .horizontal => self.horizontalTarget(0),
-            .vertical => self.verticalTarget(0),
-        };
-        return result.inset(self.gap);
-    }
-
-    /// Media player slide (law: media-is-a-slide.md): a normal deck slide.
-    /// Opening sets the flag only — the deck's slides/focus are UNDISTURBED
-    /// underneath; the current focused slot renders the media card instead
-    /// of its client window. On an empty deck the card still opens, into the
-    /// empty-slot rect (first-boot ruling).
-    pub fn openMediaSlide(self: *SlideDeck) void {
-        if (self.media_slide_open) return;
-        // Siblings never both: close the overview if it is open.
-        if (self.overview_slide_open) {
-            self.overview_slide_open = false;
-        }
-        self.media_slide_open = true;
-        std.log.info("SlideDeck: media slide opened (focused_index={d}, slides={d})", .{ self.focused_index, self.slides.items.len });
-    }
-
-    pub fn closeMediaSlide(self: *SlideDeck) void {
-        if (!self.media_slide_open) return;
-        // Flag only — focus/slides were never moved, so nothing to restore.
-        self.media_slide_open = false;
-        std.log.info("SlideDeck: media slide closed (focused_index={d})", .{self.focused_index});
-    }
-
-    pub fn toggleMediaSlide(self: *SlideDeck) void {
-        if (self.media_slide_open) self.closeMediaSlide() else self.openMediaSlide();
-    }
-
-    /// True while the media slide is open on this deck.
-    pub fn mediaSlideOpen(self: *const SlideDeck) bool {
-        return self.media_slide_open;
-    }
-
-    /// The rect the compositor-owned media slide renders into.
-    /// LAW (docs/law/playback.md): fullscreen is a SIZE, not a mode. The
-    /// card gets the deck's focused slot (delta 0, same geometry a focused
-    /// client window gets). A playing player gets the full output rect —
-    /// no gap inset, no split. Same slide, two sizes; nothing between.
-    pub fn mediaSlideTarget(self: *SlideDeck, fullscreen: bool) Rect {
-        if (fullscreen) {
-            return .{ .x = 0, .y = 0, .width = self.width, .height = self.height };
-        }
-        const result = switch (self.orientation) {
-            .horizontal => self.horizontalTarget(0),
-            .vertical => self.verticalTarget(0),
-        };
-        return result.inset(self.gap);
     }
 
     /// Toggle the fullscreen flag on the focused slide (hotkey path).
@@ -889,58 +831,47 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     try std.testing.expectEqual(saved_focus, deck.focused_index);
 }
 
-test "media slide: normal deck slide, focus undisturbed" {
+test "compositor slide: real deck entry at index 0, focus walks stock paths" {
     const allocator = std.testing.allocator;
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
 
     deck.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
+    _ = deck.addCompositorSlide(.home, 0, true);
+    try std.testing.expectEqual(@as(usize, 1), deck.slides.items.len);
+    try std.testing.expectEqual(SlideKind.home, deck.slides.items[0].kind);
+    try std.testing.expect(deck.slides.items[0].ephemeral);
+    try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
+    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+    try std.testing.expect(deck.slides.items[0].window_id >= SlideDeck.compositor_id_base);
+
+    // A client window spawns right of home — home slips into the peek.
     deck.addWindow(1);
-    deck.addWindow(2);
-    deck.addWindow(3);
-    // Deck order 1,2,3 — focused index 2 (window 3).
-    const saved_focus = deck.focused_index;
-
-    deck.openMediaSlide();
-    try std.testing.expect(deck.mediaSlideOpen());
-    // No sentinel: empty_slot untouched, focus untouched.
-    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
-    try std.testing.expectEqual(saved_focus, deck.focused_index);
-
-    // Focus next/prev still walks the 3 real slides; empty_slot stays .none.
-    deck.focusPrev();
+    try std.testing.expectEqual(@as(usize, 2), deck.slides.items.len);
     try std.testing.expectEqual(@as(usize, 1), deck.focused_index);
-    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
-    deck.focusNext();
-    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
-    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+    try std.testing.expectEqual(SlideKind.app, deck.slides.items[1].kind);
 
-    // Close: flag clears, focused_index unchanged.
-    deck.closeMediaSlide();
-    try std.testing.expect(!deck.mediaSlideOpen());
-    try std.testing.expectEqual(@as(usize, 2), deck.focused_index);
-    try std.testing.expectEqual(EmptySlot.none, deck.empty_slot);
+    // Stock walk back onto home.
+    deck.focusPrev();
+    try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
 
-    // Siblings never both: opening media closes the overview flag.
-    deck.openOverviewSlide();
-    try std.testing.expect(deck.overview_slide_open);
-    deck.openMediaSlide();
-    try std.testing.expect(!deck.overview_slide_open);
-    try std.testing.expect(deck.media_slide_open);
-    deck.closeMediaSlide();
+    // Ephemeral destroy: focus settles through the stock path, no
+    // return-index bookkeeping.
+    try std.testing.expect(deck.removeCompositorSlide(.home));
+    try std.testing.expectEqual(@as(usize, 1), deck.slides.items.len);
+    try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
+    try std.testing.expect(!deck.removeCompositorSlide(.home));
 
-    // Empty deck: media still opens (first-boot ruling), no sentinel state.
-    var empty = SlideDeck.init(allocator);
-    defer empty.deinit();
-    empty.sync(800, 600, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
-    empty.openMediaSlide();
-    try std.testing.expect(empty.mediaSlideOpen());
-    try std.testing.expectEqual(EmptySlot.none, empty.empty_slot);
-    const t = empty.mediaSlideTarget(false);
-    try std.testing.expect(t.width > 0 and t.height > 0);
-    empty.closeMediaSlide();
-    try std.testing.expect(!empty.mediaSlideOpen());
-    try std.testing.expectEqual(EmptySlot.none, empty.empty_slot);
+    // Video spawns RIGHT of the player slide.
+    const pid = deck.addCompositorSlide(.media_player, 0, false);
+    _ = pid;
+    const pidx = deck.findKind(.media_player).?;
+    _ = deck.addCompositorSlideRightOf(.video, pidx);
+    try std.testing.expectEqual(@as(usize, pidx + 1), deck.findKind(.video).?);
+    try std.testing.expectEqual(@as(usize, pidx + 1), deck.focused_index);
+    // Quit on video: deck settles back onto the player (left neighbour).
+    try std.testing.expect(deck.removeCompositorSlide(.video));
+    try std.testing.expectEqual(@as(usize, pidx), deck.focused_index);
 }
 
 test "sentinel toggle round-trips" {
