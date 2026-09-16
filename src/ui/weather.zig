@@ -145,83 +145,75 @@ pub const WeatherWidget = struct {
         c_cairo.cairo_rectangle(cr, 0.0, 0.0, w_d, h_d);
         c_cairo.cairo_clip(cr);
 
-        // Moon phase sits in the same 34*s status strip as the network icon
-        // on the right peek, so the two icons align horizontally.
-        const margin: f64 = 14.0 * scale_f;
-        const status_band_h: f64 = 34.0 * scale_f;
-        const moon_r = @max(5.0 * scale_f, @min(w_d * 0.39, 12.0 * scale_f, (h_d - margin * 2.0) * 0.16));
-        const moon_cx = w_d * 0.5 + 3.0 * scale_f;
-        const moon_cy = status_band_h * 0.5;
+        // Mirror of the clock painter, line for line (peek.zig drawClockWidget):
+        // same status strip, same -7*scale icon shift, same anchors. The moon
+        // IS the weather side's sigs icon — pinned at the sigs coordinates,
+        // everything else falls in below at the clock's rhythm. No adaptive
+        // budgets, no per-element x drift (2026-09-17 mirror law).
+        const status_strip_h: f64 = 34.0 * scale_f;
+
+        // Sigs icon: cy = strip*0.55, cx = w*0.5, whole strip shifted -7*scale.
+        const moon_r = @max(5.0 * scale_f, @min(w_d * 0.30, 12.0 * scale_f));
+        const moon_cx = w_d * 0.5 - 7.0 * scale_f;
+        const moon_cy = status_strip_h * 0.55;
         const phase = moon.phaseForUnixSeconds(@intCast(c_std.time(null)));
         moon.renderMoon(cr, moon_cx, moon_cy, moon_r, phase, gold, bg);
 
         c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
 
+        // Big temp — same size, same fit loop, same anchor as the clock digits.
         var current_buf: [16:0]u8 = undefined;
         @memset(&current_buf, 0);
         const current_str = std.fmt.bufPrintZ(&current_buf, "{d:.0}°", .{state_.current_temp}) catch "--°";
 
-        const big_font_base: f64 = @as(f64, style_.font_size_m) * 1.9 * scale_f;
-        var current_size = big_font_base;
-        c_cairo.cairo_set_font_size(cr, current_size);
-
+        const big_font_size: f64 = @as(f64, style_.font_size_m) * 1.9 * scale_f;
         var ext: c_cairo.cairo_text_extents_t = undefined;
+        var current_size = big_font_size;
+        c_cairo.cairo_set_font_size(cr, current_size);
         c_cairo.cairo_text_extents(cr, current_str, &ext);
-        const mm_size_probe: f64 = @as(f64, style_.font_size_s) * 1.2 * scale_f;
-        // Hard budget: the whole text stack (status strip + big temp +
-        // min/max) must end by 55% of the pill height so the condition
-        // icon always has room inside the pill — never past its bottom.
-        const text_budget: f64 = h_d * 0.55;
-        while ((ext.width > w_d - margin * 2.0 or
-            status_band_h + 10.0 * scale_f + current_size * 0.85 + mm_size_probe * 1.75 > text_budget) and current_size > 8.0)
-        {
+        while (ext.width > w_d - 8.0 and current_size > 6.0) {
             current_size *= 0.92;
             c_cairo.cairo_set_font_size(cr, current_size);
             c_cairo.cairo_text_extents(cr, current_str, &ext);
         }
-
-        const tmp_y = status_band_h + 10.0 * scale_f + current_size * 0.85;
+        const top_pad: f64 = status_strip_h + 10.0 * scale_f;
+        const tmp_y = ext.height + top_pad;
         c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_move_to(cr, (w_d - ext.width) * 0.5 + 3.0 * scale_f, tmp_y);
+        c_cairo.cairo_move_to(cr, (w_d - ext.width) * 0.5 - 9.0 * scale_f, tmp_y);
         c_cairo.cairo_show_text(cr, current_str);
 
+        // Min/max — sits where the date block sits on the clock side.
         var minmax_buf: [32:0]u8 = undefined;
         @memset(&minmax_buf, 0);
         const minmax_str = std.fmt.bufPrintZ(&minmax_buf, "{d:.0}° / {d:.0}°", .{ state_.temp_min, state_.temp_max }) catch "-- / --";
 
-        const mm_size: f64 = @as(f64, style_.font_size_s) * 1.2 * scale_f;
+        const mm_size: f64 = @as(f64, style_.font_size_s) * 1.3 * scale_f;
+        const line_gap: f64 = mm_size * 1.25;
         c_cairo.cairo_set_font_size(cr, mm_size);
         var mm_ext: c_cairo.cairo_text_extents_t = undefined;
         c_cairo.cairo_text_extents(cr, minmax_str, &mm_ext);
-        // Clock rhythm: the min/max line sits directly under the big temp
-        // like the date block under the clock digits — one line-gap, not
-        // 1.75x (the old gap opened the void that made the pill a mess).
-        const mm_y = tmp_y + mm_size * 1.3;
+        const mm_y = tmp_y + line_gap * 1.5;
         c_cairo.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-        c_cairo.cairo_move_to(cr, (w_d - mm_ext.width) * 0.5 + 3.0 * scale_f, mm_y);
+        c_cairo.cairo_move_to(cr, (w_d - mm_ext.width) * 0.5 - 4.0 * scale_f, mm_y);
         c_cairo.cairo_show_text(cr, minmax_str);
 
-        // Weather condition icon flows directly below the min/max line —
-        // top-anchored like every element on the clock side. The old code
-        // centered it in the space remaining down to the pill bottom, which
-        // stranded it at the foot of the 320-tall tower with a void above.
-        var icon_r: f64 = 48.0 * scale_f;
-        // Percentage-of-container gap: fraction of the icon radius, so the
-        // same face proportions hold at scale 1 (1080p) and scale 2 (4K).
-        const icon_gap: f64 = @max(0.35 * icon_r, 10.0 * scale_f);
-        const icon_bottom_margin: f64 = 0.10 * icon_r;
-        const max_icon_r = @min(w_d * 0.5 - 2.0 * scale_f, (h_d - (mm_y + icon_gap + icon_bottom_margin)) * 0.5);
-        icon_r = @min(icon_r, @max(0.0, max_icon_r));
+        // Condition icon flows at the same line_gap rhythm below the min/max —
+        // the weather side's third date line, drawn as a glyph. Fixed radius,
+        // centered on the SAME -7*shift column as the moon above it; only a
+        // shrink if it would cross the pill bottom (never a reposition).
+        var icon_r: f64 = 34.0 * scale_f;
+        const icon_gap: f64 = line_gap * 1.2;
+        const max_r_bottom: f64 = (h_d - (mm_y + icon_gap) - 4.0 * scale_f) * 0.5;
+        const max_r_width: f64 = w_d * 0.5 - 4.0 * scale_f;
+        icon_r = @min(icon_r, @max(0.0, @min(max_r_bottom, max_r_width)));
         if (icon_r >= 8.0 * scale_f) {
-            const icon_cx = w_d * 0.5 - 10.0 * scale_f;
+            const icon_cx = w_d * 0.5 - 7.0 * scale_f;
             const icon_cy = mm_y + icon_gap + icon_r;
-            // The bare sun (code 0, day) visually reads smaller than the moon
-            // because its rays are clipped tighter; nudge it up 10px and right
-            // 9px so its optical center lands on the moon's dead-center.
-            const sun_shift_x: f64 = 9.0 * scale_f;
-            const sun_shift_y: f64 = -10.0 * scale_f;
-            const draw_cx = icon_cx + if (state_.weather_code == 0 and state_.is_day != 0) sun_shift_x else 0.0;
-            const draw_cy = icon_cy + if (state_.weather_code == 0 and state_.is_day != 0) sun_shift_y else 0.0;
+            // Bare sun rays clip tighter than the moon's full-bleed disc; the
+            // +9/-10 nudge puts its optical center on the column like the moon.
+            const sun = state_.weather_code == 0 and state_.is_day != 0;
+            const draw_cx = icon_cx + if (sun) 9.0 * scale_f else 0.0;
+            const draw_cy = icon_cy + if (sun) -10.0 * scale_f else 0.0;
             renderConditionIcon(cr, draw_cx, draw_cy, icon_r, state_.weather_code, state_.is_day != 0, state_.wind_speed, gold);
         }
 
