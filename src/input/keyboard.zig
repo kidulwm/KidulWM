@@ -238,23 +238,16 @@ const KeyboardDevice = struct {
                 return true;
             },
             .tray_toggle => {
-                server.tray.toggle();
-                return true;
-            },
-            .tray_select_next => {
-                if (server.tray.isOpen()) server.tray.selectNext() else server.tray.toggle();
-                return true;
-            },
-            .tray_select_prev => {
-                if (server.tray.isOpen()) server.tray.selectPrev() else server.tray.toggle();
-                return true;
-            },
-            .tray_activate => {
-                if (server.tray.isOpen()) server.tray.activateSelected() else server.tray.toggle();
+                // Tray-slide birth (stage 1): the tray overlay is dead as a
+                // keybind target — focus the home slide, or spawn one at
+                // before_first if this row has none (A7).
+                server.homeSlideFocusOrSpawn();
                 return true;
             },
             .media_card_toggle => {
-                server.tray.toggleMediaCard();
+                // Same target for now (stage 1): focus/spawn the home slide.
+                // The real media readout section is a later stage.
+                server.homeSlideFocusOrSpawn();
                 return true;
             },
             .signals_card_toggle => {
@@ -268,6 +261,14 @@ const KeyboardDevice = struct {
                 return true;
             },
             .close_focused => {
+                // A7: the home slide is QUITABLE — the standard quit keybind
+                // closes it like any slide (instead of killing a client) when
+                // focus rests on the home sentinel slot.
+                const deck = server.currentDeckPub();
+                if (deck.homeSlideOpen()) {
+                    server.homeSlideClose();
+                    return true;
+                }
                 if (server.focused_window) |win| {
                     win.toplevel.sendClose();
                 }

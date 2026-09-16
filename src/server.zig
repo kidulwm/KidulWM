@@ -35,6 +35,7 @@ const chrome_renderer = @import("render/chrome.zig");
 const cairo = @import("dm").c;
 const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
+const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
 const media_video = @import("ui/media_video.zig");
 const media_mod = @import("ui/media.zig");
@@ -91,6 +92,8 @@ pub const Output = struct {
     deck: slidedeck.SlideDeck,
     /// Sentinel overview slide for THIS output's deck (per-output by ruling).
     overview: overview_slide_mod.OverviewSlide = .{},
+    /// Sentinel home (tray) slide for THIS output's deck (before_first slot).
+    tray_slide: tray_slide_mod.TraySlide = .{},
     /// Media player slide (left-end sentinel sibling).
     media_slide: media_slide_mod.MediaSlide = .{},
     /// Per-output wallpaper scene buffer (fill-contain, no crop). The master
@@ -114,6 +117,7 @@ pub const Output = struct {
             .destroy = wl.Listener(*wlr.Output).init(handleDestroy),
             .deck = slidedeck.SlideDeck.init(server.allocator),
             .overview = .{},
+            .tray_slide = .{},
             .media_slide = .{},
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,
@@ -222,6 +226,14 @@ pub const Output = struct {
         while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.server.scene_mutex.unlock();
         self.server.mediaVideoTeardown(self);
+        // Home slide dies with the output (its scene tree lives in the
+        // output's render path).
+        if (self.tray_slide.tree) |tree| {
+            tree.node.destroy();
+            self.tray_slide.tree = null;
+            self.tray_slide.card_buffer = null;
+            self.tray_slide.chrome_buffer = null;
+        }
     }
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -1387,6 +1399,12 @@ pub const Server = struct {
             deck.closeOverviewSlide();
             self.focusReturnFromOverview(deck);
         } else {
+            // Siblings never both: if the home sentinel holds this row, close
+            // its scene tree before the overview takes over the slot state.
+            if (deck.home_slide_open) {
+                if (owner) |output| self.traySlideClose(output);
+                deck.home_slide_open = false;
+            }
             deck.openOverviewSlide();
             self.overview_cursor = 0;
             if (owner) |output| self.overviewSlideOpen(output);
@@ -1562,6 +1580,144 @@ pub const Server = struct {
         output.overview.card_buffer = null;
         output.overview.tile_count = 0;
         std.log.info("KidulWM: overview slide closed", .{});
+    }
+
+    // ── Home (tray) slide — before_first sentinel ────────────────────────
+
+    /// Return the output that owns the given deck (home slide render target).
+    fn outputForDeck(self: *Server, deck: *slidedeck.SlideDeck) ?*Output {
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            if (&output.deck == deck) return output;
+        }
+        return null;
+    }
+
+    /// Focus the output that owns the given deck so follow-up focus changes
+    /// (focusReturnFromHome and future deck walks) keep landing on this row.
+    fn focusOutputForDeck(self: *Server, deck: *slidedeck.SlideDeck) void {
+        if (self.outputForDeck(deck)) |output| {
+            self.focused_output = output;
+        }
+    }
+
+    /// tray_toggle / media_card_toggle target (A7): focus the home slide, or
+    /// spawn one at before_first if this row has none. At most one per row;
+    /// never auto-respawned.
+    pub fn homeSlideFocusOrSpawn(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.homeSlideOpen()) return; // already focused on it — no-op
+        // Siblings never both: if the overview sentinel is open on this row,
+        // close its scene tree before the home slide takes the slot state.
+        if (deck.overview_slide_open) {
+            if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
+        }
+        deck.openHomeSlide();
+        self.focusOutputForDeck(deck);
+        self.clearFocus();
+        if (self.outputForDeck(deck)) |output| {
+            self.traySlideOpen(output);
+        }
+        self.requestLayout();
+    }
+
+    /// Standard quit on the home slide (A7): close the sentinel and return
+    /// focus to the slide that opened it. Never auto-respawned.
+    pub fn homeSlideClose(self: *Server) void {
+        const deck = self.currentDeck();
+        if (!deck.home_slide_open) return;
+        if (self.outputForDeck(deck)) |output| {
+            self.traySlideClose(output);
+        }
+        deck.closeHomeSlide();
+        self.focusOutputForDeck(deck);
+        self.focusReturnFromHome(deck);
+        self.requestLayout();
+    }
+
+    fn focusReturnFromHome(self: *Server, deck: *slidedeck.SlideDeck) void {
+        if (deck.slides.items.len == 0) {
+            self.clearFocus();
+            return;
+        }
+        const slide = deck.slides.items[deck.focused_index];
+        self.focused_window_id = slide.window_id;
+        if (self.windowById(slide.window_id)) |window| {
+            if (window.toplevel.base.surface.mapped) self.focusWindow(window);
+        }
+    }
+
+    /// Create the home slide's scene tree on the output (card + stock chrome
+    /// border — A1). Deck flag is set by the caller (homeSlideFocusOrSpawn).
+    fn traySlideOpen(self: *Server, output: *Output) void {
+        if (output.tray_slide.isOpen()) return;
+        const tree = self.scene.tree.createSceneTree() catch return;
+        output.tray_slide.tree = tree;
+        tree.node.raiseToTop();
+        self.traySlideRefresh(output);
+        std.log.info("KidulWM: home slide open on output", .{});
+    }
+
+    /// (Re)render the home slide card + stock chrome into the before_first
+    /// focused-slot rect. Called on open and from applyLayout on every layout
+    /// event while the slide is open; the repaint guard skips unchanged
+    /// geometry so walking (slide position changes) re-positions, not
+    /// re-renders.
+    pub fn traySlideRefresh(self: *Server, output: *Output) void {
+        const tree = output.tray_slide.tree orelse return;
+        const deck = &output.deck;
+        var target = deck.homeSlideTarget();
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        target.x += box.x;
+        target.y += box.y;
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        const buf_w: i32 = @intCast(target.width);
+        const buf_h: i32 = @intCast(target.height);
+        if (buf_w <= 0 or buf_h <= 0) return;
+        const geom_same = (buf_w == output.tray_slide.card_last_w and
+            buf_h == output.tray_slide.card_last_h);
+        if (!geom_same or output.tray_slide.card_buffer == null) {
+            const buffer = tray_slide_mod.renderToBuffer(self.theme, buf_w, buf_h, scale) orelse return;
+            if (output.tray_slide.card_buffer) |old| old.node.destroy();
+            const card = tree.createSceneBuffer(buffer) catch {
+                wlr.Buffer.drop(buffer);
+                return;
+            };
+            output.tray_slide.card_buffer = card;
+            // Rendered at physical pixels; pin the display size back to the
+            // logical target rect (same scale law as the media slide).
+            card.setDestSize(buf_w, buf_h);
+            card.node.raiseToTop();
+            output.tray_slide.card_last_w = buf_w;
+            output.tray_slide.card_last_h = buf_h;
+
+            // A1: stock chrome border ring on top of the card.
+            const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
+            if (chrome_buf) |cb| {
+                if (output.tray_slide.chrome_buffer) |old| old.node.destroy();
+                if (tree.createSceneBuffer(cb) catch null) |chrome| {
+                    output.tray_slide.chrome_buffer = chrome;
+                    chrome.setDestSize(buf_w, buf_h);
+                    chrome.node.raiseToTop();
+                } else {
+                    wlr.Buffer.drop(cb);
+                }
+            }
+        }
+        tree.node.setPosition(target.x, target.y);
+    }
+
+    fn traySlideClose(self: *Server, output: *Output) void {
+        _ = self;
+        if (!output.tray_slide.isOpen()) return;
+        output.tray_slide.tree.?.node.destroy();
+        output.tray_slide.tree = null;
+        output.tray_slide.card_buffer = null;
+        output.tray_slide.chrome_buffer = null;
+        output.tray_slide.card_last_w = 0;
+        output.tray_slide.card_last_h = 0;
+        std.log.info("KidulWM: home slide closed", .{});
     }
 
     /// ONE PLAYER PER SESSION (law: media-is-a-slide.md ruling 3): exactly
@@ -2624,6 +2780,17 @@ pub const Server = struct {
                 continue;
             }
 
+            // While the sentinel home slide is open on this output, the
+            // before_first slot is focused — no client slide is. Every real
+            // slide gets its non-focused treatment (disabled, no chrome);
+            // the home card walks/peeks with the deck like any slide.
+            if (output.deck.homeSlideOpen() and output.tray_slide.isOpen()) {
+                self.traySlideRefresh(output);
+                if (output.tray_slide.tree) |tree| {
+                    tree.node.raiseToTop();
+                }
+            }
+
             var focused_slide_window: ?*Window = null;
             const deck_ptr = &output.deck;
             for (output.deck.slides.items, 0..) |slide, slide_idx| {
@@ -2741,7 +2908,7 @@ pub const Server = struct {
             }
         }
 
-        if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen())) {
+        if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen() and !active_deck.homeSlideOpen())) {
             self.clearFocus();
         }
 

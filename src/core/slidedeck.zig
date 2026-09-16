@@ -81,6 +81,15 @@ pub const SlideDeck = struct {
     /// media card instead of the client window. No sentinel, no empty_slot
     /// interaction, no focus movement — slides/focus are undisturbed.
     media_slide_open: bool = false,
+    /// Sentinel home (tray) slide (tray-slide birth, 2026-09-16): when true,
+    /// the before_first empty slot is OCCUPIED by the compositor-owned home
+    /// slide instead of emptiness. Not a Slide in slides.items — window-count
+    /// invariants (slide_count == real client count) stay intact. At most one
+    /// per row (flag-guarded); quitable via the standard quit path (A7); never
+    /// auto-respawned.
+    home_slide_open: bool = false,
+    /// The slide index to return to when the home slide closes.
+    home_return_index: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) SlideDeck {
         return .{
@@ -352,6 +361,65 @@ pub const SlideDeck = struct {
     /// True while the sentinel occupies the end slot.
     pub fn overviewSlideOpen(self: *const SlideDeck) bool {
         return self.overview_slide_open and self.empty_slot == .after_last;
+    }
+
+    /// Open the sentinel home slide at the start of the row (before_first
+    /// sibling of the overview sentinel). The focused slide index is
+    /// remembered for the return trip; focus moves onto the virtual
+    /// before_first slot, which now displays the home card.
+    /// A7: at most ONE home slide per row — no-op when already open.
+    pub fn openHomeSlide(self: *SlideDeck) void {
+        if (self.home_slide_open) return;
+        // Siblings never both: close the overview sentinel if it is open.
+        if (self.overview_slide_open) {
+            self.overview_slide_open = false;
+        }
+        self.home_return_index = self.focused_index;
+        self.home_slide_open = true;
+        self.empty_slot = .before_first;
+        std.log.info("SlideDeck: home slide opened (return_index={d}, slides={d})", .{ self.home_return_index, self.slides.items.len });
+    }
+
+    /// Close the home sentinel (A7: standard quit destroys it like any
+    /// slide) and return focus to the slide that opened it (clamped — the
+    /// deck may have changed while the home slide was open). Never
+    /// auto-respawned; tray_toggle re-spawns on demand.
+    pub fn closeHomeSlide(self: *SlideDeck) void {
+        if (!self.home_slide_open) return;
+        self.home_slide_open = false;
+        self.empty_slot = .none;
+        if (self.slides.items.len > 0) {
+            self.focused_index = @min(self.home_return_index, self.slides.items.len - 1);
+            // Never land back on a parked slide.
+            if (self.slides.items[self.focused_index].parked) {
+                if (self.nextUnparked(self.focused_index + 1)) |n| {
+                    self.focused_index = n;
+                } else if (self.prevUnparked(self.focused_index)) |p| {
+                    self.focused_index = p;
+                }
+            }
+        }
+        std.log.info("SlideDeck: home slide closed (focused_index={d})", .{self.focused_index});
+    }
+
+    pub fn toggleHomeSlide(self: *SlideDeck) void {
+        if (self.home_slide_open) self.closeHomeSlide() else self.openHomeSlide();
+    }
+
+    /// True while the sentinel occupies the before_first slot.
+    pub fn homeSlideOpen(self: *const SlideDeck) bool {
+        return self.home_slide_open and self.empty_slot == .before_first;
+    }
+
+    /// The rect the compositor-owned home slide renders into: the focused
+    /// slot band (delta 0, same geometry a focused client window gets),
+    /// gap-inset. Output-local coords; the caller adds the output box offset.
+    pub fn homeSlideTarget(self: *SlideDeck) Rect {
+        const result = switch (self.orientation) {
+            .horizontal => self.horizontalTarget(0),
+            .vertical => self.verticalTarget(0),
+        };
+        return result.inset(self.gap);
     }
 
     /// Media player slide (law: media-is-a-slide.md): a normal deck slide.
