@@ -53,11 +53,19 @@ A1. PROPER SLIDE: the tray slide gets a REAL border + background, stock
     Acting like the rest of the slides comes from having normal chrome.
     "Transparent text-only later" = one alpha constant in the render, not
     an architecture change. Hard NO #4 is hereby REPEALED.
-A2. DEFAULT/HOME SLIDE: tray slide is indestructible index 0, session
-    starts on it, focus falls back to it when a focused slide dies. The
-    deck never empties below one — "no slides present" ceases to exist.
-    It cannot be closed (sentinel flag); everything else about it is
-    stock slide behavior (walk, park, peek, fullscreen).
+A2. HOME SLIDE: tray slide sits at index 0 of its row and is the boot
+    landing + tray_toggle target. AMENDED by A7 (see below): it is a
+    STOCK slide — closable, no indestructibility.
+A7. HOME SLIDE IS QUITABLE (Barticus, same session): the standard quit
+    keybind destroys the home slide like any other. At most ONE home
+    slide per row; per-row not per-output (dual screens on one row share
+    it, no clones). It does NOT auto-respawn — tray_toggle = "focus the
+    home slide, or spawn one at index 0 if this row has none". Boot
+    lands on the MEDIA PLAYER (A5 appliance law); the home slide is
+    summoned on demand, not force-spawned at boot. After that its
+    existence is the user's choice. Last-slide-closed → plain empty
+    deck, EXIT signs do the talking (A3); no fake slide, no
+    void-protection machinery.
 A3. NO PLACEHOLDER SLIDES: no empty slides at row ends, no empty-slide
     body for empty rows. EXIT signs are the affordance (they exist, they
     are deployed). End-of-row/edge EXIT signs render at 100% opacity —
