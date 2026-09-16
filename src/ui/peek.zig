@@ -21,8 +21,10 @@ const NetworkWidget = @import("network.zig").NetworkWidget;
 /// re-tuned):
 ///
 ///   LEFT peek, top-to-bottom:  weather (moon + temp, 215 logical pill),
-///                              gauges (GPU/CPU mercury), drives list,
 ///                              KSD logo bottom-anchored (inert click).
+///                              (gauges + drives REMOVED 2026-09-16: gauges
+///                              default-off per Barticus; drives belong to
+///                              kfiles. Painters remain in-tree for opt-in.)
 ///   RIGHT peek, top-to-bottom: network icon in a 34*scale status strip,
 ///                              24h clock + 3-line date beneath it.
 ///
@@ -54,14 +56,20 @@ const clock_max_pill_lo: i32 = 80;
 const clock_pill_w_lo: i32 = 20;
 const clock_pill_h_lo: i32 = 40;
 // Weather pill (old tray drawWeatherWidget, ~lines 2679-2687).
+// vmargin 16 (was 8): pill top = 16+4 = 20 = clock_peek_vmargin, so the moon
+// (painted in the weather widget's 34*scale status strip, center 17px below
+// the pill top) sits dead level with the network sigs icon on the right peek
+// (Barticus 2026-09-16: moon and sigs MUST be level).
 const weather_peek_hmargin: i32 = 2;
-const weather_peek_vmargin: i32 = 8;
+const weather_peek_vmargin: i32 = 16;
 const weather_max_pill_side: i32 = 215; // logical, every output (CFC law)
 // Gauge pill (old tray drawGaugeWidget, ~lines 2944-2955).
 const gauge_peek_hmargin: i32 = 2;
 const gauge_peek_vmargin: i32 = 8;
 const gauge_weather_height: i32 = 215;
-// Drives pill (old tray drawDrivesWidget, ~lines 3046-3056).
+// Drives widget PARKED (Barticus 2026-09-16): not painted by default — drive
+// visibility lives in kfiles. Painter + constants kept in-tree for later
+// opt-in; do not call drawDrivesWidget from refreshWidgets until then.
 const drives_peek_hmargin: i32 = 2;
 const drives_peek_vmargin: i32 = 8;
 const drives_weather_height: i32 = 215;
@@ -196,8 +204,6 @@ pub const Peek = struct {
     /// a no-change call repositions only — same pattern as the old painters.
     pub fn refreshWidgets(self: *Peek, widgets: *Widgets) void {
         self.drawWeatherWidget(widgets);
-        self.drawGaugeWidget(widgets);
-        self.drawDrivesWidget(widgets);
         self.drawLogoWidget(widgets);
         self.drawClockWidget(widgets);
     }
