@@ -2565,38 +2565,53 @@ pub const Server = struct {
             // Update spyglass icon positions and neighbor availability.
             if (self.spyglass) |sg| {
                 const scale: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
-                // In empty-slot state, the nearest real slide is on the
-                // side it sits: after_last -> neighbor is to the left,
-                // before_first -> neighbor is to the right.
-                const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
-                    (output.deck.empty_slot == .after_last and output.deck.slides.items.len > 0);
-                const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < output.deck.slides.items.len) or
-                    (output.deck.empty_slot == .before_first and output.deck.slides.items.len > 0);
-                // Slide count on each side of the current slide — printed
-                // at the screen edge next to the EXIT signs.
-                // LAW: guard the empty deck — at first layout slides.len==0
-                // and empty_slot==.none, and the unchecked
-                // (len - focused_index - 1) underflows usize (boot crash,
-                // 2026-09-15).
-                const n_slides = output.deck.slides.items.len;
-                const left_count: u32 = if (n_slides == 0)
-                    0
-                else if (output.deck.empty_slot == .after_last)
-                    @intCast(n_slides)
-                else if (output.deck.empty_slot == .before_first)
-                    0
-                else
-                    @intCast(output.deck.focused_index);
-                const right_count: u32 = if (n_slides == 0)
-                    0
-                else if (output.deck.empty_slot == .before_first)
-                    @intCast(n_slides)
-                else if (output.deck.empty_slot == .after_last)
-                    0
-                else
-                    @intCast(n_slides - output.deck.focused_index - 1);
-                sg.updateOutput(width, height, scale);
-                sg.setNeighbors(has_left, has_right, left_count, right_count);
+                // WIDGETS-OFF-IN-FULLSCREEN LAW (Barticus 2026-09-16, GSI):
+                // when the focused slide is fullscreen (or the media slide is
+                // playing — it auto-fullscreens), ALL widgets hide: spyglass
+                // EXIT signs, tray, weather. The apps behind them stay one
+                // hotkey / Granny-button away. Disabling the icons kills both
+                // render AND the peek-edge hitboxes, so fullscreen apps own
+                // the screen edges.
+                const fs_slide = output.deck.empty_slot == .none and
+                    output.deck.focused_index < output.deck.slides.items.len and
+                    output.deck.slides.items[output.deck.focused_index].fullscreen;
+                const media_fs = output.deck.media_slide_open and output.media_slide.isOpen();
+                if (fs_slide or media_fs) {
+                    sg.setNeighbors(false, false, 0, 0);
+                } else {
+                    // In empty-slot state, the nearest real slide is on the
+                    // side it sits: after_last -> neighbor is to the left,
+                    // before_first -> neighbor is to the right.
+                    const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
+                        (output.deck.empty_slot == .after_last and output.deck.slides.items.len > 0);
+                    const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < output.deck.slides.items.len) or
+                        (output.deck.empty_slot == .before_first and output.deck.slides.items.len > 0);
+                    // Slide count on each side of the current slide — printed
+                    // at the screen edge next to the EXIT signs.
+                    // LAW: guard the empty deck — at first layout slides.len==0
+                    // and empty_slot==.none, and the unchecked
+                    // (len - focused_index - 1) underflows usize (boot crash,
+                    // 2026-09-15).
+                    const n_slides = output.deck.slides.items.len;
+                    const left_count: u32 = if (n_slides == 0)
+                        0
+                    else if (output.deck.empty_slot == .after_last)
+                        @intCast(n_slides)
+                    else if (output.deck.empty_slot == .before_first)
+                        0
+                    else
+                        @intCast(output.deck.focused_index);
+                    const right_count: u32 = if (n_slides == 0)
+                        0
+                    else if (output.deck.empty_slot == .before_first)
+                        @intCast(n_slides)
+                    else if (output.deck.empty_slot == .after_last)
+                        0
+                    else
+                        @intCast(n_slides - output.deck.focused_index - 1);
+                    sg.updateOutput(width, height, scale);
+                    sg.setNeighbors(has_left, has_right, left_count, right_count);
+                }
             }
 
             if (output.deck.slides.items.len == 0) continue;
