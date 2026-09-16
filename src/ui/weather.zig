@@ -139,6 +139,12 @@ pub const WeatherWidget = struct {
         const state_ = self.state();
         const scale_f: f64 = @as(f64, scale);
 
+        // Nothing — glyph strokes, wind barbs, sun rays — ever paints
+        // outside the pill rect (2026-09-17 overflow law).
+        c_cairo.cairo_save(cr);
+        c_cairo.cairo_rectangle(cr, 0.0, 0.0, w_d, h_d);
+        c_cairo.cairo_clip(cr);
+
         // Moon phase sits in the same 34*s status strip as the network icon
         // on the right peek, so the two icons align horizontally.
         const margin: f64 = 14.0 * scale_f;
@@ -161,7 +167,14 @@ pub const WeatherWidget = struct {
 
         var ext: c_cairo.cairo_text_extents_t = undefined;
         c_cairo.cairo_text_extents(cr, current_str, &ext);
-        while (ext.width > w_d - margin * 2.0 and current_size > 8.0) {
+        const mm_size_probe: f64 = @as(f64, style_.font_size_s) * 1.2 * scale_f;
+        // Hard budget: the whole text stack (status strip + big temp +
+        // min/max) must end by 55% of the pill height so the condition
+        // icon always has room inside the pill — never past its bottom.
+        const text_budget: f64 = h_d * 0.55;
+        while ((ext.width > w_d - margin * 2.0 or
+            status_band_h + 10.0 * scale_f + current_size * 0.85 + mm_size_probe * 1.75 > text_budget) and current_size > 8.0)
+        {
             current_size *= 0.92;
             c_cairo.cairo_set_font_size(cr, current_size);
             c_cairo.cairo_text_extents(cr, current_str, &ext);
@@ -198,7 +211,14 @@ pub const WeatherWidget = struct {
             // the min/max line — no upward pull; every condition glyph sits
             // truly centered (the bare sun's upper rays no longer kiss the
             // numbers).
-            const icon_cy = (mm_y + icon_bottom_margin + h_d) * 0.5;
+            var icon_cy = (mm_y + icon_bottom_margin + h_d) * 0.5;
+            // Hard clamp: the glyph's painted extent (radius + bottom
+            // margin) must never cross the pill's bottom edge, and its top
+            // must stay clear of the min/max line. Fixes the 2026-09-17
+            // overflow where the icon bled past the pill at scale 2.
+            const max_cy = h_d - icon_r - icon_bottom_margin;
+            const min_cy = mm_y + icon_bottom_margin + icon_r;
+            icon_cy = @min(@max(icon_cy, min_cy), @max(max_cy, min_cy));
             // The bare sun (code 0, day) visually reads smaller than the moon
             // because its rays are clipped tighter; nudge it up 10px and right
             // 9px so its optical center lands on the moon's dead-center.
@@ -212,6 +232,8 @@ pub const WeatherWidget = struct {
         if (!state_.available) {
             // Location prompt intentionally suppressed; user configures location in the weather card.
         }
+
+        c_cairo.cairo_restore(cr);
     }
 
     pub fn renderCard(self: *WeatherWidget, cr: *c_cairo.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32) void {
