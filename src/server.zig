@@ -39,7 +39,6 @@ const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
 const media_video = @import("ui/media_video.zig");
 const media_mod = @import("ui/media.zig");
-const ui = @import("./ui/tray.zig");
 const spyglass_mod = @import("./ui/spyglass.zig");
 const keybinds = @import("config/keybinds.zig");
 const c = @cImport({
@@ -172,7 +171,7 @@ pub const Output = struct {
         // which veiled the whole screen in the wallpaper image whenever an
         // output's wallpaper was (re)created after clients mapped (the
         // "mythical mist" bug, 2026-09-05). Lower it explicitly, then
-        // re-assert overlay-topmost so widgets/tray/spyglass stay visible.
+        // re-assert overlay-topmost so widgets/spyglass stay visible.
         scene_buffer.node.lowerToBottom();
         // lowerToBottom puts the wallpaper under the solid bg_rect too —
         // raise it back to sit directly above the background colour.
@@ -208,7 +207,6 @@ pub const Output = struct {
     }
 
     pub fn deinit(self: *Output) void {
-        self.server.tray.removeOutput(self);
         self.frame.link.remove();
         self.destroy.link.remove();
         self.deck.deinit();
@@ -307,9 +305,8 @@ pub const Output = struct {
             }
         }
         _ = wlr_output;
-        // SCENE LOCK: hold for the whole frame — tray.update (drawMediaWidget
-        // allocates/destroys scene buffers), mediaVideoRefresh/Teardown, and
-        // scene_output.commit all walk the graph the IPC thread can mutate.
+        // SCENE LOCK: hold for the whole frame — mediaVideoRefresh/Teardown
+        // and scene_output.commit walk the graph the IPC thread can mutate.
         while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.server.scene_mutex.unlock();
         const now_us = animation.nowUs();
@@ -317,7 +314,6 @@ pub const Output = struct {
         while (it.next()) |window| {
             _ = window.tickAnimation(now_us);
         }
-        self.server.tray.update();
         self.server.tickWallpaperReveal(now_us);
 
         // ── Play-timer arm + playback driving (render-thread guards) ────────
@@ -384,8 +380,7 @@ pub const Server = struct {
     /// Guards the wlroots scene graph against cross-thread mutation.
     /// The IPC thread (mediaSlideToggle/Close via kidulwm-control)
     /// destroys scene nodes while the render thread (Output.handleFrame:
-    /// tray.update drawMediaWidget, mediaVideoRefresh, scene commit)
-    /// walks the same graph — pixman abort on live regions, 2026-09-06
+    /// mediaVideoRefresh, scene commit) walks the same graph — pixman abort on live regions, 2026-09-06
     /// session-killer. Take this on BOTH sides of any scene touch that
     /// can cross threads. Held per-frame; IPC close waits ≤ 1 vsync.
     scene_mutex: std.atomic.Mutex = .unlocked,
@@ -414,11 +409,13 @@ pub const Server = struct {
     current_transition_kind: animation.AnimationKind = .snap,
     next_window_id: u32 = 1,
 
-    tray: ui.Tray,
+    /// Minimal notification feed (stage 2 demolition): replaces the dead
+    /// overlay tray's NotificationWidget. Rendered by the home slide's
+    /// NOTIFICATIONS CFC section.
+    notifications: tray_slide_mod.NotificationStore = .{},
     /// The media PLAYER's home (Barticus law 2026-09-15): Server owns the
     /// MediaWidget (play/pause/next/prev/seek, player_active, cached
-    /// metadata). The tray renders its media card + peek from it via the
-    /// TrayHost.media pointer — the tray owns nothing of the player.
+    /// metadata).
     media_player: media_mod.MediaWidget,
     spyglass: ?*spyglass_mod.Spyglass = null,
     // Overview lens: virtual cursor (recency position among unparked minis).
@@ -569,7 +566,9 @@ pub const Server = struct {
                 return .{ .ok = true, .message = "theme reloaded" };
             },
             .tray_toggle => {
-                self.tray.toggle();
+                // Remote/IPC target (A6): same as the keybind — focus the
+                // home slide, or spawn one at before_first if none (A7).
+                self.homeSlideFocusOrSpawn();
                 return .{ .ok = true };
             },
             .arrange_outputs => {
@@ -579,40 +578,26 @@ pub const Server = struct {
                 var v = output_layout_config.validate(self.allocator);
                 if (!v.ok()) {
                     const msg = v.problems.items[0];
-                    self.tray.notificationAdd("WM reset blocked", msg, "kidulwm", "high", null, null);
+                    self.notificationAdd("WM reset blocked", msg, "kidulwm", "high", null, null);
                     return .{ .ok = false, .message = msg };
                 }
                 self.arrangeOutputsLive();
                 return .{ .ok = true, .message = "outputs re-arranged" };
             },
-            .tray_select_next => {
-                self.tray.selectNext();
-                return .{ .ok = true };
-            },
-            .tray_select_prev => {
-                self.tray.selectPrev();
-                return .{ .ok = true };
-            },
-            .tray_activate => {
-                self.tray.activateSelected();
-                return .{ .ok = true };
-            },
-            .tray_toggle_card => {
-                self.tray.toggleCard();
-                return .{ .ok = true };
-            },
             .weather_toggle_card => {
-                self.tray.toggleWeatherCard();
+                // Weather card died with the overlay tray; the home slide's
+                // WEATHER CFC section is its successor (real feed later).
+                self.homeSlideFocusOrSpawn();
                 return .{ .ok = true };
             },
             .media_card_toggle => {
-                // Media player is a deck SLIDE now, not a tray card.
+                // Media player is a deck SLIDE now, not a card.
                 self.mediaSlideToggle();
                 return .{ .ok = true };
             },
             .media_play => |p| {
                 // Route through the open media slide's widget (phase-2 path);
-                // fall back to the tray widget if no slide is open.
+                // fall back to the slideless server widget if no slide is open.
                 var routed = false;
                 var oit = self.outputs.iterator(.forward);
                 while (oit.next()) |o| {
@@ -648,11 +633,11 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .notification_test => |p| {
-                self.tray.notificationAdd(p.title, p.body, p.source_id, p.priority, p.action_id, p.display_mode);
+                self.notificationAdd(p.title, p.body, p.source_id, p.priority, p.action_id, p.display_mode);
                 return .{ .ok = true, .message = "notification added" };
             },
             .notification_clear => {
-                self.tray.notifications.clear();
+                self.notifications.clear();
                 return .{ .ok = true, .message = "notifications cleared" };
             },
             .kfiles_navigate => |p| {
@@ -725,7 +710,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .tray_select_next, .tray_select_prev, .tray_activate, .tray_toggle_card, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .scene_dump, .quit => {},
+            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .scene_dump, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };
@@ -851,7 +836,6 @@ pub const Server = struct {
             .overlay_tree = undefined,
             .outputs = undefined,
             .chrome_style_generation = 0,
-            .tray = undefined,
             .media_player = undefined,
         };
 
@@ -871,7 +855,6 @@ pub const Server = struct {
         server.overlay_tree = overlay_tree;
 
         server.media_player = media_mod.MediaWidget.init(server.allocator);
-        server.tray = try ui.Tray.init(server.allocator, Server.makeTrayHost(server), overlay_tree);
         server.spyglass = spyglass_mod.Spyglass.create(server.allocator, overlay_tree, server.theme) catch |err| blk: {
             std.log.err("failed to create spyglass: {}", .{err});
             break :blk null;
@@ -893,8 +876,8 @@ pub const Server = struct {
             std.log.warn("KidulWM: wallpaper worker unavailable ({}), keeping theme colour", .{err});
         };
 
-        // Background/wallpaper nodes were created after the tray, so ensure the
-        // overlay tree stays on top of the background for immediate visibility.
+        // Background/wallpaper nodes were created after the overlay tree, so
+        // ensure it stays on top of the background for immediate visibility.
         server.overlay_tree.node.raiseToTop();
 
         server.pointer.init(server);
@@ -993,7 +976,6 @@ pub const Server = struct {
         }
         self.ipc_server.destroy();
 
-        self.tray.deinit();
         self.media_player.deinit();
         if (self.spyglass) |sg| {
             sg.destroy();
@@ -1260,15 +1242,7 @@ pub const Server = struct {
             self.keybinds.binds.items.len,
             self.keybinds.fallback,
         }) catch return .{ .ok = false };
-        buf.print(alloc, ",\"flags\":{{\"tray_open\":{},\"calendar_card\":{},\"weather_card\":{},\"media_card\":{},\"network_card\":{},\"files_card\":{},\"signals_card\":{}}}", .{
-            self.tray.open,
-            self.tray.calendar_card_open,
-            self.tray.weather_card_open,
-            self.tray.media_card_open,
-            self.tray.network_card_open,
-            self.tray.files_card_open,
-            self.tray.signals_card_open,
-        }) catch return .{ .ok = false };
+        buf.print(alloc, ",\"flags\":{{}}", .{}) catch return .{ .ok = false };
         buf.print(alloc, ",\"key_events_seen\":{d},\"key_ring\":[", .{self.key_events_seen}) catch return .{ .ok = false };
         // Oldest-first replay of the ring.
         const ring_count = @min(self.key_ring_pos, self.key_ring.len);
@@ -1677,8 +1651,9 @@ pub const Server = struct {
         if (buf_w <= 0 or buf_h <= 0) return;
         const geom_same = (buf_w == output.tray_slide.card_last_w and
             buf_h == output.tray_slide.card_last_h);
-        if (!geom_same or output.tray_slide.card_buffer == null) {
-            const buffer = tray_slide_mod.renderToBuffer(self.theme, buf_w, buf_h, scale) orelse return;
+        const feed_same = (self.notifications.generation == output.tray_slide.card_last_notif_gen);
+        if (!geom_same or !feed_same or output.tray_slide.card_buffer == null) {
+            const buffer = tray_slide_mod.renderToBuffer(self.theme, buf_w, buf_h, scale, &self.notifications) orelse return;
             if (output.tray_slide.card_buffer) |old| old.node.destroy();
             const card = tree.createSceneBuffer(buffer) catch {
                 wlr.Buffer.drop(buffer);
@@ -1691,6 +1666,7 @@ pub const Server = struct {
             card.node.raiseToTop();
             output.tray_slide.card_last_w = buf_w;
             output.tray_slide.card_last_h = buf_h;
+            output.tray_slide.card_last_notif_gen = self.notifications.generation;
 
             // A1: stock chrome border ring on top of the card.
             const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
@@ -1717,14 +1693,16 @@ pub const Server = struct {
         output.tray_slide.chrome_buffer = null;
         output.tray_slide.card_last_w = 0;
         output.tray_slide.card_last_h = 0;
+        output.tray_slide.card_last_notif_gen = 0;
         std.log.info("KidulWM: home slide closed", .{});
     }
 
     /// ONE PLAYER PER SESSION (law: media-is-a-slide.md ruling 3): exactly
     /// one player engine and one audio stream ever. Called before any widget
-    /// starts playback — stops any OTHER output's slide widget and the tray
-    /// music widget (take-over, granny-simple default). `keep` is the output
-    /// whose widget is about to play (null = the tray itself is starting).
+    /// starts playback — stops any OTHER output's slide widget and the
+    /// slideless music player (take-over, granny-simple default). `keep` is
+    /// the output whose widget is about to play (null = the slideless
+    /// server player itself is starting).
     /// Scene-buffer teardown for the stopped widget happens in handleFrame's
     /// player_generation guard — never nest scene_mutex here (play paths can
     /// be reached with the lock already held, e.g. applyLayout).
@@ -1897,7 +1875,7 @@ pub const Server = struct {
         card.setDestSize(buf_w, buf_h);
         tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
-        // Not playing: the overlay tree (tray/widgets) sits above the slide.
+        // Not playing: the overlay tree (widgets) sits above the slide.
         self.overlay_tree.node.raiseToTop();
     }
 
@@ -2267,7 +2245,8 @@ pub const Server = struct {
                     .search => {},
                     .result => {
                         if (widget.category == .music) {
-                            // MUSIC PATH: play in tray, dismiss slide.
+                            // MUSIC PATH: play via the server MediaWidget,
+                            // dismiss slide.
                             // Grab entry before closing (getLibrary is global).
                             const entry = widget.selectedResultEntry();
                             const path = widget.selectedResultPath();
@@ -2286,7 +2265,7 @@ pub const Server = struct {
                         }
                         // Movies / TV: existing play-in-slide path.
                         // One player per session: take over from any other
-                        // output's widget (and the tray) first.
+                        // output's widget (or the slideless player) first.
                         const path = widget.selectedResultPath();
                         if (path.len > 0) {
                             self.stopOtherPlayers(out);
@@ -2724,7 +2703,7 @@ pub const Server = struct {
                 // WIDGETS-OFF-IN-FULLSCREEN LAW (Barticus 2026-09-16, GSI):
                 // when the focused slide is fullscreen (or the media slide is
                 // playing — it auto-fullscreens), ALL widgets hide: spyglass
-                // EXIT signs, tray, weather. The apps behind them stay one
+                // EXIT signs, weather. The apps behind them stay one
                 // hotkey / Granny-button away. Disabling the icons kills both
                 // render AND the peek-edge hitboxes, so fullscreen apps own
                 // the screen edges.
@@ -3091,7 +3070,6 @@ pub const Server = struct {
         };
         output.init(self, wlr_output, scene_output);
         std.log.info("KidulWM: output added to layout", .{});
-        self.tray.addOutput(output);
         // Give this output its own wallpaper node, sized to its logical box
         // with fill-contain (no crop). Must happen after placement so the box
         // coordinates are real.
@@ -3395,7 +3373,7 @@ pub const Server = struct {
     // decision still flips at the wrong phase. So the timer interval is
     // derived from the PLAYING output's real refresh (playTimerMs()) and
     // re-armed at that cadence. 16ms is only the fallback when no refresh
-    // is knowable yet (pre-mode, headless, tray-only music).
+    // is knowable yet (pre-mode, headless, slideless music).
     const PLAY_TIMER_FALLBACK_MS: c_int = 16; // ~60 Hz fallback advance
 
     // THE ONE PLAY TIMER (Boss-owned — screens.md LAW 5, one clock borrowed
@@ -3530,7 +3508,7 @@ pub const Server = struct {
         }
 
         // ── Slideless music advance ───────────────────────────────────────────
-        // Slide closed, music still playing in the tray MediaWidget.
+        // Slide closed, music still playing via the server MediaWidget.
         if (slideless_playing) {
             if (self.media_player.player.isDone()) {
                 self.media_player.ensureStopped();
@@ -3539,8 +3517,8 @@ pub const Server = struct {
             }
             self.media_player.player.tick(0);
             // No video pixels for audio-only; no scheduleFrame needed here.
-            // Arm scheduleFrame on the first output so the tray repaints its
-            // now-playing metadata once per timer tick.
+            // Arm scheduleFrame on the first output so the home slide
+            // repaints once per timer tick.
             if (self.outputs.first()) |first_out| {
                 first_out.wlr_output.scheduleFrame();
             }
@@ -3548,10 +3526,10 @@ pub const Server = struct {
 
         // ── Peek mirror ───────────────────────────────────────────────────────
         // VISIBILITY LAW (playback.md): while audio plays, the player is
-        // always findable — card open, or the peek label lit. When the SLIDE
-        // owns the player (card closed behind it), mirror its state into the
-        // tray widget's cached view so the peek lights. Tray-owned playback
-        // already feeds its own cache; never overwrite that.
+        // always findable. When the SLIDE owns the player (card closed behind
+        // it), mirror its state into the server widget's cached view so the
+        // readout stays current. Slideless playback already feeds its own
+        // cache; never overwrite that.
         if (slide_playing and !self.media_player.player_active) {
             var mit = self.outputs.iterator(.forward);
             while (mit.next()) |output| {
@@ -3585,165 +3563,19 @@ pub const Server = struct {
         };
     }
 
-    /// Provide the tray with per-output geometry and state access without
-    /// creating a circular module dependency on server.zig.
-    fn makeTrayHost(self: *Server) ui.TrayHost {
-        return .{
-            .ctx = self,
-            .output_count = struct {
-                fn f(ctx: *anyopaque) usize {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    return s.outputs.length();
-                }
-            }.f,
-            .output_info = struct {
-                fn f(ctx: *anyopaque, index: usize) ui.OutputInfo {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    var it = s.outputs.iterator(.forward);
-                    var i: usize = 0;
-                    while (it.next()) |output| : (i += 1) {
-                        if (i == index) {
-                            var box: wlr.Box = undefined;
-                            s.output_layout.getBox(output.wlr_output, &box);
-                            const left_w: i32 = @intFromFloat(@as(f32, @floatFromInt(box.width)) * output.deck.split.left_peek);
-                            return .{
-                                .x = box.x,
-                                .y = box.y,
-                                .width = box.width,
-                                .height = box.height,
-                                .scale = output.wlr_output.scale,
-                                .focus_left = box.x + left_w,
-                            };
-                        }
-                    }
-                    return .{ .x = 0, .y = 0, .width = 0, .height = 0, .scale = 1.0, .focus_left = 0 };
-                }
-            }.f,
-            .right_peek_box = struct {
-                fn f(ctx: *anyopaque, output_index: usize) ?wlr.Box {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    var it = s.outputs.iterator(.forward);
-                    var i: usize = 0;
-                    while (it.next()) |output| : (i += 1) {
-                        if (i != output_index) continue;
-                        var layout_box: wlr.Box = undefined;
-                        s.output_layout.getBox(output.wlr_output, &layout_box);
-                        const split = output.deck.split;
-                        const w: f32 = @floatFromInt(layout_box.width);
-                        const h: f32 = @floatFromInt(layout_box.height);
-                        return switch (output.deck.orientation) {
-                            .horizontal => .{
-                                .x = layout_box.x + @as(i32, @intFromFloat(w * (split.left_peek + split.focus))),
-                                .y = layout_box.y,
-                                .width = @intFromFloat(w * split.right_peek),
-                                .height = layout_box.height,
-                            },
-                            .vertical => .{
-                                .x = layout_box.x,
-                                .y = layout_box.y + @as(i32, @intFromFloat(h * (split.left_peek + split.focus))),
-                                .width = layout_box.width,
-                                .height = @intFromFloat(h * split.right_peek),
-                            },
-                        };
-                    }
-                    return null;
-                }
-            }.f,
-
-            .left_peek_box = struct {
-                fn f(ctx: *anyopaque, output_index: usize) ?wlr.Box {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    var it = s.outputs.iterator(.forward);
-                    var i: usize = 0;
-                    while (it.next()) |output| : (i += 1) {
-                        if (i != output_index) continue;
-                        var layout_box: wlr.Box = undefined;
-                        s.output_layout.getBox(output.wlr_output, &layout_box);
-                        const split = output.deck.split;
-                        const w: f32 = @floatFromInt(layout_box.width);
-                        const h: f32 = @floatFromInt(layout_box.height);
-                        return switch (output.deck.orientation) {
-                            .horizontal => .{
-                                .x = layout_box.x,
-                                .y = layout_box.y,
-                                .width = @intFromFloat(w * split.left_peek),
-                                .height = layout_box.height,
-                            },
-                            .vertical => .{
-                                .x = layout_box.x,
-                                .y = layout_box.y,
-                                .width = layout_box.width,
-                                .height = @intFromFloat(h * split.left_peek),
-                            },
-                        };
-                    }
-                    return null;
-                }
-            }.f,
-            .get_animation_kind = struct {
-                fn f(ctx: *anyopaque) animation.AnimationKind {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    return s.current_transition_kind;
-                }
-            }.f,
-            .cycle_animation = struct {
-                fn f(ctx: *anyopaque) void {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    s.nextAnimationKind();
-                }
-            }.f,
-            .request_frame = struct {
-                fn f(ctx: *anyopaque) void {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    var it = s.outputs.iterator(.forward);
-                    while (it.next()) |output| {
-                        output.wlr_output.scheduleFrame();
-                    }
-                }
-            }.f,
-            .is_transition_active = struct {
-                fn f(ctx: *anyopaque) bool {
-                    const s = @as(*Server, @ptrCast(@alignCast(ctx)));
-                    var it = s.windows.iterator(.forward);
-                    while (it.next()) |window| {
-                        if (window.animation.last_us != 0) return true;
-                    }
-                    return false;
-                }
-            }.f,
-            .focused_window_box = struct {
-                fn f(ctx: *anyopaque) ?wlr.Box {
-                    const s: *Server = @ptrCast(@alignCast(ctx));
-                    const w = s.focused_window orelse return null;
-                    return .{
-                        .x = @intFromFloat(@round(w.animation.cur_x)),
-                        .y = @intFromFloat(@round(w.animation.cur_y)),
-                        .width = @intFromFloat(@round(w.animation.cur_w)),
-                        .height = @intFromFloat(@round(w.animation.cur_h)),
-                    };
-                }
-            }.f,
-            .is_kfiles_open = struct {
-                fn f(ctx: *anyopaque) bool {
-                    const s: *Server = @ptrCast(@alignCast(ctx));
-                    var it = s.windows.iterator(.forward);
-                    while (it.next()) |window| {
-                        if (window.app_id.len > 0 and std.mem.eql(u8, window.app_id.buf[0..window.app_id.len], "com.kidulwm.kfiles")) {
-                            return window.toplevel.base.surface.mapped;
-                        }
-                    }
-                    return false;
-                }
-            }.f,
-            .media_slide_toggle = struct {
-                fn f(ctx: *anyopaque) void {
-                    const s: *Server = @ptrCast(@alignCast(ctx));
-                    s.mediaSlideToggle();
-                }
-            }.f,
-            .media = &self.media_player,
-            .theme = &self.theme_runtime,
-        };
+    /// Notification ingress (stage 2): append to the minimal home-slide
+    /// feed store and wake outputs so an open home slide re-renders.
+    /// Priority/action/display_mode survive in the signature for IPC
+    /// compatibility but the store keeps title/body/source only.
+    pub fn notificationAdd(self: *Server, title: []const u8, body: []const u8, source_id: []const u8, priority: ?[]const u8, action_id: ?[]const u8, display_mode: ?[]const u8) void {
+        _ = priority;
+        _ = action_id;
+        _ = display_mode;
+        self.notifications.add(title, body, source_id);
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            output.wlr_output.scheduleFrame();
+        }
     }
 
     pub fn nextAnimationKind(self: *Server) void {
@@ -3753,7 +3585,6 @@ pub const Server = struct {
             .ripple => .snap,
         };
         std.log.info("KidulWM: animation preset -> {s}", .{@tagName(self.current_transition_kind)});
-        self.tray.requestUpdate();
     }
 
     pub fn spawnCommand(self: *Server, cmd: []const u8) void {
@@ -3813,10 +3644,6 @@ pub const Server = struct {
                 return true;
             }
         }
-        if (self.tray.handlePointerMove(cx, cy)) {
-            std.log.info("KidulWM: PTR-CLAIM tray x={d:.0} y={d:.0}", .{ cx, cy });
-            return true;
-        }
         return false;
     }
 
@@ -3858,9 +3685,7 @@ pub const Server = struct {
                 return true;
             }
         }
-        const tray_hit = self.tray.handlePointerClick(x, y);
-        if (tray_hit) std.log.info("KidulWM: PTR-CLAIM tray-click x={d:.0} y={d:.0}", .{ x, y });
-        return tray_hit;
+        return false;
     }
 
     /// Spyglass click — navigate to the adjacent slide in the given direction.
@@ -3872,9 +3697,9 @@ pub const Server = struct {
         }
     }
 
-    pub fn handlePointerAxis(self: *Server, _: f64, _: f64, delta: f64) bool {
+    pub fn handlePointerAxis(self: *Server, _: f64, _: f64, _: f64) bool {
         self.syncCursorMirror();
-        return self.tray.handleAxis(self.cursor_x, self.cursor_y, delta);
+        return false;
     }
 
     pub fn logPointerDiagnostic(self: *Server, tag: []const u8, x: f64, y: f64) void {

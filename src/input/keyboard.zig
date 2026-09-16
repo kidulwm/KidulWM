@@ -185,41 +185,6 @@ const KeyboardDevice = struct {
             if (server.mediaSlideKey(sym)) return;
             // fall through — no swallow
         }
-        // Cards consume arrow/navigation/typing before clients while open.
-        // NOTE: media_card_open deliberately EXCLUDED — the media player is
-        // a deck slide now; the dead card flag must never swallow keys.
-        if (server.tray.calendar_card_open or server.tray.weather_card_open or server.tray.files_card_open) {
-            if (server.tray.handleMediaCardKey(sym)) return;
-            if (server.tray.handleFilesCardKey(sym)) return;
-            if (server.tray.handleCalendarCardKey(sym)) return;
-            if (server.tray.handleWeatherCardKey(sym)) return;
-            // With a card open and no card handler consumed it, do not pass to clients;
-            // this keeps arrow keys from moving a focused window while navigating the card.
-            server.recordKeyEvent(@intFromEnum(sym), mod4_active, ctrl_active, "swallowed:card");
-            return;
-        }
-        // Tray takes full keyboard control while open (arrows to navigate, Return to activate, Escape to close).
-        if (server.tray.isOpen()) {
-            switch (sym) {
-                xkb.Keysym.Up => {
-                    server.tray.selectPrev();
-                    return;
-                },
-                xkb.Keysym.Down => {
-                    server.tray.selectNext();
-                    return;
-                },
-                xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
-                    server.tray.activateSelected();
-                    return;
-                },
-                xkb.Keysym.Escape => {
-                    server.tray.toggle();
-                    return;
-                },
-                else => {},
-            }
-        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 
@@ -280,15 +245,15 @@ const KeyboardDevice = struct {
             },
             .wm_reset => {
                 // Soft WM reset (i3/sway style). Validate outputs.toml first —
-                // a broken config surfaces as a HIGH notification in the right
-                // peek and the live layout is left untouched.
+                // a broken config surfaces as a HIGH notification in the
+                // home-slide feed and the live layout is left untouched.
                 var v = @import("../core/output_layout_config.zig").validate(server.allocator);
                 if (!v.ok()) {
-                    server.tray.notificationAdd("WM reset blocked", v.problems.items[0], "kidulwm", "high", null, null);
+                    server.notificationAdd("WM reset blocked", v.problems.items[0], "kidulwm", "high", null, null);
                     return true;
                 }
                 server.arrangeOutputsLive();
-                server.tray.notificationAdd("WM reset", "outputs re-arranged from outputs.toml", "kidulwm", "low", null, null);
+                server.notificationAdd("WM reset", "outputs re-arranged from outputs.toml", "kidulwm", "low", null, null);
                 return true;
             },
             .park_toggle => {

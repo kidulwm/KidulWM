@@ -70,10 +70,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
         if (std.mem.eql(u8, cmd, "split_bottom")) break :blk .{ .split_bottom = {} };
         if (std.mem.eql(u8, cmd, "reload_theme")) break :blk .{ .reload_theme = {} };
         if (std.mem.eql(u8, cmd, "tray_toggle")) break :blk .{ .tray_toggle = {} };
-        if (std.mem.eql(u8, cmd, "tray_select_next")) break :blk .{ .tray_select_next = {} };
-        if (std.mem.eql(u8, cmd, "tray_select_prev")) break :blk .{ .tray_select_prev = {} };
-        if (std.mem.eql(u8, cmd, "tray_activate")) break :blk .{ .tray_activate = {} };
-        if (std.mem.eql(u8, cmd, "tray_toggle_card")) break :blk .{ .tray_toggle_card = {} };
         if (std.mem.eql(u8, cmd, "weather_toggle_card")) break :blk .{ .weather_toggle_card = {} };
         if (std.mem.eql(u8, cmd, "media_card_toggle")) break :blk .{ .media_card_toggle = {} };
         if (std.mem.eql(u8, cmd, "media_play")) {
