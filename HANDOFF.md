@@ -1,6 +1,38 @@
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 
 ---
+## ADDENDUM — Sep 16 2026 evening (TRAY-SLIDE STAGE 2 — DEMOLITION DONE, NOT YET DEPLOYED)
+
+Branch: tray-slide @ e12ff6e (GPG-signed B&B, parent-verified cold rebuild).
+TASKCARD-2.md committed 07eed39. coderBob dispatch, bobDotrix cold-verify:
+build/test/ReleaseSafe clean, nested-smoke PASSED, 6 files +196/-4617.
+
+THE OVERLAY TRAY IS DEAD: src/ui/tray.zig (4323 lines) deleted with all 102
+server.zig touchpoints (makeTrayHost, per-frame update, pointer hit-testing —
+PTR-CLAIM class gone), keyboard.zig capture block :191-222, IPC
+tray_select_next/prev/activate/tray_toggle_card (message.zig + control).
+tray_toggle (keybind + IPC) → homeSlideFocusOrSpawn; weather_toggle_card same.
+
+Notification ingress redirected to Server-owned NotificationStore (8-ring,
+fixed spans, alloc-free, generation counter); home slide NOTIFICATIONS CFC
+section renders last 3 entries, "none" when empty; feed guard re-renders on
+generation bump. MEDIA/WEATHER/SIGNALS still placeholders (later stage).
+Style tokens kept (still used by notifications.zig/curtain.zig/files_card.zig);
+animation preset untouched. spyglass.zig untouched per hard NO.
+
+CAUTION — commit 468db2a ("weather: shift sun icon") was a WHOLESALE catch-up
+commit: it also swept in the pending visual batch (spyglass EXIT dots/digits),
+Barticus's KSD glyph paint + LICENSE/docs-law/input tweaks AND tray.zig's own
+uncommitted changes (logo fit 0.85, KSD glyph). Those tray.zig hunks died with
+the file — nothing lost that matters, but note 468db2a is not a pure weather
+commit if archaeology ever goes looking.
+
+STILL PENDING: host deploy + Barticus eyeball (Mod4+t home slide, notification
+feed live via `kidulwm-control notification_test`, quit on home slide closes
+it). Then stage 3: real MEDIA/WEATHER/SIGNALS feeds, A4 fullscreen dwell, A5
+boot ladder (kidulKey).
+
+---
 ## ADDENDUM — Sep 16 2026 (TRAY-SLIDE STAGE 1 — home slide born, NOT YET DEPLOYED)
 
 Branch: tray-slide @ c083b95 (GPG-signed B&B). Spec:
