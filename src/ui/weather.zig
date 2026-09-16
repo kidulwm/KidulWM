@@ -193,32 +193,28 @@ pub const WeatherWidget = struct {
         c_cairo.cairo_set_font_size(cr, mm_size);
         var mm_ext: c_cairo.cairo_text_extents_t = undefined;
         c_cairo.cairo_text_extents(cr, minmax_str, &mm_ext);
-        const mm_y = tmp_y + mm_size * 1.75;
+        // Clock rhythm: the min/max line sits directly under the big temp
+        // like the date block under the clock digits — one line-gap, not
+        // 1.75x (the old gap opened the void that made the pill a mess).
+        const mm_y = tmp_y + mm_size * 1.3;
         c_cairo.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
         c_cairo.cairo_move_to(cr, (w_d - mm_ext.width) * 0.5 + 3.0 * scale_f, mm_y);
         c_cairo.cairo_show_text(cr, minmax_str);
 
-        // Weather condition icon below the min/max line.
+        // Weather condition icon flows directly below the min/max line —
+        // top-anchored like every element on the clock side. The old code
+        // centered it in the space remaining down to the pill bottom, which
+        // stranded it at the foot of the 320-tall tower with a void above.
         var icon_r: f64 = 48.0 * scale_f;
         // Percentage-of-container gap: fraction of the icon radius, so the
         // same face proportions hold at scale 1 (1080p) and scale 2 (4K).
+        const icon_gap: f64 = @max(0.35 * icon_r, 10.0 * scale_f);
         const icon_bottom_margin: f64 = 0.10 * icon_r;
-        const max_icon_r = @min(w_d * 0.5 - 2.0 * scale_f, (h_d - (mm_y + icon_bottom_margin)) * 0.5);
+        const max_icon_r = @min(w_d * 0.5 - 2.0 * scale_f, (h_d - (mm_y + icon_gap + icon_bottom_margin)) * 0.5);
         icon_r = @min(icon_r, @max(0.0, max_icon_r));
         if (icon_r >= 8.0 * scale_f) {
             const icon_cx = w_d * 0.5 - 10.0 * scale_f;
-            // Center the icon's bounding circle in the space remaining below
-            // the min/max line — no upward pull; every condition glyph sits
-            // truly centered (the bare sun's upper rays no longer kiss the
-            // numbers).
-            var icon_cy = (mm_y + icon_bottom_margin + h_d) * 0.5;
-            // Hard clamp: the glyph's painted extent (radius + bottom
-            // margin) must never cross the pill's bottom edge, and its top
-            // must stay clear of the min/max line. Fixes the 2026-09-17
-            // overflow where the icon bled past the pill at scale 2.
-            const max_cy = h_d - icon_r - icon_bottom_margin;
-            const min_cy = mm_y + icon_bottom_margin + icon_r;
-            icon_cy = @min(@max(icon_cy, min_cy), @max(max_cy, min_cy));
+            const icon_cy = mm_y + icon_gap + icon_r;
             // The bare sun (code 0, day) visually reads smaller than the moon
             // because its rays are clipped tighter; nudge it up 10px and right
             // 9px so its optical center lands on the moon's dead-center.

@@ -210,6 +210,23 @@ pub fn build(b: *std.Build) void {
     // notifications flow through the Python bridge installed as a systemd
     // user service (config/systemd/user/kidulwm-notify-bridge.service).
 
+    const peek_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/test_peek_weather.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    peek_test_mod.addImport("wayland", wayland);
+    peek_test_mod.addImport("wlroots", wlroots);
+    peek_test_mod.addImport("core", b.createModule(.{ .root_source_file = b.path("src/core/style.zig") }));
+    peek_test_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
+    peek_test_mod.linkSystemLibrary("cairo", .{});
+    const peek_test_exe = b.addExecutable(.{ .name = "peek-weather-test", .root_module = peek_test_mod });
+    const peek_test_run = b.addRunArtifact(peek_test_exe);
+    peek_test_run.step.dependOn(b.getInstallStep());
+    const peek_test_step = b.step("peek-weather-test", "Render weather peek pill to /tmp/peek_weather_s*.png");
+    peek_test_step.dependOn(&peek_test_run.step);
+
     const moon_test_mod = b.createModule(.{
         .root_source_file = b.path("src/test_moon.zig"),
         .target = target,
