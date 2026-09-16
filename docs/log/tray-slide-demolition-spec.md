@@ -60,9 +60,10 @@ A7. HOME SLIDE IS QUITABLE (Barticus, same session): the standard quit
     keybind destroys the home slide like any other. At most ONE home
     slide per row; per-row not per-output (dual screens on one row share
     it, no clones). It does NOT auto-respawn — tray_toggle = "focus the
-    home slide, or spawn one at index 0 if this row has none". Boot
-    lands on the MEDIA PLAYER (A5 appliance law); the home slide is
-    summoned on demand, not force-spawned at boot. After that its
+    home slide, or spawn one at index 0 if this row has none". PUBLIC
+    boot (no kidulKey) lands on the MEDIA PLAYER (A5 appliance law);
+    USER boot (kidulKey in) lands on the HOME slide. The home slide is
+    otherwise summoned on demand, never force-spawned. After that its
     existence is the user's choice. Last-slide-closed → plain empty
     deck, EXIT signs do the talking (A3); no fake slide, no
     void-protection machinery.
