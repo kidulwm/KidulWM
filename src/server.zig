@@ -4,6 +4,8 @@ const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const ipc = @import("ipc.zig");
 const Window = @import("window.zig").Window;
+const layer_mod = @import("layer.zig");
+const LayerSurface = layer_mod.LayerSurface;
 const InputManager = @import("input.zig").InputManager;
 const PointerManager = @import("input/pointer.zig").PointerManager;
 const KeyboardManager = @import("input/keyboard.zig").KeyboardManager;
@@ -403,11 +405,16 @@ pub const Server = struct {
     renderer_allocator: *wlr.Allocator,
     compositor: *wlr.Compositor,
     scene: *wlr.Scene,
+    /// Layer-shell strata, bottom to top: background, bottom, top, overlay.
+    /// Created before overlay_tree so the compositor chrome/peeks stay above
+    /// every layer client (slurp draws beneath our widgets).
+    layer_trees: [4]*wlr.SceneTree,
     overlay_tree: *wlr.SceneTree,
     output_layout: *wlr.OutputLayout,
     scene_output_layout: *wlr.SceneOutputLayout,
     output_arrangement: output_layout_config.OutputLayout,
     xdg_shell: *wlr.XdgShell,
+    layer_shell: *wlr.LayerShellV1,
     output_manager: *wlr.OutputManagerV1,
 
     shm: *wlr.Shm,
@@ -443,6 +450,7 @@ pub const Server = struct {
     deck_split: slidedeck.Split,
     deck_orientation: slidedeck.Orientation,
     windows: wl.list.Head(Window, .link),
+    layer_surfaces: wl.list.Head(LayerSurface, .link),
 
     deck: slidedeck.SlideDeck,
     layout_pipe: [2]c_int,
@@ -501,6 +509,7 @@ pub const Server = struct {
     new_toplevel_decoration: wl.Listener(*wlr.XdgToplevelDecorationV1),
     backend_destroy: wl.Listener(*wlr.Backend),
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel),
+    new_layer_surface: wl.Listener(*wlr.LayerSurfaceV1),
     output_layout_change: wl.Listener(*wlr.OutputLayout),
 
     background: struct {
@@ -823,6 +832,10 @@ pub const Server = struct {
         const scene = try wlr.Scene.create();
         const scene_output_layout = try scene.attachOutputLayout(output_layout);
         const xdg_shell = try wlr.XdgShell.create(wl_server, 6);
+        // zwlr_layer_shell_v1 (version 5): slurp and any future layer
+        // client. Scene-backed; surfaces live in the scene's own strata
+        // below the compositor overlay_tree.
+        const layer_shell = try wlr.LayerShellV1.create(wl_server, 5);
         const shm = try wlr.Shm.createWithRenderer(wl_server, 1, renderer);
         const subcompositor = try wlr.Subcompositor.create(wl_server);
         const data_device_manager = try wlr.DataDeviceManager.create(wl_server);
@@ -854,6 +867,7 @@ pub const Server = struct {
             .scene_output_layout = scene_output_layout,
             .output_arrangement = output_layout_config.load(allocator),
             .xdg_shell = xdg_shell,
+            .layer_shell = layer_shell,
             .output_manager = output_manager,
             .shm = shm,
             .subcompositor = subcompositor,
@@ -871,6 +885,7 @@ pub const Server = struct {
             .cursor_x = 0,
             .cursor_y = 0,
             .input_device_counts = .{},
+            .layer_trees = undefined,
             .focused_window = null,
             .ipc_server = undefined,
             .ipc_thread = null,
@@ -885,6 +900,7 @@ pub const Server = struct {
             },
             .deck_orientation = .horizontal,
             .windows = undefined,
+            .layer_surfaces = undefined,
             .layout_requested = std.atomic.Value(bool).init(false),
             .keybinds = keybinds.Keybinds.load(allocator),
             .deck = slidedeck.SlideDeck.init(allocator),
@@ -894,6 +910,7 @@ pub const Server = struct {
             .new_toplevel_decoration = undefined,
             .backend_destroy = undefined,
             .new_xdg_toplevel = undefined,
+            .new_layer_surface = undefined,
             .output_layout_change = undefined,
             .background = .{
                 .node = null,
@@ -926,6 +943,13 @@ pub const Server = struct {
         applyTitleBarEnvironment(server.theme.show_title_bars);
         server.background.color = server.theme.color_background.toF32();
 
+        var li: usize = 0;
+        while (li < 4) : (li += 1) {
+            server.layer_trees[li] = try server.scene.tree.createSceneTree();
+        }
+        // overlay_tree created AFTER the layer strata: sibling creation order
+        // is stacking order, so compositor chrome/peeks render above every
+        // layer client (slurp's scrim sits under our widgets).
         const overlay_tree = try server.scene.tree.createSceneTree();
         server.overlay_tree = overlay_tree;
 
@@ -959,6 +983,7 @@ pub const Server = struct {
         server.pointer.init(server);
         server.keyboard.init(server);
         server.windows.init();
+        server.layer_surfaces.init();
         server.input_manager = try server.allocator.create(InputManager);
         InputManager.init(server.input_manager, server);
 
@@ -982,6 +1007,10 @@ pub const Server = struct {
         server.new_xdg_toplevel = wl.Listener(*wlr.XdgToplevel).init(handleNewXdgToplevel);
         server.new_xdg_toplevel.link.init();
         xdg_shell.events.new_toplevel.add(&server.new_xdg_toplevel);
+
+        server.new_layer_surface = wl.Listener(*wlr.LayerSurfaceV1).init(handleNewLayerSurface);
+        server.new_layer_surface.link.init();
+        layer_shell.events.new_surface.add(&server.new_layer_surface);
 
         server.output_layout_change = wl.Listener(*wlr.OutputLayout).init(handleOutputLayoutChange);
         server.output_layout_change.link.init();
@@ -1100,6 +1129,7 @@ pub const Server = struct {
 
         self.output_layout_change.link.remove();
         self.new_xdg_toplevel.link.remove();
+        self.new_layer_surface.link.remove();
         self.new_output.link.remove();
         self.backend_destroy.link.remove();
 
@@ -2667,6 +2697,31 @@ pub const Server = struct {
     /// kbrowser's "click 25px left of the button" was this bug.
     pub fn pointerEnterAtCursor(self: *Server) ?struct { sx: f64, sy: f64 } {
         self.syncCursorMirror();
+        // Layer surfaces first: overlay/top strata render above windows, so
+        // a mapped layer client under the cursor (slurp's selection scrim)
+        // owns the pointer. Walk the list once per stratum that outranks
+        // windows — overlay, then top.
+        var lit = self.layer_surfaces.iterator(.forward);
+        while (lit.next()) |ls| {
+            const layer = ls.layer_surface.current.layer;
+            if (layer != .overlay and layer != .top) continue;
+            if (!ls.layer_surface.surface.mapped) continue;
+            const sls = ls.scene_layer_surface orelse continue;
+            const lnode = &sls.tree.node;
+            if (!lnode.enabled) continue;
+            var nx: f64 = undefined;
+            var ny: f64 = undefined;
+            const node = lnode.at(self.cursor_x, self.cursor_y, &nx, &ny) orelse continue;
+            if (node.type != .buffer) continue;
+            const scene_buffer: *wlr.SceneBuffer = @fieldParentPtr("node", node);
+            const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse continue;
+            const surface = scene_surface.surface;
+            if (self.seat.pointer_state.focused_surface != surface) {
+                std.log.info("KidulWM: PTR-ENTER layer ns={s} nx={d:.0} ny={d:.0}", .{ ls.layer_surface.namespace, nx, ny });
+                self.seat.pointerNotifyEnter(surface, nx, ny);
+            }
+            return .{ .sx = nx, .sy = ny };
+        }
         var it = self.windows.iterator(.forward);
         while (it.next()) |window| {
             const wnode = &window.scene_tree.node;
@@ -3328,6 +3383,18 @@ pub const Server = struct {
             return;
         };
         self.windows.append(window);
+    }
+
+    fn handleNewLayerSurface(listener: *wl.Listener(*wlr.LayerSurfaceV1), layer_surface: *wlr.LayerSurfaceV1) void {
+        const self: *Server = @fieldParentPtr("new_layer_surface", listener);
+        std.log.info("KidulWM: new layer surface ns={s} layer={s}", .{
+            layer_surface.namespace,
+            @tagName(layer_surface.pending.layer),
+        });
+        _ = LayerSurface.create(self, layer_surface) catch |err| {
+            std.log.err("failed to create layer surface: {}", .{err});
+            return;
+        };
     }
 
     fn handleOutputLayoutChange(listener: *wl.Listener(*wlr.OutputLayout), output_layout_arg: *wlr.OutputLayout) void {
