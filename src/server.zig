@@ -814,6 +814,11 @@ pub const Server = struct {
         const renderer_allocator = try wlr.Allocator.autocreate(backend, renderer);
 
         const output_manager = try wlr.OutputManagerV1.create(wl_server);
+        // xdg-output: grim/slurp/wlr-randr and every screencopy client read
+        // output names/logical boxes from zxdg_output_manager_v1. Without it
+        // grim guessed a 0x0 layout and captured nothing (2026-09-16).
+        // Auto-tracks the output layout; no per-output wiring needed.
+        _ = try wlr.XdgOutputManagerV1.create(wl_server, output_layout);
         const compositor = try wlr.Compositor.create(wl_server, 6, renderer);
         const scene = try wlr.Scene.create();
         const scene_output_layout = try scene.attachOutputLayout(output_layout);
