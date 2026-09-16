@@ -21,7 +21,11 @@ const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
 const icon_size: u32 = 20; // px tall, unscaled
 const margin_from_bottom: u32 = 0; // 0 = vertically centered
-const margin_from_edge: u32 = 17; // px from screen edge
+/// Peek geometry: the visible neighbor-slide strip at each screen edge is
+/// `peek_fraction` of the output width (style layout horizontal_split).
+/// The EXIT dot-matrix centers itself INSIDE that peek; the slide-count
+/// strip sits hard against the screen edge, outside the peek.
+const peek_fraction: f64 = 0.06;
 
 /// Skin descriptor — one entry per pack skin.
 const Skin = struct {
@@ -35,7 +39,13 @@ const Skin = struct {
 };
 
 const exit_dots_w: u32 = 72; // px wide for the EXIT dot-matrix itself
-const num_reserve: u32 = 24; // px reserved on the OUTER side for the slide count
+/// Pair inset: the EXIT+number group is centered inside the peek with
+/// this much clearance to both the screen edge and the peek's inner edge.
+const edge_buffer: u32 = 8; // px (unscaled)
+/// Gap between the EXIT dots and the slide-count digit — two text spaces.
+const pair_gap: u32 = 16; // px (unscaled)
+/// Slide-count digit size relative to the icon height (was 1.2 — too big).
+const num_font_scale: f64 = 0.9;
 
 const skins = .{
     .silk_wisp = Skin{ .surface_w = icon_size, .hit_w = icon_size, .paint = paintSilkWispSkin },
@@ -43,8 +53,9 @@ const skins = .{
     .curved_arrow = Skin{ .surface_w = icon_size, .hit_w = icon_size, .paint = paintCurvedArrowSkin },
     .spotlight_beam = Skin{ .surface_w = icon_size, .hit_w = icon_size, .paint = paintSpotlightBeamSkin },
     .straight_arrow = Skin{ .surface_w = icon_size, .hit_w = icon_size, .paint = paintStraightArrowSkin },
-    // EXIT dots + outer slide-count strip. Hitbox excludes the number strip.
-    .exit_dots = Skin{ .surface_w = exit_dots_w + num_reserve, .hit_w = exit_dots_w, .paint = paintExitDotsSkin },
+    // EXIT dots + slide-count digit, centered as one pair inside the peek.
+    // surface_w is nominal — regenerate() sizes the surface to the peek band.
+    .exit_dots = Skin{ .surface_w = exit_dots_w + 48, .hit_w = exit_dots_w + 48, .paint = paintExitDotsSkin },
 };
 
 const SkinId = enum { silk_wisp, crescent_sliver, curved_arrow, spotlight_beam, straight_arrow, exit_dots };
@@ -178,6 +189,8 @@ const Icon = struct {
     last_rendered_scale: u32,
     slide_count: u32,
     last_rendered_count: u32,
+    last_rendered_peek_w: i32,
+    output_width: u32,
 
     fn init(overlay_tree: *wlr.SceneTree, side: Side) Icon {
         const tree = overlay_tree.createSceneTree() catch null;
@@ -195,6 +208,8 @@ const Icon = struct {
             .last_rendered_scale = 0,
             .slide_count = 0,
             .last_rendered_count = 0,
+            .last_rendered_peek_w = 0,
+            .output_width = 0,
         };
     }
 
@@ -208,14 +223,20 @@ const Icon = struct {
 
     fn updateLayout(self: *Icon, output_width: u32, output_height: u32, scale: u32) void {
         self.scale = scale;
+        self.output_width = output_width;
         const s: i32 = @max(1, @as(i32, @intCast(scale)));
         const sk = skin();
-        const sz_w: i32 = @as(i32, @intCast(sk.surface_w)) * s;
+        _ = sk;
         const sz_h: i32 = @as(i32, @intCast(icon_size)) * s;
 
+        const out_w: i32 = @intCast(output_width);
+        const peek_w: i32 = @intFromFloat(@as(f64, @floatFromInt(out_w)) * peek_fraction);
+
+        // The surface is peek_w wide and covers the peek band exactly; the
+        // skin centers the EXIT+number pair inside it (see paintExitDotsSkin).
         self.x = switch (self.side) {
-            .left => @as(i32, @intCast(margin_from_edge)) * s,
-            .right => @as(i32, @intCast(output_width)) - sz_w - @as(i32, @intCast(margin_from_edge)) * s,
+            .left => 0,
+            .right => out_w - peek_w,
         };
         // Vertically center when margin_from_bottom == 0, otherwise offset up.
         if (margin_from_bottom == 0) {
@@ -246,30 +267,24 @@ const Icon = struct {
     }
 
     fn contains(self: *const Icon, px: f64, py: f64) bool {
-        // Hitbox is the skin's hit_w, anchored to the CENTER side of the
-        // surface (facing the slides) — display-only strips (slide count)
-        // on the outer side do not claim the pointer.
-        const sk = skin();
-        const s: f64 = @floatFromInt(self.scale);
-        const surf_w: f64 = @as(f64, @floatFromInt(sk.surface_w)) * s;
-        const hit_w: f64 = @as(f64, @floatFromInt(sk.hit_w)) * s;
-        const hx: f64 = switch (self.side) {
-            // Left icon: surface is at the left edge, center side = right.
-            .left => @as(f64, @floatFromInt(self.x)) + (surf_w - hit_w),
-            // Right icon: center side = left edge of the surface.
-            .right => @floatFromInt(self.x),
-        };
+        // Hitbox spans the whole peek band (the surface covers it exactly).
+        const out_w: f64 = @floatFromInt(self.output_width);
+        const peek_w: f64 = out_w * peek_fraction;
+        const hx: f64 = @floatFromInt(self.x);
         const sy: f64 = @floatFromInt(self.y);
         const sh: f64 = @floatFromInt(self.height * self.scale);
-        return px >= hx and px < hx + hit_w and py >= sy and py < sy + sh;
+        return px >= hx and px < hx + peek_w and py >= sy and py < sy + sh;
     }
 
     fn regenerate(self: *Icon) void {
         if (self.tree == null) return;
         const tree = self.tree.?;
 
-        // Destroy old buffer if hover state, scale, or slide count changed.
-        if (self.buffer != null and (self.last_rendered_hovered != self.hovered or self.last_rendered_scale != self.scale or self.last_rendered_count != self.slide_count)) {
+        // Destroy old buffer if hover state, scale, slide count, or peek
+        // width changed.
+        const out_w: i32 = @intCast(self.output_width);
+        const peek_w: i32 = @intFromFloat(@as(f64, @floatFromInt(out_w)) * peek_fraction);
+        if (self.buffer != null and (self.last_rendered_hovered != self.hovered or self.last_rendered_scale != self.scale or self.last_rendered_count != self.slide_count or self.last_rendered_peek_w != peek_w)) {
             self.buffer.?.node.destroy();
             self.buffer = null;
         }
@@ -277,10 +292,10 @@ const Icon = struct {
 
         const s: u32 = @max(1, self.scale);
         const sk = skin();
-        const px_w: i32 = @as(i32, @intCast(sk.surface_w)) * @as(i32, @intCast(s));
+        const px_w: i32 = if (active_skin == .exit_dots) peek_w else @as(i32, @intCast(sk.surface_w)) * @as(i32, @intCast(s));
         const px_h: i32 = @as(i32, @intCast(icon_size)) * @as(i32, @intCast(s));
 
-        const surface = paintSpyglass(self.hovered, s, self.side, self.slide_count) orelse return;
+        const surface = paintSpyglass(self.hovered, s, self.side, self.slide_count, peek_w) orelse return;
         defer c.cairo_surface_destroy(surface);
 
         const stride = c.cairo_image_surface_get_stride(surface);
@@ -295,20 +310,27 @@ const Icon = struct {
             return;
         };
         wlr.Buffer.drop(buf);
-        scene_buffer.setDestSize(@intCast(sk.surface_w), @intCast(icon_size));
+        if (active_skin == .exit_dots) {
+            // Buffer is already peek_w x icon_size*s device px; let the
+            // scene scale it back down by the output scale.
+            scene_buffer.setDestSize(@intCast(@divTrunc(px_w, @as(i32, @intCast(s)))), @intCast(icon_size));
+        } else {
+            scene_buffer.setDestSize(@intCast(sk.surface_w), @intCast(icon_size));
+        }
         self.buffer = scene_buffer;
         self.last_rendered_hovered = self.hovered;
         self.last_rendered_scale = self.scale;
         self.last_rendered_count = self.slide_count;
+        self.last_rendered_peek_w = peek_w;
     }
 };
 
 /// Paint a peek icon via the pack's active skin.
 /// At rest: faint ghost; on hover: brighter, in the focused-border tone.
-fn paintSpyglass(hovered: bool, scale: u32, side: Side, slide_count: u32) ?*c.cairo_surface_t {
+fn paintSpyglass(hovered: bool, scale: u32, side: Side, slide_count: u32, peek_w: i32) ?*c.cairo_surface_t {
     const s: i32 = @max(1, @as(i32, @intCast(scale)));
     const sk = skin();
-    const w: i32 = @as(i32, @intCast(sk.surface_w)) * s;
+    const w: i32 = if (active_skin == .exit_dots) peek_w else @as(i32, @intCast(sk.surface_w)) * s;
     const h: i32 = @as(i32, @intCast(icon_size)) * s;
     const surface = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, w, h) orelse return null;
     const cr = c.cairo_create(surface) orelse {
@@ -337,40 +359,32 @@ fn paintSpyglass(hovered: bool, scale: u32, side: Side, slide_count: u32) ?*c.ca
     return surface;
 }
 
-/// Slide count helper shared by skins that reserve an outer strip.
-/// A small gold number at the OUTER edge of the surface (side closest to
-/// the screen edge), vertically level with the signage.
-fn paintSlideCount(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, count: u32, alpha: f64) void {
-    const reserve_f: f64 = @as(f64, @floatFromInt(num_reserve)) * s;
-    const strip_x: f64 = if (side == .left) 0.0 else w - reserve_f;
+/// Measure the slide-count digit at the pair's font size. Returns its
+/// advance width in px (0 when count == 0). Uses the caller's cairo state.
+fn measureSlideCount(cr: *c.cairo_t, h: f64, count: u32) f64 {
+    if (count == 0) return 0;
+    var buf: [8]u8 = undefined;
+    const text = std.fmt.bufPrintZ(&buf, "{d}", .{count}) catch return 0;
+    c.cairo_save(cr);
+    c.cairo_set_font_size(cr, h * num_font_scale);
+    var ext: c.cairo_text_extents_t = undefined;
+    c.cairo_text_extents(cr, text.ptr, &ext);
+    c.cairo_restore(cr);
+    return ext.width;
+}
 
-    // Render the digits into a tiny scratch surface, then scale it up onto
-    // the icon surface — this kills the FreeType hinting jitter that makes
-    // small toy-text digits wobble 1px between renders.
-    const tw: i32 = @intFromFloat(@ceil(reserve_f));
-    const th: i32 = @intFromFloat(@ceil(h));
-    const text_surface = c.cairo_image_surface_create(c.CAIRO_FORMAT_ARGB32, tw, th) orelse return;
-    defer c.cairo_surface_destroy(text_surface);
-    const tcr = c.cairo_create(text_surface) orelse return;
-    defer c.cairo_destroy(tcr);
-
+/// Draw the slide-count digit with its LEFT edge at tx, vertically centered.
+/// Inherits the caller's source (same color/alpha as the EXIT dots).
+fn drawSlideCount(cr: *c.cairo_t, h: f64, count: u32, tx: f64) void {
     var buf: [8]u8 = undefined;
     const text = std.fmt.bufPrintZ(&buf, "{d}", .{count}) catch return;
-
-    c.cairo_select_font_face(tcr, "monospace", c.CAIRO_FONT_SLANT_NORMAL, c.CAIRO_FONT_WEIGHT_NORMAL);
-    c.cairo_set_font_size(tcr, h * 0.6);
-    var ext: c.cairo_text_extents_t = undefined;
-    c.cairo_text_extents(tcr, text.ptr, &ext);
-    const tx: f64 = (reserve_f - ext.width) / 2.0 - ext.x_bearing;
-    const ty: f64 = (h - ext.height) / 2.0 - ext.y_bearing;
-    c.cairo_move_to(tcr, tx, ty);
-    c.cairo_set_source_rgba(tcr, 0.58, 0.55, 0.36, 1.0); // gold stroke
-    c.cairo_show_text(tcr, text.ptr);
-
     c.cairo_save(cr);
-    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-    c.cairo_set_source_rgba(cr, 0.58, 0.55, 0.36, alpha);
-    c.cairo_mask_surface(cr, text_surface, strip_x, 0.0);
+    c.cairo_set_font_size(cr, h * num_font_scale);
+    var ext: c.cairo_text_extents_t = undefined;
+    c.cairo_text_extents(cr, text.ptr, &ext);
+    const ty: f64 = (h - ext.height) / 2.0 - ext.y_bearing;
+    c.cairo_move_to(cr, tx - ext.x_bearing, ty);
+    c.cairo_show_text(cr, text.ptr);
     c.cairo_restore(cr);
 }
 
@@ -644,21 +658,35 @@ fn paintStraightArrowSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, _:
     paintStraightArrow(cr, w, h, s, side);
 }
 
-/// EXIT dot-matrix + slide-count strip. The dots draw in the CENTER-side
-/// sub-rect (72px), the outer 24px strip prints the slide count.
-fn paintExitDotsSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, hovered: bool, slide_count: u32) void {
-    const base_f: f64 = @as(f64, @floatFromInt(exit_dots_w)) * s;
-    // Left icon: dots sit at the RIGHT (center) side of the surface.
-    // Right icon: dots sit at the LEFT (center) side.
-    const dots_x: f64 = if (side == .left) w - base_f else 0.0;
+/// EXIT dot-matrix + slide-count digit, drawn as ONE centered pair inside
+/// the peek band (the surface covers the band exactly, so w == peek width).
+/// Pair order faces the deck: left peek reads "count EXIT", right peek reads
+/// "EXIT count". Two-text-space gap between them. When the pair would not
+/// fit with edge_buffer clearance on both sides, the digit is dropped and
+/// the dots alone stay centered.
+fn paintExitDotsSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, _: bool, slide_count: u32) void {
+    const dots_f: f64 = @as(f64, @floatFromInt(exit_dots_w)) * s;
+    const gap_f: f64 = @as(f64, @floatFromInt(pair_gap)) * s;
+    const buf_f: f64 = @as(f64, @floatFromInt(edge_buffer)) * s;
+    const num_w: f64 = measureSlideCount(cr, h, slide_count);
 
-    c.cairo_save(cr);
-    c.cairo_translate(cr, dots_x, 0.0);
-    paintExitDots(cr, base_f, h, s);
-    c.cairo_restore(cr);
+    const pair_w: f64 = if (num_w > 0) dots_f + gap_f + num_w else dots_f;
+    const fits: bool = pair_w <= w - 2.0 * buf_f;
 
-    if (slide_count > 0) {
-        const alpha: f64 = if (hovered) 0.96 else 0.86;
-        paintSlideCount(cr, w, h, s, side, slide_count, alpha);
+    if (fits and num_w > 0) {
+        const pair_x: f64 = (w - pair_w) / 2.0;
+        const dots_x: f64 = if (side == .left) pair_x + num_w + gap_f else pair_x;
+        const num_x: f64 = if (side == .left) pair_x else pair_x + dots_f + gap_f;
+        c.cairo_save(cr);
+        c.cairo_translate(cr, dots_x, 0.0);
+        paintExitDots(cr, dots_f, h, s);
+        c.cairo_restore(cr);
+        drawSlideCount(cr, h, slide_count, num_x);
+    } else {
+        // No room (or no count): dots alone, centered in the peek.
+        c.cairo_save(cr);
+        c.cairo_translate(cr, (w - dots_f) / 2.0, 0.0);
+        paintExitDots(cr, dots_f, h, s);
+        c.cairo_restore(cr);
     }
 }

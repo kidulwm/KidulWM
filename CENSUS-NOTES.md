@@ -2,6 +2,228 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
+## 2026-09-16 VERDICT 19: kmedia A→B probe test CLEAN + spyglass EXIT signs rebuilt + browser YT crash moved to WPE
+
+SESSION (bobdotrix + Barticus, morning→midday):
+
+1. KMEDIA A→B PROBE TEST (session-21 rig, KidulWM 34dd7a8 = a6ee7630
+   verified as /proc/pid/exe before playback): short A (~1.2s, the
+   morning's suspected trigger window) → close → B. NO WEDGE. All probes
+   fired correctly: teardown/gen lines clean, refresh ticks, dmabuf MISS
+   lines sane, watchdog heartbeat never went silent. The freeze door
+   stayed shut this run. CAVEAT: the IPC media_play path routed to the
+   HIDDEN tray widget (slide never opened — media_open=false in
+   debug_status while audio played), so the test exercised the player +
+   teardown but NOT the slide's video_buffer scene path. Verdict:
+   "no wedge on tray-path A→B" — the slide-path repro is still owed, and
+   it is blocked by the slide-not-a-slide bug (verdict 10, still PAUSED
+   pending browser work).
+
+2. SPYGLASS EXIT SIGNS REBUILT (Barticus spec, deployed d85a9cf2,
+   .bak = kidulwm.bak-a6ee7630): EXIT dots + slide count are now ONE
+   centered pair inside the peek band — surface covers the peek exactly,
+   pair centered with 8px clearance both edges (pair drops the digit and
+   keeps dots centered when it can't fit — this was the missing left
+   number: it was anchored off-surface). Number size 1.2h → 0.9h
+   (num_font_scale), gap = 2 text spaces (pair_gap = 16px), number
+   inherits the EXIT source exactly (0.86 rest / 0.96 hover). Order
+   faces the deck: left peek "n EXIT", right peek "EXIT n". Tunables are
+   named constants at the top of src/ui/spyglass.zig. NOTE: the build
+   also carried uncommitted rescue-era changes in server.zig, pointer.zig,
+   input.zig, tray.zig — flag if behavior surprises.
+
+3. BROWSER YT CRASH → WPE (detail in kidul-browser/HANDOFF.md pm entry):
+   compositor side of verdict 18 confirmed clean end-to-end (PTR-ENTER +
+   BTN-NOTIFY focused=true reaching the browser surface). The YT
+   renderer crash was chased through coredumps to
+   WebKit::AcceleratedBackingStore::update(LayerTreeContext) — upstream
+   bug on NVIDIA (modrinth/code#7017, 2.42.9→2.52.6). Every env hammer
+   bounced; renderer switched to WPE (FDO/SHM), which survived YT in
+   harness and shell. YouTube itself now serves Google CAPTCHA to the
+   headless client — their wall, parked for Barticus. kidulwm binary
+   unchanged for this item.
+
+## 2026-09-15 LAW DRAFT — PEEK UNIT: %-of-peek sizing for all peek widgets
+Status: THEORY LOCKED IN WRITING, implementation parked for the
+'fix linux scaling' polish pass (Barticus approved the deferral same day).
+
+SYMPTOM THAT MOTIVATED IT: tiny butterfly on the laptop panel, HUGE
+butterfly on the 4K output. Same root cause as the spyglass EXIT signs
+being misplaced (fixed 2026-09-15): every peek widget still sizes itself
+in hardcoded PX constants while the peek band itself is a FRACTION of the
+output. Two screens of different widths therefore render different art.
+
+CURRENT OFFENDERS (px constants that must become peek-derived):
+- spyglass.zig: exit_dots_w=72, icon_size=20, num_buffer=2 — partially
+  fixed 2026-09-15: EXIT dots now CENTER in the peek band via
+  peek_fraction=0.06, but dot size/height are still px. Also peek_fraction
+  is hardcoded; must come from the live deck_split (server owns it) so IPC
+  split changes move the signs too.
+- tray.zig gauges: gauge icon/grid px constants.
+- tray.zig weather: widget px constants.
+- tray.zig logo: margin=8px*scale (fit itself already derives from the
+  peek box — the model to copy).
+- drives/network/media peek widgets: audit for the same sin.
+
+THE LAW (draft, for Barticus lock at polish time):
+1. ONE unit per peek: peek_unit = peek_band_px / 16. All widget
+   dimensions — dot radii, icon heights, digit font size, gauge strokes,
+   margins, buffers — are integer multiples of peek_unit. Nothing in a
+   peek may be sized in raw px.
+2. The peek band px comes from the LIVE deck_split (server owns the
+   authoritative split; splitFromRequest proves it). Widgets receive the
+   band px in their layout call; they never read style.layout.* or
+   hardcode the fraction themselves. This makes IPC split changes and
+   future per-output splits propagate for free.
+3. Scale (wlroots output scale) multiplies AFTER the unit math:
+   device_px = logical_px * scale. Never bake scale into the unit.
+4. Same visual proportion on every screen: a 1080p laptop and a 4K TV
+   show the SAME art at the SAME fraction of the peek — only the px
+   differ. "The peek is the canvas; the unit is the grid."
+5. Where two widgets stack in one peek (weather over gauges, logo at
+   bottom), each gets a share of the band HEIGHT in units too — vertical
+   budget split in the same unit, not px.
+
+IMPLEMENTATION SKETCH (when the pass starts):
+- Server already hands each peek widget its box via host.left_peek_box /
+  right_peek_box (tray.zig). Add peek_unit to that box (or a sibling
+  accessor) computed from deck_split * output_width.
+- Spyglass: replace exit_dots_w/icon_size/num_buffer with
+  dots_w = 4.5*unit, icon_h = 1.25*unit, num_buffer = 0.125*unit
+  (numbers eyeballed from current proportions — tune at render verdict).
+- Delete peek_fraction from spyglass.zig; take the band from the box.
+- Gauges/weather/logo: same treatment, one widget at a time, ReleaseSafe
+  + host deploy + Barticus verdict each (per the iteration law).
+- This pass should ALSO subsume the general fractional-scaling audit
+  (laptop butterfly vs 4K butterfly is the same law at app level).
+
+## 2026-09-15 VERDICT 26: logo shading pass 2 — deployed (ReleaseSafe,
+host /usr/local/bin/kidulwm, sha256 36de1424…, .bak-pre-shading2 kept).
+Barticus: size good, color reads too solid; shading invisible in pass 1.
+All still UNCOMMITTED in tray.zig drawLogoWidget (on top of verdict-25
+work). Tweaks:
+- umbra: offset 0.012→0.03 glyph-h, luminance 0.35→0.25, alpha 0.45→0.6
+  (real offset shadow, deep enough to read);
+- body: alpha 0.80→0.70 (softer, lets umbra breathe — kills 'solid');
+- crown: alpha 0.22→0.35 (top-40% sheen now visible).
+Fit/margin untouched (0.92, 8px*scale) — size LOCKED per Barticus.
+Open idea (his): 'bubbles' inside the fill to break up the mass — parked
+until pass-2 verdict lands. Tuning levers: umbra 0.03/0.25/0.6, body
+0.70, crown 0.35, clip 0.40.
+AWAITING BARTICUS VERDICT after compositor reload.
+
+## 2026-09-15 VERDICT 25: spyglass EXIT signs centered in peeks + KSD
+logo shading, deployed (ReleaseSafe, host /usr/local/bin/kidulwm).
+SPYGLASS (src/ui/spyglass.zig): EXIT dot-matrix was anchored 17px from
+each screen edge — left sign drifted under the focused slide's left edge,
+right sign sat ~120px under the slide ("not even in the peek"). Fix:
+peek_fraction=0.06 (matches style horizontal_split), left EXIT x =
+(peek_w-dots_w)/2, right x = out_w-peek_w+(peek_w-dots_w)/2 — both signs
+dead-center in their peek bands. Hitbox math follows the dots.
+SLIDE-COUNT DIGITS rewritten: no more gold-mask scratch surface (they
+rendered yellow-ish at 100% color on black); now drawn directly in the
+cairo source color = same tone/alpha as the EXIT dots incl. hover
+brighten, transparent background, font h*0.6 -> h*1.2 (2x), hard against
+the screen edge with 2px buffer (num_buffer).
+KNOWN DEBT: peek_fraction hardcoded — plumb live deck_split in the PEEK
+UNIT pass (see LAW DRAFT above).
+LOGO SHADING (tray.zig drawLogoWidget): replaced the flat 0.9-alpha tint
+with three mask passes, design untouched —
+  L1 umbra: glyph +1.2% downshift, border color @35% luminance, 0.45a
+     (soft drop-shadow; pulls the wave into shadow);
+  L2 body: flat tint at 0.80a (was 0.9 — subtler per Barticus);
+  L3 crown light: glyph @135% luminance, 0.22a, clipped to top 40% so
+     K-stem top + S/D catch a sheen; the wave never sees it.
+Also fit * 0.92 (slightly smaller, still centered + bottom-anchored).
+Tuning levers if the eye objects: umbra 0.45, crown 0.22, clip 0.40,
+fit 0.92.
+BARTICUS VERDICT (2026-09-15): "beautiful work!" — EXIT signs + logo
+shading both LOCKED.
+
+## 2026-09-15 VERDICT 24: KSD logo widget — bottom of left peek, committed
+8d49b45, deployed kidulwm 3b11cb67 (active on next session reload).
+Asset: src/ui/assets/ksd_logo_mask.png — preprocessed from
+'~/Pictures/Kidul SlideDeck Balanced SD Logo.png' (2048²): white ->
+transparent, black ink -> alpha mask, cropped to ink bbox (350,380
+-1772,1844), downscaled 498x512 master. Runtime tint via
+cairo_mask_surface with style.color_border — visible ink IS the border
+color, tracks theme generation like every other peek widget.
+Wiring: PerOutputLogo + logo_widgets in tray.zig (same lifecycle as
+weather/gauges/drives: created per output at addOutput, destroyed at
+removeOutput/deinit). ensureLogoSurface loads the embedFile'd PNG once
+via memfd + cairo_image_surface_create_from_png — first frame only.
+Placement: bottom-anchored, horizontally centered, fitted to peek width,
+8px*scale margin. Click -> tray.toggle() (same door as SW key + IPC
+tray_toggle) — the future CFC'd tray opens through the same path.
+LOW-POWER LAW honored: no polling, no timers, no animation; redraws
+only on layout/scale/theme-generation change.
+AWAITING BARTICUS VERDICT after compositor reload: logo visible
+bottom-left peek in border color; click opens tray. If the logo draws
+too big/small in the narrow peek, the lever is the fit/margin math in
+drawLogoWidget (tray.zig ~2770).
+
+## 2026-09-15 VERDICT 23: 'Log in' click fires 'Sign in' — ONE-SPACE LAW
+deployed (kidul-browser 74e56c8b + renderer e65ad10a, ReleaseSafe, host).
+User report: twitchyness gone (verdict-22 work held), but clicks hit the
+wrong button — pressing Login activated the Sign-in control above it.
+DIAGNOSIS (static, three spaces proven misaligned in-tree):
+1. RESIZE RACE (renderer): three resize owners — startup default
+   1280x720, xdg configure (w.width at ack time), ready-event resize
+   (shell.window_width) — each did gtk_window_resize + size_request +
+   invalidate_snapshot. Racing snapshots at intermediate sizes meant the
+   USER could be looking at a snapshot of one size/layout while clicks
+   were mapped against the LIVE view at another. Fix: resize cmd only
+   records configured_width/height pre-load; exactly ONE settle resize +
+   snapshot at WEBKIT_LOAD_FINISHED ('settle resize WxH -> WxH' log
+   line). Post-load resizes realign immediately (no race once loaded).
+2. NO WINDOW->FRAME MAPPING (shell): drawPageFrame cover-scales the
+   frame (scale=max(w/fw,h/fh), src_x centered, src_y=0), but pointer
+   coords crossed IPC as raw window-local — WebKit hit-tests in FRAME
+   space. Any aspect/size mismatch = clicks land off by the crop/scale
+   delta, vertically in exactly the login-vs-sign-in direction. Fix:
+   mapWindowToFrame() in Shell.zig (inverse of the draw transform,
+   identity when frame==window) applied in sendRendererMotion,
+   sendRendererButton, and handleClick's focus_page press path.
+3. DELIVER probe armed (renderer stderr): every fabricated event logs
+   'DELIVER type=N x= y= win=0x.. handled=0|1' — one repro answers
+   whether the click arrives, at what coords, and whether WebKit honors
+   it. STRIP after verdict.
+AWAITING BARTICUS REPRO: relaunch kbrowser, load login page, click Log
+in once, hover a little. Expect: settle-resize line, 'viewport snapshot
+ready 1673x1064', DELIVER x/y matching the click point, correct button.
+If STILL wrong with DELIVER coords correct: the remaining suspect is the
++25,25 geometry inset (buffer=1723x1114 vs geom=1673x1064@25,25 on every
+commit, verdict-20/21 logs) — that one lives in KidulWM
+applyContainment/xdg geometry, NOT the browser. Also still open from
+verdict 21/22: PTR-ENTER never logged in session.log even after dd9709e
+(clicks reach the page only because handleClick forces focus) — the
+repro's session.log read will say if that needs its own fix.
+
+## 2026-09-15 VERDICT 22: post-reboot browser triage — backspace dead,
+cursor stuck as ibeam, fans. Three findings, two fixed+deployed:
+1. BACKSPACE DEAD IN PAGE (kidul-browser, FIXED): Shell sends
+   sendPageKey("Backspace", "\x08", 0); renderer keysym_for() took the
+   text fallback FIRST (strlen==1 → gdk_unicode_to_keyval(0x08)=Ctrl-H),
+   shadowing the GDK_KEY_BackSpace branch. WebKit got keyval 0x08 —
+   handled=1, deletes nothing. Fix: text fallback only for printable
+   bytes (>=0x20). Deployed /usr/local/bin/kidul-browser-webkitgtk-renderer.
+2. CURSOR STUCK AS IBEAM (KidulWM, FIXED, active on next session reload):
+   input.zig handleRequestSetCursor honored set-cursor from ANY client,
+   no focus check → a text field's ibeam surface stuck forever. Added
+   the standard wlroots guard (event.seat_client ==
+   seat.pointer_state.focused_client) AND re-assert left_ptr in
+   pointerEnterAtCursor's clear-focus branch (nothing was resetting the
+   image when the pointer left all surfaces). /usr/local/bin/kidulwm
+   swapped; live process still the old binary until reload.
+3. FANS = known verdict-21 open item: Ghostty (id=1) commit-flooding,
+   1268 handleCommit lines, ~100-144 fps on both outputs with nothing
+   animating, kidulwm ~70% CPU. CHROME cache-miss culprit field still
+   unfound — separate hunt, not browser-related.
+Note: kidul-browser worktree has a large uncommitted trusted-input v2
+changeset (904 insertions across 8 files) — left untouched.
+Also seen: 'Failed to pick cursor plane format' DRM errors (hw cursor
+plane rejected → software fallback, cosmetic).
+
 ## 2026-09-15 VERDICT 21: dead click/scroll AGAIN after verdict-20 — the
 CHROME BUFFER was eating the pointer (dd9709e, deployed 79e1900b).
 Verdict-20 fixed the cursor coords (passes now sane, clamped, over the
