@@ -62,17 +62,20 @@ const clock_pill_h_lo: i32 = 40;
 // (Barticus 2026-09-16: moon and sigs MUST be level).
 const weather_peek_hmargin: i32 = 2;
 const weather_peek_vmargin: i32 = 16;
-const weather_max_pill_side: i32 = 215; // logical, every output (CFC law)
+// Weather pill: tall enough for moon band + big temp + min/max + condition
+// icon at full size. 215 clipped the icon over the bottom edge (Barticus
+// 2026-09-16: weather widget "over the bottom").
+const weather_max_pill_side: i32 = 320; // logical, every output (CFC law)
 // Gauge pill (old tray drawGaugeWidget, ~lines 2944-2955).
 const gauge_peek_hmargin: i32 = 2;
 const gauge_peek_vmargin: i32 = 8;
-const gauge_weather_height: i32 = 215;
+const gauge_weather_height: i32 = 320; // matches weather_max_pill_side
 // Drives widget PARKED (Barticus 2026-09-16): not painted by default — drive
 // visibility lives in kfiles. Painter + constants kept in-tree for later
 // opt-in; do not call drawDrivesWidget from refreshWidgets until then.
 const drives_peek_hmargin: i32 = 2;
 const drives_peek_vmargin: i32 = 8;
-const drives_weather_height: i32 = 215;
+const drives_weather_height: i32 = 320; // matches weather_max_pill_side
 // KSD logo (old tray drawLogoWidget, ~lines 2808-2822).
 const logo_margin: i32 = 17;
 const logo_fit_scale: f64 = 0.85;
