@@ -194,11 +194,19 @@ pub const WeatherWidget = struct {
         icon_r = @min(icon_r, @max(0.0, max_icon_r));
         if (icon_r >= 8.0 * scale_f) {
             const icon_cx = w_d * 0.5 - 10.0 * scale_f;
-            // Pull the icon center down into its own bounding circle so the
-            // empty top of the circle overlaps the min/max line — the visible
-            // glyph moves up snug without shrinking the art.
-            const icon_cy = mm_y + icon_bottom_margin + icon_r * 0.62;
-            renderConditionIcon(cr, icon_cx, icon_cy, icon_r, state_.weather_code, state_.is_day != 0, state_.wind_speed, gold);
+            // Center the icon's bounding circle in the space remaining below
+            // the min/max line — no upward pull; every condition glyph sits
+            // truly centered (the bare sun's upper rays no longer kiss the
+            // numbers).
+            const icon_cy = (mm_y + icon_bottom_margin + h_d) * 0.5;
+            // The bare sun (code 0, day) visually reads smaller than the moon
+            // because its rays are clipped tighter; nudge it up 10px and right
+            // 9px so its optical center lands on the moon's dead-center.
+            const sun_shift_x: f64 = 9.0 * scale_f;
+            const sun_shift_y: f64 = -10.0 * scale_f;
+            const draw_cx = icon_cx + if (state_.weather_code == 0 and state_.is_day != 0) sun_shift_x else 0.0;
+            const draw_cy = icon_cy + if (state_.weather_code == 0 and state_.is_day != 0) sun_shift_y else 0.0;
+            renderConditionIcon(cr, draw_cx, draw_cy, icon_r, state_.weather_code, state_.is_day != 0, state_.wind_speed, gold);
         }
 
         if (!state_.available) {
@@ -696,9 +704,11 @@ fn sunRays(cr: *c_cairo.cairo_t, cx: f64, cy: f64, inner: f64, outer: f64, count
 fn drawSun(cr: *c_cairo.cairo_t, cx: f64, cy: f64, r: f64, gold: [4]f64) void {
     setStroke(cr, gold, 1.2, 1.0);
     c_cairo.cairo_new_path(cr);
-    c_cairo.cairo_arc(cr, cx, cy, r * 0.30, 0, 2 * std.math.pi);
+    c_cairo.cairo_arc(cr, cx, cy, r * 0.26, 0, 2 * std.math.pi);
     c_cairo.cairo_stroke(cr);
-    sunRays(cr, cx, cy, r * 0.38, r * 0.72, 12, 0);
+    // Rays kept well inside the bounding circle: the bare sun at full r
+    // sprawled ~150% past the cloud/rain glyphs' visual mass.
+    sunRays(cr, cx, cy, r * 0.33, r * 0.56, 12, 0);
 }
 
 fn drawStar4(cr: *c_cairo.cairo_t, cx: f64, cy: f64, r: f64, gold: [4]f64) void {

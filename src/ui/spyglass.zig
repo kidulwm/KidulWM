@@ -22,8 +22,8 @@ const icon_size: u32 = 20; // px tall, unscaled
 const margin_from_bottom: u32 = 0; // 0 = vertically centered
 /// Peek geometry: the visible neighbor-slide strip at each screen edge is
 /// `peek_fraction` of the output width (style layout horizontal_split).
-/// EXIT dot-matrix centers itself INSIDE that peek; the slide-count
-/// digit pins to the outer (screen-edge) side with edge_buffer clearance.
+/// EXIT dot-matrix sits 1 char-space from the slide border (inner peek
+/// edge); the slide-count digit sits 1 char-space from the screen edge.
 const peek_fraction: f64 = 0.06;
 
 /// Skin descriptor — one entry per pack skin.
@@ -38,12 +38,6 @@ const Skin = struct {
 };
 
 const exit_dots_w: u32 = 72; // px wide for the EXIT dot-matrix itself
-/// Pair inset: the EXIT+number group is centered inside the peek with
-/// this much clearance to both the screen edge and the peek's inner edge.
-const edge_buffer: u32 = 8; // px (unscaled)
-/// Gap between the EXIT dots and the slide-count digit — two text spaces.
-/// (Retained for reference; the digit is now pinned to the screen edge.)
-const pair_gap: u32 = 16; // px (unscaled)
 /// Slide-count digit size relative to the icon height (was 1.2 — too big).
 const num_font_scale: f64 = 0.9;
 
@@ -373,6 +367,17 @@ fn measureSlideCount(cr: *c.cairo_t, h: f64, count: u32) f64 {
     return ext.width;
 }
 
+/// Measure one character space at the digit font size (advance of "0").
+/// Used as the house spacing unit for EXIT/digit edge offsets.
+fn measureCharSpace(cr: *c.cairo_t, h: f64) f64 {
+    c.cairo_save(cr);
+    c.cairo_set_font_size(cr, h * num_font_scale);
+    var ext: c.cairo_text_extents_t = undefined;
+    c.cairo_text_extents(cr, "0", &ext);
+    c.cairo_restore(cr);
+    return ext.x_advance;
+}
+
 /// Draw the slide-count digit with its LEFT edge at tx, vertically centered.
 /// Inherits the caller's source (same color/alpha as the EXIT dots).
 fn drawSlideCount(cr: *c.cairo_t, h: f64, count: u32, tx: f64) void {
@@ -662,25 +667,26 @@ fn paintStraightArrowSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, _:
     paintStraightArrow(cr, w, h, s, side);
 }
 
-/// EXIT dot-matrix CENTERED in the peek band; the slide-count digit is
-/// pinned to the OUTER edge (screen-edge side): left peek puts the digit at
-/// the left edge, right peek at the right edge — opposite math per side.
-/// edge_buffer clearance on both sides so nothing clips. The digit is
-/// ALWAYS drawn when count > 0 (never dropped by a fit check).
+/// EXIT dot-matrix pinned 1 char-space from the SLIDE BORDER (inner side of
+/// the peek): left peek puts the dots at the right, right peek at the left —
+/// opposite math per side. The slide-count digit is pinned 1 char-space from
+/// the OUTER screen edge. The digit is ALWAYS drawn when count > 0 (never
+/// dropped by a fit check).
 fn paintExitDotsSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, _: bool, slide_count: u32) void {
     const dots_f: f64 = @as(f64, @floatFromInt(exit_dots_w)) * s;
-    const buf_f: f64 = @as(f64, @floatFromInt(edge_buffer)) * s;
+    const char_sp: f64 = measureCharSpace(cr, h);
     const num_w: f64 = measureSlideCount(cr, h, slide_count);
 
-    // EXIT dots dead-center in the peek.
+    // EXIT dots: 1 char-space in from the slide-border side.
+    const dots_x: f64 = if (side == .left) w - char_sp - dots_f else char_sp;
     c.cairo_save(cr);
-    c.cairo_translate(cr, (w - dots_f) / 2.0, 0.0);
+    c.cairo_translate(cr, dots_x, 0.0);
     paintExitDots(cr, dots_f, h, s);
     c.cairo_restore(cr);
 
-    // Digit pinned to the screen-edge side with edge_buffer clearance.
+    // Digit: 1 char-space in from the screen-edge side.
     if (num_w > 0) {
-        const num_x: f64 = if (side == .left) buf_f else w - buf_f - num_w;
+        const num_x: f64 = if (side == .left) char_sp else w - char_sp - num_w;
         drawSlideCount(cr, h, slide_count, num_x);
     }
 }

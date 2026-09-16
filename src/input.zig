@@ -83,11 +83,12 @@ pub const InputManager = struct {
         event: *wlr.Seat.event.RequestSetCursor,
     ) void {
         const self: *InputManager = @fieldParentPtr("request_set_cursor", listener);
-        if (event.surface) |surface| {
-            self.server.cursor.setSurface(surface, event.hotspot_x, event.hotspot_y);
-        } else {
-            self.server.cursor.setXcursor(self.server.xcursor_manager, "left_ptr");
-        }
+        _ = event;
+        // ONE CURSOR LAW (2026-09-15): the compositor owns the pointer image
+        // everywhere. Clients (browser text fields, terminals) all request
+        // their own shapes; we ignore every request and assert the house
+        // cursor. One image, same size, no ibeam surprises.
+        self.server.cursor.setXcursor(self.server.xcursor_manager, "left_ptr");
     }
 };
 

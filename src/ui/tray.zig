@@ -2678,7 +2678,9 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 8;
-        const max_pill_side: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 215.0) * @as(f64, scale))));
+        // CFC scale law: logical geometry NEVER multiplies by scale — scale
+        // is applied once at raster time. 215 logical on every output.
+        const max_pill_side: i32 = 215;
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
         const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
@@ -2804,16 +2806,20 @@ pub const Tray = struct {
         const scale = widget.info.scale;
 
         // Fit the logo to the peek width and center it at the bottom.
-        const margin: i32 = @max(4, @as(i32, @intFromFloat(8.0 * @as(f64, scale))));
+        // CFC scale law: 17 logical gap on every output (raster scales it).
+        const margin: i32 = 17;
         const avail_w: f64 = @floatFromInt(full_box.width - 2 * margin);
         const avail_h: f64 = @floatFromInt(@min(full_box.width, @max(24, full_box.height)));
         const src_w: f64 = @floatFromInt(self.logo_w);
         const src_h: f64 = @floatFromInt(self.logo_h);
-        const fit = @min(avail_w / src_w, avail_h / src_h);
+        const fit = @min(avail_w / src_w, avail_h / src_h) * 0.85; // a little smaller, per the eye test
         const draw_w: i32 = @max(1, @as(i32, @intFromFloat(@round(src_w * fit))));
         const draw_h: i32 = @max(1, @as(i32, @intFromFloat(@round(src_h * fit))));
         const bx = full_box.x + @divTrunc(full_box.width - draw_w, 2);
-        const by = full_box.y + full_box.height - draw_h - margin;
+        // Bottom gap = the REAL rendered side gap (margin + centering slack/2),
+        // so the mark sits in an even field on all three sides.
+        const side_gap: i32 = @divTrunc(full_box.width - draw_w, 2);
+        const by = full_box.y + full_box.height - draw_h - side_gap;
 
         const redraw = widget.scene_buffer == null or
             widget.last_w != draw_w or
@@ -2856,13 +2862,42 @@ pub const Tray = struct {
         c.cairo_paint(cr);
         c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
 
-        // Tint the alpha mask with the theme border color (white of the
-        // source became transparent in the mask; black became the glyph,
-        // so the visible ink IS the border color — per the asset law).
+        // KSD treatment: paint the glyph in three soft layers instead of one
+        // flat tone — a whisper-dark pass under everything, the main border-
+        // color body slightly dimmer than before, then a faint brighter kiss
+        // on the top 40% (light from above, like the aurora band). The wave
+        // at the bottom gets only the dark+body layers, so it reads shaded.
         const bc = style_.color_border.toF64();
-        c.cairo_scale(cr, @as(f64, @floatFromInt(dev_w)) / src_w, @as(f64, @floatFromInt(dev_h)) / src_h);
-        c.cairo_set_source_rgba(cr, bc[0], bc[1], bc[2], 0.9);
+        const sx = @as(f64, @floatFromInt(dev_w)) / src_w;
+        const sy = @as(f64, @floatFromInt(dev_h)) / src_h;
+
+        // Layer 1 — umbra: same glyph offset down a hair, very dark. Gives
+        // the whole mark depth and pulls the wave into shadow.
+        c.cairo_save(cr);
+        c.cairo_scale(cr, sx, sy);
+        c.cairo_translate(cr, 0.0, src_h * 0.03);
+        c.cairo_set_source_rgba(cr, bc[0] * 0.25, bc[1] * 0.25, bc[2] * 0.25, 0.6);
         c.cairo_mask_surface(cr, surf, 0.0, 0.0);
+        c.cairo_restore(cr);
+
+        // Layer 2 — body: the glyph itself, 0.70 alpha (was 0.80 — softer,
+        // lets the umbra breathe through so the mark stops reading solid).
+        c.cairo_save(cr);
+        c.cairo_scale(cr, sx, sy);
+        c.cairo_set_source_rgba(cr, bc[0], bc[1], bc[2], 0.70);
+        c.cairo_mask_surface(cr, surf, 0.0, 0.0);
+        c.cairo_restore(cr);
+
+        // Layer 3 — crown light: glyph again, brighter, clipped to the top
+        // 40% so the K stem top and the S/D catch a faint sheen; the wave
+        // (bottom ~35%) never sees this pass and stays shaded.
+        c.cairo_save(cr);
+        c.cairo_rectangle(cr, 0.0, 0.0, @floatFromInt(dev_w), @as(f64, @floatFromInt(dev_h)) * 0.40);
+        c.cairo_clip(cr);
+        c.cairo_scale(cr, sx, sy);
+        c.cairo_set_source_rgba(cr, @min(1.0, bc[0] * 1.35), @min(1.0, bc[1] * 1.35), @min(1.0, bc[2] * 1.35), 0.35);
+        c.cairo_mask_surface(cr, surf, 0.0, 0.0);
+        c.cairo_restore(cr);
 
         const DataBuffer = @import("../render/buffer.zig").DataBuffer;
         const buffer = DataBuffer.create(temp, dev_w, dev_h, @intCast(stride)) catch return;
@@ -2908,7 +2943,9 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 8;
-        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 215.0) * @as(f64, scale))));
+        // CFC scale law: weather band is 215 logical on every output; scale
+        // is applied at raster time only.
+        const weather_height: i32 = 215;
         // Split the remaining left-peek area: gauges at the top, drives below.
         const total_h = @max(0, full_box.height - weather_height - peek_vmargin * 2);
         const gauge_h_i: i32 = @max(40, total_h);
@@ -3008,7 +3045,9 @@ pub const Tray = struct {
 
         const peek_hmargin = 2;
         const peek_vmargin = 8;
-        const weather_height: i32 = @max(80, @as(i32, @intFromFloat(@as(f64, 215.0) * @as(f64, scale))));
+        // CFC scale law: weather band is 215 logical on every output; scale
+        // is applied at raster time only.
+        const weather_height: i32 = 215;
         const total_h = @max(0, full_box.height - weather_height - peek_vmargin * 2);
         const gauge_h_i: i32 = @max(40, @divTrunc(total_h * 4, 10));
         const drives_h_i: i32 = @max(40, total_h - gauge_h_i);
