@@ -240,8 +240,8 @@ pub const LayoutModel = struct {
 
     fn verticalColumnTarget(output: *Output, col_idx: usize) Rect {
         const h = @as(f32, @floatFromInt(output.height));
-        // For vertical splits the "left_peek" becomes top band, "focus" becomes
-        // bottom band, and "right_peek" is unused.
+        // For vertical splits the "left_peek" becomes the top strip, "focus"
+        // becomes the bottom strip, and "right_peek" is unused.
         const top_h: u32 = @intFromFloat(h * output.split.left_peek);
         const focus_h: u32 = @intFromFloat(h * output.split.focus);
 

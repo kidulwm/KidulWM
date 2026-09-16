@@ -35,7 +35,7 @@ pub const Window = struct {
     surface_tree: *wlr.SceneTree,
     /// Last offset applied via setSurfaceOffset — lets the no-op guard skip
     /// redundant setPosition writes (which damage the scene every time).
-    /// First call must always apply, hence the impossible sentinel.
+    /// First call must always apply, hence the impossible initial value.
     last_surface_offset_x: i32 = std.math.minInt(i32),
     last_surface_offset_y: i32 = std.math.minInt(i32),
 

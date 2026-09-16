@@ -39,7 +39,7 @@ const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
 const media_video = @import("ui/media_video.zig");
 const media_mod = @import("ui/media.zig");
-const band_mod = @import("ui/band.zig");
+const peek_mod = @import("ui/peek.zig");
 const keybinds = @import("config/keybinds.zig");
 const c = @cImport({
     @cInclude("stdio.h");
@@ -123,7 +123,7 @@ pub const Output = struct {
     frame: wl.Listener(*wlr.Output),
     destroy: wl.Listener(*wlr.Output),
     deck: slidedeck.SlideDeck,
-    /// Sentinel overview slide for THIS output's deck (per-output by ruling).
+    /// Overview slide for THIS output's deck (per-output by ruling).
     overview: overview_slide_mod.OverviewSlide = .{},
     /// Home slide content painter state (TASKCARD-3): the slide itself is a
     /// real deck.slides entry (kind .home); this holds tree + buffers only.
@@ -133,10 +133,11 @@ pub const Output = struct {
     /// Fullscreen video slide surface (kind .video slide, spawned right of
     /// the player on playback start; placeholder black surface for now).
     video_slide: tray_slide_mod.TraySlide = .{},
-    /// Permanent per-output edge bands (TASKCARD-3 stage 1): EXIT dots +
-    /// counts, one click router, clock painter. Born on output birth, never
-    /// hidden, never focused.
-    band: band_mod.Band = undefined,
+    /// Permanent per-output edge peeks (TASKCARD-3): EXIT dots + counts,
+    /// one click router, and the restored peek widget stack (weather /
+    /// gauges / drives / KSD logo left; network + clock right). Born on
+    /// output birth; the only hide condition is deck fullscreen.
+    peek: peek_mod.Peek = undefined,
     /// Per-output wallpaper scene buffer (fill-contain, no crop). The master
     /// pixel buffer lives on server.background.image_buffer; each output gets
     /// its own scene buffer referencing it, sized to that output's logical
@@ -161,7 +162,7 @@ pub const Output = struct {
             .home_slide = .{},
             .media_slide = .{},
             .video_slide = .{},
-            .band = band_mod.Band.init(server.overlay_tree, server.theme),
+            .peek = peek_mod.Peek.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,
         };
@@ -215,7 +216,7 @@ pub const Output = struct {
         // which veiled the whole screen in the wallpaper image whenever an
         // output's wallpaper was (re)created after clients mapped (the
         // "mythical mist" bug, 2026-09-05). Lower it explicitly, then
-        // re-assert overlay-topmost so the bands and widgets stay visible.
+        // re-assert overlay-topmost so the peeks and widgets stay visible.
         scene_buffer.node.lowerToBottom();
         // lowerToBottom puts the wallpaper under the solid bg_rect too —
         // raise it back to sit directly above the background colour.
@@ -282,7 +283,7 @@ pub const Output = struct {
             self.video_slide.card_buffer = null;
             self.video_slide.chrome_buffer = null;
         }
-        self.band.deinit();
+        self.peek.deinit();
     }
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
@@ -480,8 +481,12 @@ pub const Server = struct {
     /// Output that owns the live video slide (one per session — the player's
     /// row). Null while no .video slide exists.
     video_slide_output: ?*Output = null,
-    /// Band clock refresh timer (right-band clock painter, on the minute).
-    band_clock_timer: ?*wl.EventSource = null,
+    /// Peek widget timer (right-peek clock painter + widget polls, on the
+    /// minute).
+    peek_widget_timer: ?*wl.EventSource = null,
+    /// Shared peek widget state (weather/gauge/drives/network + KSD logo
+    /// surface). Initialized at server init — never lazily.
+    peek_widgets: peek_mod.Widgets = undefined,
     chrome_style_generation: u32,
 
     /// Last N pressed key events for the bobPI/debug probe. Lock-free enough:
@@ -921,6 +926,11 @@ pub const Server = struct {
 
         server.media_player = media_mod.MediaWidget.init(server.allocator);
 
+        // Peek widgets: initialized at server init, never lazily — they
+        // paint from the first frame on every output birth.
+        server.peek_widgets = peek_mod.Widgets.init(server.allocator, &server.theme_runtime);
+        server.peek_widgets.update();
+
         const bg_rect = try server.scene.tree.createSceneRect(1, 1, &server.background.color);
         server.background.rect = bg_rect;
         server.background.node = &bg_rect.node;
@@ -980,9 +990,12 @@ pub const Server = struct {
         };
         server.layout_source = try event_loop.addFd(*Server, server.layout_pipe[0], .{ .readable = true }, handleLayoutEventFd, server);
 
-        // Band clock painter: refreshed on the minute (widget painter v1).
-        server.band_clock_timer = try event_loop.addTimer(*Server, handleBandClockTimer, server);
-        try server.band_clock_timer.?.timerUpdate(msToNextMinute());
+        // Peek widget timer: right-peek clock repaint on the minute, plus
+        // the weather/network state polls (the old overlay's update()
+        // pattern — weather reads its 10-min cache internally, network
+        // scans every 2s internally; the minute tick just pokes both).
+        server.peek_widget_timer = try event_loop.addTimer(*Server, handlePeekWidgetTimer, server);
+        try server.peek_widget_timer.?.timerUpdate(msToNextMinute());
 
         return server;
     }
@@ -994,13 +1007,15 @@ pub const Server = struct {
         return @intCast((60 - into_min) * 1000);
     }
 
-    fn handleBandClockTimer(self: *Server) c_int {
+    fn handlePeekWidgetTimer(self: *Server) c_int {
+        self.peek_widgets.update();
         var it = self.outputs.iterator(.forward);
         while (it.next()) |output| {
-            output.band.refreshClock();
+            output.peek.refreshClock();
+            output.peek.refreshWidgets(&self.peek_widgets);
             output.wlr_output.scheduleFrame();
         }
-        self.band_clock_timer.?.timerUpdate(msToNextMinute()) catch {};
+        self.peek_widget_timer.?.timerUpdate(msToNextMinute()) catch {};
         return 0;
     }
 
@@ -1435,7 +1450,7 @@ pub const Server = struct {
         return null;
     }
 
-    /// Toggle the sentinel overview slide on the current deck's output.
+    /// Toggle the overview slide on the current deck's output.
     /// The lens machinery is gone; this is the whole mode switch.
     pub fn overviewToggle(self: *Server) void {
         const deck = self.currentDeck();
@@ -1482,7 +1497,7 @@ pub const Server = struct {
 
     /// Move the overview virtual cursor one step (recomputes the card ring
     /// on the next layout). dir: -1 left/prev, +1 right/next, -2 up, +2 down.
-    /// Wraps within the unparked set. Only meaningful with the sentinel open.
+    /// Wraps within the unparked set. Only meaningful with the overview open.
     pub fn overviewMoveCursor(self: *Server, dir: i32) void {
         const deck = self.currentDeck();
         if (!deck.overview_slide_open) return;
@@ -1511,8 +1526,8 @@ pub const Server = struct {
         self.requestLayout();
     }
 
-    /// Enter with the sentinel open: accept the slide under the virtual
-    /// cursor (unparking if needed), close the sentinel, focus it.
+    /// Enter with the overview open: accept the slide under the virtual
+    /// cursor (unparking if needed), close the overview, focus it.
     pub fn overviewAcceptFocused(self: *Server) void {
         const deck = self.currentDeck();
         if (!deck.overview_slide_open) return;
@@ -1540,7 +1555,7 @@ pub const Server = struct {
         self.requestLayout();
     }
 
-    /// Open the sentinel slide's scene: card background + reparented minis.
+    /// Open the overview slide's scene: card background + reparented minis.
     /// Tile rects and the card are both full-output-space, so reparented
     /// slide trees position directly at tile coords — no offset needed.
     fn overviewSlideOpen(self: *Server, output: *Output) void {
@@ -1605,7 +1620,7 @@ pub const Server = struct {
         std.log.info("KidulWM: overview slide open on output, tiles={d}", .{output.overview.tile_count});
     }
 
-    /// Close the sentinel: restore every reparented slide tree to the scene
+    /// Close the overview slide: restore every reparented slide tree to the scene
     /// root with its saved geometry, then destroy the card tree.
     fn overviewSlideClose(self: *Server, output: *Output) void {
         if (!output.overview.isOpen()) return;
@@ -1658,7 +1673,7 @@ pub const Server = struct {
     /// At most one per row; never auto-respawned; standard quit destroys it.
     pub fn homeSlideFocusOrSpawn(self: *Server) void {
         const deck = self.currentDeck();
-        // Siblings never both: if the overview sentinel is open on this row,
+        // Siblings never both: if the overview slide is open on this row,
         // close its scene tree before the home slide spawns into the row.
         if (deck.overview_slide_open) {
             if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
@@ -2459,7 +2474,7 @@ pub const Server = struct {
         return true;
     }
 
-    /// Hit-test a click in output-local coords against the sentinel's tiles.
+    /// Hit-test a click in output-local coords against the overview's tiles.
     /// Returns the deck slide index to focus, or null (empty card space).
     pub fn overviewSlideHitTest(self: *Server, x: i32, y: i32) ?usize {
         var it = self.outputs.iterator(.forward);
@@ -2860,13 +2875,18 @@ pub const Server = struct {
             const height = @as(u32, @intCast(box.height));
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
-            // BAND (TASKCARD-3): permanent per-output edge bands. Signage
-            // follows the deck state; bands NEVER hide — the
-            // widgets-off-in-fullscreen law is repealed (a fullscreen slide
-            // is just a wide slide; the bands stay).
+            // PEEK (TASKCARD-3): permanent per-output edge peeks. Signage
+            // follows the deck state. VISIBILITY LAW: the whole peek set
+            // (widgets + signage) hides ONLY while any slide on this
+            // output's deck is fullscreen — fullscreen apps own the edges.
             {
                 const bs: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
                 const n_slides = output.deck.slides.items.len;
+                var any_fullscreen = false;
+                for (output.deck.slides.items) |slide| {
+                    if (slide.fullscreen) any_fullscreen = true;
+                }
+                output.peek.setHidden(any_fullscreen);
                 const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
                     (output.deck.empty_slot == .after_last and n_slides > 0);
                 const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < n_slides) or
@@ -2891,13 +2911,13 @@ pub const Server = struct {
                     0
                 else
                     @intCast(n_slides - output.deck.focused_index - 1);
-                output.band.updateOutput(width, height, bs, box.x, box.y);
-                output.band.setNeighbors(has_left, has_right, left_count, right_count);
+                output.peek.updateOutput(width, height, bs, box.x, box.y, &self.peek_widgets);
+                output.peek.setNeighbors(has_left, has_right, left_count, right_count);
             }
 
             if (output.deck.slides.items.len == 0) continue;
             any_slides = true;
-            // While the sentinel overview slide is open on this output, the
+            // While the overview slide is open on this output, the
             // slides' scene trees are REPARENTED into the card with tile
             // geometry — the row layout below must not touch them.
             if (output.deck.overviewSlideOpen() and output.overview.isOpen()) {
@@ -3241,20 +3261,20 @@ pub const Server = struct {
         // Compute layout immediately so window panels appear on the first frame,
         // instead of waiting for the asynchronous layout-event loop tick.
         self.applyLayout();
-        // BAND BIRTH (TASKCARD-3): permanent per-output edge bands render
-        // from the first frame, REGARDLESS of deck state. Born here, never
-        // hidden afterwards.
+        // PEEK BIRTH (TASKCARD-3): permanent per-output edge peeks render
+        // from the first frame, REGARDLESS of deck state. Born here; the
+        // only later hide is deck fullscreen (applyLayout drives it).
         {
             var b: wlr.Box = undefined;
             self.output_layout.getBox(wlr_output, &b);
             const bs: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
-            output.band.updateOutput(@intCast(b.width), @intCast(b.height), bs, b.x, b.y);
+            output.peek.updateOutput(@intCast(b.width), @intCast(b.height), bs, b.x, b.y, &self.peek_widgets);
             // EXIT signage for whatever the deck already holds (first frame:
             // empty deck, both signs off — ends are where the sign is
             // loudest, a missing sign means nowhere to walk).
             const n0 = output.deck.slides.items.len;
-            output.band.setNeighbors(false, false, 0, @intCast(n0));
-            output.band.refreshClock();
+            output.peek.setNeighbors(false, false, 0, @intCast(n0));
+            output.peek.refreshClock();
         }
         // BOOT LADDER (A5): the first output to land spawns the media
         // PLAYER appliance as a normal compositor-owned app slide — first
@@ -3804,7 +3824,7 @@ pub const Server = struct {
 
     pub fn handlePointerMove(self: *Server, _: f64, _: f64) bool {
         // Params ignored: wlroots owns the cursor; hit-test the clamped truth.
-        // The band has NO hover state (furniture, not a widget) — motion is
+        // The peek has NO hover state (furniture, not a widget) — motion is
         // never claimed here.
         self.syncCursorMirror();
         return false;
@@ -3815,7 +3835,7 @@ pub const Server = struct {
         self.syncCursorMirror();
         const x = self.cursor_x;
         const y = self.cursor_y;
-        // Sentinel overview slide open: click a tile to focus that slide
+        // Overview slide open: click a tile to focus that slide
         // (unpark if needed), or click empty card space to close.
         const deck = self.currentDeck();
         if (deck.overview_slide_open) {
@@ -3841,8 +3861,8 @@ pub const Server = struct {
             self.requestLayout();
             return true;
         }
-        // BAND click router (one router): click = walk to the neighbor on
-        // that side. Hit-test the output under the cursor's band.
+        // PEEK click router (one router): click = walk to the neighbor on
+        // that side. Hit-test the output under the cursor's peek.
         var it = self.outputs.iterator(.forward);
         while (it.next()) |output| {
             var box: wlr.Box = undefined;
@@ -3850,8 +3870,8 @@ pub const Server = struct {
             const lx = x - @as(f64, @floatFromInt(box.x));
             const ly = y - @as(f64, @floatFromInt(box.y));
             if (lx < 0 or ly < 0 or lx >= @as(f64, @floatFromInt(box.width)) or ly >= @as(f64, @floatFromInt(box.height))) continue;
-            if (output.band.handleClick(lx, ly)) |side| {
-                std.log.info("KidulWM: PTR-CLAIM band-click side={s} x={d:.0} y={d:.0}", .{ @tagName(side), x, y });
+            if (output.peek.handleClick(lx, ly)) |side| {
+                std.log.info("KidulWM: PTR-CLAIM peek-click side={s} x={d:.0} y={d:.0}", .{ @tagName(side), x, y });
                 self.focused_output = output;
                 switch (side) {
                     .left => self.focusPrev(),

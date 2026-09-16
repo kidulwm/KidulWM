@@ -180,7 +180,7 @@ pub const MediaSlide = struct {
         }
 
         // ── Slideless isDone guard ───────────────────────────────────────
-        // Mirror of the above for the tray music path (slide closed).
+        // Mirror of the above for the widget music path (slide closed).
         if (!self.isOpen() and server.media_player.player_active) {
             if (server.media_player.player.isDone()) {
                 server.media_player.ensureStopped();

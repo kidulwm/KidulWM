@@ -129,15 +129,15 @@ const KeyboardDevice = struct {
                 server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "no_match");
             }
         }
-        // Overview sentinel owns Esc/Enter/arrows while open. Scan every
-        // output's deck — the sentinel may be open on a deck that isn't
+        // Overview slide owns Esc/Enter/arrows while open. Scan every
+        // output's deck — the overview may be open on a deck that isn't
         // "current" by keyboard focus.
-        var sentinel_open = server.deck.overview_slide_open;
+        var overview_open = server.deck.overview_slide_open;
         var oit = server.outputs.iterator(.forward);
         while (oit.next()) |output| {
-            if (output.deck.overview_slide_open) sentinel_open = true;
+            if (output.deck.overview_slide_open) overview_open = true;
         }
-        if (sentinel_open) {
+        if (overview_open) {
             switch (sym) {
                 xkb.Keysym.Escape => {
                     // Esc = close, return to the slide that opened it.
@@ -223,7 +223,7 @@ const KeyboardDevice = struct {
             .close_focused => {
                 // Stock quit on the focused slide (A7): compositor-owned
                 // slides destroy themselves through the same door as client
-                // windows — no sentinel bookkeeping.
+                // windows — no overview bookkeeping.
                 const deck = server.currentDeckPub();
                 if (deck.empty_slot == .none and deck.focused_index < deck.slides.items.len) {
                     const slide = deck.slides.items[deck.focused_index];

@@ -14,7 +14,7 @@ pub const Theme = struct {
     style: Style,
     generation: u32 = 0,
 
-    // Theme-driven tray metrics. Mirrors layout constants in tray.zig.
+    // Theme-driven widget metrics. Mirrors the old overlay layout constants.
     button_height: i32 = 44,
     button_gap: i32 = 8,
     corner_radius: i32 = 8,
@@ -136,7 +136,7 @@ pub const Theme = struct {
         self.style.card_mat_depth = @floatFromInt(cfg.spacing.card_mat_depth);
         self.style.card_mat_border_width = @floatFromInt(cfg.spacing.card_mat_border_width);
 
-        // Spacing is consumed by tray.zig via the Theme struct helpers below.
+        // Spacing is consumed by the slide painters via the Theme helpers below.
         self.button_height = cfg.spacing.button_height;
         self.button_gap = cfg.spacing.button_gap;
         self.corner_radius = cfg.spacing.corner_radius;

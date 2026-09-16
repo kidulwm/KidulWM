@@ -94,7 +94,7 @@ const PointerDevice = struct {
             return;
         }
         // PTR-PASS probe (rate-limited in logPointerDiagnostic): motion was
-        // NOT claimed by the band/tray — it goes to the seat/surface here.
+        // NOT claimed by the peek — it goes to the seat/surface here.
         server.logPointerDiagnostic("pass", server.cursor_x, server.cursor_y);
         if (server.pointerEnterAtCursor()) |p| {
             // SURFACE-LOCAL LAW: notify in surface-local coords, never layout.

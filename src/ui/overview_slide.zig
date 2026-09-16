@@ -7,7 +7,7 @@ const slidedeck = @import("../core/slidedeck.zig");
 const overview_card = @import("../render/overview_card.zig");
 const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
-/// The sentinel overview slide: one compositor-owned scene tree per output,
+/// The overview slide: one compositor-owned scene tree per output,
 /// holding (a) the Cairo card background and (b) each real slide's scene
 /// tree REPARENTED inside at mini position. Lives at the after_last slot.
 /// Open = the card exists and minis are reparented in; close = minis go

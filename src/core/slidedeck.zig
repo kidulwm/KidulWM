@@ -40,7 +40,7 @@ pub const Split = struct {
 };
 
 /// Compositor-owned slide kinds (TASKCARD-3): home, media player, and the
-/// fullscreen video slide are REAL deck.slides entries — no sentinel flags,
+/// fullscreen video slide are REAL deck.slides entries — no special flags,
 /// no empty-slot tricks. `window_id` holds a compositor-generated id that
 /// never collides with a client window id (see SlideDeck.compositor_id_base).
 pub const SlideKind = enum { app, home, media_player, video };
@@ -82,7 +82,7 @@ pub const SlideDeck = struct {
     empty_slot: EmptySlot,
     split: Split,
     orientation: Orientation,
-    /// Sentinel overview slide (PIVOT ruling 2026-08-19): when true, the
+    /// Overview slide (PIVOT ruling 2026-08-19): when true, the
     /// after_last empty slot is OCCUPIED by the compositor-owned place-card
     /// grid instead of emptiness. Not a Slide in slides.items — window-count
     /// invariants (slide_count == real client count) stay intact.
@@ -370,7 +370,7 @@ pub const SlideDeck = struct {
         return self.addCompositorSlide(kind, @min(index + 1, self.slides.items.len), false);
     }
 
-    /// Open the sentinel overview slide at the end of the row. The focused
+    /// Open the overview slide at the end of the row. The focused
     /// slide index is remembered for the return trip; focus moves onto the
     /// virtual after_last slot, which now displays the card grid.
     pub fn openOverviewSlide(self: *SlideDeck) void {
@@ -382,7 +382,7 @@ pub const SlideDeck = struct {
         std.log.info("SlideDeck: overview slide opened (return_index={d}, slides={d})", .{ self.overview_return_index, self.slides.items.len });
     }
 
-    /// Close the sentinel and return focus to the slide that opened it
+    /// Close the overview slide and return focus to the slide that opened it
     /// (clamped — the deck may have changed while the grid was open).
     pub fn closeOverviewSlide(self: *SlideDeck) void {
         if (!self.overview_slide_open) return;
@@ -406,7 +406,7 @@ pub const SlideDeck = struct {
         if (self.overview_slide_open) self.closeOverviewSlide() else self.openOverviewSlide();
     }
 
-    /// True while the sentinel occupies the end slot.
+    /// True while the overview slide occupies the end slot.
     pub fn overviewSlideOpen(self: *const SlideDeck) bool {
         return self.overview_slide_open and self.empty_slot == .after_last;
     }
@@ -468,11 +468,11 @@ pub const SlideDeck = struct {
         return null;
     }
 
-    /// Grid geometry for the overview sentinel's card: minis live INSIDE the
-    /// focused slide area (the split.focus band — peeks stay clear, per
+    /// Grid geometry for the overview slide's card: minis live INSIDE the
+    /// focused slide area (the split.focus strip — peeks stay clear, per
     /// Barticus 2026-08-19). Grid cols from style.layout.overview_cols,
     /// even gaps all round (style.layout.overview_gap), parked slides in a
-    /// bottom row. Mini size computed to fit the band, not from aspect ratio.
+    /// bottom row. Mini size computed to fit the strip, not from aspect ratio.
     pub const overview_cols = style.layout.overview_cols;
     pub const overview_gap = style.layout.overview_gap;
 
@@ -489,7 +489,7 @@ pub const SlideDeck = struct {
         if (slide_index >= self.slides.items.len or self.width == 0) {
             return .{ .x = 0, .y = 0, .width = 0, .height = 0 };
         }
-        // Grid area = the focused slide band of the normal layout (inset by
+        // Grid area = the focused slide strip of the normal layout (inset by
         // the deck gap, matching where the focused slide actually sits).
         const area = switch (self.orientation) {
             .horizontal => self.horizontalTarget(0).inset(self.gap),
@@ -498,9 +498,9 @@ pub const SlideDeck = struct {
         const cols = overview_cols;
         const gap: i32 = @intCast(overview_gap);
 
-        // Fixed mini size: computed from the band dimensions, NEVER changes
+        // Fixed mini size: computed from the strip dimensions, NEVER changes
         // regardless of slide count. 2 cols always; rows scroll if they
-        // exceed the visible band. The mini is sized so that 3 rows (the
+        // exceed the visible strip. The mini is sized so that 3 rows (the
         // max we show: 2 unparked + 1 parked) fit exactly with even gaps.
         const max_visible_rows = 3; // 2 unparked + 1 parked peek
 
@@ -509,7 +509,7 @@ pub const SlideDeck = struct {
 
         // Grid origin: centered horizontally, top-aligned vertically (rows
         // flow down from the top; if there are fewer than max_visible_rows,
-        // the grid is smaller and centered vertically in the band).
+        // the grid is smaller and centered vertically in the strip).
         const unparked = self.unparkedCount();
         const unparked_rows = (unparked + cols - 1) / cols;
         var parked_count: usize = 0;
@@ -567,7 +567,7 @@ pub const SlideDeck = struct {
 
     /// Hit-test: which mini (deck index) contains output-local point (x, y)?
     /// Uses the same grid math as overviewTargetForSlide, so hit == visual.
-    /// Only meaningful while the sentinel overview slide is open.
+    /// Only meaningful while the overview slide is open.
     pub fn miniAtPoint(self: *SlideDeck, x: i32, y: i32) ?usize {
         if (!self.overview_slide_open) return null;
         for (self.slides.items, 0..) |_, i| {
@@ -792,14 +792,14 @@ test "overview grid: unparked top row, parked bottom row, focus preserved" {
     // Park the slide at index 1 (window 2).
     deck.slides.items[1].parked = true;
 
-    // Sentinel opened; focus moved onto the after_last slot. Grid math is
+    // Overview slide opened; focus moved onto the after_last slot. Grid math is
     // lens-independent (pure functions), so targets compute the same.
     deck.openOverviewSlide();
     try std.testing.expect(deck.overviewSlideOpen());
 
-    // 1000x500, gap 8, split .06/.88/.06: focus band x=68, y=8, w=864, h=484.
+    // 1000x500, gap 8, split .06/.88/.06: focus strip x=68, y=8, w=864, h=484.
     // 2 cols, gap=28 -> mini_w=(864-3*28)/2=390, mini_h=(484-4*28)/3=124.
-    // Grid 864x484 centered in band (no offset). Tiles at x=96/486, y=36/188/340.
+    // Grid 864x484 centered in strip (no offset). Tiles at x=96/486, y=36/188/340.
     // Deck [1,2,3,4], focused idx3 (win4). Recency (focus..tail, then down):
     // idx3 (pos0, top-left), idx2 (pos1), idx0 (pos2, older side).
     // idx1 is PARKED so skipped in recency.
@@ -874,7 +874,7 @@ test "compositor slide: real deck entry at index 0, focus walks stock paths" {
     try std.testing.expectEqual(@as(usize, pidx), deck.focused_index);
 }
 
-test "sentinel toggle round-trips" {
+test "overview slide toggle round-trips" {
     const allocator = std.testing.allocator;
     var deck = SlideDeck.init(allocator);
     defer deck.deinit();
@@ -908,15 +908,15 @@ test "miniAtPoint hit-tests the grid" {
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 50));
 
     deck.openOverviewSlide();
-    // Grid: band x=68,y=8,w=864,h=484; 2 cols; mini 390x124 (fixed for 3 rows).
-    // Grid 864x332 centered in band: x=68, y=84. Tiles at y=112/264.
+    // Grid: strip x=68,y=8,w=864,h=484; 2 cols; mini 390x124 (fixed for 3 rows).
+    // Grid 864x332 centered in strip: x=68, y=84. Tiles at y=112/264.
     // Slide order: 1, 2, 3, focused idx2. Recency: idx2=(96,112), idx1=(514,112), idx0=(96,264).
     try std.testing.expectEqual(@as(?usize, 2), deck.miniAtPoint(200, 150));
     try std.testing.expectEqual(@as(?usize, 1), deck.miniAtPoint(550, 150));
     try std.testing.expectEqual(@as(?usize, 0), deck.miniAtPoint(200, 300));
     // Gap between minis: no hit.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(490, 150));
-    // Outside band: no hit.
+    // Outside strip: no hit.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(50, 150));
     // Below the grid: no hit.
     try std.testing.expectEqual(@as(?usize, null), deck.miniAtPoint(200, 499));

@@ -139,7 +139,7 @@ pub const WeatherWidget = struct {
         const state_ = self.state();
         const scale_f: f64 = @as(f64, scale);
 
-        // Moon phase sits in the same 34*s status band as the network icon
+        // Moon phase sits in the same 34*s status strip as the network icon
         // on the right peek, so the two icons align horizontally.
         const margin: f64 = 14.0 * scale_f;
         const status_band_h: f64 = 34.0 * scale_f;
@@ -572,9 +572,9 @@ pub const WeatherWidget = struct {
     }
 
     fn pathZ(allocator: std.mem.Allocator, path: []const u8) [:0]const u8 {
-        const sentinel = allocator.allocSentinel(u8, path.len, 0) catch return "/tmp";
-        @memcpy(sentinel[0..path.len], path);
-        return sentinel;
+        const zpath = allocator.allocSentinel(u8, path.len, 0) catch return "/tmp";
+        @memcpy(zpath[0..path.len], path);
+        return zpath;
     }
 
     fn nowMs() u64 {

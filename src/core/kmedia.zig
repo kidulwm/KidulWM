@@ -130,7 +130,7 @@ pub fn isRunning() bool {
 // ---------------------------------------------------------------------------
 // ONE-TRUTH liveness (CENSUS-NOTES verdict 11, 2026-09-12)
 // "Is audio live?" is answered by ksound's floor table and NOWHERE ELSE.
-// The FFT slots above answer loudness only. Both tray.zig and media.zig
+// The FFT slots above answer loudness only. The old widget painter and media.zig
 // used to re-derive liveness as `level() > 0.03` — two consumers, one
 // lying source, stale dots. Now: one bool, from the daemon, cached
 // 100ms so render threads never block on the socket. Daemon absent
@@ -347,7 +347,7 @@ var stream_events: PwStreamEvents = .{};
 // FIX-AND-RECORD (census law amendment, 2026-09-09): stale-dot meter leak.
 // Verdict: onProcess simply stops being called when the sink goes quiet, so
 // rms_slot + band_slots + smooth keep their last LOUD values forever → the
-// butterfly widget (tray.zig drawMediaWidget: audio_live = level() > 0.03)
+// butterfly widget (old drawMediaWidget: audio_live = level() > 0.03)
 // renders the live dot with no player open and nothing playing.
 // Fix: the capture thread timestamps every buffer; captureMain runs a
 // watchdog that, after 250ms of silence, writes zeros through the SAME

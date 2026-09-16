@@ -16,8 +16,8 @@ pub const Tile = struct {
     cursor: bool,
 };
 
-/// Compute the tile layout for a deck about to be shown in the sentinel
-/// overview slide. Same grid math as the lens (band = focused slide area,
+/// Compute the tile layout for a deck about to be shown in the
+/// overview slide. Same grid math as the lens (split = focused slide area,
 /// 2 cols, recency order, parked bottom row) but expressed card-local and
 /// returned as a flat list the caller can hit-test against.
 pub fn layoutTiles(deck: *slidedeck.SlideDeck, out: []Tile, cursor_recency: usize) usize {

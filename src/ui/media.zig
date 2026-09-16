@@ -646,7 +646,7 @@ pub const MediaWidget = struct {
     player_ws_key_buf: [256]u8 = std.mem.zeroes([256]u8),
 
     /// True while a music file started from the media slide is playing in the
-    /// tray's MediaWidget (the slide having been dismissed). Drives the
+    /// overlay MediaWidget (the slide having been dismissed). Drives the
     /// now-playing line in renderPeek and the slideless vsync tick pump.
     is_music: bool = false,
 
@@ -1198,9 +1198,9 @@ pub const MediaWidget = struct {
         return library[self.selected_result];
     }
 
-    /// Start music playback in the tray MediaWidget (slide has already been
+    /// Start music playback in the widget MediaWidget (slide has already been
     /// dismissed by the caller). Unlike play(), this:
-    ///   - sets embedder_owns_video = false (no video scene buffer in the tray)
+    ///   - sets embedder_owns_video = false (no video scene buffer in the widget)
     ///   - copies the caller-supplied title + artist strings into cached
     ///   - sets is_music = true so renderPeek shows the now-playing line
     pub fn playMusic(self: *MediaWidget, path: []const u8, title: []const u8, artist: []const u8) void {
@@ -1208,7 +1208,7 @@ pub const MediaWidget = struct {
         if (path.len == 0) return;
 
         // For audio files, the player's own cairo blit is fine; there is no
-        // video scene buffer in the tray path, so embedder_owns_video = false.
+        // video scene buffer in the widget path, so embedder_owns_video = false.
         self.player.embedder_owns_video = false;
 
         var path_z: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
@@ -1579,7 +1579,7 @@ pub const MediaWidget = struct {
         // The font + text are already set up; just paint the np_buf string.
         if (np_fits) {
             c.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], 0.75);
-            // Baseline at margin + font_h (top of reserved band, ascent-aligned).
+            // Baseline at margin + font_h (top of reserved strip, ascent-aligned).
             c.cairo_move_to(cr, margin, margin + font_h);
             c.cairo_show_text(cr, &np_buf);
         } else if (!music_active) {
@@ -1840,7 +1840,7 @@ pub const MediaWidget = struct {
         const pad_y: f64 = 14.0 * scale_f;
         const content_w = w_d - 2.0 * pad_x;
 
-        // ---- CFC layout: results ride the TOP band, the interaction ----
+        // ---- CFC layout: results ride the TOP strip, the interaction ----
         // ---- stack sits at screen CENTER. The stack is ONE slot with ----
         // ---- two states: pill track, or searchbar when she types.    ----
         const pb_seg_w = PILL_SEG_W * scale_f;

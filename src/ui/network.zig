@@ -45,7 +45,7 @@ pub const NetworkWidget = struct {
     last_scan_ms: u64 = 0,
     status: Status = .{},
     /// Beacon override: when set, the peek icon uses this severity color
-    /// instead of the connected/disconnected color. Set by the tray after
+    /// instead of the connected/disconnected color. Set by the peek after
     /// scanning /tmp/kidul-signals/*.state for worst severity.
     beacon_override: bool = false,
     beacon_severity: u8 = 0, // 0=ok, 1=warning, 2=alert, 3=muted
@@ -95,7 +95,7 @@ pub const NetworkWidget = struct {
 
     pub fn needsRedraw(self: *const NetworkWidget) bool {
         // The icon shape is determined entirely by state, and the state is polled
-        // internally.  The tray redraw loop already re-runs every frame the tray
+        // internally.  The peek redraw loop already re-runs every frame the peek
         // is moving/visible, so a state change will be picked up on the next pass.
         // Returning true here once per scan would be useful but is not required for
         // a Granny-simple proof-of-life.
@@ -289,7 +289,7 @@ pub const NetworkWidget = struct {
         const show_battery = self.status.battery_present and !self.status.battery_charging;
 
         // Vertically nudge the whole icon group down so it reads as part of the
-        // tray immediately above the clock.
+        // peek immediately above the clock.
         const cy = h_d * 0.55;
         const net_cx = w_d * 0.5;
 
