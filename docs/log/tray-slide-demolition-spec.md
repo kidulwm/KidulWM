@@ -45,6 +45,44 @@ only fix that ever works here.
 ## Open design answers (locked 2026-09-16 session, Bob's leans ACCEPTED by
 silence — revisit only if Barticus objects)
 
+## SESSION-2 AMENDMENTS (locked 2026-09-16 evening, Barticus — supersede
+anything above that conflicts)
+
+A1. PROPER SLIDE: the tray slide gets a REAL border + background, stock
+    chrome path — NOT the borderless special of ruling text/hard-NO #4.
+    Acting like the rest of the slides comes from having normal chrome.
+    "Transparent text-only later" = one alpha constant in the render, not
+    an architecture change. Hard NO #4 is hereby REPEALED.
+A2. DEFAULT/HOME SLIDE: tray slide is indestructible index 0, session
+    starts on it, focus falls back to it when a focused slide dies. The
+    deck never empties below one — "no slides present" ceases to exist.
+    It cannot be closed (sentinel flag); everything else about it is
+    stock slide behavior (walk, park, peek, fullscreen).
+A3. NO PLACEHOLDER SLIDES: no empty slides at row ends, no empty-slide
+    body for empty rows. EXIT signs are the affordance (they exist, they
+    are deployed). End-of-row/edge EXIT signs render at 100% opacity —
+    ends are where the sign is loudest. "Move opposite the arrows on the
+    remote" is the whole lesson.
+A4. FULLSCREEN PLAYS BALL: fullscreen is a SIZE, and the deck moves the
+    fullscreen slide WITH the other slides during a walk (rendered at its
+    saved pre-fullscreen rect, mid-row, with border). On motion settle,
+    a 1–2s dwell timer re-expands it in place; walking again before the
+    timer fires keeps it windowed. No "exit fullscreen first" mode, ever.
+    Peek/overview shows it as a normal mini. Cheap version first (instant
+    drop to windowed rect on walk, expand on settle); tweens later.
+    Applies to the media player too — one law, all slides.
+A5. BOOT LADDER: v1 boots to the home (tray) slide. v2 (with kidulKey/
+    session-restore): keyless boot → media-player appliance (basics
+    immutable & public); key in → full computer unlocks (files, rows,
+    settings); key out → back to appliance. Home slide content is
+    key-scoped: keyless = clock/weather/now-playing only.
+A6. REMOTE: two direction pads — pad 1 = deck walk (always the deck),
+    pad 2 = in-slide (scroll/focus inside the viewed slide). Deck walk
+    may be claimed ONLY by fullscreen slides, and an EXIT sign must show
+    whenever it is.
+
+## Original design answers (kept for history; A-amendments win on conflict)
+
 1. ONE tray slide, all widgets as CFC sections stacked (media readout,
    weather, signals, notifications). Granny learns ONE place.
 2. Position: FIRST in deck order (index 0). Mod4+k from anywhere walks
