@@ -306,6 +306,10 @@ const KeyboardDevice = struct {
                 server.moveFocusedToOutputNext();
                 return true;
             },
+            .fullscreen_toggle => {
+                server.fullscreenToggleFocused();
+                return true;
+            },
             .none => return false,
         }
     }

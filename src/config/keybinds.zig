@@ -18,6 +18,7 @@ pub const Action = union(enum) {
     overview_toggle,
     focus_output_next,
     move_to_output_next,
+    fullscreen_toggle,
     wm_reset,
     none,
 };
@@ -60,6 +61,11 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Tab, .action = .overview_toggle }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.o, .action = .focus_output_next }) catch {};
     list.append(allocator, .{ .mod4 = true, .ctrl = true, .sym = xkb.Keysym.o, .action = .move_to_output_next }) catch {};
+    // Fullscreen toggle: any slide fills the whole output, in and out
+    // (Barticus 2026-09-16). Media auto-fullscreens; this is for every
+    // other app. Mod4+f, also F11 (the muscle-memory fullscreen key).
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.f, .action = .fullscreen_toggle }) catch {};
+    list.append(allocator, .{ .mod4 = false, .sym = xkb.Keysym.F11, .action = .fullscreen_toggle }) catch {};
     return list;
 }
 
@@ -301,6 +307,7 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "overview_toggle")) return .overview_toggle;
         if (std.mem.eql(u8, str, "focus_output_next")) return .focus_output_next;
         if (std.mem.eql(u8, str, "move_to_output_next")) return .move_to_output_next;
+        if (std.mem.eql(u8, str, "fullscreen_toggle")) return .fullscreen_toggle;
         if (std.mem.eql(u8, str, "open_slide")) {
             const cmd = allocator.dupe(u8, "/usr/bin/ghostty") catch return null;
             return .{ .spawn = cmd };

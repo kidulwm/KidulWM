@@ -102,7 +102,11 @@ pub fn refresh(server: *Server, output: *Output) void {
             const th: f64 = @floatFromInt(target.height);
             const vw: f64 = @floatFromInt(sb.buffer.?.width);
             const vh: f64 = @floatFromInt(sb.buffer.?.height);
-            const scale = @min(tw / vw, th / vh);
+            // FILL LAW (Barticus 2026-09-16): COVER the full output — scale
+            // to the LARGER ratio so the video fills the screen edge-to-edge
+            // and the overflow crops off. No letterbox matte, no transparent
+            // edging. (was @min = contain/letterbox.)
+            const scale = @max(tw / vw, th / vh);
             const dw: i32 = @intFromFloat(vw * scale);
             const dh: i32 = @intFromFloat(vh * scale);
             const tw_i: i32 = @intCast(target.width);
@@ -185,7 +189,8 @@ pub fn refresh(server: *Server, output: *Output) void {
     const th: f64 = @floatFromInt(target.height);
     const vw: f64 = @floatFromInt(frame.w);
     const vh: f64 = @floatFromInt(frame.h);
-    const scale = @min(tw / vw, th / vh);
+    // FILL LAW (Barticus 2026-09-16): COVER, not contain — see dmabuf branch.
+    const scale = @max(tw / vw, th / vh);
     const dw: i32 = @intFromFloat(vw * scale);
     const dh: i32 = @intFromFloat(vh * scale);
     const tw_i: i32 = @intCast(target.width);

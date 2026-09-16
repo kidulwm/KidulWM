@@ -44,6 +44,10 @@ pub const Slide = struct {
     /// Parked slides stay in the deck (the client is alive) but are hidden
     /// from normal layout and navigation. Overview mode (Task 2) shows them.
     parked: bool = false,
+    /// Fullscreen toggle (Barticus 2026-09-16): any slide may fill the whole
+    /// output on a hotkey, in and out. Same law as playback.md — fullscreen
+    /// is a SIZE, not a mode. Media auto-fullscreens; other apps use this.
+    fullscreen: bool = false,
 };
 
 pub const EmptySlot = enum { none, before_first, after_last };
@@ -397,6 +401,17 @@ pub const SlideDeck = struct {
         return result.inset(self.gap);
     }
 
+    /// Toggle the fullscreen flag on the focused slide (hotkey path).
+    /// Returns the new state, or null when no slide is focused.
+    pub fn fullscreenToggleFocused(self: *SlideDeck) ?bool {
+        if (self.empty_slot != .none) return null;
+        if (self.focused_index >= self.slides.items.len) return null;
+        const slide = &self.slides.items[self.focused_index];
+        if (slide.parked) return null;
+        slide.fullscreen = !slide.fullscreen;
+        return slide.fullscreen;
+    }
+
     /// Recency position of a slide among unparked slides (0 = top-left).
     /// The walk starts at the focused slide if unparked, else the nearest
     /// unparked slide to its right, then left — the raw focused_index may
@@ -570,6 +585,12 @@ pub const SlideDeck = struct {
             return .{ .x = -@as(i32, @intCast(self.width)), .y = 0, .width = 0, .height = self.height };
         }
         const delta: isize = @as(isize, @intCast(slide_index)) - self.virtualFocus();
+        // FULLSCREEN LAW (2026-09-16): a fullscreen flagged slide fills the
+        // whole output — no gap inset, no peeks. Only meaningful at delta 0
+        // (focused); unfocus a fullscreen slide keeps the flag for return.
+        if (delta == 0 and self.slides.items[slide_index].fullscreen) {
+            return .{ .x = 0, .y = 0, .width = self.width, .height = self.height };
+        }
         const result = switch (self.orientation) {
             .horizontal => self.horizontalTarget(delta),
             .vertical => self.verticalTarget(delta),

@@ -2338,7 +2338,15 @@ pub const Server = struct {
     /// button/axis event (BTN-NOTIFY serial=0 focused=false flood). Walk the
     /// per-window trees instead (they contain only the client xdg surface;
     /// chrome lives in overlay_tree, outside them), mirroring focusAtCursor.
-    pub fn pointerEnterAtCursor(self: *Server) void {
+    /// SURFACE-LOCAL LAW (2026-09-15): returns the surface-local (sx, sy) of
+    /// the cursor for the entered surface, or null if no client is under the
+    /// pointer. wlr_seat_pointer_notify_motion/notify_enter take LOCAL
+    /// coords — passing layout coords (cursor_x/y) shifts hit-testing by the
+    /// window's layout position on x (slide at x=25 -> +25px; slide on the
+    /// second stage -> +1920px, "spread out over both screens"). Y looked
+    /// fine only because slides sit near y=0. All clients were affected;
+    /// kbrowser's "click 25px left of the button" was this bug.
+    pub fn pointerEnterAtCursor(self: *Server) ?struct { sx: f64, sy: f64 } {
         self.syncCursorMirror();
         var it = self.windows.iterator(.forward);
         while (it.next()) |window| {
@@ -2355,7 +2363,7 @@ pub const Server = struct {
                 std.log.info("KidulWM: PTR-ENTER id={d} surface={*} nx={d:.0} ny={d:.0}", .{ window.id, surface, nx, ny });
                 self.seat.pointerNotifyEnter(surface, nx, ny);
             }
-            return;
+            return .{ .sx = nx, .sy = ny };
         }
         if (self.seat.pointer_state.focused_surface != null) {
             self.seat.pointerNotifyClearFocus();
@@ -2363,6 +2371,7 @@ pub const Server = struct {
             // or the last client's image (e.g. a text field's ibeam) sticks.
             self.cursor.setXcursor(self.xcursor_manager, "left_ptr");
         }
+        return null;
     }
 
     /// Focus-follows-cursor half of "follow the leader": on pointer motion,
@@ -2432,10 +2441,26 @@ pub const Server = struct {
         self.cursor_x = cx;
         self.cursor_y = cy;
         // Enter the surface before notifying motion — wlroots drops
-        // pointerNotifyMotion when no pointer surface is focused.
-        self.pointerEnterAtCursor();
-        self.seat.pointerNotifyMotion(0, cx, cy);
+        // pointerNotifyMotion when no pointer surface is focused. And notify
+        // in SURFACE-LOCAL coords (SURFACE-LOCAL LAW), not the layout cx/cy.
+        if (self.pointerEnterAtCursor()) |p| {
+            self.seat.pointerNotifyMotion(0, p.sx, p.sy);
+        }
         self.suppress_focus_follow = false;
+    }
+
+    /// Toggle fullscreen on the focused slide (Mod4+f / F11). Fullscreen is
+    /// a SIZE, not a mode: the slide fills the whole output until toggled
+    /// back. Media slides auto-fullscreen and are excluded here.
+    pub fn fullscreenToggleFocused(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.media_slide_open) return;
+        const state = deck.fullscreenToggleFocused() orelse return;
+        std.log.info("KidulWM: fullscreen toggle -> {s} (focused_index={d})", .{
+            if (state) @as([]const u8, "FULL") else "windowed",
+            deck.focused_index,
+        });
+        self.requestLayout();
     }
 
     /// Mod4+O: jump keyboard focus to the other stage, and (leader law) pull
@@ -2625,7 +2650,11 @@ pub const Server = struct {
                     window.updateChrome(true, .all);
                     if (!output.deck.media_slide_open) {
                         window.scene_tree.node.raiseToTop();
-                        self.overlay_tree.node.raiseToTop();
+                        // FULLSCREEN: the fullscreen slide covers everything,
+                        // overlay included — no EXIT signs floating on top.
+                        if (!slide.fullscreen) {
+                            self.overlay_tree.node.raiseToTop();
+                        }
                     }
                 } else {
                     // Non-focused slides: disabled, no rendering, no chrome.

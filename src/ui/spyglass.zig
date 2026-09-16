@@ -18,13 +18,12 @@ const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 /// touches Icon/Server code. Display-only surface area (e.g. the slide
 /// count strip) must NOT be part of the hitbox — skins declare `hit_w`
 /// separately from `surface_w`.
-
 const icon_size: u32 = 20; // px tall, unscaled
 const margin_from_bottom: u32 = 0; // 0 = vertically centered
 /// Peek geometry: the visible neighbor-slide strip at each screen edge is
 /// `peek_fraction` of the output width (style layout horizontal_split).
-/// The EXIT dot-matrix centers itself INSIDE that peek; the slide-count
-/// strip sits hard against the screen edge, outside the peek.
+/// EXIT dot-matrix centers itself INSIDE that peek; the slide-count
+/// digit pins to the outer (screen-edge) side with edge_buffer clearance.
 const peek_fraction: f64 = 0.06;
 
 /// Skin descriptor — one entry per pack skin.
@@ -43,6 +42,7 @@ const exit_dots_w: u32 = 72; // px wide for the EXIT dot-matrix itself
 /// this much clearance to both the screen edge and the peek's inner edge.
 const edge_buffer: u32 = 8; // px (unscaled)
 /// Gap between the EXIT dots and the slide-count digit — two text spaces.
+/// (Retained for reference; the digit is now pinned to the screen edge.)
 const pair_gap: u32 = 16; // px (unscaled)
 /// Slide-count digit size relative to the icon height (was 1.2 — too big).
 const num_font_scale: f64 = 0.9;
@@ -403,15 +403,21 @@ fn paintSilkWisp(cr: *c.cairo_t, w: f64, h: f64, s: f64) void {
     c.cairo_move_to(cr, cx, top_y);
     c.cairo_curve_to(
         cr,
-        cx + curve_offset, h * 0.30,
-        cx - curve_offset, h * 0.55,
-        cx, h * 0.50,
+        cx + curve_offset,
+        h * 0.30,
+        cx - curve_offset,
+        h * 0.55,
+        cx,
+        h * 0.50,
     );
     c.cairo_curve_to(
         cr,
-        cx + curve_offset, h * 0.65,
-        cx - curve_offset, h * 0.80,
-        cx, bot_y,
+        cx + curve_offset,
+        h * 0.65,
+        cx - curve_offset,
+        h * 0.80,
+        cx,
+        bot_y,
     );
     c.cairo_stroke(cr);
 }
@@ -475,13 +481,11 @@ fn paintCurvedArrow(cr: *c.cairo_t, w: f64, h: f64, s: f64) void {
     c.cairo_set_line_width(cr, 0.5 * sw);
     c.cairo_set_line_cap(cr, c.CAIRO_LINE_CAP_ROUND);
     c.cairo_move_to(cr, ax, ay);
-    c.cairo_line_to(cr, ax + radius * 0.25 * @cos(arrow_angle + 2.5),
-                       ay + radius * 0.25 * @sin(arrow_angle + 2.5));
+    c.cairo_line_to(cr, ax + radius * 0.25 * @cos(arrow_angle + 2.5), ay + radius * 0.25 * @sin(arrow_angle + 2.5));
     c.cairo_stroke(cr);
 
     c.cairo_move_to(cr, ax, ay);
-    c.cairo_line_to(cr, ax + radius * 0.25 * @cos(arrow_angle - 2.5),
-                       ay + radius * 0.25 * @sin(arrow_angle - 2.5));
+    c.cairo_line_to(cr, ax + radius * 0.25 * @cos(arrow_angle - 2.5), ay + radius * 0.25 * @sin(arrow_angle - 2.5));
     c.cairo_stroke(cr);
 }
 
@@ -658,35 +662,25 @@ fn paintStraightArrowSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, _:
     paintStraightArrow(cr, w, h, s, side);
 }
 
-/// EXIT dot-matrix + slide-count digit, drawn as ONE centered pair inside
-/// the peek band (the surface covers the band exactly, so w == peek width).
-/// Pair order faces the deck: left peek reads "count EXIT", right peek reads
-/// "EXIT count". Two-text-space gap between them. When the pair would not
-/// fit with edge_buffer clearance on both sides, the digit is dropped and
-/// the dots alone stay centered.
+/// EXIT dot-matrix CENTERED in the peek band; the slide-count digit is
+/// pinned to the OUTER edge (screen-edge side): left peek puts the digit at
+/// the left edge, right peek at the right edge — opposite math per side.
+/// edge_buffer clearance on both sides so nothing clips. The digit is
+/// ALWAYS drawn when count > 0 (never dropped by a fit check).
 fn paintExitDotsSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, _: bool, slide_count: u32) void {
     const dots_f: f64 = @as(f64, @floatFromInt(exit_dots_w)) * s;
-    const gap_f: f64 = @as(f64, @floatFromInt(pair_gap)) * s;
     const buf_f: f64 = @as(f64, @floatFromInt(edge_buffer)) * s;
     const num_w: f64 = measureSlideCount(cr, h, slide_count);
 
-    const pair_w: f64 = if (num_w > 0) dots_f + gap_f + num_w else dots_f;
-    const fits: bool = pair_w <= w - 2.0 * buf_f;
+    // EXIT dots dead-center in the peek.
+    c.cairo_save(cr);
+    c.cairo_translate(cr, (w - dots_f) / 2.0, 0.0);
+    paintExitDots(cr, dots_f, h, s);
+    c.cairo_restore(cr);
 
-    if (fits and num_w > 0) {
-        const pair_x: f64 = (w - pair_w) / 2.0;
-        const dots_x: f64 = if (side == .left) pair_x + num_w + gap_f else pair_x;
-        const num_x: f64 = if (side == .left) pair_x else pair_x + dots_f + gap_f;
-        c.cairo_save(cr);
-        c.cairo_translate(cr, dots_x, 0.0);
-        paintExitDots(cr, dots_f, h, s);
-        c.cairo_restore(cr);
+    // Digit pinned to the screen-edge side with edge_buffer clearance.
+    if (num_w > 0) {
+        const num_x: f64 = if (side == .left) buf_f else w - buf_f - num_w;
         drawSlideCount(cr, h, slide_count, num_x);
-    } else {
-        // No room (or no count): dots alone, centered in the peek.
-        c.cairo_save(cr);
-        c.cairo_translate(cr, (w - dots_f) / 2.0, 0.0);
-        paintExitDots(cr, dots_f, h, s);
-        c.cairo_restore(cr);
     }
 }
