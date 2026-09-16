@@ -1,4 +1,44 @@
-# KidulWM HANDOFF — Sep 05 2026 (session 18: black-screen fix + catcher)
+# KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
+
+---
+## ADDENDUM — Sep 16 2026 (TRAY-SLIDE STAGE 1 — home slide born, NOT YET DEPLOYED)
+
+Branch: tray-slide @ c083b95 (GPG-signed B&B). Spec:
+docs/log/tray-slide-demolition-spec.md + SESSION-2 AMENDMENTS A1–A7
+(proper slide w/ border+background; home slide quitable, one per row;
+public boot→media player, user boot (kidulKey)→home; no placeholder
+slides — EXIT signs at 100% on ends; fullscreen-plays-ball A4; dual
+remote pads A6). Task card: TASKCARD-1.md (committed 8a94897).
+
+STAGE 1 VERIFIED (coderBob dispatch, parent cold-cache rebuild + diff
+review): tray_slide.zig born — compositor-owned CFC text card (MEDIA/
+WEATHER/SIGNALS/NOTIFICATIONS placeholder sections, gold 0x948e7b on
+0x0a0a0b, JetBrains Mono, centered both axes) with STOCK chrome border
+(render/chrome.zig renderChrome). Sentinel in slidedeck.zig mirrors the
+overview pattern: home_slide_open + before_first, NOT in slides.items
+(window-count invariants hold), one per row, siblings-never-both with
+overview. Mod4+t / Mod4+m → homeSlideFocusOrSpawn. Standard quit on the
+home slot closes it (A7). build/test/ReleaseSafe clean, nested-smoke
+PASSED (note: pre-existing 'Aborted (core dumped)' AFTER accepted IPC
+quit in smoke — not introduced by this change).
+
+STAGE 2 SCOPE (not started): DEMOLITION — delete src/ui/tray.zig (4313
+lines) + 59 server.zig touchpoints + IPC tray tags + keyboard.zig:201-222
+tray capture block + kidulwm-control refs. Demolition only AFTER the
+home slide is eyeball-verified on a real display. Spec build order step
+6. Also pending: A4 fullscreen-plays-ball (dwell-expand 1–2s), real
+widget feeds into the CFC sections, boot ladder (A5, needs kidulKey).
+
+UNCOMMITTED VISUAL BATCH (awaits Barticus eye-test, then bobDotrix
+commits signed): spyglass.zig EXIT dots 1 char-space from slide border +
+digit 1 char-space from screen edge (char-space = advance of "0" at the
+digit font size; edge_buffer/pair_gap constants deleted); tray.zig logo
+fit 0.85 + bottom gap = real rendered side gap; weather.zig sun disc
+0.26r / rays 0.33–0.56r (was sprawling 0.72r into the min/max numbers)
++ condition icon truly centered below the numbers (was pulled up to
+0.62r). NOTE: tray.zig also carries BARTICUS's own uncommitted KSD
+glyph 3-layer paint + LICENSE/docs-law/input tweaks — DO NOT commit
+those files wholesale; commit per-hunk or leave for Barticus.
 
 ---
 ## ADDENDUM — Sep 15 2026 (CHROME BUFFER ATE THE POINTER — verdict 21)
