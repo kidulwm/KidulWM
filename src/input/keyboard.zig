@@ -138,6 +138,12 @@ const KeyboardDevice = struct {
             server.screensOffSet(false);
             return;
         }
+        // Volume keys work sighted too — they're bound unmodified so the
+        // remote's buttons hit them without Mod4. Intercept before the
+        // Mod4/Ctrl bind match (which never fires for bare keysyms).
+        if (!mod4_active and !ctrl_active and isBlindSafeKeysym(sym)) {
+            if (handleBlindSafeKeysym(server, sym)) return;
+        }
         if (mod4_active or ctrl_active) {
             // The media PLAYER is a real deck slide now (TASKCARD-3):
             // Ctrl+Q falls through to close_focused like any slide.
@@ -202,8 +208,7 @@ const KeyboardDevice = struct {
     }
 
     /// Blind-safe keysyms: actions that change SOUND, not SIGHT. Safe to run
-    /// with the screen black because granny can hear the result. Volume keys
-    /// land here too once ksound owns a mixer (today: play/pause/seek only).
+    /// with the screen black because granny can hear the result.
     fn isBlindSafeKeysym(sym: xkb.Keysym) bool {
         return switch (sym) {
             xkb.Keysym.XF86AudioPlay,
@@ -213,6 +218,9 @@ const KeyboardDevice = struct {
             xkb.Keysym.XF86AudioPrev,
             xkb.Keysym.XF86AudioForward,
             xkb.Keysym.XF86AudioRewind,
+            xkb.Keysym.XF86AudioRaiseVolume,
+            xkb.Keysym.XF86AudioLowerVolume,
+            xkb.Keysym.XF86AudioMute,
             => true,
             else => false,
         };
@@ -252,6 +260,18 @@ const KeyboardDevice = struct {
             xkb.Keysym.XF86AudioStop => {
                 if (!mp.player_active) return false;
                 mp.ensureStopped();
+                return true;
+            },
+            xkb.Keysym.XF86AudioRaiseVolume => {
+                server.volumeStep(0.05);
+                return true;
+            },
+            xkb.Keysym.XF86AudioLowerVolume => {
+                server.volumeStep(-0.05);
+                return true;
+            },
+            xkb.Keysym.XF86AudioMute => {
+                server.volumeToggleMute();
                 return true;
             },
             else => return false,
@@ -380,6 +400,18 @@ const KeyboardDevice = struct {
             },
             .screen_off => {
                 server.screensOffToggle();
+                return true;
+            },
+            .volume_up => {
+                server.volumeStep(0.05);
+                return true;
+            },
+            .volume_down => {
+                server.volumeStep(-0.05);
+                return true;
+            },
+            .volume_mute => {
+                server.volumeToggleMute();
                 return true;
             },
             .none => return false,

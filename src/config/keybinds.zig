@@ -24,6 +24,11 @@ pub const Action = union(enum) {
     tray_activate,
     // Screen blanking (anti-burn, 2026-09-17): DPMS-style output off/on.
     screen_off,
+    // Session master volume (2026-09-17): compositor-owned knob, applied
+    // to the default sink via pactl. Blind-safe (sound, not sight).
+    volume_up,
+    volume_down,
+    volume_mute,
     none,
 };
 
@@ -81,6 +86,11 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     // Anti-burn blanking (Barticus 2026-09-17): Mod4+x powers every output
     // off; any key wakes. Same combo is a toggle.
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.x, .action = .screen_off }) catch {};
+    // Session master volume (2026-09-17): the XF86 media keys. Unmodified
+    // so the remote's buttons hit them directly; blind-safe while blanked.
+    list.append(allocator, .{ .mod4 = false, .sym = xkb.Keysym.XF86AudioRaiseVolume, .action = .volume_up }) catch {};
+    list.append(allocator, .{ .mod4 = false, .sym = xkb.Keysym.XF86AudioLowerVolume, .action = .volume_down }) catch {};
+    list.append(allocator, .{ .mod4 = false, .sym = xkb.Keysym.XF86AudioMute, .action = .volume_mute }) catch {};
     return list;
 }
 
@@ -326,6 +336,14 @@ pub const Keybinds = struct {
             .{ "space", xkb.Keysym.space },
             .{ "Tab", xkb.Keysym.Tab },
             .{ "F11", xkb.Keysym.F11 },
+            .{ "XF86AudioRaiseVolume", xkb.Keysym.XF86AudioRaiseVolume },
+            .{ "XF86AudioLowerVolume", xkb.Keysym.XF86AudioLowerVolume },
+            .{ "XF86AudioMute", xkb.Keysym.XF86AudioMute },
+            .{ "XF86AudioPlay", xkb.Keysym.XF86AudioPlay },
+            .{ "XF86AudioPause", xkb.Keysym.XF86AudioPause },
+            .{ "XF86AudioStop", xkb.Keysym.XF86AudioStop },
+            .{ "XF86AudioNext", xkb.Keysym.XF86AudioNext },
+            .{ "XF86AudioPrev", xkb.Keysym.XF86AudioPrev },
             .{ "a", xkb.Keysym.a },
             .{ "b", xkb.Keysym.b },
             .{ "c", xkb.Keysym.c },
@@ -377,6 +395,9 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "tray_select_prev")) return .tray_select_prev;
         if (std.mem.eql(u8, str, "tray_activate")) return .tray_activate;
         if (std.mem.eql(u8, str, "screen_off")) return .screen_off;
+        if (std.mem.eql(u8, str, "volume_up")) return .volume_up;
+        if (std.mem.eql(u8, str, "volume_down")) return .volume_down;
+        if (std.mem.eql(u8, str, "volume_mute")) return .volume_mute;
         if (std.mem.eql(u8, str, "media_card_toggle")) return .media_card_toggle;
         if (std.mem.eql(u8, str, "signals_card_toggle")) return .signals_card_toggle;
         if (std.mem.eql(u8, str, "next_animation")) return .next_animation;

@@ -46,6 +46,9 @@ const keybinds = @import("config/keybinds.zig");
 const c = @cImport({
     @cInclude("stdio.h");
 });
+const c_std = @cImport({
+    @cInclude("stdlib.h");
+});
 
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn unsetenv(name: [*:0]const u8) c_int;
@@ -557,6 +560,12 @@ pub const Server = struct {
     /// playbackInhibitsBlank() is false.
     last_input_us: u64 = 0,
     blank_timer: ?*wl.EventSource = null,
+    /// Session master volume (2026-09-17): 0.0-1.0. Compositor-owned —
+    /// ksound owns per-stream policy/floor, we own the user-facing knob.
+    /// Applied via pactl set-sink-input-volume @DEFAULT_SINK@ per press
+    /// (same pactl pattern ksound's real_backend uses for unmute/100%).
+    master_volume: f32 = 1.0,
+    master_muted: bool = false,
 
     /// Catcher for dropped outputs. Every early-return error path in
     /// handleNewOutput records (name, stage, err) here instead of vanishing
@@ -2939,6 +2948,33 @@ pub const Server = struct {
         if (!mp.player_active or !mp.cached.playing) return false;
         if (!mp.is_music) return self.keybinds.blank.inhibit_visual;
         return self.keybinds.blank.inhibit_audio;
+    }
+
+    /// Step the session master volume by delta (±0.05 per press), clamp
+    /// [0,1], unmute on any volume change, and push to the default sink
+    /// through pactl (ksound's own verb pattern). Safe to call with the
+    /// screen black — this is the blind-first-press volume door.
+    pub fn volumeStep(self: *Server, delta: f32) void {
+        self.master_volume = std.math.clamp(self.master_volume + delta, 0.0, 1.0);
+        self.master_muted = false;
+        self.volumeApply();
+    }
+
+    pub fn volumeToggleMute(self: *Server) void {
+        self.master_muted = !self.master_muted;
+        self.volumeApply();
+    }
+
+    fn volumeApply(self: *Server) void {
+        var pctbuf: [16]u8 = undefined;
+        const pct: u32 = @intFromFloat(self.master_volume * 100.0);
+        const pct_s = std.fmt.bufPrintZ(&pctbuf, "{d}%", .{pct}) catch return;
+        var mutebuf: [8]u8 = undefined;
+        const mute_s = std.fmt.bufPrintZ(&mutebuf, "{d}", .{@intFromBool(self.master_muted)}) catch return;
+        var cmdbuf: [128]u8 = undefined;
+        const cmd = std.fmt.bufPrintZ(&cmdbuf, "pactl set-sink-volume @DEFAULT_SINK@ {s} ; pactl set-sink-mute @DEFAULT_SINK@ {s}", .{ pct_s, mute_s }) catch return;
+        _ = c_std.system(cmd.ptr);
+        std.log.info("KidulWM: master volume {d}%{s}", .{ pct, if (self.master_muted) " MUTED" else "" });
     }
 
     fn handleBlankTimer(server: *Server) c_int {
