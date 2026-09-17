@@ -408,11 +408,9 @@ pub const Peek = struct {
         const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
         const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
         const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        // Level with the clock pill on the right peek: box.y + vmargin + 4
-        // = 20 = clock_peek_vmargin, the gap that lines the moon up with
-        // the network sigs icon and the big temp digits with the clock
-        // digits. Corners stay locked; gauges and notifs float in between.
-        const pill_y = box.y + peek_vmargin + 4;
+        // AT THE TOP: pill_y is the top edge of the peek box. Corners stay
+        // locked; gauges and notifs float below.
+        const pill_y = box.y + peek_vmargin;
 
         const redraw = widget.scene_buffer == null or
             widget.last_w != pill_w or

@@ -104,9 +104,14 @@ pub const WeatherWidget = struct {
         // Sigs icon: cy = strip*0.55, cx = w*0.5, whole strip shifted -7*scale.
         const moon_r = @max(5.0 * scale_f, @min(w_d * 0.30, 12.0 * scale_f));
         const moon_cx = w_d * 0.5 - 7.0 * scale_f;
-        const moon_cy = status_strip_h * 0.55;
+        // WEATHER TOP LAW: the moon is the topmost element. Its top edge
+        // sits at 1*scale from the pill top — never clipped by the strip,
+        // never pinned to anything below. (2026-09-17: moon_cy was
+        // 18.7*scale < moon_r 20*scale → top clipped; moon read as
+        // "pinned to the bottom".)
+        const moon_cy_top = moon_r + 1.0 * scale_f;
         const phase = moon.phaseForUnixSeconds(@intCast(c_std.time(null)));
-        moon.renderMoon(cr, moon_cx, moon_cy, moon_r, phase, gold, bg);
+        moon.renderMoon(cr, moon_cx, moon_cy_top, moon_r, phase, gold, bg);
 
         c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
 
