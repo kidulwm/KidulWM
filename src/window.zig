@@ -13,7 +13,7 @@ const Label = struct {
     buf: [64]u8 = undefined,
     len: u8 = 0,
 
-    fn asSlice(self: *const Label) []const u8 {
+    pub fn asSlice(self: *const Label) []const u8 {
         return self.buf[0..self.len];
     }
 
@@ -172,6 +172,9 @@ pub const Window = struct {
         const window: *Window = @fieldParentPtr("set_app_id", listener);
         window.captureAppId();
         window.refreshPeekLabel();
+        // kvisd sets app_id after toplevel creation — re-classify here so
+        // its video surface never becomes a deck slide (focus/chrome/peek).
+        window.server.classifyKvis(window);
     }
 
     fn refreshPeekLabel(window: *Window) void {
@@ -657,7 +660,9 @@ pub const Window = struct {
         window.scene_tree.node.destroy();
         window.detachListeners();
         window.server.deckForWindow(window).removeWindow(window.id);
-        window.link.remove();
+        // Guarded: classifyKvis already unlinked a kvis window from the
+        // windows list; a second remove() would null-deref.
+        if (window.link.prev != null) window.link.remove();
         window.server.allocator.destroy(window);
     }
 

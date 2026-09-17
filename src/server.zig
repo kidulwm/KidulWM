@@ -2107,6 +2107,12 @@ pub const Server = struct {
         self.clearFocus();
         self.videoSlidePaint(output);
 
+        // FULLSCREEN LAW (Barticus 2026-09-18): the fullscreen flag must
+        // take effect IMMEDIATELY — a fresh layout hides the peek and raises
+        // the slide edge-to-edge before kvisd's surface even maps. Without
+        // this the old frame (peeks + windowed player) lingers one beat.
+        self.requestLayout();
+
         // CARD 2b slice 2: spawn the exported host toplevel for kvisd to
         // parent onto. Failure is logged but non-fatal — the slide still
         // works as a deck object; kvis video simply has nothing to bind.
@@ -2332,6 +2338,13 @@ pub const Server = struct {
         // somewhere else, the cursor isn't there, and neither is the typing.
         const deck = self.currentDeck();
         if (deck.findKind(.media_player) == null) return false;
+        // FOCUS LAW (media-is-a-slide.md ruling 2, re-locked 2026-09-18):
+        // keys reach the media slide ONLY while it is the focused centre
+        // slide. A media slide parked elsewhere in the deck must never
+        // capture, swallow, or redirect input.
+        if (deck.empty_slot != .none) return false;
+        if (deck.focused_index >= deck.slides.items.len) return false;
+        if (deck.slides.items[deck.focused_index].kind != .media_player) return false;
         var out_opt: ?*Output = null;
         {
             var it = self.outputs.iterator(.forward);
@@ -3605,6 +3618,24 @@ pub const Server = struct {
             }
         }
         self.windows.append(window);
+    }
+
+    /// kvisd sets its app_id ("com.kidul.kvis") AFTER xdg_toplevel creation
+    /// (get_toplevel precedes set_app_id by protocol order), so
+    /// handleNewXdgToplevel — which reads toplevel.app_id at creation — always
+    /// sees null and appends kvisd's video surface to the normal window list.
+    /// Re-classify here, on set_app_id, and pull the window out of the deck
+    /// citizens: kvisd's video surface gets no slide, no chrome, no focus —
+    /// placeKvisWindow pins it over the video slide rect instead.
+    /// Idempotent: a toplevel already born with the app_id set (the early
+    /// handleNewXdgToplevel path) is already is_kvis and is skipped.
+    pub fn classifyKvis(self: *Server, window: *Window) void {
+        if (window.is_kvis) return;
+        if (!std.mem.eql(u8, window.app_id.asSlice(), "com.kidul.kvis")) return;
+        window.is_kvis = true;
+        self.kvis_window = window;
+        if (window.link.prev != null) window.link.remove();
+        std.log.info("KidulWM: kvisd video toplevel classified id={d} (no deck/chrome/focus)", .{window.id});
     }
 
     fn handleNewLayerSurface(listener: *wl.Listener(*wlr.LayerSurfaceV1), layer_surface: *wlr.LayerSurfaceV1) void {
