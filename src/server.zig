@@ -656,12 +656,6 @@ pub const Server = struct {
                 self.arrangeOutputsLive();
                 return .{ .ok = true, .message = "outputs re-arranged" };
             },
-            .weather_toggle_card => {
-                // Weather card died with the overlay tray; the home slide's
-                // WEATHER CFC section is its successor (real feed later).
-                self.homeSlideFocusOrSpawn();
-                return .{ .ok = true };
-            },
             .media_card_toggle => {
                 // REDIRECT (TASKCARD-3): focus the media player slide if
                 // this row has one, else spawn it — a real deck slide.
@@ -789,7 +783,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .weather_toggle_card, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .scene_dump, .quit => {},
+            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .scene_dump, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };

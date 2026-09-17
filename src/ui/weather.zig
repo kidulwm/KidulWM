@@ -13,51 +13,12 @@ const style = @import("../core/style.zig");
 const theme_mod = @import("../core/theme.zig");
 const moon = @import("../util/moon.zig");
 
-pub const CardMode = enum { calendar, weather };
-
-pub const WeatherCard = struct {
-    open: bool = false,
-    open_count: u32 = 0,
-    selected_hour: usize = 0,
-    timeline_hours: usize = 24,
-    no_surf_index: usize = 0,
-
-    const no_surf_quips = [_][]const u8{
-        "Yeah Nah",
-        "No surf today",
-        "Should've brought the board",
-        "Flat as a tack",
-        "Time for a coffee, mate",
-        "Ocean's asleep",
-        "Waves? What waves?",
-        "Maybe tomorrow",
-        "Go check the coast",
-        "No swell, no stress",
-    };
-
-    pub fn nextNoSurfQuip(self: *WeatherCard) []const u8 {
-        const idx = self.no_surf_index % no_surf_quips.len;
-        self.no_surf_index += 1;
-        return no_surf_quips[idx];
-    }
-
-    pub fn onOpen(self: *WeatherCard) void {
-        self.open_count += 1;
-        self.open = true;
-    }
-
-    pub fn toggle(self: *WeatherCard) void {
-        if (self.open) {
-            self.open = false;
-        } else {
-            self.onOpen();
-        }
-    }
-};
+// Picture widget (Barticus 2026-09-17): this widget is JUST a picture that
+// changes with time & weather. No card, no click-to-open, no IPC, no slide
+// linkage — slides have absolutely nothing to do with it.
 
 pub const WeatherWidget = struct {
     allocator: std.mem.Allocator,
-    card: WeatherCard = .{},
     last_draw_minute: i32 = -1,
 
     cached_state: WeatherState = .{},
@@ -84,18 +45,6 @@ pub const WeatherWidget = struct {
     }
 
     pub fn deinit(self: *WeatherWidget) void {
-        _ = self;
-    }
-
-    pub fn toggleCard(self: *WeatherWidget) void {
-        self.card.toggle();
-    }
-
-    pub fn isCardOpen(self: *const WeatherWidget) bool {
-        return self.card.open;
-    }
-
-    pub fn onKeyActivity(self: *WeatherWidget) void {
         _ = self;
     }
 
@@ -218,241 +167,11 @@ pub const WeatherWidget = struct {
         }
 
         if (!state_.available) {
-            // Location prompt intentionally suppressed; user configures location in the weather card.
+            // Location prompt intentionally suppressed; location lives in
+            // ~/.config/kidulwm/weather.conf (fetch-weather.py reads it).
         }
 
         c_cairo.cairo_restore(cr);
-    }
-
-    pub fn renderCard(self: *WeatherWidget, cr: *c_cairo.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32) void {
-        const gold = style_.color_border_focused.toF64();
-        const muted = style_.color_text_muted.toF64();
-        const bg = style_.color_background.toF64();
-        const state_ = self.state();
-        const scale_f: f64 = @as(f64, scale);
-
-        // Full slide: fill background, no card frame.
-        const bg4 = style_.color_card_mat.toF64();
-        c_cairo.cairo_set_operator(cr, c_cairo.CAIRO_OPERATOR_SOURCE);
-        c_cairo.cairo_set_source_rgba(cr, bg4[0], bg4[1], bg4[2], 0.91);
-        c_cairo.cairo_paint(cr);
-        c_cairo.cairo_set_operator(cr, c_cairo.CAIRO_OPERATOR_OVER);
-
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
-
-
-        const pad_x: f64 = 22.0 * scale_f;
-        const pad_y: f64 = 18.0 * scale_f;
-        const content_w = w_d - 2.0 * pad_x;
-        const content_h = h_d - 2.0 * pad_y;
-        _ = content_h;
-        const mid_x = w_d * 0.5;
-        const gap: f64 = 16.0 * scale_f;
-        const panel_w = (content_w - gap) * 0.5;
-        const left_x = pad_x;
-        const right_x = mid_x + gap * 0.5;
-        const top_y = pad_y;
-        const bottom_y = h_d - pad_y;
-
-        const title_size: f64 = @as(f64, style_.font_size_m) * 1.25 * scale_f;
-        const body_size: f64 = @as(f64, style_.font_size_s) * 1.05 * scale_f;
-        const tiny_size: f64 = @as(f64, style_.font_size_s) * 0.85 * scale_f;
-
-        // Top pill: location name.
-        var title_buf: [64:0]u8 = undefined;
-        @memset(&title_buf, 0);
-        const title_str = std.fmt.bufPrintZ(&title_buf, "{s}", .{std.mem.sliceTo(&state_.location_name, 0)}) catch "—";
-        c_cairo.cairo_set_font_size(cr, title_size);
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_BOLD);
-        var title_ext: c_cairo.cairo_text_extents_t = undefined;
-        c_cairo.cairo_text_extents(cr, title_str, &title_ext);
-        const pill_pad_x: f64 = 20.0 * scale_f;
-        const pill_pad_y: f64 = 8.0 * scale_f;
-        const pill_w_max = @min(content_w, title_ext.width + 2.0 * pill_pad_x);
-        const pill_h = title_size + 2.0 * pill_pad_y;
-        const pill_x = pad_x + (content_w - pill_w_max) * 0.5;
-        const pill_y = top_y;
-
-        roundedRect(cr, pill_x, pill_y, pill_w_max, pill_h, @min(10.0 * scale_f, pill_h * 0.25));
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.12);
-        c_cairo.cairo_fill_preserve(cr);
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.45);
-        c_cairo.cairo_set_line_width(cr, 1.0);
-        c_cairo.cairo_stroke(cr);
-
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_move_to(cr, pill_x + (pill_w_max - title_ext.width) * 0.5, pill_y + (pill_h + title_ext.height) * 0.5 - 2.0 * scale_f);
-        c_cairo.cairo_show_text(cr, title_str);
-
-        // Divider under title.
-        const header_bottom = pill_y + pill_h + 10.0 * scale_f;
-        const divider_start = w_d - pad_x;
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.25);
-        c_cairo.cairo_set_line_width(cr, 1.0);
-        c_cairo.cairo_new_path(cr);
-        c_cairo.cairo_move_to(cr, pad_x, header_bottom);
-        c_cairo.cairo_line_to(cr, divider_start, header_bottom);
-        c_cairo.cairo_stroke(cr);
-
-        const panels_top = header_bottom + 10.0 * scale_f;
-        const timeline_h = 32.0 * scale_f;
-        const panels_bottom = bottom_y - timeline_h - 10.0 * scale_f;
-        const panel_h = panels_bottom - panels_top;
-
-        // Panel outlines.
-        roundedRect(cr, left_x, panels_top, panel_w, panel_h, @min(10.0 * scale_f, panel_h * 0.1));
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.15);
-        c_cairo.cairo_fill_preserve(cr);
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.35);
-        c_cairo.cairo_set_line_width(cr, 1.0);
-        c_cairo.cairo_stroke(cr);
-
-        roundedRect(cr, right_x, panels_top, panel_w, panel_h, @min(10.0 * scale_f, panel_h * 0.1));
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.15);
-        c_cairo.cairo_fill_preserve(cr);
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.35);
-        c_cairo.cairo_set_line_width(cr, 1.0);
-        c_cairo.cairo_stroke(cr);
-
-        // Left panel: surf.
-        var surf_y = panels_top + title_size + 8.0 * scale_f;
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_set_font_size(cr, title_size);
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_BOLD);
-        const surf_title = "SURF";
-        var surf_title_ext: c_cairo.cairo_text_extents_t = undefined;
-        c_cairo.cairo_text_extents(cr, surf_title, &surf_title_ext);
-        c_cairo.cairo_move_to(cr, left_x + (panel_w - surf_title_ext.width) * 0.5, surf_y);
-        c_cairo.cairo_show_text(cr, surf_title);
-        surf_y += body_size * 1.7;
-
-        c_cairo.cairo_set_font_size(cr, body_size);
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
-
-        const have_marine = state_.wave_height > 0.001 or state_.swell_height > 0.001;
-        if (have_marine) {
-            var surf_buf: [128:0]u8 = undefined;
-            @memset(&surf_buf, 0);
-            const wave_str = std.fmt.bufPrintZ(&surf_buf, "Wave {d:.1}m", .{state_.wave_height}) catch "Wave --";
-            drawCardLine(cr, wave_str, left_x + 10.0 * scale_f, surf_y, panel_w - 20.0 * scale_f, gold);
-            surf_y += body_size * 1.5;
-
-            @memset(&surf_buf, 0);
-            const swell_str = std.fmt.bufPrintZ(&surf_buf, "Swell {d:.1}m @ {d}°", .{ state_.swell_height, state_.swell_dir }) catch "Swell --";
-            drawCardLine(cr, swell_str, left_x + 10.0 * scale_f, surf_y, panel_w - 20.0 * scale_f, gold);
-            surf_y += body_size * 1.5;
-
-            @memset(&surf_buf, 0);
-            const period_str = std.fmt.bufPrintZ(&surf_buf, "Period {d:.1}s", .{state_.swell_period}) catch "Period --";
-            drawCardLine(cr, period_str, left_x + 10.0 * scale_f, surf_y, panel_w - 20.0 * scale_f, gold);
-        } else {
-            c_cairo.cairo_set_font_size(cr, title_size * 0.9);
-            const quip = self.card.nextNoSurfQuip();
-            var quip_ext: c_cairo.cairo_text_extents_t = undefined;
-            c_cairo.cairo_text_extents(cr, @ptrCast(quip.ptr), &quip_ext);
-            var quip_title_size = title_size;
-            while (quip_ext.width > panel_w - 14.0 * scale_f and quip_title_size > 7.0) {
-                quip_title_size *= 0.92;
-                c_cairo.cairo_set_font_size(cr, quip_title_size * 0.9);
-                c_cairo.cairo_text_extents(cr, @ptrCast(quip.ptr), &quip_ext);
-            }
-            c_cairo.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-            c_cairo.cairo_move_to(cr, left_x + (panel_w - quip_ext.width) * 0.5, panels_top + panel_h * 0.5 + quip_ext.height * 0.35);
-            c_cairo.cairo_show_text(cr, @ptrCast(quip.ptr));
-        }
-        // Always show wind under surf.
-        surf_y = @max(surf_y, panels_top + panel_h - body_size * 1.6);
-        var wind_buf: [64:0]u8 = undefined;
-        @memset(&wind_buf, 0);
-        const wind_str = std.fmt.bufPrintZ(&wind_buf, "Wind {d:.1} km/h @ {d}°", .{ state_.wind_speed, state_.wind_dir }) catch "Wind --";
-        drawCardLine(cr, wind_str, left_x + 10.0 * scale_f, surf_y, panel_w - 20.0 * scale_f, gold);
-
-        // Right panel: weather.
-        var wx_y = panels_top + title_size + 8.0 * scale_f;
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_set_font_size(cr, title_size);
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_BOLD);
-        const wx_title = "WEATHER";
-        var wx_title_ext: c_cairo.cairo_text_extents_t = undefined;
-        c_cairo.cairo_text_extents(cr, wx_title, &wx_title_ext);
-        c_cairo.cairo_move_to(cr, right_x + (panel_w - wx_title_ext.width) * 0.5, wx_y);
-        c_cairo.cairo_show_text(cr, wx_title);
-        wx_y += title_size * 1.6;
-
-        var current_buf: [16:0]u8 = undefined;
-        @memset(&current_buf, 0);
-        const current_str = std.fmt.bufPrintZ(&current_buf, "{d:.0}°", .{state_.current_temp}) catch "--°";
-        var big_size = title_size * 2.2;
-        c_cairo.cairo_set_font_size(cr, big_size);
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_BOLD);
-        var current_ext: c_cairo.cairo_text_extents_t = undefined;
-        c_cairo.cairo_text_extents(cr, current_str, &current_ext);
-        while (current_ext.width > panel_w - 14.0 * scale_f and big_size > 10.0) {
-            big_size *= 0.92;
-            c_cairo.cairo_set_font_size(cr, big_size);
-            c_cairo.cairo_text_extents(cr, current_str, &current_ext);
-        }
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_move_to(cr, right_x + (panel_w - current_ext.width) * 0.5, wx_y + current_ext.height);
-        c_cairo.cairo_show_text(cr, current_str);
-        wx_y += current_ext.height + body_size * 0.9;
-
-        c_cairo.cairo_set_font_size(cr, body_size);
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
-        var minmax_buf: [40:0]u8 = undefined;
-        @memset(&minmax_buf, 0);
-        const minmax_str = std.fmt.bufPrintZ(&minmax_buf, "{d:.0}° / {d:.0}°", .{ state_.temp_min, state_.temp_max }) catch "-- / --";
-        drawCardLine(cr, minmax_str, right_x + 10.0 * scale_f, wx_y, panel_w - 20.0 * scale_f, muted);
-        wx_y += body_size * 1.5;
-
-        const condition_text = weatherCodeText(state_.weather_code);
-        drawCardLine(cr, condition_text, right_x + 10.0 * scale_f, wx_y, panel_w - 20.0 * scale_f, muted);
-        wx_y += body_size * 1.8;
-
-        // Small condition icon centered in right panel.
-        const icon_r = @min(panel_w * 0.22, (panels_bottom - wx_y - 4.0 * scale_f) * 0.35);
-        if (icon_r >= 8.0 * scale_f) {
-            renderConditionIcon(cr, right_x + panel_w * 0.5, wx_y + icon_r + 2.0 * scale_f, icon_r, state_.weather_code, state_.is_day != 0, state_.wind_speed, gold);
-        }
-
-        // Timeline scrubber placeholder below panels.
-        const tl_y = panels_bottom + 12.0 * scale_f;
-        const tl_h = 6.0 * scale_f;
-        const tl_x = pad_x;
-        const tl_w = content_w;
-        roundedRect(cr, tl_x, tl_y, tl_w, tl_h, tl_h * 0.5);
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.18);
-        c_cairo.cairo_fill_preserve(cr);
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], 0.45);
-        c_cairo.cairo_set_line_width(cr, 1.0);
-        c_cairo.cairo_stroke(cr);
-
-        const knob_r = 8.0 * scale_f;
-        const hours = @max(1, self.card.timeline_hours);
-        const t = @as(f64, @floatFromInt(@min(self.card.selected_hour, hours - 1))) / @as(f64, @floatFromInt(hours - 1));
-        const knob_x = tl_x + tl_h * 0.5 + (tl_w - tl_h) * t;
-        const knob_y = tl_y + tl_h * 0.5;
-        c_cairo.cairo_new_path(cr);
-        c_cairo.cairo_arc(cr, knob_x, knob_y, knob_r, 0, 2.0 * std.math.pi);
-        c_cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-        c_cairo.cairo_fill_preserve(cr);
-        c_cairo.cairo_set_source_rgba(cr, bg[0], bg[1], bg[2], bg[3]);
-        c_cairo.cairo_set_line_width(cr, 1.5);
-        c_cairo.cairo_stroke(cr);
-
-        // Hour labels.
-        c_cairo.cairo_set_font_size(cr, tiny_size);
-        c_cairo.cairo_select_font_face(cr, @ptrCast("Fantasque Sans Mono"), c_cairo.CAIRO_FONT_SLANT_NORMAL, c_cairo.CAIRO_FONT_WEIGHT_NORMAL);
-        c_cairo.cairo_set_source_rgba(cr, muted[0], muted[1], muted[2], muted[3]);
-        const start_label = "-24h";
-        const end_label = "now";
-        var lab_ext: c_cairo.cairo_text_extents_t = undefined;
-        c_cairo.cairo_text_extents(cr, start_label, &lab_ext);
-        c_cairo.cairo_move_to(cr, tl_x, tl_y + tl_h + tiny_size * 1.2);
-        c_cairo.cairo_show_text(cr, start_label);
-        c_cairo.cairo_text_extents(cr, end_label, &lab_ext);
-        c_cairo.cairo_move_to(cr, tl_x + tl_w - lab_ext.width, tl_y + tl_h + tiny_size * 1.2);
-        c_cairo.cairo_show_text(cr, end_label);
     }
 
     fn renderConditionIcon(cr: *c_cairo.cairo_t, cx: f64, cy: f64, r: f64, code: i32, is_day: bool, wind_speed: f64, gold: [4]f64) void {

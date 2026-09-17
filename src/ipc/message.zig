@@ -17,7 +17,6 @@ pub const RequestTag = enum {
     subscribe,
     reload_theme,
     tray_toggle,
-    weather_toggle_card,
     media_card_toggle,
     media_play,
     media_toggle,
@@ -63,7 +62,6 @@ pub const Request = union(RequestTag) {
     },
     reload_theme: void,
     tray_toggle: void,
-    weather_toggle_card: void,
     media_card_toggle: void,
     media_play: struct {
         path: []const u8,
