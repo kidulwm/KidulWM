@@ -27,6 +27,16 @@ pub const Action = union(enum) {
     none,
 };
 
+/// smartLock conf (2026-09-17): the `[blankscreen]` section of keybinds.conf.
+/// These are compositor-global, not per-bind, so they live beside the binds
+/// rather than inside the Action union. Defaults match Barticus's ask:
+/// 600 s idle, video/karaoke inhibit, audio-only does NOT inhibit.
+pub const BlankConf = struct {
+    timeout_s: u32 = 600,
+    inhibit_visual: bool = true,
+    inhibit_audio: bool = false,
+};
+
 const Keybind = struct {
     mod4: bool,
     ctrl: bool = false,
@@ -78,6 +88,7 @@ pub const Keybinds = struct {
     allocator: std.mem.Allocator,
     binds: std.ArrayList(Keybind),
     fallback: bool,
+    blank: BlankConf = .{},
 
     const Self = @This();
 
@@ -161,6 +172,8 @@ pub const Keybinds = struct {
         }
 
         var user_count: usize = 0;
+        var blank = BlankConf{};
+        var in_blank_section = false;
         var it = std.mem.tokenizeScalar(u8, content.items, '\n');
         var line_no: usize = 0;
         while (it.next()) |line_raw| : (line_no += 1) {
@@ -172,6 +185,33 @@ pub const Keybinds = struct {
                 line_raw;
             const line = std.mem.trim(u8, no_comment, " \t\r");
             if (line.len == 0) continue;
+
+            // [blankscreen] section: smartLock knobs, not keybinds.
+            if (line[0] == '[') {
+                in_blank_section = std.ascii.eqlIgnoreCase(line, "[blankscreen]");
+                continue;
+            }
+            if (in_blank_section) {
+                const eq = std.mem.indexOfScalar(u8, line, '=') orelse {
+                    std.log.warn("KidulWM: blankscreen line {d} missing '='; skipped", .{line_no});
+                    continue;
+                };
+                const k = std.mem.trim(u8, line[0..eq], " \t");
+                const v = std.mem.trim(u8, line[eq + 1 ..], " \t");
+                if (std.mem.eql(u8, k, "blankscreen_timeout")) {
+                    blank.timeout_s = std.fmt.parseInt(u32, v, 10) catch {
+                        std.log.warn("KidulWM: blankscreen line {d} bad timeout '{s}'; keeping {d}", .{ line_no, v, blank.timeout_s });
+                        continue;
+                    };
+                } else if (std.mem.eql(u8, k, "inhibit_visual_playback")) {
+                    blank.inhibit_visual = parseBool(v) orelse blank.inhibit_visual;
+                } else if (std.mem.eql(u8, k, "inhibit_audio_playback")) {
+                    blank.inhibit_audio = parseBool(v) orelse blank.inhibit_audio;
+                } else {
+                    std.log.warn("KidulWM: blankscreen line {d} unknown key '{s}'; skipped", .{ line_no, k });
+                }
+                continue;
+            }
 
             const eq_idx = std.mem.indexOfScalar(u8, line, '=') orelse {
                 std.log.warn("KidulWM: keybinds line {d} missing '='; skipped: '{s}'", .{ line_no, line });
@@ -240,7 +280,14 @@ pub const Keybinds = struct {
             .allocator = allocator,
             .binds = list,
             .fallback = false,
+            .blank = blank,
         };
+    }
+
+    fn parseBool(v: []const u8) ?bool {
+        if (std.mem.eql(u8, v, "true") or std.mem.eql(u8, v, "1") or std.mem.eql(u8, v, "yes") or std.mem.eql(u8, v, "on")) return true;
+        if (std.mem.eql(u8, v, "false") or std.mem.eql(u8, v, "0") or std.mem.eql(u8, v, "no") or std.mem.eql(u8, v, "off")) return false;
+        return null;
     }
 
     pub fn deinit(self: *Self) void {

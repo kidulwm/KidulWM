@@ -80,6 +80,7 @@ const PointerDevice = struct {
     fn handleMotion(listener: *wl.Listener(*wlr.Pointer.event.Motion), event: *wlr.Pointer.event.Motion) void {
         const self: *PointerDevice = @fieldParentPtr("motion", listener);
         const server = self.manager.server;
+        server.noteInputActivity();
         server.cursor.move(null, event.delta_x, event.delta_y);
         // SINGLE CURSOR TRUTH (2026-09-15): never accumulate deltas into a
         // parallel cursor_x/cursor_y — wlroots clamps the real cursor to the
@@ -106,6 +107,7 @@ const PointerDevice = struct {
     fn handleMotionAbsolute(listener: *wl.Listener(*wlr.Pointer.event.MotionAbsolute), event: *wlr.Pointer.event.MotionAbsolute) void {
         const self: *PointerDevice = @fieldParentPtr("motion_absolute", listener);
         const server = self.manager.server;
+        server.noteInputActivity();
         var box: wlr.Box = undefined;
         server.output_layout.getBox(null, &box);
         server.cursor.warpAbsolute(null, event.x * @as(f64, @floatFromInt(box.width)), event.y * @as(f64, @floatFromInt(box.height)));
@@ -125,6 +127,7 @@ const PointerDevice = struct {
     fn handleButton(listener: *wl.Listener(*wlr.Pointer.event.Button), event: *wlr.Pointer.event.Button) void {
         const self: *PointerDevice = @fieldParentPtr("button", listener);
         const server = self.manager.server;
+        server.noteInputActivity();
         if (event.state == .pressed) {
             if (server.handlePointerClick(server.cursor_x, server.cursor_y)) {
                 server.logPointerDiagnostic("click", server.cursor_x, server.cursor_y);
@@ -144,6 +147,7 @@ const PointerDevice = struct {
     fn handleAxis(listener: *wl.Listener(*wlr.Pointer.event.Axis), event: *wlr.Pointer.event.Axis) void {
         const self: *PointerDevice = @fieldParentPtr("axis", listener);
         const server = self.manager.server;
+        server.noteInputActivity();
         if (server.handlePointerAxis(server.cursor_x, server.cursor_y, event.delta)) {
             return;
         }

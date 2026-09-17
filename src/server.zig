@@ -551,6 +551,12 @@ pub const Server = struct {
     /// Screens-off state (anti-burn blanking). While true, every output is
     /// committed disabled; any key press or another screen_off press wakes.
     screens_off: bool = false,
+    /// smartLock (2026-09-17): idle-blank machinery. last_input_us is
+    /// stamped on every key/button/motion/axis; a minute-tick timer fires
+    /// screensOffSet(true) when idle >= keybinds.blank.timeout_s and
+    /// playbackInhibitsBlank() is false.
+    last_input_us: u64 = 0,
+    blank_timer: ?*wl.EventSource = null,
 
     /// Catcher for dropped outputs. Every early-return error path in
     /// handleNewOutput records (name, stage, err) here instead of vanishing
@@ -1027,6 +1033,12 @@ pub const Server = struct {
         // scans every 2s internally; the minute tick just pokes both).
         server.peek_widget_timer = try event_loop.addTimer(*Server, handlePeekWidgetTimer, server);
         try server.peek_widget_timer.?.timerUpdate(msToNextMinute());
+
+        // smartLock (2026-09-17): idle-blank poll timer. Fires on a 30 s
+        // cadence (or the conf'd timeout, whichever is sooner); blanks when
+        // idle >= blankscreen_timeout and playback doesn't inhibit.
+        server.blank_timer = try event_loop.addTimer(*Server, Server.handleBlankTimer, server);
+        server.noteInputActivity();
 
         return server;
     }
@@ -2890,6 +2902,64 @@ pub const Server = struct {
 
     pub fn screensOffToggle(self: *Server) void {
         self.screensOffSet(!self.screens_off);
+    }
+
+    /// smartLock: stamp input activity. Called from every input handler
+    /// (keyboard key, pointer motion/button/axis). While screens are off a
+    /// stamp alone does NOT wake — the wake decision lives in keyboard.zig
+    /// (blind-first-press law) — it just resets the idle clock.
+    pub fn noteInputActivity(self: *Server) void {
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(.MONOTONIC, &ts);
+        self.last_input_us = @as(u64, @intCast(ts.sec)) * 1_000_000 + @as(u64, @intCast(@divTrunc(ts.nsec, 1000)));
+        // Rearm the poll so a long-idle machine doesn't tick forever.
+        self.rearmBlankTimer();
+    }
+
+    fn rearmBlankTimer(self: *Server) void {
+        const t = self.blank_timer orelse return;
+        const timeout_s = self.keybinds.blank.timeout_s;
+        if (timeout_s == 0) {
+            t.timerUpdate(0) catch {}; // disabled
+            return;
+        }
+        // Poll at the sooner of 30 s or the timeout — keeps the check cheap
+        // while staying within seconds of the configured boundary.
+        const poll_ms: c_int = @intCast(@min(@as(u64, timeout_s) * 1000, 30_000));
+        t.timerUpdate(poll_ms) catch {};
+    }
+
+    /// The screen-blanking question is never "is something playing?" — it's
+    /// "would blanking break what the user is watching right now?"
+    ///   visual playback (video/karaoke/LIVE TV) + playing → inhibit
+    ///   audio-only music + playing                        → inhibit iff conf
+    ///   paused / stopped / nothing                        → never inhibit
+    pub fn playbackInhibitsBlank(self: *Server) bool {
+        const mp = &self.media_player;
+        if (!mp.player_active or !mp.cached.playing) return false;
+        if (!mp.is_music) return self.keybinds.blank.inhibit_visual;
+        return self.keybinds.blank.inhibit_audio;
+    }
+
+    fn handleBlankTimer(server: *Server) c_int {
+        const timeout_s = server.keybinds.blank.timeout_s;
+        if (timeout_s == 0) return 0; // disabled
+        if (server.screens_off) return 0; // already blank; wake owns rearm
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(.MONOTONIC, &ts);
+        const now_us = @as(u64, @intCast(ts.sec)) * 1_000_000 + @as(u64, @intCast(@divTrunc(ts.nsec, 1000)));
+        const idle_us = now_us -| server.last_input_us;
+        if (idle_us >= @as(u64, timeout_s) * 1_000_000) {
+            if (server.playbackInhibitsBlank()) {
+                std.log.info("KidulWM: blankscreen idle {d}s >= {d}s but playback inhibits (visual={} music={})", .{ idle_us / 1_000_000, timeout_s, server.keybinds.blank.inhibit_visual, server.keybinds.blank.inhibit_audio });
+            } else {
+                std.log.info("KidulWM: blankscreen idle {d}s >= {d}s — screens OFF", .{ idle_us / 1_000_000, timeout_s });
+                server.screensOffSet(true);
+                return 0;
+            }
+        }
+        server.rearmBlankTimer();
+        return 0;
     }
 
     /// Mod4+Ctrl+O: send the focused slide to the other stage's deck.

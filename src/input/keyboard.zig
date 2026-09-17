@@ -118,10 +118,23 @@ const KeyboardDevice = struct {
             @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
         ) > 0;
 
-        // Wake-from-blank FIRST: ANY key press while screens are off powers
-        // the outputs back on and swallows the key (the press that wakes
-        // must not also type into the focused slide or fire a keybind).
+        // smartLock (2026-09-17): every key press counts as activity.
+        server.noteInputActivity();
+
+        // BLIND-FIRST-PRESS LAW (Barticus 2026-09-17 — "granny doesn't need
+        // her glasses"): while screens are off, the FIRST press is either
+        //   blind-safe action (play/pause/seek keysyms) → execute the
+        //     action, screen STAYS black;
+        //   visual/navigation action (Mod4+*, Ctrl+*, F11 — anything bound
+        //     that changes what you look at) → wake the screen FIRST and
+        //     swallow the press; press again now that you can see;
+        //   unbound ordinary key → wake + swallow (never types into apps).
         if (server.screens_off) {
+            if (!mod4_active and !ctrl_active and isBlindSafeKeysym(sym)) {
+                std.log.info("KidulWM: blind-first-press sym=0x{x} (screen stays off)", .{@intFromEnum(sym)});
+                if (handleBlindSafeKeysym(server, sym)) return;
+                // fell through (no handler for that keysym) → just wake
+            }
             server.screensOffSet(false);
             return;
         }
@@ -186,6 +199,63 @@ const KeyboardDevice = struct {
             // fall through — no swallow
         }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
+    }
+
+    /// Blind-safe keysyms: actions that change SOUND, not SIGHT. Safe to run
+    /// with the screen black because granny can hear the result. Volume keys
+    /// land here too once ksound owns a mixer (today: play/pause/seek only).
+    fn isBlindSafeKeysym(sym: xkb.Keysym) bool {
+        return switch (sym) {
+            xkb.Keysym.XF86AudioPlay,
+            xkb.Keysym.XF86AudioPause,
+            xkb.Keysym.XF86AudioStop,
+            xkb.Keysym.XF86AudioNext,
+            xkb.Keysym.XF86AudioPrev,
+            xkb.Keysym.XF86AudioForward,
+            xkb.Keysym.XF86AudioRewind,
+            => true,
+            else => false,
+        };
+    }
+
+    /// Execute a blind-safe action against the single session player. The
+    /// screen stays OFF — the whole point. Returns false if nothing handled
+    /// the keysym (caller then treats the press as a plain wake).
+    fn handleBlindSafeKeysym(server: *Server, sym: xkb.Keysym) bool {
+        const mp = &server.media_player;
+        switch (sym) {
+            xkb.Keysym.XF86AudioPlay, xkb.Keysym.XF86AudioPause => {
+                if (!mp.player_active) return false;
+                mp.playPause();
+                return true;
+            },
+            xkb.Keysym.XF86AudioNext => {
+                if (!mp.player_active) return false;
+                mp.next();
+                return true;
+            },
+            xkb.Keysym.XF86AudioPrev => {
+                if (!mp.player_active) return false;
+                mp.prev();
+                return true;
+            },
+            xkb.Keysym.XF86AudioForward => {
+                if (!mp.player_active) return false;
+                mp.seek(10.0);
+                return true;
+            },
+            xkb.Keysym.XF86AudioRewind => {
+                if (!mp.player_active) return false;
+                mp.seek(-10.0);
+                return true;
+            },
+            xkb.Keysym.XF86AudioStop => {
+                if (!mp.player_active) return false;
+                mp.ensureStopped();
+                return true;
+            },
+            else => return false,
+        }
     }
 
     fn handleAction(server: *Server, action: @import("../config/keybinds.zig").Action) bool {
