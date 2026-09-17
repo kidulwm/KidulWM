@@ -17,6 +17,13 @@ pub const Action = union(enum) {
     move_to_output_next,
     fullscreen_toggle,
     wm_reset,
+    // Tray navigation: the conf documents these; with the tray-slide gone
+    // they route to the deck walk / open (same door as the old crosspad).
+    tray_select_next,
+    tray_select_prev,
+    tray_activate,
+    // Screen blanking (anti-burn, 2026-09-17): DPMS-style output off/on.
+    screen_off,
     none,
 };
 
@@ -61,6 +68,9 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     // other app. Mod4+f, also F11 (the muscle-memory fullscreen key).
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.f, .action = .fullscreen_toggle }) catch {};
     list.append(allocator, .{ .mod4 = false, .sym = xkb.Keysym.F11, .action = .fullscreen_toggle }) catch {};
+    // Anti-burn blanking (Barticus 2026-09-17): Mod4+x powers every output
+    // off; any key wakes. Same combo is a toggle.
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.x, .action = .screen_off }) catch {};
     return list;
 }
 
@@ -95,9 +105,27 @@ pub const Keybinds = struct {
     }
 
     fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) Self {
+        // USER CONFIG LAW (Barticus 2026-09-17): the user conf starts from
+        // the built-in defaults and OVERRIDES them bind-by-bind. A malformed
+        // line, an unknown key, or an action the compositor doesn't know
+        // logs a warning and is skipped — it must never discard the whole
+        // file (the original all-or-nothing parser silently fell back to
+        // defaults forever, which is why the conf "never worked"). Inline
+        // `#` comments are stripped before parsing.
+        var list = defaultKeybinds(allocator);
+        errdefer {
+            for (list.items) |bind| {
+                switch (bind.action) {
+                    .spawn => |cmd| allocator.free(cmd),
+                    else => {},
+                }
+            }
+            list.deinit(allocator);
+        }
+
         const path_z = allocator.dupeZ(u8, path) catch |err| {
             std.log.warn("KidulWM: failed to allocate path ({}); using built-in keybinds", .{err});
-            return defaults(allocator);
+            return .{ .allocator = allocator, .binds = list, .fallback = true };
         };
         defer allocator.free(path_z);
 
@@ -110,7 +138,7 @@ pub const Keybinds = struct {
             } else {
                 std.log.warn("KidulWM: cannot open keybinds file '{s}' (open error); using built-in defaults", .{path});
             }
-            return defaults(allocator);
+            return .{ .allocator = allocator, .binds = list, .fallback = true };
         }
         const fd: i32 = @intCast(file_fd);
         defer _ = linux.close(fd);
@@ -123,41 +151,37 @@ pub const Keybinds = struct {
             const n = linux.read(fd, &read_buf, read_buf.len);
             if (n < 0) {
                 std.log.warn("KidulWM: error reading keybinds file '{s}'; using built-in defaults", .{path});
-                return defaults(allocator);
+                return .{ .allocator = allocator, .binds = list, .fallback = true };
             }
             if (n == 0) break;
             content.appendSlice(allocator, read_buf[0..@as(usize, @intCast(n))]) catch {
                 std.log.warn("KidulWM: failed to append keybinds buffer; using built-in defaults", .{});
-                return defaults(allocator);
+                return .{ .allocator = allocator, .binds = list, .fallback = true };
             };
         }
 
-        var list = std.ArrayList(Keybind).empty;
-        errdefer {
-            for (list.items) |bind| {
-                switch (bind.action) {
-                    .spawn => |cmd| allocator.free(cmd),
-                    else => {},
-                }
-            }
-            list.deinit(allocator);
-        }
-
+        var user_count: usize = 0;
         var it = std.mem.tokenizeScalar(u8, content.items, '\n');
         var line_no: usize = 0;
         while (it.next()) |line_raw| : (line_no += 1) {
-            const line = std.mem.trim(u8, line_raw, " \t\r");
-            if (line.len == 0 or line[0] == '#') continue;
+            // Strip inline comments FIRST — 'Mod4+q = close_focused # quit'
+            // must parse the same as 'Mod4+q = close_focused'.
+            const no_comment = if (std.mem.indexOfScalar(u8, line_raw, '#')) |h|
+                line_raw[0..h]
+            else
+                line_raw;
+            const line = std.mem.trim(u8, no_comment, " \t\r");
+            if (line.len == 0) continue;
 
             const eq_idx = std.mem.indexOfScalar(u8, line, '=') orelse {
-                std.log.warn("KidulWM: keybinds line {d} missing '=': '{s}'; using built-in defaults", .{ line_no, line });
-                return defaults(allocator);
+                std.log.warn("KidulWM: keybinds line {d} missing '='; skipped: '{s}'", .{ line_no, line });
+                continue;
             };
             const left = std.mem.trim(u8, line[0..eq_idx], " \t");
             const right = std.mem.trim(u8, line[eq_idx + 1 ..], " \t");
             if (left.len == 0 or right.len == 0) {
-                std.log.warn("KidulWM: keybinds line {d} has empty side; using built-in defaults", .{line_no});
-                return defaults(allocator);
+                std.log.warn("KidulWM: keybinds line {d} has empty side; skipped", .{line_no});
+                continue;
             }
 
             var mod4 = false;
@@ -176,31 +200,42 @@ pub const Keybinds = struct {
             }
 
             const sym = parseKeysym(key_part) orelse {
-                std.log.warn("KidulWM: keybinds line {d} unknown key '{s}'; using built-in defaults", .{ line_no, key_part });
-                return defaults(allocator);
+                std.log.warn("KidulWM: keybinds line {d} unknown key '{s}'; skipped", .{ line_no, key_part });
+                continue;
             };
 
             const action = parseAction(allocator, right) orelse {
-                std.log.warn("KidulWM: keybinds line {d} unknown action '{s}'; using built-in defaults", .{ line_no, right });
-                return defaults(allocator);
+                std.log.warn("KidulWM: keybinds line {d} unknown action '{s}'; skipped", .{ line_no, right });
+                continue;
             };
 
+            // Override: drop any existing bind on the same combo (default or
+            // earlier user line), then append the user bind. Later lines win.
+            var i: usize = 0;
+            while (i < list.items.len) {
+                const b = list.items[i];
+                if (b.mod4 == mod4 and b.ctrl == ctrl and b.sym == sym) {
+                    switch (b.action) {
+                        .spawn => |cmd| allocator.free(cmd),
+                        else => {},
+                    }
+                    _ = list.orderedRemove(i);
+                } else {
+                    i += 1;
+                }
+            }
             list.append(allocator, .{ .mod4 = mod4, .ctrl = ctrl, .sym = sym, .action = action }) catch {
-                std.log.warn("KidulWM: failed to append keybind; using built-in defaults", .{});
+                std.log.warn("KidulWM: failed to append keybind; line {d} skipped", .{line_no});
                 switch (action) {
                     .spawn => |cmd| allocator.free(cmd),
                     else => {},
                 }
-                return defaults(allocator);
+                continue;
             };
+            user_count += 1;
         }
 
-        if (list.items.len == 0) {
-            std.log.warn("KidulWM: keybinds file '{s}' had no bindings; using built-in defaults", .{path});
-            return defaults(allocator);
-        }
-
-        std.log.info("KidulWM: loaded {d} keybinds from '{s}'", .{ list.items.len, path });
+        std.log.info("KidulWM: loaded {d} user keybinds from '{s}' (over {d} defaults)", .{ user_count, path, list.items.len - user_count });
         return .{
             .allocator = allocator,
             .binds = list,
@@ -243,6 +278,7 @@ pub const Keybinds = struct {
             .{ "Right", xkb.Keysym.Right },
             .{ "space", xkb.Keysym.space },
             .{ "Tab", xkb.Keysym.Tab },
+            .{ "F11", xkb.Keysym.F11 },
             .{ "a", xkb.Keysym.a },
             .{ "b", xkb.Keysym.b },
             .{ "c", xkb.Keysym.c },
@@ -290,6 +326,10 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "focus_next")) return .focus_next;
         if (std.mem.eql(u8, str, "focus_prev")) return .focus_prev;
         if (std.mem.eql(u8, str, "tray_toggle")) return .tray_toggle;
+        if (std.mem.eql(u8, str, "tray_select_next")) return .tray_select_next;
+        if (std.mem.eql(u8, str, "tray_select_prev")) return .tray_select_prev;
+        if (std.mem.eql(u8, str, "tray_activate")) return .tray_activate;
+        if (std.mem.eql(u8, str, "screen_off")) return .screen_off;
         if (std.mem.eql(u8, str, "media_card_toggle")) return .media_card_toggle;
         if (std.mem.eql(u8, str, "signals_card_toggle")) return .signals_card_toggle;
         if (std.mem.eql(u8, str, "next_animation")) return .next_animation;
@@ -300,6 +340,7 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "focus_output_next")) return .focus_output_next;
         if (std.mem.eql(u8, str, "move_to_output_next")) return .move_to_output_next;
         if (std.mem.eql(u8, str, "fullscreen_toggle")) return .fullscreen_toggle;
+        if (std.mem.eql(u8, str, "wm_reset")) return .wm_reset;
         if (std.mem.eql(u8, str, "open_slide")) {
             const cmd = allocator.dupe(u8, "/usr/bin/ghostty") catch return null;
             return .{ .spawn = cmd };

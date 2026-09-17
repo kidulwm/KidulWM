@@ -548,6 +548,9 @@ pub const Server = struct {
         progress: f64,
     },
     outputs: wl.list.Head(Output, .link),
+    /// Screens-off state (anti-burn blanking). While true, every output is
+    /// committed disabled; any key press or another screen_off press wakes.
+    screens_off: bool = false,
 
     /// Catcher for dropped outputs. Every early-return error path in
     /// handleNewOutput records (name, stage, err) here instead of vanishing
@@ -2864,6 +2867,29 @@ pub const Server = struct {
         }
         self.warpCursorToFocus();
         self.requestLayout();
+    }
+
+    /// Toggle DPMS-style output blanking on every output. Off commits
+    /// enabled=false (the panel actually powers down — no burn); on commits
+    /// the output back enabled with its existing mode. Mode/scale state is
+    /// untouched, so wake is a plain re-enable.
+    pub fn screensOffSet(self: *Server, off: bool) void {
+        if (self.screens_off == off) return;
+        self.screens_off = off;
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            var state = wlr.Output.State.init();
+            defer state.finish();
+            state.setEnabled(!off);
+            if (!output.wlr_output.commitState(&state)) {
+                std.log.err("KidulWM: screen_off commit failed for {s}", .{std.mem.span(output.wlr_output.name)});
+            }
+        }
+        std.log.info("KidulWM: screens {s}", .{if (off) "OFF" else "ON"});
+    }
+
+    pub fn screensOffToggle(self: *Server) void {
+        self.screensOffSet(!self.screens_off);
     }
 
     /// Mod4+Ctrl+O: send the focused slide to the other stage's deck.

@@ -118,6 +118,13 @@ const KeyboardDevice = struct {
             @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
         ) > 0;
 
+        // Wake-from-blank FIRST: ANY key press while screens are off powers
+        // the outputs back on and swallows the key (the press that wakes
+        // must not also type into the focused slide or fire a keybind).
+        if (server.screens_off) {
+            server.screensOffSet(false);
+            return;
+        }
         if (mod4_active or ctrl_active) {
             // The media PLAYER is a real deck slide now (TASKCARD-3):
             // Ctrl+Q falls through to close_focused like any slide.
@@ -204,6 +211,20 @@ const KeyboardDevice = struct {
                 server.homeSlideFocusOrSpawn();
                 return true;
             },
+            .tray_select_next => {
+                server.focusNext();
+                return true;
+            },
+            .tray_select_prev => {
+                server.focusPrev();
+                return true;
+            },
+            .tray_activate => {
+                // The old "open the highlighted tray row" — with the tray
+                // gone, activating IS opening the overview pick (Mod4+space).
+                server.overviewToggle();
+                return true;
+            },
             .media_card_toggle => {
                 // REDIRECT (TASKCARD-3): focus-or-spawn the media player
                 // slide (a real deck slide).
@@ -285,6 +306,10 @@ const KeyboardDevice = struct {
             },
             .fullscreen_toggle => {
                 server.fullscreenToggleFocused();
+                return true;
+            },
+            .screen_off => {
+                server.screensOffToggle();
                 return true;
             },
             .none => return false,
