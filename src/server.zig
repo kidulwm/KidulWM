@@ -138,6 +138,10 @@ pub const Output = struct {
     /// Fullscreen video slide surface (kind .video slide, spawned right of
     /// the player on playback start; placeholder black surface for now).
     video_slide: tray_slide_mod.TraySlide = .{},
+    /// CARD 2b slice 2: the slide's exported host toplevel (kvisd parents
+    /// its video surface to this via xdg-foreign). One per video slide.
+    video_host_surface: ?*@import("ipc/internal_client.zig").HostSurface = null,
+    video_kvis_client: ?@import("ipc/kvis_client.zig").KvisClient = null,
     /// Permanent per-output edge peeks (TASKCARD-3): EXIT dots + counts,
     /// one click router, and the restored peek widget stack (weather /
     /// gauges / drives / KSD logo left; network + clock right). Born on
@@ -2194,7 +2198,46 @@ pub const Server = struct {
         self.video_slide_output = output;
         self.clearFocus();
         self.videoSlidePaint(output);
+
+        // CARD 2b slice 2: spawn the exported host toplevel for kvisd to
+        // parent onto. Failure is logged but non-fatal — the slide still
+        // works as a deck object; kvis video simply has nothing to bind.
+        self.videoSlideHostSpawn(output);
+
         std.log.info("KidulWM: video slide spawned right of player", .{});
+    }
+
+    /// Slice 2: host surface + export + kvis parent handshake for the
+    /// video slide. Order: internal client → host toplevel (committed,
+    /// exported) → kvis.sock connect → parent <handle>. kvisd replies
+    /// 'err parent_failed' if its shell isn't up yet (no video playing) —
+    /// logged, and the slide's media path (slice 3/4) will retry parent
+    /// after 'open'.
+    fn videoSlideHostSpawn(self: *Server, output: *Output) void {
+        const ic_mod = @import("ipc/internal_client.zig");
+        const kvis_mod = @import("ipc/kvis_client.zig");
+        const ic = self.ensureInternalClient() catch |err| {
+            std.log.warn("KidulWM: video host: internal client unavailable ({s})", .{@errorName(err)});
+            return;
+        };
+        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kvis host") catch |err| {
+            std.log.warn("KidulWM: video host: surface/export failed ({s})", .{@errorName(err)});
+            return;
+        };
+        output.video_host_surface = host;
+        std.log.info("KidulWM: video host surface exported, handle={s}", .{host.handle.?});
+
+        // kvisd may not be running (music-only session). Connect failure
+        // is silent-ish: the open path (slice 3) connects again lazily.
+        if (kvis_mod.KvisClient.connect(self.allocator)) |client| {
+            output.video_kvis_client = client;
+            var kc = output.video_kvis_client.?;
+            kc.parent(host.handle.?) catch |err| {
+                std.log.info("KidulWM: video host: kvis parent deferred ({s})", .{@errorName(err)});
+            };
+        } else |_| {
+            std.log.info("KidulWM: video host: kvisd not reachable yet (parent deferred)", .{});
+        }
     }
 
     /// Paint the video slide at its stock deck rect (placeholder black
@@ -2260,6 +2303,18 @@ pub const Server = struct {
     }
 
     fn videoSlideCloseOn(self: *Server, output: *Output) void {
+        // CARD 2b slice 2 teardown: unparent + close over kvis.sock, then
+        // destroy the host toplevel (revokes the export handle).
+        if (output.video_kvis_client) |*kc| {
+            kc.unparent() catch {};
+            kc.close() catch {};
+            kc.destroy();
+            output.video_kvis_client = null;
+        }
+        if (output.video_host_surface) |host| {
+            host.destroy();
+            output.video_host_surface = null;
+        }
         _ = self;
         if (!output.video_slide.isOpen()) return;
         output.video_slide.tree.?.node.destroy();
