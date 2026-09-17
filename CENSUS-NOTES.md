@@ -3,6 +3,21 @@
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
 
+## 2026-09-17 VERDICT 32: CARD 2b slice 3 LANDED — kvisd placement
+
+KidulWM 6402578 (bobDotrix finished coderBob's cut-off dispatch; 402
+credit death mid-run, work audited + completed in-session): kvisd video
+toplevel (app_id com.kidul.kvis) tracked server-side OUTSIDE the deck —
+no slide, no chrome, no focus; placeKvisWindow pins its scene tree over
+the video slide rect on map / videoSlidePaint / applyLayout. Fullscreen
+= raised edge-to-edge, ZERO chrome. Windowed = slide tree stays on top;
+ring-vs-matte visibility is a HOST eye-test verdict (inset follow-up if
+needed). Debug/ReleaseSafe/test clean, nested-smoke PASSED.
+DEPLOYED /usr/local/bin/kidulwm sha256 f2f642ac (bak .bak-2b-slice3).
+Host test owed: relog + kvisd on wayland-1 + play -> pixels IN the slide.
+NEXT: slice 4 deletion (embedded libkmedia + media_video.zig present path).
+
+
 ## 2026-09-17 VERDICT 31: CHROME LAW locked + boot-open gated (host)
 
 KidulWM 198d057: A5 boot ladder gated behind KIDULWM_BOOT_MEDIA. Host
