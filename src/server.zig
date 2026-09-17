@@ -17,8 +17,6 @@ const output_layout_config = @import("core/output_layout_config.zig");
 const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
-const DmabufBuffer = @import("render/dmabuf_buffer.zig").DmabufBuffer;
-const kmedia_lib = @import("kmedia");
 
 /// Boot reveal effects for the wallpaper (palette-locked, picked at random
 /// per boot). All run ~2.2s with a smoothstep ramp; the per-pixel ones
@@ -39,7 +37,7 @@ const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
 const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
-const media_video = @import("ui/media_video.zig");
+const kvis_client_mod = @import("ipc/kvis_client.zig");
 const media_mod = @import("ui/media.zig");
 const peek_mod = @import("ui/peek.zig");
 const keybinds = @import("config/keybinds.zig");
@@ -119,6 +117,18 @@ pub const KeyRingEntry = struct {
         self.action_len = @intCast(n);
     }
 };
+
+/// CARD 2b slice 4: extension sniff for the media_play IPC verb — music
+/// paths play headless in kvisd (no video slide); everything else spawns
+/// the .video slide. Granny-simple v1; kvisd makes its own decode call.
+fn isMusicPath(path: []const u8) bool {
+    const exts = [_][]const u8{ ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".wma" };
+    const ext = std.fs.path.extension(path);
+    for (exts) |e| {
+        if (std.ascii.eqlIgnoreCase(ext, e)) return true;
+    }
+    return false;
+}
 
 pub const Output = struct {
     server: *Server,
@@ -272,14 +282,11 @@ pub const Output = struct {
             sb.node.destroy();
             self.wallpaper_scene_buffer = null;
         }
-        // Video path must die with the output — freeing the pixels while a
-        // scene node still references them is a use-after-free, and leaking
-        // them is a ghost frame on the remaining outputs.
+        // Home/media/video slide surfaces die with the output (their scene
+        // trees live in the output's render path). Playback itself lives in
+        // kvisd (out of process) — nothing here can dangle decoded frames.
         while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.server.scene_mutex.unlock();
-        self.server.mediaVideoTeardown(self);
-        // Home/media/video slide surfaces die with the output (their scene
-        // trees live in the output's render path).
         if (self.home_slide.tree) |tree| {
             tree.node.destroy();
             self.home_slide.tree = null;
@@ -297,77 +304,9 @@ pub const Output = struct {
 
     fn handleFrame(listener: *wl.Listener(*wlr.Output), wlr_output: *wlr.Output) void {
         const self: *Output = @fieldParentPtr("frame", listener);
-        // TEMP DIAG: frame-gap histogram — buckets inter-frame gaps while
-        // media playback is active. Prints one summary line per second so we
-        // can see stall shape (ragged contention vs quantized timer gaps).
-        // Buckets (ms): <17 / 17-33 / 33-100 / 100-250 / 250-1000 / >1000.
-        {
-            const S = struct {
-                var buckets: [6]u64 = .{ 0, 0, 0, 0, 0, 0 };
-                var frames: u64 = 0;
-                var last_frame_ms: i64 = 0;
-                var last_log_ms: i64 = 0;
-                var longest_ms: i64 = 0;
-            };
-            const now_ms: i64 = @intCast(@divTrunc(animation.nowUs(), 1000));
-            const active = self.media_slide.isOpen() and self.media_slide.widget_ready and self.media_slide.widget.player_active;
-            if (active) {
-                if (S.last_frame_ms != 0) {
-                    const gap = now_ms - S.last_frame_ms;
-                    const b: usize = if (gap < 17) 0 else if (gap < 33) 1 else if (gap < 100) 2 else if (gap < 250) 3 else if (gap < 1000) 4 else 5;
-                    S.buckets[b] += 1;
-                    if (gap > S.longest_ms) S.longest_ms = gap;
-                }
-                S.frames += 1;
-            }
-            S.last_frame_ms = now_ms;
-            if (active and now_ms - S.last_log_ms >= 1000) {
-                std.log.info("KidulWM: GAPS output={s} frames={d} gaps[<{d}]={d} 17-33={d} 33-100={d} 100-250={d} 250-1k={d} >1k={d} longest={d}ms", .{
-                    self.wlr_output.name,
-                    S.frames,
-                    @as(u64, 17),
-                    S.buckets[0],
-                    S.buckets[1],
-                    S.buckets[2],
-                    S.buckets[3],
-                    S.buckets[4],
-                    S.buckets[5],
-                    S.longest_ms,
-                });
-                S.frames = 0;
-                S.buckets = .{ 0, 0, 0, 0, 0, 0 };
-                S.longest_ms = 0;
-                S.last_log_ms = now_ms;
-            }
-            if (!active) {
-                S.last_frame_ms = 0;
-                S.frames = 0;
-            }
-        }
-        // TEMP DIAG: frame-rate counter — prints once per second.
-        {
-            const S = struct {
-                var count: u64 = 0;
-                var last_log_ms: i64 = 0;
-            };
-            S.count += 1;
-            const now_ms: i64 = @intCast(@divTrunc(animation.nowUs(), 1000));
-            if (now_ms - S.last_log_ms >= 1000) {
-                std.log.info("KidulWM: FRAMES output={s} count={d}/s media_open={} ready={} active={} wallpaper_anim={}", .{
-                    self.wlr_output.name,
-                    S.count,
-                    self.media_slide.isOpen(),
-                    self.media_slide.widget_ready,
-                    self.media_slide.widget.player_active,
-                    self.server.wallpaper_anim.active,
-                });
-                S.count = 0;
-                S.last_log_ms = now_ms;
-            }
-        }
         _ = wlr_output;
-        // SCENE LOCK: hold for the whole frame — mediaVideoRefresh/Teardown
-        // and scene_output.commit walk the graph the IPC thread can mutate.
+        // SCENE LOCK: hold for the whole frame — slide buffers and
+        // scene_output.commit walk the graph the IPC thread can mutate.
         while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.server.scene_mutex.unlock();
         const now_us = animation.nowUs();
@@ -376,13 +315,6 @@ pub const Output = struct {
             _ = window.tickAnimation(now_us);
         }
         self.server.tickWallpaperReveal(now_us);
-
-        // ── Play-timer arm + playback driving (render-thread guards) ────────
-        // KVIS LAW ("the media slide is just a slide"): the generation guard,
-        // display_serial → refresh present edge, isDone reconcile, and
-        // tray-media reconcile live in MediaSlide.tickPlayback. Behavior is
-        // identical to the inline block this replaced.
-        self.media_slide.tickPlayback(self.server, self, now_us);
 
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
@@ -446,7 +378,7 @@ pub const Server = struct {
     /// Guards the wlroots scene graph against cross-thread mutation.
     /// The IPC thread (mediaSlideToggle/Close via kidulwm-control)
     /// destroys scene nodes while the render thread (Output.handleFrame:
-    /// mediaVideoRefresh, scene commit) walks the same graph — pixman abort on live regions, 2026-09-06
+    /// scene commit) walks the same graph — pixman abort on live regions, 2026-09-06
     /// session-killer. Take this on BOTH sides of any scene touch that
     /// can cross threads. Held per-frame; IPC close waits ≤ 1 vsync.
     scene_mutex: std.atomic.Mutex = .unlocked,
@@ -481,8 +413,9 @@ pub const Server = struct {
     /// NOTIFICATIONS CFC section.
     notifications: tray_slide_mod.NotificationStore = .{},
     /// The media PLAYER's home (Barticus law 2026-09-15): Server owns the
-    /// MediaWidget (play/pause/next/prev/seek, player_active, cached
-    /// metadata).
+    /// MediaWidget. CARD 2b slice 4: playback itself is out of process in
+    /// kvisd; this widget is the card UI + the now-playing MIRROR (cached
+    /// metadata set on kvis open, cleared on close).
     media_player: media_mod.MediaWidget,
     // Overview lens: virtual cursor (recency position among unparked minis).
     // The ring node lives per-output (Output.overview_ring) — the lens is
@@ -551,12 +484,6 @@ pub const Server = struct {
     /// a ~2.2s palette-locked reveal animation chosen at random per boot.
     wallpaper_pipe: [2]c_int,
     wallpaper_source: ?*wl.EventSource,
-    /// Compositor-level play-timer: advances the mpv frame queue (tick) on the
-    /// audio clock, independent of any single output's vsync. Outputs only
-    /// present/blit the already-due frame on their own frame callback.
-    /// Null while no playback is active; armed by armPlayTimer(); self-re-arms
-    /// every PLAY_TIMER_MS until disarmPlayTimer() is called.
-    play_timer: ?*wl.EventSource,
     wallpaper_thread: ?std.Thread,
     /// Worker->main handoff. Written ONLY by the worker before the pipe
     /// byte; read ONLY by the main thread after reading the pipe byte.
@@ -703,46 +630,35 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .media_play => |p| {
-                // Route through the player slide's widget; fall back to the
-                // slideless server widget if no player slide exists.
-                var routed = false;
-                var oit = self.outputs.iterator(.forward);
-                while (oit.next()) |o| {
-                    if (o.deck.findKind(.media_player) != null and o.media_slide.isOpen() and o.media_slide.widget_ready) {
-                        self.stopOtherPlayers(o);
-                        o.media_slide.widget.play(p.path);
-                        o.media_slide.card_dirty = true; // new playback: card content changed
-                        self.mediaSlideRefresh(o);
-                        // VIDEO = REAL SLIDE (stage 3): playback start
-                        // spawns the fullscreen .video slide right of the
-                        // player and walks focus to it.
-                        if (!o.media_slide.widget.is_music) {
+                // CARD 2b slice 4: playback = kvis.sock verbs only. The
+                // compositor never decodes a frame; kvisd owns the player.
+                self.kvisCloseAny(); // one player, one truth
+                self.kvisOpen(p.path);
+                // VIDEO = REAL SLIDE (stage 3): non-music playback spawns
+                // the .video slide right of the player and walks focus.
+                if (!isMusicPath(p.path)) {
+                    var oit = self.outputs.iterator(.forward);
+                    while (oit.next()) |o| {
+                        if (o.deck.findKind(.media_player) != null and o.media_slide.isOpen()) {
                             self.videoSlideSpawnRightOfPlayer(o);
+                            break;
                         }
-                        routed = true;
-                        break;
                     }
-                }
-                if (!routed) {
-                    self.stopOtherPlayers(null);
-                    self.media_player.play(p.path);
                 }
                 return .{ .ok = true, .message = "media play requested" };
             },
             .media_toggle => {
-                self.media_player.playPause();
+                self.kvisTogglePause();
                 return .{ .ok = true };
             },
             .media_next => {
-                self.media_player.next();
                 return .{ .ok = true };
             },
             .media_prev => {
-                self.media_player.prev();
                 return .{ .ok = true };
             },
             .media_seek => |p| {
-                self.media_player.seek(p.seconds);
+                self.kvisSeekRel(p.seconds);
                 return .{ .ok = true };
             },
             .notification_test => |p| {
@@ -960,7 +876,6 @@ pub const Server = struct {
             },
             .wallpaper_pipe = undefined,
             .wallpaper_source = null,
-            .play_timer = null,
             .wallpaper_thread = null,
             .wallpaper_result = null,
             .wallpaper_anim = .{ .active = false, .start_us = 0, .effect = .fade, .progress = 0 },
@@ -1167,7 +1082,6 @@ pub const Server = struct {
 
         self.media_player.deinit();
         self.keybinds.deinit();
-        self.overlay_tree.node.destroy();
 
         self.input_manager.deinit();
         self.allocator.destroy(self.input_manager);
@@ -1178,18 +1092,23 @@ pub const Server = struct {
         _ = linux.close(self.layout_pipe[0]);
         _ = linux.close(self.layout_pipe[1]);
 
-        // Tear down outputs before the scene and layout that back them.
+        // Tear down outputs BEFORE overlay_tree: each output's peek holds
+        // child scene trees of overlay_tree, so destroying the parent first
+        // leaves the children's destroy() touching freed wlroots state
+        // (nested-smoke teardown segfault at peek.deinit).
         while (self.outputs.first()) |output| {
             output.link.remove();
             output.deinit();
             self.allocator.destroy(output);
         }
+        self.overlay_tree.node.destroy();
 
         self.output_layout_change.link.remove();
         self.new_xdg_toplevel.link.remove();
         self.new_layer_surface.link.remove();
         self.new_output.link.remove();
         self.backend_destroy.link.remove();
+        self.new_toplevel_decoration.link.remove();
 
         self.cursor.destroy();
         self.xcursor_manager.destroy();
@@ -1894,30 +1813,86 @@ pub const Server = struct {
         std.log.info("KidulWM: home slide closed", .{});
     }
 
-    /// ONE PLAYER PER SESSION (law: media-is-a-slide.md ruling 3): exactly
-    /// one player engine and one audio stream ever. Called before any widget
-    /// starts playback — stops any OTHER output's slide widget and the
-    /// slideless music player (take-over, granny-simple default). `keep` is
-    /// the output whose widget is about to play (null = the slideless
-    /// server player itself is starting).
-    /// Scene-buffer teardown for the stopped widget happens in handleFrame's
-    /// player_generation guard — never nest scene_mutex here (play paths can
-    /// be reached with the lock already held, e.g. applyLayout).
-    fn stopOtherPlayers(self: *Server, keep: ?*Output) void {
-        var it = self.outputs.iterator(.forward);
-        while (it.next()) |o| {
-            if (keep != null and o == keep.?) continue;
-            if (o.media_slide.widget_ready and o.media_slide.widget.player_active) {
-                o.media_slide.widget.ensureStopped();
-                if (o.media_slide.isOpen()) {
-                    o.media_slide.card_dirty = true; // stop: card content changed
-                    self.mediaSlideRefresh(o);
-                }
+    /// ONE PLAYER PER SESSION (law: media-is-a-slide.md ruling 3). CARD 2b
+    /// slice 4: the one player is kvisd, out of process — close whatever it
+    /// has open before a new 'open' lands (take-over, granny-simple).
+    fn kvisCloseAny(self: *Server) void {
+        // Prefer an already-connected client (video slide owns one); else
+        // a short-lived connection just for the close verb.
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |o| {
+            if (o.video_kvis_client) |*kc| {
+                kc.close() catch {};
+                return;
             }
         }
-        if (keep != null and self.media_player.player_active) {
-            self.media_player.ensureStopped();
+        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+            var kc = kc0;
+            defer kc.destroy();
+            kc.close() catch {};
+        } else |_| {}
+    }
+
+    /// kvis.sock 'open <path>' — start playback in kvisd (video spawns its
+    /// shell; music is headless). Logged for the harness evidence line.
+    pub fn kvisOpen(self: *Server, path: []const u8) void {
+        if (path.len == 0) return;
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |o| {
+            if (o.video_kvis_client) |*kc| {
+                kc.open(path) catch |err| {
+                    std.log.warn("[kvis] open failed via slide client: {s}", .{@errorName(err)});
+                };
+                std.log.info("[kvis] open sent (slide client): {s}", .{path});
+                return;
+            }
         }
+        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+            var kc = kc0;
+            defer kc.destroy();
+            std.log.info("[kvis] open sent: {s}", .{path});
+            kc.open(path) catch |err| {
+                std.log.warn("[kvis] open reply err: {s}", .{@errorName(err)});
+                return;
+            };
+        } else |err| {
+            std.log.warn("[kvis] connect failed (kvisd down?): {s}", .{@errorName(err)});
+        }
+    }
+
+    /// Toggle pause via kvis.sock. One player one truth = kvis.sock status;
+    /// v1 flips the mirrored cached state optimistically (Granny law).
+    pub fn kvisTogglePause(self: *Server) void {
+        const do_resume = !self.media_player.cached.playing;
+        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+            var kc = kc0;
+            defer kc.destroy();
+            if (do_resume) {
+                kc.unpause() catch {};
+            } else {
+                kc.pause() catch {};
+            }
+        } else |_| {}
+        if (self.media_player.cached.available) {
+            self.media_player.cached.playing = do_resume;
+        }
+    }
+
+    /// Relative seek via kvis.sock 'seek_rel <seconds>'.
+    pub fn kvisSeekRel(self: *Server, seconds: f64) void {
+        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+            var kc = kc0;
+            defer kc.destroy();
+            kc.seekRel(seconds) catch |err| {
+                std.log.warn("[kvis] seek_rel failed: {s}", .{@errorName(err)});
+            };
+        } else |_| {}
+    }
+
+    /// Stop via kvis.sock 'close' + clear the now-playing mirror.
+    pub fn kvisStop(self: *Server) void {
+        self.kvisCloseAny();
+        self.media_player.clearNowPlaying();
     }
 
     /// Toggle the media player slide (TASKCARD-3 stage 3): the player is a
@@ -1978,16 +1953,14 @@ pub const Server = struct {
         if (output.media_slide.isOpen()) return;
         // Reopen-lands-on-the-card LAW (Barticus, 2026-09-12): the widget IS
         // the card reference (cached title/art/selection), so keep it alive
-        // across destroy/respawn while its music player lives.
+        // across destroy/respawn while its music lives (out of process in
+        // kvisd — the widget only mirrors now-playing state).
         const keep_widget = output.media_slide.widget_ready and
-            output.media_slide.widget.player_active and
             output.media_slide.widget.is_music;
         if (output.media_slide.widget_ready and !keep_widget) {
             output.media_slide.widget.deinit();
             output.media_slide.widget = media_mod.MediaWidget.init(self.allocator);
         }
-        self.mediaVideoTeardown(output);
-        output.media_slide.seen_player_generation = 0;
         const tree = self.scene.tree.createSceneTree() catch return;
         output.media_slide.tree = tree;
         tree.node.raiseToTop();
@@ -2061,87 +2034,15 @@ pub const Server = struct {
         self.overlay_tree.node.raiseToTop();
     }
 
-    /// Flush the per-output [present] aggregate once per second while video
-    /// is active: one log line per second per output, never per frame.
-    pub fn presentAggregateFlush(self: *Server, output: *Output, now_us_raw: u64) void {
-        _ = self;
-        const now_us: i64 = @intCast(now_us_raw);
-        const ms = &output.media_slide;
-        if (ms.present_bucket_us == 0) {
-            ms.present_bucket_us = now_us;
-            return;
-        }
-        if (now_us - ms.present_bucket_us < std.time.us_per_s) return;
-        const late_avg: i64 = if (ms.present_committed > 0)
-            @divTrunc(ms.present_late_sum_ms, @as(i64, @intCast(ms.present_committed)))
-        else
-            0;
-        std.log.info("[present] 1s {s}: committed={d} dropped={d} hit={d} miss={d} memcpy={d} late_avg={d}ms late_max={d}ms gen={d}", .{
-            output.wlr_output.name,
-            ms.present_committed,
-            ms.present_dropped,
-            ms.present_hit,
-            ms.present_miss,
-            ms.present_memcpy,
-            late_avg,
-            ms.present_late_max_ms,
-            ms.widget.player_generation,
-        });
-        ms.present_committed = 0;
-        ms.present_dropped = 0;
-        ms.present_hit = 0;
-        ms.present_miss = 0;
-        ms.present_memcpy = 0;
-        ms.present_late_sum_ms = 0;
-        ms.present_late_max_ms = 0;
-        ms.present_bucket_us = now_us;
-    }
-
-    /// Reset the [present] counters (new playback / teardown).
-    fn presentReset(output: *Output) void {
-        const ms = &output.media_slide;
-        ms.present_committed = 0;
-        ms.present_dropped = 0;
-        ms.present_hit = 0;
-        ms.present_miss = 0;
-        ms.present_memcpy = 0;
-        ms.present_late_sum_ms = 0;
-        ms.present_late_max_ms = 0;
-        ms.present_bucket_us = 0;
-    }
-
-    /// Update the dedicated video scene buffer from the player's current
-    /// frame. Called on each frame_serial bump while player_active. Only the
-    /// video pixels are copied (native size); the scene graph scales to the
-    /// letterboxed rect. No full-slide repaint, no 8MB DataBuffer dupe.
-    /// KVIS LAW: thin delegation — implementation lives in ui/media_video.zig
-    /// (the slide owns video presentation; server keeps lifecycle entries).
-    pub fn mediaVideoRefresh(self: *Server, output: *Output) void {
-        media_video.refresh(self, output);
-    }
-
-    /// Kill the live video scene path (ghost-frame law). Thin delegation —
-    /// implementation in ui/media_video.zig. SCENE LOCK LAW: callers must
-    /// hold scene_mutex (mediaSlideClose IPC thread; handleFrame render
-    /// thread; Output.deinit main thread). Never locks here — nested.
-    pub fn mediaVideoTeardown(self: *Server, output: *Output) void {
-        media_video.teardown(self, output);
-    }
-
     fn mediaSlideCloseOn(self: *Server, output: *Output) void {
         // SCENE LOCK: this can run on the IPC thread; the render thread may
         // be mid-draw on the same nodes (2026-09-06 pixman abort).
         while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.scene_mutex.unlock();
         if (!output.media_slide.isOpen()) return;
-        // VIDEO CARVE-OUT (Barticus, 2026-09-08): destroying the slide while
-        // a VIDEO plays IS a quit — the sound dies with the picture.
-        if (output.media_slide.widget_ready and output.media_slide.widget.player_active) {
-            if (!output.media_slide.widget.is_music) {
-                output.media_slide.widget.ensureStopped();
-            }
-            self.mediaVideoTeardown(output);
-        }
+        // CARD 2b slice 4: closing the media slide never crashes — there is
+        // nothing in-process to tear down. Playback (if any) lives in kvisd;
+        // a video slide close sends the 'close' verb on its own path.
         // Destroy the card buffer node FIRST (leaking it left a stale frame
         // on screen — the "quit not clearing" bug), then the tree.
         if (output.media_slide.card_buffer) |buf| buf.node.destroy();
@@ -2353,19 +2254,13 @@ pub const Server = struct {
         }
         window.setLayoutTarget(target.x, target.y, target.width, target.height);
         window.scene_tree.node.setEnabled(true);
-        // CHROME LAW: fullscreen = zero chrome, pixels edge-to-edge →
-        // raise kvisd's tree above the slide tree. Windowed = kvisd UNDER
-        // the chrome ring → the slide tree stays on top (kvisd is sized to
-        // the same rect, so its pixels cover the black placeholder card
-        // through the slide tree; the ring is drawn at the rect edges —
-        // if the ring proves hidden under kvisd's windowed matte on the
-        // host eye-test, inset kvisd by the ring thickness in a follow-up.
-        // That verdict is HOST-ONLY: nested headless cannot render GL).
-        const is_fullscreen = deck.slides.items[idx].fullscreen;
-        if (is_fullscreen) {
-            window.scene_tree.node.raiseToTop();
-            self.overlay_tree.node.raiseToTop();
-        }
+        // CARD 2b slice 4 (folded fix): raise kvisd's tree above the slide
+        // tree in ALL modes — windowed left the slide tree (black
+        // placeholder card) on top of the video. CHROME LAW fullscreen =
+        // zero chrome edge-to-edge; windowed ring visibility vs kvisd's
+        // matte stays a HOST eye-test verdict (inset follow-up if needed).
+        window.scene_tree.node.raiseToTop();
+        self.overlay_tree.node.raiseToTop();
     }
 
     /// Quit on the video slide destroys it; the deck settles back onto the
@@ -2388,12 +2283,14 @@ pub const Server = struct {
             kc.close() catch {};
             kc.destroy();
             output.video_kvis_client = null;
+            // Playback ended with the video slide — clear the now-playing
+            // mirror (music close follows the same verb on its own path).
+            self.media_player.clearNowPlaying();
         }
         if (output.video_host_surface) |host| {
             host.destroy();
             output.video_host_surface = null;
         }
-        _ = self;
         if (!output.video_slide.isOpen()) return;
         output.video_slide.tree.?.node.destroy();
         output.video_slide.tree = null;
@@ -2450,24 +2347,6 @@ pub const Server = struct {
         const widget = &out.media_slide.widget;
         if (!out.media_slide.widget_ready) return false;
         var dirty = false;
-
-        // Player mode: route key to Player state machine (Space=pause, Esc=exit, etc.)
-        // INPUT LAW (card 2026-09-06 phase 2): unhandled keys FALL THROUGH —
-        // the slide never swallows; player Escape exits player, a second
-        // Escape closes the slide below.
-        if (widget.player_active) {
-            const sym_u32 = @intFromEnum(sym);
-            if (widget.player.handleKey(sym_u32)) {
-                if (widget.player.isDone()) {
-                    widget.ensureStopped();
-                    self.mediaVideoTeardown(out);
-                }
-                out.media_slide.card_dirty = true; // player key: state may have changed
-                self.mediaSlideRefresh(out);
-                return true;
-            }
-            return false;
-        }
 
         if (widget.search_focused) {
             switch (sym) {
@@ -2670,16 +2549,16 @@ pub const Server = struct {
                     .search => {},
                     .result => {
                         if (widget.category == .music) {
-                            // MUSIC PATH: play via the server MediaWidget,
-                            // dismiss slide.
+                            // MUSIC PATH: kvisd headless open (out of
+                            // process), mirror now-playing, dismiss slide.
                             // Grab entry before closing (getLibrary is global).
                             const entry = widget.selectedResultEntry();
                             const path = widget.selectedResultPath();
                             if (path.len > 0 and entry != null) {
                                 const e = entry.?;
-                                self.stopOtherPlayers(null);
-                                self.media_player.playMusic(
-                                    path,
+                                self.kvisCloseAny();
+                                self.kvisOpen(path);
+                                self.media_player.setMusicNowPlaying(
                                     std.mem.sliceTo(e.title, 0),
                                     std.mem.sliceTo(e.artist, 0),
                                 );
@@ -2688,14 +2567,14 @@ pub const Server = struct {
                             self.mediaSlideToggle();
                             return true;
                         }
-                        // Movies / TV: play-in-slide path → VIDEO = REAL
-                        // SLIDE (stage 3): spawn a fullscreen .video slide
+                        // Movies / TV: kvisd open + VIDEO = REAL SLIDE
+                        // (stage 3): spawn a fullscreen .video slide
                         // IMMEDIATELY RIGHT of the player and walk focus to
                         // it; the player slips left into the peek, alive.
                         const path = widget.selectedResultPath();
                         if (path.len > 0) {
-                            self.stopOtherPlayers(out);
-                            widget.play(path);
+                            self.kvisCloseAny();
+                            self.kvisOpen(path);
                             self.videoSlideSpawnRightOfPlayer(out);
                         }
                     },
@@ -3138,9 +3017,11 @@ pub const Server = struct {
     ///   visual playback (video/karaoke/LIVE TV) + playing → inhibit
     ///   audio-only music + playing                        → inhibit iff conf
     ///   paused / stopped / nothing                        → never inhibit
+    /// True while music is playing (mirrored from kvis open; the slideless
+    /// blank-inhibit question — see playbackInhibitsBlank).
     pub fn playbackInhibitsBlank(self: *Server) bool {
         const mp = &self.media_player;
-        if (!mp.player_active or !mp.cached.playing) return false;
+        if (!mp.cached.available or !mp.cached.playing) return false;
         if (!mp.is_music) return self.keybinds.blank.inhibit_visual;
         return self.keybinds.blank.inhibit_audio;
     }
@@ -3952,205 +3833,6 @@ pub const Server = struct {
 
     fn handleShutdownTimer(server: *@This()) c_int {
         server.wl_server.terminate();
-        return 0;
-    }
-
-    // ── Compositor-level play-timer ───────────────────────────────────────────
-    // Stage 2 (2026-09-07): advance is driven here, NOT in Output.handleFrame.
-    //
-    // The timer fires every PLAY_TIMER_MS (≈16 ms → ~60 Hz) on the Wayland
-    // event-loop main thread — same thread as handleFrame, so no mutex needed
-    // between this and scene operations.  For mediaVideoRefresh the IPC-thread
-    // rule still applies (scene_mutex held there); the calls below are on the
-    // main thread, so they are safe to call without a lock.
-    //
-    // VSYNC SELF-PERPETUATION preserved: scheduleFrame() is called here for
-    // every output that has new video pixels, so the render loop keeps firing
-    // at the output's native refresh even when no other event triggers it.
-    // TIMER CADENCE LAW (2026-09-08, Raya 144Hz judder): mpv's display-sync
-    // runs the playloop EVERY vsync of the target display. A fixed 16ms
-    // timer against a 143.998Hz panel makes each 24fps frame hold a
-    // wandering 2-or-3 timer ticks instead of a locked integer number of
-    // vsyncs — the grid inside tick() quantizes the CLOCK but the present
-    // decision still flips at the wrong phase. So the timer interval is
-    // derived from the PLAYING output's real refresh (playTimerMs()) and
-    // re-armed at that cadence. 16ms is only the fallback when no refresh
-    // is knowable yet (pre-mode, headless, slideless music).
-    const PLAY_TIMER_FALLBACK_MS: c_int = 16; // ~60 Hz fallback advance
-
-    // THE ONE PLAY TIMER (Boss-owned — screens.md LAW 5, one clock borrowed
-    // crystals): play_timer is the ONLY advance clock for all playback on the
-    // machine; it is intentionally owned by the Server (Boss), NOT a squatter.
-    // Its interval is borrowed from the presenting slave's real refresh —
-    // playTimerMs() reads the vsync of the output whose slide owns the active
-    // player, falling back to 16ms when nothing is knowable yet. Slaves
-    // (outputs) only PRESENT on their own vsync edges; they never tick.
-    /// Milliseconds between play-timer fires: the real vsync interval of
-    /// the output that owns the playing media slide, else the fallback.
-    /// Ceiling division so a 6.94ms slot becomes 7ms, never 6 (firing
-    /// EARLY vs the panel drifts the present phase ahead of scanout).
-    pub fn playTimerMs(self: *Server) c_int {
-        var it = self.outputs.iterator(.forward);
-        while (it.next()) |output| {
-            if (output.media_slide.widget_ready and
-                output.media_slide.widget.player_active)
-            {
-                const mhz = output.wlr_output.refresh;
-                if (mhz > 0) {
-                    const us = @divTrunc(@as(i64, 1_000_000_000), @as(i64, mhz));
-                    const ms: i64 = @intCast(@divTrunc(us + 999, 1000));
-                    return @intCast(@max(1, ms));
-                }
-            }
-        }
-        return PLAY_TIMER_FALLBACK_MS;
-    }
-
-    pub fn armPlayTimer(self: *Server) void {
-        const event_loop = self.wl_server.getEventLoop();
-        if (self.play_timer == null) {
-            self.play_timer = event_loop.addTimer(*Server, handlePlayTimer, self) catch |err| {
-                std.log.err("KidulWM: play_timer create failed: {}", .{err});
-                return;
-            };
-        }
-        self.play_timer.?.timerUpdate(self.playTimerMs()) catch |err| {
-            std.log.err("KidulWM: play_timer arm failed: {}", .{err});
-        };
-    }
-
-    pub fn disarmPlayTimer(self: *Server) void {
-        if (self.play_timer) |t| {
-            t.timerUpdate(0) catch {}; // 0 ms = disarm without destroy
-        }
-        // We leave play_timer allocated; it is re-armed by armPlayTimer next
-        // time playback starts.  Destroying and re-creating costs an fd each
-        // cycle; the event-source pool is small, so reuse is preferred.
-    }
-
-    fn handlePlayTimer(self: *Server) c_int {
-        // Check whether anything is still playing before doing any work.
-        var slide_playing = false;
-        var slideless_playing = false;
-        var out_it = self.outputs.iterator(.forward);
-        while (out_it.next()) |output| {
-            // AUDIO AUTHORITY: the player survives the card closing — a
-            // headless widget (slide closed, playback live) still ticks.
-            if (output.media_slide.widget_ready and
-                output.media_slide.widget.player_active)
-            {
-                slide_playing = true;
-                break;
-            }
-        }
-        if (!slide_playing and self.media_player.player_active) {
-            slideless_playing = true;
-        }
-
-        if (!slide_playing and !slideless_playing) {
-            // Nothing to advance — let the timer lapse (do not re-arm).
-            return 0;
-        }
-        std.log.info("[media] play_timer: slide_playing={} slideless={}", .{ slide_playing, slideless_playing });
-
-        // ── Slide player advance ──────────────────────────────────────────────
-        // SCENE LOCK: mediaVideoRefresh creates/updates scene buffers.
-        // The IPC thread (mediaSlideClose) destroys nodes concurrently — hold
-        // scene_mutex for the same reason handleFrame does.
-        if (slide_playing) {
-            while (!self.scene_mutex.tryLock()) std.atomic.spinLoopHint();
-            defer self.scene_mutex.unlock();
-
-            out_it = self.outputs.iterator(.forward);
-            while (out_it.next()) |output| {
-                if (!output.media_slide.widget_ready or
-                    !output.media_slide.widget.player_active) continue;
-
-                if (output.media_slide.widget.player.isDone()) {
-                    // isDone teardown: audio authority ends at end-of-track.
-                    // ensureStopped here (the old code relied on the view
-                    // closing to stop playback; that law is dead).
-                    output.media_slide.widget.ensureStopped();
-                    if (output.media_slide.isOpen()) {
-                        self.mediaVideoTeardown(output);
-                        output.media_slide.card_dirty = true; // playback ended: card must repaint
-                        self.mediaSlideRefresh(output);
-                    }
-                    self.disarmPlayTimer();
-                    return 0;
-                }
-
-                // VSYNC GRID (media-collapse d0ce804/2d623e9): the audio-
-                // clocked playloop owns advance, but presentation still
-                // quantizes to the output's real vsync interval so 24fps
-                // film lands on even 2:3 slots instead of wandering.
-                const refresh_mhz = output.wlr_output.refresh;
-                const interval_us: i64 = if (refresh_mhz > 0)
-                    @intCast(@divTrunc(@as(i64, 1_000_000_000), @as(i64, refresh_mhz)))
-                else
-                    16_666;
-                output.media_slide.widget.player.tick(interval_us);
-                // Keep the widget's cached state fresh for the peek mirror.
-                output.media_slide.widget.update();
-                // Video presents only while the card can show it (view law).
-                if (!output.media_slide.isOpen()) {
-                    std.log.info("[media] play_timer: widget ticking but slide NOT open (gen={d})", .{output.media_slide.widget.player_generation});
-                    continue;
-                }
-                const serial = output.media_slide.widget.player.display_serial;
-                std.log.info("[media] play_timer: gen={d} serial={d} last={d}", .{ output.media_slide.widget.player_generation, serial, output.media_slide.last_display_serial });
-                if (serial != output.media_slide.last_display_serial) {
-                    output.media_slide.last_display_serial = serial;
-                    self.mediaVideoRefresh(output);
-                    // VSYNC SELF-PERPETUATION: schedule a frame so the output
-                    // presents the updated pixels on its own vsync.
-                    output.wlr_output.scheduleFrame();
-                }
-            }
-        }
-
-        // ── Slideless music advance ───────────────────────────────────────────
-        // Slide closed, music still playing via the server MediaWidget.
-        if (slideless_playing) {
-            if (self.media_player.player.isDone()) {
-                self.media_player.ensureStopped();
-                self.disarmPlayTimer();
-                return 0;
-            }
-            self.media_player.player.tick(0);
-            // No video pixels for audio-only; no scheduleFrame needed here.
-            // Arm scheduleFrame on the first output so the home slide
-            // repaints once per timer tick.
-            if (self.outputs.first()) |first_out| {
-                first_out.wlr_output.scheduleFrame();
-            }
-        }
-
-        // ── Peek mirror ───────────────────────────────────────────────────────
-        // VISIBILITY LAW (playback.md): while audio plays, the player is
-        // always findable. When the SLIDE owns the player (card closed behind
-        // it), mirror its state into the server widget's cached view so the
-        // readout stays current. Slideless playback already feeds its own
-        // cache; never overwrite that.
-        if (slide_playing and !self.media_player.player_active) {
-            var mit = self.outputs.iterator(.forward);
-            while (mit.next()) |output| {
-                if (!output.media_slide.widget_ready or
-                    !output.media_slide.widget.player_active) continue;
-                const src = &output.media_slide.widget;
-                self.media_player.cached = src.cached;
-                self.media_player.cached.available = true;
-                if (self.outputs.first()) |first_out| {
-                    first_out.wlr_output.scheduleFrame();
-                }
-                break;
-            }
-        }
-
-        // Re-arm for the next tick at the playing output's vsync cadence.
-        self.play_timer.?.timerUpdate(self.playTimerMs()) catch |err| {
-            std.log.err("KidulWM: play_timer re-arm failed: {}", .{err});
-        };
         return 0;
     }
 

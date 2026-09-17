@@ -121,4 +121,11 @@ pub const KvisClient = struct {
     pub fn unpause(self: *KvisClient) Error!void {
         try self.verb("resume\n");
     }
+
+    /// seek_rel <seconds> — relative seek (fractional seconds, sign allowed).
+    pub fn seekRel(self: *KvisClient, seconds: f64) Error!void {
+        var buf: [128]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "seek_rel {d:.3}\n", .{seconds}) catch return error.OutOfMemory;
+        try self.verb(line);
+    }
 };

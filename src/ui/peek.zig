@@ -122,13 +122,16 @@ pub const Peek = struct {
     }
 
     pub fn deinit(self: *Peek) void {
-        if (self.left_tree) |t| t.node.destroy();
-        if (self.right_tree) |t| t.node.destroy();
+        // Children first: slot scene buffers live INSIDE left/right_tree —
+        // destroying the trees first leaves their destroy() touching freed
+        // wlroots state (teardown segfault, nested-smoke).
         inline for (.{ "gauge_slot", "drives_slot", "logo_slot", "clock_slot" }) |name| {
             const slot = &@field(self, name);
             if (slot.scene_buffer) |sb| sb.node.destroy();
             if (slot.buffer) |b| wlr.Buffer.drop(b);
         }
+        if (self.left_tree) |t| t.node.destroy();
+        if (self.right_tree) |t| t.node.destroy();
         self.* = .{ .overlay_tree = self.overlay_tree, .style = self.style };
     }
 

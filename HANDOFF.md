@@ -1,6 +1,51 @@
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 
 ---
+## ADDENDUM — Sep 17 2026 late (CARD 2b slice 4 — EMBEDDED PLAYER DELETED, NOT YET DEPLOYED)
+
+Built from main @ slice-4 commit, coderBob, TASKCARD-2b-slice4.
+Debug/test/ReleaseSafe clean, nested-smoke PASSED, close-evidence PASS.
+NOT deployed — bobDotrix cold-verifies + deploys. CENSUS verdict 33.
+
+### THE EMBEDDED PLAYER IS GONE — playback = kvis.sock verbs only
+- The compositor never decodes a frame. The whole in-process crash
+  class (Barticus's close-kills-the-session) is structurally dead:
+  closing the media slide is scene-node destroy only, never a decoder
+  teardown.
+- DELETED: src/ui/media_video.zig (dmabuf present path, 457 lines);
+  MediaWidget Player path (play/playLive/playMusic/playPause/seek/
+  update/ensureStopped, WatchState, player_generation); server.zig
+  play_timer + handlePlayTimer + arm/disarm/playTimerMs (~200 lines);
+  mediaVideoRefresh/Teardown; the mediaSlideCloseOn video carve-out;
+  stopOtherPlayers; MediaSlide video state (video_buffer, dmabuf_cache,
+  present counters, tickPlayback). Grep gate: zero hits for
+  media_video/mediaVideoRefresh/mediaVideoTeardown/play_timer/
+  embedder_owns_video in src/.
+- REDIRECTED: media_play IPC → KvisClient.open (.video slide spawns for
+  non-music via extension sniff); toggle/seek → pause/resume/seek_rel
+  (seek_rel ADDED to KvisClient); blind XF86Audio keys → kvis verbs;
+  video slide close → unparent+close verbs (already slice 2); music v1 =
+  kvisd headless open, peek now-playing mirrored via
+  MediaWidget.setMusicNowPlaying/clearNowPlaying (Server.media_player
+  keeps card UI + mirror only; playbackInhibitsBlank reads the mirror).
+- WINDOWED PLACEMENT FIX (folded in): placeKvisWindow raises kvisd's
+  tree above the slide tree in ALL modes — the black placeholder no
+  longer covers windowed video. Windowed ring-vs-matte visibility is
+  still a HOST eye-test verdict (inset follow-up if needed).
+- PRE-EXISTING TEARDOWN BUGS FIXED (smoke exposed them at 38b3699):
+  peek.deinit destroyed left/right trees before the slot scene buffers
+  INSIDE them; new_toplevel_decoration listener never removed at
+  shutdown. Both crashed ANY clean quit (segv + assert).
+- scripts/close-evidence.sh (new): nested headless + real kvisd, 3
+  close rounds, '[kvis] open sent' log lines, session survives every
+  close, clean quit. Run it before any future media refactor.
+- build.zig kmedia link KEPT: TvChannels + WatchState.path still serve
+  the TV rail (out-of-scope unlink). MediaWidget = library/search/
+  selection/art/card painting + cached mirror.
+- HOST TEST OWED: relog, kvisd on wayland-1, play → pause/seek verbs
+  live, windowed ring visibility eye-test, music peek mirror.
+
+---
 ## ADDENDUM — Sep 17 2026 (smartLock: idle blankscreen + blind-first-press)
 
 Binary: /usr/local/bin/kidulwm ReleaseSafe from 8dadac7, deployed ~11:35

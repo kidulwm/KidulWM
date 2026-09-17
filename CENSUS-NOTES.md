@@ -3,6 +3,41 @@
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
 
+## 2026-09-17 VERDICT 33: CARD 2b slice 4 LANDED — embedded player DELETED
+
+KidulWM (coderBob, TASKCARD-2b-slice4): the embedded libkmedia Player
+path is GONE. Playback = kvis.sock verbs only; the compositor never
+decodes a frame. Deleted: ui/media_video.zig (457 lines, dmabuf present
+path), MediaWidget Player path (play/playLive/playMusic/playPause/seek/
+update/ensureStopped + WatchState + generation machinery), server.zig
+play_timer + handlePlayTimer/arm/disarm/playTimerMs (~200 lines),
+mediaVideoRefresh/Teardown delegations, the mediaSlideCloseOn video
+carve-out, stopOtherPlayers, and MediaSlide's whole video presentation
+state (video_buffer/dmabuf_cache/present counters/tickPlayback).
+REDIRECTED: media_play → KvisClient.open (+ .video slide spawn for
+non-music via extension sniff); toggle/seek → pause/resume/seek_rel
+(seek_rel ADDED to KvisClient); blind XF86Audio keys → kvis verbs;
+slide close → nothing in-process (the crash class is structurally dead —
+close is scene-node destroy only, never a decoder teardown); music v1 =
+kvisd headless open with the peek now-playing mirrored via
+setMusicNowPlaying/clearNowPlaying. Windowed placement folded fix:
+placeKvisWindow raises kvisd's tree above the slide tree in ALL modes
+(black placeholder no longer covers windowed video); windowed
+ring-vs-matte visibility stays HOST-ONLY. Grep gate: media_video /
+mediaVideoRefresh / mediaVideoTeardown / play_timer /
+embedder_owns_video = 0 hits in src/. Debug/test/ReleaseSafe clean,
+nested-smoke PASSED, close-evidence (scripts/close-evidence.sh, kvisd
+live): 3 close rounds + real '[kvis] open sent' lines, session survived
+every close, clean quit — THE acceptance point (Barticus's close-kill).
+Also fixed two PRE-EXISTING teardown bugs the smoke exposed at 38b3699:
+peek.deinit destroyed parent trees before child slot buffers, and the
+xdg-decoration listener was never removed at shutdown (both crashed any
+clean quit). build.zig kmedia link KEPT (TvChannels + WatchState.path
+still used by the TV rail; unlink = out of scope). NOT deployed —
+bobDotrix cold-verifies + deploys. Host test owed: relog, kvisd on
+wayland-1, play → pause/seek verbs + windowed ring eye-test.
+
+
 ## 2026-09-17 VERDICT 32: CARD 2b slice 3 LANDED — kvisd placement
 
 KidulWM 6402578 (bobDotrix finished coderBob's cut-off dispatch; 402

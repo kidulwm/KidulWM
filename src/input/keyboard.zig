@@ -230,36 +230,27 @@ const KeyboardDevice = struct {
     /// screen stays OFF — the whole point. Returns false if nothing handled
     /// the keysym (caller then treats the press as a plain wake).
     fn handleBlindSafeKeysym(server: *Server, sym: xkb.Keysym) bool {
-        const mp = &server.media_player;
         switch (sym) {
             xkb.Keysym.XF86AudioPlay, xkb.Keysym.XF86AudioPause => {
-                if (!mp.player_active) return false;
-                mp.playPause();
+                server.kvisTogglePause();
                 return true;
             },
             xkb.Keysym.XF86AudioNext => {
-                if (!mp.player_active) return false;
-                mp.next();
                 return true;
             },
             xkb.Keysym.XF86AudioPrev => {
-                if (!mp.player_active) return false;
-                mp.prev();
                 return true;
             },
             xkb.Keysym.XF86AudioForward => {
-                if (!mp.player_active) return false;
-                mp.seek(10.0);
+                server.kvisSeekRel(10.0);
                 return true;
             },
             xkb.Keysym.XF86AudioRewind => {
-                if (!mp.player_active) return false;
-                mp.seek(-10.0);
+                server.kvisSeekRel(-10.0);
                 return true;
             },
             xkb.Keysym.XF86AudioStop => {
-                if (!mp.player_active) return false;
-                mp.ensureStopped();
+                server.kvisStop();
                 return true;
             },
             xkb.Keysym.XF86AudioRaiseVolume => {

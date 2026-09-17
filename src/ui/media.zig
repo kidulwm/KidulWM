@@ -635,19 +635,15 @@ pub const MediaWidget = struct {
     helix_phase: f64 = 0,
     last_energy: f64 = 0,
     last_helix_us: u64 = 0,
-    player: kmedia_lib.Player,
-    watch: kmedia_lib.WatchState,
-    player_active: bool = false,
-    /// Bumped on every ensureStopped — the compositor compares against its
-    /// own last-seen value and drops the dmabuf surface cache on change
-    /// (VA pool surface IDs are reused across opens; stale entries point
-    /// at a dead decoder's fds).
-    player_generation: u64 = 0,
-    player_ws_key_buf: [256]u8 = std.mem.zeroes([256]u8),
+    // CARD 2b slice 4: the in-process Player + WatchState + generation
+    // machinery is DELETED (verdict 28 — kvisd owns playback; the
+    // compositor never decodes a frame). The widget keeps library/search/
+    // selection/art/card painting + `cached` (peek now-playing state,
+    // mirrored from kvis.sock opens by Server).
 
-    /// True while a music file started from the media slide is playing in the
-    /// overlay MediaWidget (the slide having been dismissed). Drives the
-    /// now-playing line in renderPeek and the slideless vsync tick pump.
+    /// True while music started from the media slide is playing out-of-
+    /// process via kvisd (headless open verb). Drives the now-playing line
+    /// in renderPeek. Set/cleared by Server on kvis open/close.
     is_music: bool = false,
 
     focus: ControlFocus = .category,
@@ -684,10 +680,7 @@ pub const MediaWidget = struct {
         var self = MediaWidget{
             .allocator = allocator,
             .art_cache = std.StringHashMap(?*c.cairo_surface_t).init(allocator),
-            .player = kmedia_lib.Player.init(allocator),
-            .watch = kmedia_lib.WatchState.init(allocator),
         };
-        self.watch.load();
         self.art.init(allocator);
         return self;
     }
@@ -696,9 +689,6 @@ pub const MediaWidget = struct {
         self.art.deinit();
         self.clearArtCache();
         self.art_cache.deinit();
-        self.ensureStopped();
-        self.player.deinit();
-        self.watch.deinit();
     }
 
     pub fn toggleCard(self: *MediaWidget) void {
@@ -1198,58 +1188,28 @@ pub const MediaWidget = struct {
         return library[self.selected_result];
     }
 
-    /// Start music playback in the widget MediaWidget (slide has already been
-    /// dismissed by the caller). Unlike play(), this:
-    ///   - sets embedder_owns_video = false (no video scene buffer in the widget)
-    ///   - copies the caller-supplied title + artist strings into cached
-    ///   - sets is_music = true so renderPeek shows the now-playing line
-    pub fn playMusic(self: *MediaWidget, path: []const u8, title: []const u8, artist: []const u8) void {
-        self.ensureStopped();
-        if (path.len == 0) return;
-
-        // For audio files, the player's own cairo blit is fine; there is no
-        // video scene buffer in the widget path, so embedder_owns_video = false.
-        self.player.embedder_owns_video = false;
-
-        var path_z: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
-        const copy_len = @min(path.len, path_z.len - 1);
-        @memcpy(path_z[0..copy_len], path[0..copy_len]);
-        path_z[copy_len] = 0;
-
-        // Derive ws_key from path basename stem (watch-state resume).
-        const filename = std.fs.path.basename(path);
-        const stem = std.fs.path.stem(filename);
-        const n = @min(stem.len, self.player_ws_key_buf.len - 1);
-        @memcpy(self.player_ws_key_buf[0..n], stem[0..n]);
-        self.player_ws_key_buf[n] = 0;
-        const ws_key = self.player_ws_key_buf[0..n];
-
-        const resume_s = self.watch.resumePos(ws_key, null);
-        const resume_us: i64 = @as(i64, @intCast(resume_s)) * std.time.us_per_s;
-
-        self.player.open(path_z[0..copy_len :0].ptr, ws_key, resume_us) catch |err| {
-            std.log.err("libkmedia: playMusic failed for {s}: {s}", .{ path, @errorName(err) });
-            return;
-        };
-
-        self.player_active = true;
+    /// CARD 2b slice 4: music now-playing bookkeeping only — playback
+    /// itself is a kvis.sock 'open' verb issued by the Server (kvisd
+    /// headless, out of process). This just mirrors what the peek shows.
+    pub fn setMusicNowPlaying(self: *MediaWidget, title: []const u8, artist: []const u8) void {
         self.is_music = true;
         self.cached = .{};
         self.cached.available = true;
         self.cached.playing = true;
-        self.cached.duration = @as(f64, @floatFromInt(self.player.durationUs())) / 1_000_000.0;
-        self.cached.position = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
-
-        // Copy title (prefer supplied name; fall back to stem).
-        const title_src = if (title.len > 0) title else stem;
-        const tlen = @min(title_src.len, self.cached.title.len - 1);
-        @memcpy(self.cached.title[0..tlen], title_src[0..tlen]);
+        const tlen = @min(title.len, self.cached.title.len - 1);
+        @memcpy(self.cached.title[0..tlen], title[0..tlen]);
         self.cached.title[tlen] = 0;
-
-        // Copy artist (may be empty — that is fine).
         const alen = @min(artist.len, self.cached.artist.len - 1);
         if (alen > 0) @memcpy(self.cached.artist[0..alen], artist[0..alen]);
         self.cached.artist[alen] = 0;
+    }
+
+    /// Playback stopped/closed (kvis 'close' verb landed or a new open
+    /// took over) — clear the now-playing mirror.
+    pub fn clearNowPlaying(self: *MediaWidget) void {
+        self.is_music = false;
+        self.cached.playing = false;
+        self.cached.available = false;
     }
 
     /// The focused TV channel (url + stable id for watch-state), or null
@@ -1270,148 +1230,6 @@ pub const MediaWidget = struct {
     pub fn cancelSearch(self: *MediaWidget) void {
         self.clearSearch();
         self.focusControl(.category);
-    }
-
-    pub fn ensureStopped(self: *MediaWidget) void {
-        if (self.player_active) {
-            self.player.close();
-            self.player_active = false;
-            self.is_music = false;
-            self.cached.playing = false;
-            self.watch.deinit();
-            self.watch = kmedia_lib.WatchState.init(self.allocator);
-            self.watch.load();
-        }
-        // SECOND-VIDEO FREEZE LAW (2026-09-08): ANY stop bumps the
-        // generation so the compositor drops its dmabuf cache — the new
-        // decoder's VA pool reuses surface IDs, and a stale cache hit
-        // renders freed GPU surfaces at frame rate (hard system wedge).
-        self.player_generation +%= 1;
-        std.log.info("[media] ensureStopped: gen now {d} (was_active={})", .{ self.player_generation, self.player_active });
-    }
-
-    /// Enter on a TV channel card → live playback (live-tv.md). The LIVE
-    /// chrome + signal-lost state machine already live in Player.openLive;
-    /// the slide's embedder path is identical to file playback.
-    pub fn playLive(self: *MediaWidget, url: []const u8, channel_id: []const u8) void {
-        self.ensureStopped();
-        if (url.len == 0) return;
-
-        self.player.embedder_owns_video = true;
-
-        var url_z: [1024:0]u8 = std.mem.zeroes([1024:0]u8);
-        const copy_len = @min(url.len, url_z.len - 1);
-        @memcpy(url_z[0..copy_len], url[0..copy_len]);
-        url_z[copy_len] = 0;
-
-        // ws_key = channel id (writeLastWatched bumps its count, demotes
-        // others — favorites rise by use).
-        const n = @min(channel_id.len, self.player_ws_key_buf.len - 1);
-        @memcpy(self.player_ws_key_buf[0..n], channel_id[0..n]);
-        self.player_ws_key_buf[n] = 0;
-
-        self.player.openLive(url_z[0..copy_len :0].ptr, self.player_ws_key_buf[0..n]) catch |err| {
-            std.log.err("libkmedia: openLive failed for {s}: {s}", .{ url, @errorName(err) });
-            return;
-        };
-
-        self.player_active = true;
-        self.cached = .{};
-        self.cached.available = true;
-        self.cached.playing = true;
-        self.cached.duration = 0; // live — no duration, ever
-        self.cached.position = 0;
-    }
-
-    pub fn play(self: *MediaWidget, path: []const u8) void {
-        self.ensureStopped();
-
-        if (path.len == 0) return;
-
-        // KidulWM slide owns the video blit via a dedicated scene buffer;
-        // Player.render() must skip its cairo video path.
-        self.player.embedder_owns_video = true;
-
-        var path_z: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
-        const copy_len = @min(path.len, path_z.len - 1);
-        @memcpy(path_z[0..copy_len], path[0..copy_len]);
-        path_z[copy_len] = 0;
-
-        // Derive ws_key from path basename / stem
-        const filename = std.fs.path.basename(path);
-        const stem = std.fs.path.stem(filename);
-        const n = @min(stem.len, self.player_ws_key_buf.len - 1);
-        @memcpy(self.player_ws_key_buf[0..n], stem[0..n]);
-        self.player_ws_key_buf[n] = 0;
-        const ws_key = self.player_ws_key_buf[0..n];
-
-        // Resume position from watch-state
-        const resume_s = self.watch.resumePos(ws_key, null);
-        const resume_us: i64 = @as(i64, @intCast(resume_s)) * std.time.us_per_s;
-
-        self.player.open(path_z[0..copy_len :0].ptr, ws_key, resume_us) catch |err| {
-            std.log.err("libkmedia: failed to open {s}: {s}", .{ path, @errorName(err) });
-            return;
-        };
-        // The compositor-side dmabuf import (mediaVideoDmabufRefresh) is the
-        // always-present consumer — arm zero-copy like the standalone does
-        // after EGL bring-up, else currentVaFrame() never fires.
-        self.player.zero_copy_ok = true;
-
-        self.player_active = true;
-        self.cached = .{};
-        std.log.info("[media] play(): opened {s} gen={d} active=true", .{ path, self.player_generation });
-        self.cached.available = true;
-        self.cached.playing = true;
-        self.cached.duration = @as(f64, @floatFromInt(self.player.durationUs())) / 1_000_000.0;
-        self.cached.position = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
-
-        const title_slice = stem;
-        const tlen = @min(title_slice.len, self.cached.title.len - 1);
-        @memcpy(self.cached.title[0..tlen], title_slice[0..tlen]);
-        self.cached.title[tlen] = 0;
-    }
-
-    pub fn playPause(self: *MediaWidget) void {
-        if (!self.player_active) return;
-        const now_paused = !self.player.paused.load(.seq_cst);
-        self.player.paused.store(now_paused, .seq_cst);
-        self.cached.playing = !now_paused;
-        const pos_s: u32 = @intCast(@divFloor(self.player.posUs(), std.time.us_per_s));
-        self.player.writeWatchState(pos_s, false);
-    }
-
-    pub fn next(self: *MediaWidget) void {
-        _ = self;
-    }
-
-    pub fn prev(self: *MediaWidget) void {
-        _ = self;
-    }
-
-    pub fn seek(self: *MediaWidget, seconds: f64) void {
-        if (!self.player_active) return;
-        const cur_pos_s = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
-        const target_s = @max(0.0, cur_pos_s + seconds);
-        const target_us: i64 = @intFromFloat(target_s * 1_000_000.0);
-        self.player.seekAbsolute(target_us);
-        self.cached.position = target_s;
-    }
-
-    pub fn update(self: *MediaWidget) void {
-        if (!self.player_active) {
-            self.cached.playing = false;
-            return;
-        }
-
-        if (self.player.isDone()) {
-            self.ensureStopped();
-            return;
-        }
-
-        self.cached.playing = !self.player.paused.load(.seq_cst);
-        self.cached.position = @as(f64, @floatFromInt(self.player.posUs())) / 1_000_000.0;
-        self.cached.duration = @as(f64, @floatFromInt(self.player.durationUs())) / 1_000_000.0;
     }
 
     pub fn needsRedraw(self: *const MediaWidget) bool {
@@ -1772,7 +1590,7 @@ pub const MediaWidget = struct {
         const scale_f: f64 = @as(f64, scale);
         const corner_r = @as(f64, style_.corner_depth) * scale_f;
 
-        if (as_slide and !self.player_active) {
+        if (as_slide) {
             // Transparent outside the corner path.
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
             c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
@@ -1782,43 +1600,6 @@ pub const MediaWidget = struct {
             c.cairo_save(cr);
             mediaSlidePath(cr, 0, 0, w_d, h_d, corner_r, style_.corner_style);
             c.cairo_clip(cr);
-        }
-
-        // When playing in-slide video, player owns the full surface.
-        if (self.player_active) {
-            if (self.player.embedder_owns_video) {
-                // The compositor draws the video itself in a dedicated scene
-                // buffer BELOW this card buffer. While playing the card
-                // buffer is rendered at the FULL OUTPUT size and the slide
-                // tree sits at 0,0 (Server.mediaSlideRefresh), so this
-                // matte + hole cover the peeks and every widget beneath —
-                // normal FULL SCREEN. Paint the black matte, then punch a
-                // transparent hole exactly where the video goes so the
-                // scene buffer shows through. Chrome draws after, on top.
-                c.cairo_set_source_rgb(cr, 0, 0, 0);
-                c.cairo_paint(cr);
-                // Punch the hole from the STREAM dims (known at open), NOT
-                // currentFrame() — at first render no frame has decoded yet,
-                // and gating on it left the card opaque with the video hidden
-                // behind (only its overflow edge showed).
-                const vsize = self.player.videoSize();
-                if (vsize.w > 0 and vsize.h > 0) {
-                    const vw: f64 = @floatFromInt(vsize.w);
-                    const vh: f64 = @floatFromInt(vsize.h);
-                    // Plain letterbox into this buffer's own rect — the
-                    // buffer IS the full output while playing.
-                    const vscale = @min(w_d / vw, h_d / vh);
-                    const dw = vw * vscale;
-                    const dh = vh * vscale;
-                    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
-                    c.cairo_set_source_rgba(cr, 0, 0, 0, 0);
-                    c.cairo_rectangle(cr, (w_d - dw) / 2.0, (h_d - dh) / 2.0, dw, dh);
-                    c.cairo_fill(cr);
-                    c.cairo_set_operator(cr, c.CAIRO_OPERATOR_OVER);
-                }
-            }
-            self.player.render(@ptrCast(cr), @intFromFloat(w_d), @intFromFloat(h_d));
-            return;
         }
 
         // Art worker drain: pop-in thumbnails land here, one gen per batch.
@@ -2335,7 +2116,7 @@ pub const MediaWidget = struct {
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
         // at the buffer edge (same tokens as window chrome).
-        if (as_slide and !self.player_active) {
+        if (as_slide) {
             c.cairo_restore(cr);
             const bw = @as(f64, style_.border_width) * scale_f;
             const half = bw * 0.5;
