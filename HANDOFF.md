@@ -1,6 +1,90 @@
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 
 ---
+## ADDENDUM — Sep 17 2026 (keybinds FIXED + screen blanking + weather PARKED)
+
+Binary: /usr/local/bin/kidulwm built ReleaseSafe from 7a1a005, deployed
+~10:56 AEST. Live at next relog. Commits: 46757df (weather removal),
+7a1a005 (keybinds/blanking).
+
+### KEYBINDS — the conf never worked, now it does
+~/.config/kidulwm/keybinds.conf existed but the compositor silently ran
+on built-in defaults forever. Two root causes in src/config/keybinds.zig:
+1. ALL-OR-NOTHING parser: any one bad line (unknown action, unknown key,
+   missing '=') returned defaults() for the WHOLE file. One typo killed
+   every bind. Fixed: bad lines now log "line N ... skipped" and parsing
+   continues; user binds MERGE over defaults (later lines win).
+2. NO INLINE COMMENTS: nearly every conf line ends with '# comment', and
+   the parser compared the whole right side ('close_focused # quit') —
+   never matched → unknown action → (per bug 1) whole file discarded.
+   Fixed: '#' to end-of-line stripped before parsing.
+Missing actions the conf documented but parseAction never knew:
+tray_select_next/prev (route to focusNext/Prev), tray_activate (overview
+toggle), wm_reset, F11 keysym. All added. Diagnosis is now LOUD — check
+session.log for 'loaded N user keybinds' / 'line N ... skipped'.
+
+### SCREEN BLANKING (anti-burn) — DONE, lock NOT done
+Mod4+x (screen_off action) commits every output disabled via
+wlr.Output.State.setEnabled(false) — real DPMS-style panel power-down.
+Any key press wakes (screensOffSet(false) in keyboard.zig handleKey,
+checked BEFORE bind dispatch so the wake key can't fire an action) and is
+swallowed. Same combo toggles. NO password — blanking only.
+
+### LOCKSCREEN — SCOPED, NOT BUILT (all for later)
+Barticus wants a real lock eventually. Design notes while fresh:
+- Where it hooks: server.screens_off is already the single gate for
+  'screens dark, session parked'. A lock is the same gate plus an auth
+  wall before screensOffSet(false) is allowed. Add server.locked: bool;
+  keyboard.zig's wake block becomes 'if screens_off and not locked: wake;
+  if locked: show lock UI, buffer input to it, wake only after auth'.
+- Lock UI: a fullscreen layer in overlay_tree per output (same shape as
+  wallpaper_reveal_buffer — a SceneBuffer covering the output, raised
+  above everything). Solid theme bg + kbrain-style centered input (the
+  kbrain-ui face law: borderless center input, block cursor, gold text).
+  DO NOT reuse peek/notification widgets — a lock must not share state
+  with widgets that fullscreen law can hide.
+- Auth: PAM is the honest path (same as login) — check passwd via
+  /etc/pam.d/login through libpam, or a simple SHA-512 hash against a
+  ~/.config/kidulwm/lock.conf for the single-user KSD case. Decide with
+  Barticus; PAM preferred if a DM ever lands. NEVER store plaintext.
+- Screensaver link: idle-timeout blanking is a timer (wl_event_loop)
+  calling screensOffSet(true) after N idle minutes; lock-on-idle is the
+  same timer also setting locked=true. Build blanking-timer first, lock
+  second — the timer is shared. ext-idle-notify-v1 exists in wlroots
+  0.20 if we want compositor-external idle tracking later.
+- Granny law: the remote's SW button must wake/unlock without a password
+  on the TV profile; lock is a geek-profile opt-in.
+- Files to touch when built: server.zig (locked flag, lock UI spawn,
+  PAM/hash verify), input/keyboard.zig (input routing to lock UI),
+  config/keybinds.zig (lock action separate from screen_off).
+
+### WEATHER WIDGET — PARKED (not gone for good)
+Removed in 46757df (widget, painter, moon.zig, tests, systemd fetch
+timer/service deleted on host). REASON: the 'mirror the clock painter'
+approach (commits 8f49a81→db3103f, four layout commits in one day) never
+converged — text budget clamps, icon clamps, mirror anchors all produced
+new misplacements each pass; Barticus: 'still all over the place'.
+It WILL come back with a different design — see CENSUS-NOTES verdict for
+the full post-mortem and the NOT-TO-DO list. History is intact: the last
+weather state is db3103f; moon.zig's shaded-sphere renderer was GOOD,
+keep it for the redo (git show 46757df^:src/util/moon.zig).
+
+### NOT TO DO (today's weather mess, the bill)
+- Do NOT resurrect weather by re-adding clamps/budgets onto the old
+  painter — that painter is why it died. New design or nothing.
+- Do NOT anchor a tall widget by mirroring a short glyph's coordinates
+  (moon cy mirrored from the clock's 34*scale strip clipped the moon top;
+  that was the 'pinned to the bottom' bug).
+- Do NOT iterate layout on the live compositor without the offscreen
+  render harness FIRST (peek-weather-test caught in one PNG what four
+  live commits missed). If weather returns, build the harness before the
+  painter.
+- Do NOT make a config parser all-or-nothing. Ever. That one bug hid the
+  keybinds conf for its entire life.
+- Do NOT deploy-and-eyeball in a loop: one build → one verdict, no
+  stacking four layout commits in a day.
+
+---
 ## ADDENDUM — Sep 16 2026 evening (TRAY-SLIDE STAGE 2 — DEMOLITION DONE, NOT YET DEPLOYED)
 
 Branch: tray-slide @ e12ff6e (GPG-signed B&B, parent-verified cold rebuild).

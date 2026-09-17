@@ -2,6 +2,42 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
+## 2026-09-17 VERDICT 27: weather widget PARKED + keybind conf FIXED + blanking born
+
+1. WEATHER WIDGET PARKED (removed 46757df, NOT deleted from history).
+   The mirror-the-clock layout (8f49a81, 56410bc, 1cfb590, f0062cc,
+   db3103f — five layout commits in two days) never converged: every
+   pass fixed one overlap and created another (stranded icon, bottom
+   overflow, clipped moon top, off-center sun). Barticus verdict: 'still
+   all over the place', removed ASAP. The systemd fetch timer/service
+   (kidulwm-weather.*) was disabled + deleted on the host. IT IS NOT
+   GONE FOR GOOD — it returns with a NEW DESIGN, not more clamps.
+   Salvage for the redo: moon.zig shaded-sphere renderer was correct
+   (git show 46757df^:src/util/moon.zig); cache format home.json was
+   correct; the fetcher script was correct. What was wrong was ONLY the
+   pill layout. REDO RULES: harness-before-painter (offscreen render at
+   scale 1 AND 2 before any deploy); no mirroring anchors from glyphs of
+   a different size; no text-budget/clamp hacks; one build → one
+   verdict, never stacked commits.
+
+2. KEYBINDS CONF — never worked since birth, fixed 7a1a005. Parser was
+   all-or-nothing (one bad line → whole file discarded → silent
+   defaults) AND couldn't strip inline '#' comments (present on nearly
+   every conf line, so EVERY line was 'unknown action'). The conf sat
+   there documenting binds the compositor never loaded. Fixed: per-line
+   skip + loud warnings, inline comment strip, user binds MERGE over
+   defaults with priority. Added missing actions tray_select_next/prev,
+   tray_activate, wm_reset, F11. LESSON: any config parser that silently
+   falls back is a bug farm — log loudly at load time what was used and
+   what was skipped.
+
+3. SCREEN BLANKING (anti-burn) born 7a1a005: Mod4+x toggles
+   screens_off; all outputs commit setEnabled(false) (real DPMS-style
+   off), any key wakes (checked before bind dispatch, wake key
+   swallowed). No password — lock is SCOPED in HANDOFF 2026-09-17
+   addendum (locked flag, overlay_tree lock UI, PAM-or-hash auth,
+   idle timer shared with blanking, Granny remote wake opt-out).
+
 ## 2026-09-16 VERDICT 19: kmedia A→B probe test CLEAN + spyglass EXIT signs rebuilt + browser YT crash moved to WPE
 
 SESSION (bobdotrix + Barticus, morning→midday):
