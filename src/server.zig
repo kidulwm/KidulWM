@@ -508,6 +508,12 @@ pub const Server = struct {
 
     decoration_manager: *wlr.XdgDecorationManagerV1,
 
+    /// xdg-foreign (CARD 2b, kvis attack): the media slide exports its
+    /// surface, kvisd imports the handle and parents its video surface.
+    /// Registry first, then the v2 globals (exporter + importer).
+    xdg_foreign_registry: *wlr.XdgForeignRegistry,
+    xdg_foreign_v2: *wlr.XdgForeignV2,
+
     new_output: wl.Listener(*wlr.Output),
     new_toplevel_decoration: wl.Listener(*wlr.XdgToplevelDecorationV1),
     backend_destroy: wl.Listener(*wlr.Backend),
@@ -855,6 +861,9 @@ pub const Server = struct {
         const screencopy_manager = try wlr.ScreencopyManagerV1.create(wl_server);
         const fractional_scale_manager = try wlr.FractionalScaleManagerV1.create(wl_server, 1);
         const decoration_manager = try wlr.XdgDecorationManagerV1.create(wl_server);
+        // xdg-foreign v2 (CARD 2b): registry shared by both globals.
+        const xdg_foreign_registry = try wlr.XdgForeignRegistry.create(wl_server);
+        const xdg_foreign_v2 = try wlr.XdgForeignV2.create(wl_server, xdg_foreign_registry);
 
         const seat = try wlr.Seat.create(wl_server, "seat0");
         seat.setCapabilities(.{ .pointer = true, .keyboard = true });
@@ -888,6 +897,8 @@ pub const Server = struct {
             .screencopy_manager = screencopy_manager,
             .fractional_scale_manager = fractional_scale_manager,
             .decoration_manager = decoration_manager,
+            .xdg_foreign_registry = xdg_foreign_registry,
+            .xdg_foreign_v2 = xdg_foreign_v2,
             .seat = seat,
             .cursor = cursor,
             .xcursor_manager = xcursor_manager,
