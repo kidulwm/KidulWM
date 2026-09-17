@@ -33,9 +33,15 @@ Also fixed two PRE-EXISTING teardown bugs the smoke exposed at 38b3699:
 peek.deinit destroyed parent trees before child slot buffers, and the
 xdg-decoration listener was never removed at shutdown (both crashed any
 clean quit). build.zig kmedia link KEPT (TvChannels + WatchState.path
-still used by the TV rail; unlink = out of scope). NOT deployed —
-bobDotrix cold-verifies + deploys. Host test owed: relog, kvisd on
-wayland-1, play → pause/seek verbs + windowed ring eye-test.
+still used by the TV rail; unlink = out of scope). DEPLOYED by bobDotrix
+2026-09-17 ~22:35 AEST after independent cold-verify from a wiped
+zig-cache: Debug/test/ReleaseSafe all 0/0, nested-smoke PASS,
+close-evidence PASS (3 close rounds survived), grep gate 0 hits.
+/usr/local/bin/kidulwm sha256 c1afad6f (bak .bak-2b-slice4). Live at
+next relog. Deploy note: ReleaseSafe output dir is zig-out/bin (the old
+zig-out-release path is stale — KNOWN_CMDS should track this). Host test
+owed: relog, kvisd on wayland-1, play → pause/seek verbs + windowed
+ring eye-test.
 
 
 ## 2026-09-17 VERDICT 32: CARD 2b slice 3 LANDED — kvisd placement
