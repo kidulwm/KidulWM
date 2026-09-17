@@ -3582,7 +3582,14 @@ pub const Server = struct {
         // BOOT LADDER (A5): the first output to land spawns the media
         // PLAYER appliance as a normal compositor-owned app slide — first
         // frame, first focus. No home slide exists at keyless boot.
-        if (!self.boot_player_spawned) {
+        // HOST GATE (Barticus 2026-09-17): on this host the player is a
+        // Mod4+m slide like any other; boot-open is TV-profile behaviour.
+        // Gate via env: KIDULWM_BOOT_MEDIA=1 restores the TV boot ladder.
+        const boot_media = blk: {
+            const val = std.c.getenv("KIDULWM_BOOT_MEDIA") orelse break :blk false;
+            break :blk std.mem.eql(u8, std.mem.span(val), "1");
+        };
+        if (boot_media and !self.boot_player_spawned) {
             self.boot_player_spawned = true;
             _ = output.deck.addCompositorSlide(.media_player, 0, false);
             self.mediaSlideOpen(output);
