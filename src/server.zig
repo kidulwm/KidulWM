@@ -514,6 +514,11 @@ pub const Server = struct {
     xdg_foreign_registry: *wlr.XdgForeignRegistry,
     xdg_foreign_v2: *wlr.XdgForeignV2,
 
+    /// CARD 2b slice 1: the compositor's own Wayland client for slide-host
+    /// surfaces (one host xdg_toplevel per .video slide). Created lazily on
+    /// first video-slide spawn; null until then.
+    internal_client: ?*@import("ipc/internal_client.zig").InternalClient = null,
+
     new_output: wl.Listener(*wlr.Output),
     new_toplevel_decoration: wl.Listener(*wlr.XdgToplevelDecorationV1),
     backend_destroy: wl.Listener(*wlr.Backend),
@@ -1121,10 +1126,23 @@ pub const Server = struct {
             try shutdown_source.timerUpdate(8000);
         }
 
+        // CARD 2b slice 1 smoke test (KIDULWM_INTERNAL_CLIENT_TEST=1):
+        // exercise the internal client + export handshake at boot and log
+        // the handle. Opt-in only; normal boots skip it entirely.
+        if (std.c.getenv("KIDULWM_INTERNAL_CLIENT_TEST") != null) {
+            std.log.info("KidulWM: [2b-smoke] env set, running smoke test", .{});
+            self.runInternalClientSmokeTest();
+        }
+
         self.wl_server.run();
     }
 
     pub fn deinit(self: *Server) void {
+        // Internal client teardown before destroyClients — it IS a client.
+        if (self.internal_client) |ic| {
+            ic.destroy();
+            self.internal_client = null;
+        }
         // Disconnect all clients before tearing down globals, otherwise
         // wl_display_destroy asserts if clients are still connected.
         self.wl_server.destroyClients();
@@ -2120,6 +2138,39 @@ pub const Server = struct {
         output.media_slide.tree = null;
         output.media_slide.card_buffer = null;
         std.log.info("KidulWM: media player slide closed", .{});
+    }
+
+    // ── CARD 2b slice 1: internal client smoke test ────────────────────
+
+    /// Lazily create the compositor's own Wayland client (socketpair →
+    /// wl_client_create + connect_to_fd → registry roundtrip). One per
+    /// server lifetime; slice 2 (slide lifecycle) will call this on first
+    /// video-slide spawn.
+    pub fn ensureInternalClient(self: *Server) !*@import("ipc/internal_client.zig").InternalClient {
+        const ic_mod = @import("ipc/internal_client.zig");
+        if (self.internal_client) |ic| return ic;
+        const ic = try ic_mod.InternalClient.create(self.allocator, self.wl_server);
+        self.internal_client = ic;
+        return ic;
+    }
+
+    /// Boot smoke test (KIDULWM_INTERNAL_CLIENT_TEST=1): create the
+    /// internal client, spawn one host toplevel, export it, and log the
+    /// handle. Proves the socketpair handshake + registry + exporter
+    /// end-to-end inside the live compositor.
+    fn runInternalClientSmokeTest(self: *Server) void {
+        const ic_mod = @import("ipc/internal_client.zig");
+        const ic = self.ensureInternalClient() catch |err| {
+            std.log.err("KidulWM: [2b-smoke] internal client FAILED: {s}", .{@errorName(err)});
+            return;
+        };
+        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kvis host (smoke)") catch |err| {
+            std.log.err("KidulWM: [2b-smoke] host surface export FAILED: {s}", .{@errorName(err)});
+            return;
+        };
+        std.log.info("KidulWM: [2b-smoke] export handle = {s}", .{host.handle.?});
+        host.destroy();
+        std.log.info("KidulWM: [2b-smoke] PASS (client up, exported, handle received, torn down)", .{});
     }
 
     // ── Video slide — REAL fullscreen slide right of the player (stage 3) ──

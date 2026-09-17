@@ -30,6 +30,9 @@ pub fn build(b: *std.Build) void {
     scanner.addCustomProtocol(b.path("protocol/wlr-layer-shell-unstable-v1.xml"));
     scanner.addCustomProtocol(b.path("protocol/wlr-output-power-management-unstable-v1.xml"));
     scanner.addCustomProtocol(b.path("protocol/kidul-settings-tray-v1.xml"));
+    // xdg-foreign v2 (CARD 2b): the internal client exports the video
+    // slide's host surface; kvisd imports the handle.
+    scanner.addCustomProtocol(b.path("protocol/xdg-foreign-unstable-v2.xml"));
 
     scanner.generate("wl_compositor", 4);
     scanner.generate("wl_subcompositor", 1);
@@ -49,6 +52,8 @@ pub fn build(b: *std.Build) void {
     scanner.generate("zwlr_layer_shell_v1", 5);
     scanner.generate("zwlr_output_power_manager_v1", 1);
     scanner.generate("kidul_settings_tray_v1", 1);
+    scanner.generate("zxdg_exporter_v2", 1);
+    scanner.generate("zxdg_importer_v2", 1);
 
     const wayland = b.createModule(.{ .root_source_file = scanner.result });
 
