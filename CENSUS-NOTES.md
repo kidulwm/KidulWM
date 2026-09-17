@@ -3,6 +3,48 @@
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
 
+## 2026-09-18 VERDICT 34: kvisd classification + media focus gate (host test regressions)
+
+Barticus host test of CARD 2b slice 4 exposed four symptoms, all ONE root:
+black fullscreen, chrome/logos over the movie, kvisd-as-slide in the peeks,
+and the media player holding focus when it was NOT focused.
+
+ROOT CAUSE 1 — kvisd sets app_id AFTER toplevel creation (get_toplevel
+precedes set_app_id by protocol order). handleNewXdgToplevel read
+toplevel.app_id at creation → always null → never marked is_kvis → the
+video surface was appended to the normal window list and became a deck
+slide (black placeholder on the real video slide, chrome ring, peek
+entry, focus grab). FIX: Server.classifyKvis() re-classifies on
+set_app_id (window.zig handleSetAppId calls it) and unlinks the window
+from the deck/windows list — no slide, no chrome, no focus.
+handleToplevelDestroy now guards the double unlink (link.prev != null).
+
+ROOT CAUSE 2 — mediaSlideKey routed keys whenever a media slide EXISTED
+in the current deck, not when it was FOCUSED — media-is-a-slide.md
+ruling 2 violation, re-locked by Barticus this session ("the media
+player keeps focus when not in focus"). FIX: mediaSlideKey bails unless
+the focused centre slide is .media_player (empty_slot check + kind
+check).
+
+ALSO: videoSlideSpawnRightOfPlayer now requestLayout() immediately so the
+fullscreen flag (hide peeks, edge-to-edge, zero chrome) applies on the
+same frame instead of lingering one beat behind.
+
+KidulWM 4ea2bc7 (signed B&B). Debug/test/ReleaseSafe clean,
+nested-smoke PASS, close-evidence PASS (3 close rounds). DEPLOYED
+/usr/local/bin/kidulwm sha256 c0fbe08f (bak .bak-2b-focus = c1afad6f).
+
+ENV NOTE (bobdotrix): close-evidence.sh runs `rm -f kvis.sock` then
+spawns a throwaway headless kvisd — on exit it leaves the socket path
+bound to a dead inode while the real kvisd listens orphaned. Symptom =
+music won't play. Fix = kill orphan kvisd, `rm -f kvis.sock`, restart
+kvisd on wayland-1. Verified after restart: FLAC open → playing=1 pos
+advancing, ksound audio_live=1, Pulse RUNNING kmedia stream uncorked.
+
+HOST TEST OWED (Barticus): relog → movie plays IN the fullscreen slide
+(zero chrome/peeks edge-to-edge), walk deck → focus hands off instantly,
+quit media slide → session + other terminal survive, music plays.
+
 ## 2026-09-17 VERDICT 33: CARD 2b slice 4 LANDED — embedded player DELETED
 
 KidulWM (coderBob, TASKCARD-2b-slice4): the embedded libkmedia Player
