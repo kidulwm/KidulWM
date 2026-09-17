@@ -1070,3 +1070,37 @@ name the claimer. On success: strip probes and close the verdict.
 STILL OPEN: (a) mpv-style timings (verdict 17 tail, unchanged).
 (b) tray.zig removeOutput listener-lifetime crash on deinit (2026-09-12
 autopsy item 1). (c) probe strip pending repro.
+
+## 2026-09-17 VERDICT 28 (bobdotrix): media slide's future is kvisd — the embedded player is EOL
+
+Evidence session (kmedia HANDOFF session 22): the identical Player
+engine that wedges/silences EMBEDDED in the compositor process plays
+clean as kvisd (own process, kvis.sock protocol): VAAPI zero-copy,
+EAC3+FLAC both loud, DAC-pure clock, 6.8% CPU, and ksound watched the
+stream lifecycle without a leak. The day's "no sound" was ksound's
+fade-restore ratchet (fixed, ksound b9ece85, deployed), never the
+engine, never the compositor.
+
+LOCKED CONSEQUENCE for this repo: ui/media.zig + media_video.zig
+embedded-libkmedia path is scheduled for DELETION in kvis CARD 2b/2c.
+Do NOT invest in its letterbox-offset / fullscreen-border bugs (kmedia
+docs/design/kvis-process.md §9) — both die structurally when the slide
+becomes a kvisd parent surface (one coordinate space, kvis letterboxes
+inside its own surface; fullscreen = the subsurface edge-to-edge).
+
+NEXT CARD HERE (attack order, kmedia HANDOFF has the full plan):
+  1. server.zig: create wlr_xdg_foreign_v2 registry (wlroots-0.20
+     headers on host: /usr/include/wlroots-0.20/wlr/types/
+     wlr_xdg_foreign_v2.h; XML in /usr/share/wayland-protocols/
+     unstable/xdg-foreign/).
+  2. Media slide surface: zxdg_exporter_v2 export → handle string.
+  3. Slide → kvis.sock client: open/parent <handle> <x> <y>/seek/pause;
+     geometry moves ride the socket; unparent on slide close.
+  4. Delete embedded module + present path; slide keeps ONLY chrome,
+     geometry, focus. Music-peek (beefcaa) moves in CARD 3.
+Acceptance: kvisd wedge cannot freeze the WM (LAW 5, crash containment
+structural); slide paints letterbox matte and NAMES the corpse.
+
+Session-21 wedge (verdict 19 tail, tray-path caveat): SUPERSEDED as a
+hunt — if the wedge returns at all, it returns inside kvisd where it
+can be named and killed. Do not re-probe the embedded path.

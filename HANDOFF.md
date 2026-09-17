@@ -2005,3 +2005,16 @@ Current VM build: c986cfb on fresh-one. aig workaround: host zig for kidulwm.
 
 ---
 Gods speed. The portal opens.
+
+---
+## ADDENDUM — Sep 17 2026 pm (kvis verdict: media slide goes client, embedded player EOL)
+
+kmedia session 22 closed the silent-player mystery (ksound fade ratchet,
+ksound b9ece85 deployed) and birthed kvisd (kmedia 3210add + 535fbde):
+playback in its OWN process, hardware-verified. Verdict 28 in
+CENSUS-NOTES locks the consequence: media slide becomes a kvis.sock
+client + xdg-foreign parent surface; the embedded libkmedia module is
+scheduled for deletion. NEXT KidulWM card = wlr_xdg_foreign_v2 registry
++ slide export + media_slide.zig → socket client. Full attack order in
+kmedia/HANDOFF.md session 22. Do not patch embedded letterbox/fullscreen
+bugs — they die with the module.
