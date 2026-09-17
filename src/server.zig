@@ -2274,17 +2274,25 @@ pub const Server = struct {
             output.video_slide.card_last_w = buf_w;
             output.video_slide.card_last_h = buf_h;
 
-            // Stock chrome border ring, like every focused slide (A1/A4).
-            const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
-            if (chrome_buf) |cb| {
-                if (output.video_slide.chrome_buffer) |old| old.node.destroy();
-                if (tree.createSceneBuffer(cb) catch null) |chrome| {
-                    output.video_slide.chrome_buffer = chrome;
-                    chrome.setDestSize(buf_w, buf_h);
-                    chrome.node.raiseToTop();
-                } else {
-                    wlr.Buffer.drop(cb);
+            // CHROME LAW (Barticus 2026-09-17, LOCKED): fullscreen video
+            // = ZERO chrome. The ring cost ~6% CPU (2→8) and painted over
+            // the picture. Only windowed (peek/parked) shows the ring.
+            const is_fullscreen = deck.slides.items[idx].fullscreen;
+            if (!is_fullscreen) {
+                const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
+                if (chrome_buf) |cb| {
+                    if (output.video_slide.chrome_buffer) |old| old.node.destroy();
+                    if (tree.createSceneBuffer(cb) catch null) |chrome| {
+                        output.video_slide.chrome_buffer = chrome;
+                        chrome.setDestSize(buf_w, buf_h);
+                        chrome.node.raiseToTop();
+                    } else {
+                        wlr.Buffer.drop(cb);
+                    }
                 }
+            } else if (output.video_slide.chrome_buffer) |old| {
+                old.node.destroy();
+                output.video_slide.chrome_buffer = null;
             }
         }
         tree.node.setPosition(target.x, target.y);
