@@ -1,11 +1,13 @@
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 
 ---
-## ADDENDUM — Sep 17 2026 late (CARD 2b slice 4 — EMBEDDED PLAYER DELETED, NOT YET DEPLOYED)
+## ADDENDUM — Sep 18 2026 early am (CARD 2b slice 4 — EMBEDDED PLAYER DELETED, DEPLOYED)
 
 Built from main @ slice-4 commit, coderBob, TASKCARD-2b-slice4.
 Debug/test/ReleaseSafe clean, nested-smoke PASSED, close-evidence PASS.
-NOT deployed — bobDotrix cold-verifies + deploys. CENSUS verdict 33.
+DEPLOYED by bobDotrix ~22:35 after independent cold-verify (wiped
+zig-cache): /usr/local/bin/kidulwm sha256 c1afad6f (bak .bak-2b-slice4).
+CENSUS verdict 33 (55c88af). CARD 2b COMPLETE.
 
 ### THE EMBEDDED PLAYER IS GONE — playback = kvis.sock verbs only
 - The compositor never decodes a frame. The whole in-process crash
@@ -44,6 +46,13 @@ NOT deployed — bobDotrix cold-verifies + deploys. CENSUS verdict 33.
   selection/art/card painting + cached mirror.
 - HOST TEST OWED: relog, kvisd on wayland-1, play → pause/seek verbs
   live, windowed ring visibility eye-test, music peek mirror.
+
+### NEXT + MODEL NOTE (session 24 close)
+- NEXT CARD: CARD 3 music-peek (real now-playing from kvis.status).
+  Parked: weather redo (new design or nothing, harness-before-painter).
+- MODEL 2026-09-18: Kimi K3 repriced $3/$15. Farm default (bobdotrix +
+  default profiles) = deepseek/deepseek-v4-pro (Nous). coder-bob stays
+  Anthropic (Claude). Dream = local K2.7-Code on a fat-RAM box.
 
 ---
 ## ADDENDUM — Sep 17 2026 (smartLock: idle blankscreen + blind-first-press)
