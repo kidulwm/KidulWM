@@ -1,6 +1,42 @@
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 
 ---
+## ADDENDUM — Sep 17 2026 (smartLock: idle blankscreen + blind-first-press)
+
+Binary: /usr/local/bin/kidulwm ReleaseSafe from 8dadac7, deployed ~11:35
+AEST (rename swap; backup kidulwm.bak-smartlock). Live at next relog.
+
+### SMARTLOCK — BUILT AND DEPLOYED
+- Conf: new `[blankscreen]` section in ~/.config/kidulwm/keybinds.conf.
+    blankscreen_timeout = 600        # seconds; 0 = never auto-blank
+    inhibit_visual_playback = true   # video/karaoke/LIVE TV keeps screen on
+    inhibit_audio_playback = false   # music blanks the screen (screen off, tune on)
+  Parsed per-line like the binds (bad lines log+skip, never discard).
+- Idle machinery: Server.last_input_us stamped in every input handler
+  (keyboard.zig key, pointer.zig motion/motionAbsolute/button/axis);
+  blank_timer on the wl_event_loop polls at min(timeout, 30s) and calls
+  screensOffSet(true) when idle >= timeout AND playback doesn't inhibit.
+- Inhibit law: the question is never "is something playing?" but "would
+  blanking break what the user is watching right now?" Visual playback
+  (is_music=false covers video/karaoke/LIVE TV) while playing inhibits;
+  audio-only music inhibits only if conf'd; paused/stopped never does.
+  Truth source = Server.media_player (player_active + cached.playing +
+  is_music) — one player, one truth, no portals.
+- BLIND-FIRST-PRESS LAW (Barticus: "granny doesn't need her glasses"):
+  while screens are off, XF86Audio{Play,Pause,Stop,Next,Prev,Forward,
+  Rewind} execute blind against the player and the screen STAYS black;
+  every other key wakes + is swallowed (never types into apps); Mod4/
+  Ctrl combos wake-first-and-swallow so navigation never fires blind.
+  Volume keysyms join the blind set once ksound owns a mixer (no mixer
+  owner today — parked, noted in keyboard.zig comment).
+- Remote: remote buttons are bound keys, so every remote button acts
+  blind while blanked — vol+/next/etc. work with the TV black; any
+  visual action (overview etc.) needs one press to wake, second to act.
+- NOT built (parked): media notif ON the blankscreen (no surface to draw
+  on, defeats DPMS; one keypress away is enough), lock/password (scoped
+  in Sep-17 addendum below), ext-idle-notify for foreign clients.
+
+---
 ## ADDENDUM — Sep 17 2026 (keybinds FIXED + screen blanking + weather PARKED)
 
 Binary: /usr/local/bin/kidulwm built ReleaseSafe from 7a1a005, deployed
