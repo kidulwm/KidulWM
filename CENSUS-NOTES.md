@@ -2,6 +2,46 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
+## 2026-09-17 VERDICT 30: CARD 2b slices 1+2 LANDED — internal client + slide lifecycle
+
+KidulWM 5b0aff3 (slice 1): src/ipc/internal_client.zig — the compositor's
+own Wayland client (socketpair → wl_client_create → connect_to_fd →
+pumpRoundtrip → wl_compositor + xdg_wm_base + zxdg_exporter_v2).
+DEADLOCK LAW (proven by strace, baked into the module): a same-thread
+internal client can NEVER use blocking wl_display_roundtrip — the server
+can't dispatch while the client blocks; libwayland-server never
+auto-flushes (wl_display_run does flush_clients per iteration, we were
+not in run()); and client-side dispatch_pending starves without
+prepare_read/read_events. pumpRoundtrip() is the single sync primitive:
+flush → server loop dispatch(1ms) → dispatchIdle → flush_clients →
+client prepare_read/read_events → dispatch_pending, until the sync
+callback lands. Smoke test (KIDULWM_INTERNAL_CLIENT_TEST=1, headless):
+export handle received, clean teardown, Debug + ReleaseSafe PASS.
+
+KidulWM a065188 (slice 2): src/ipc/kvis_client.zig (SEQPACKET line
+client, bounded 2s reply wait, event-broadcast skip) + video-slide
+lifecycle wiring: spawn → host toplevel (com.kidul.video-slide-host) →
+export → kvis.sock 'parent <handle>'; close → unparent + close + host
+destroy. Harness (headless compositor + real kvisd + media_play):
+export + parent verb delivered; kvisd replied err no_shell as designed
+(its shell spawns on video open, and its GL probing failed against the
+pixman headless backend — CARD 2a probing, not a slice-2 bug).
+
+DEPLOYED /usr/local/bin/kidulwm sha256 7e7f29cf… (.bak-2b-slice2 kept),
+takes effect on next compositor reload.
+
+HOST TEST OWED (Barticus, next session, real GL compositor):
+  1. kvisd running on the session (WAYLAND_DISPLAY=wayland-1).
+  2. Play a video → video slide spawns → session.log should show
+     'video host surface exported' + (if kvisd already playing)
+     parent ok — else parent deferred until kvisd opens.
+  3. Full A→B acceptance on the kvis path still owed (verdict 29).
+NEXT: slice 3 (compositor placement: track kvisd toplevel by app_id,
+pin scene tree to the video slide rect, chrome policy), then slice 4
+(deletion card: gut libkmedia module + media_video.zig present path;
+media_slide.zig becomes a pure kvis.sock client — verdict first,
+separate commit).
+
 ## 2026-09-17 VERDICT 29: CARD 2b part 1 + CARD 2c (kvisd half) LANDED
 
 KidulWM 6b73fc7 (DEPLOYED /usr/local/bin sha256 01889df1…, takes effect
