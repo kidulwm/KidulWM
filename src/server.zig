@@ -523,6 +523,13 @@ pub const Server = struct {
     /// first video-slide spawn; null until then.
     internal_client: ?*@import("ipc/internal_client.zig").InternalClient = null,
 
+    /// CARD 2b slice 3: kvisd's video toplevel (app_id "com.kidul.kvis"),
+    /// tracked server-side OUTSIDE the deck/windows list — no deck slide,
+    /// no chrome, no focus. Its scene tree is pinned over the video slide's
+    /// rect on every layout (placeKvisWindow). Null while kvisd has no
+    /// video surface up.
+    kvis_window: ?*Window = null,
+
     new_output: wl.Listener(*wlr.Output),
     new_toplevel_decoration: wl.Listener(*wlr.XdgToplevelDecorationV1),
     backend_destroy: wl.Listener(*wlr.Backend),
@@ -2296,6 +2303,69 @@ pub const Server = struct {
             }
         }
         tree.node.setPosition(target.x, target.y);
+
+        // CARD 2b slice 3: re-pin kvisd's video surface over the new
+        // slide rect (walks/dwell re-expansion land here).
+        self.placeKvisWindow();
+    }
+
+    /// CARD 2b slice 3: pin kvisd's video toplevel over the video slide's
+    /// rect. Pure compositor-side scene-tree work — no client roundtrip
+    /// (pumpRoundtrip law). The rect math is identical to videoSlidePaint
+    /// (deck.targetForSlide + output box offset), so a fullscreen slide
+    /// gets kvisd edge-to-edge over the whole output with ZERO chrome
+    /// (CHROME LAW) and a windowed slide gets kvisd at the windowed rect
+    /// UNDER the chrome ring (the ring is raised above the slide tree
+    /// inside videoSlidePaint, and kvisd's tree is raised above the slide
+    /// tree here but left below overlay_tree). kvisd letterboxes INSIDE
+    /// its own surface — we never paint matte.
+    ///
+    /// Called from: window map (window.zig handleMap), videoSlidePaint,
+    /// and applyLayout (after the video slide paints). Idempotent: it is
+    /// a pure function of (kvis_window, video_slide_output, deck state).
+    pub fn placeKvisWindow(self: *Server) void {
+        const window = self.kvis_window orelse return;
+        const output = self.video_slide_output orelse {
+            window.scene_tree.node.setEnabled(false);
+            return;
+        };
+        const deck = &output.deck;
+        const idx = deck.findKind(.video) orelse {
+            window.scene_tree.node.setEnabled(false);
+            return;
+        };
+        var target = deck.targetForSlide(idx);
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        target.x += box.x;
+        target.y += box.y;
+        if (target.width == 0 or target.height == 0) {
+            // Parked/off-screen slide: hide kvisd's surface with it.
+            window.scene_tree.node.setEnabled(false);
+            return;
+        }
+        // Tell kvisd the surface size so it renders to fill (it letterboxes
+        // internally); the compositor never scales video itself.
+        const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
+        const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
+        if (w_changed or h_changed) {
+            _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+        }
+        window.setLayoutTarget(target.x, target.y, target.width, target.height);
+        window.scene_tree.node.setEnabled(true);
+        // CHROME LAW: fullscreen = zero chrome, pixels edge-to-edge →
+        // raise kvisd's tree above the slide tree. Windowed = kvisd UNDER
+        // the chrome ring → the slide tree stays on top (kvisd is sized to
+        // the same rect, so its pixels cover the black placeholder card
+        // through the slide tree; the ring is drawn at the rect edges —
+        // if the ring proves hidden under kvisd's windowed matte on the
+        // host eye-test, inset kvisd by the ring thickness in a follow-up.
+        // That verdict is HOST-ONLY: nested headless cannot render GL).
+        const is_fullscreen = deck.slides.items[idx].fullscreen;
+        if (is_fullscreen) {
+            window.scene_tree.node.raiseToTop();
+            self.overlay_tree.node.raiseToTop();
+        }
     }
 
     /// Quit on the video slide destroys it; the deck settles back onto the
@@ -3640,6 +3710,19 @@ pub const Server = struct {
             std.log.err("failed to create window for toplevel: {}", .{err});
             return;
         };
+        // CARD 2b slice 3: kvisd's video surface (app_id "com.kidul.kvis")
+        // is NOT a normal slide — no deck entry, no chrome, no focus. It is
+        // tracked server-side and pinned over the video slide's rect every
+        // layout (placeKvisWindow). It stays a toplevel child of the video
+        // slide's host surface (xdg-foreign), never a wl_subsurface.
+        if (toplevel.app_id) |app_id| {
+            if (std.mem.eql(u8, std.mem.sliceTo(app_id, 0), "com.kidul.kvis")) {
+                window.is_kvis = true;
+                self.kvis_window = window;
+                std.log.info("KidulWM: kvisd video toplevel tracked id={d} (no deck/chrome/focus)", .{window.id});
+                return;
+            }
+        }
         self.windows.append(window);
     }
 

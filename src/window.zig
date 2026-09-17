@@ -50,6 +50,12 @@ pub const Window = struct {
     id: u32,
     link: wl.list.Link,
 
+    /// CARD 2b slice 3: kvisd's video toplevel (app_id "com.kidul.kvis").
+    /// Lives outside the deck/windows list: no slide, no chrome, no focus.
+    /// The compositor pins its scene tree over the video slide's rect every
+    /// layout (Server.placeKvisWindow).
+    is_kvis: bool = false,
+
     animation: animation.WindowAnimation,
 
     chrome_tree: ?*wlr.SceneTree,
@@ -584,6 +590,13 @@ pub const Window = struct {
             wlr.FractionalScaleManagerV1.notifyScale(window.toplevel.base.surface, scale);
             window.toplevel.base.surface.sendEnter(output.wlr_output);
         }
+        // CARD 2b slice 3: kvisd's video toplevel bypasses the deck entirely
+        // (no slide, no focus) — it is pinned over the video slide's rect.
+        if (window.is_kvis) {
+            window.server.placeKvisWindow();
+            window.server.requestLayout();
+            return;
+        }
         const deck = window.server.deckForWindow(window);
         deck.addWindow(window.id);
         std.log.info("KidulWM: added window id={d} to deck slides={d} focused_index={d}", .{ window.id, deck.slides.items.len, deck.focused_index });
@@ -629,6 +642,9 @@ pub const Window = struct {
     fn handleToplevelDestroy(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("toplevel_destroy", listener);
         std.log.info("KidulWM: toplevel destroy fired id={d}", .{window.id});
+        if (window.server.kvis_window == window) {
+            window.server.kvis_window = null;
+        }
         if (window.server.focused_window == window) {
             window.server.clearFocus();
         }
