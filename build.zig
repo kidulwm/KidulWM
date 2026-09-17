@@ -63,23 +63,9 @@ pub fn build(b: *std.Build) void {
     wlroots.resolved_target = target;
     wlroots.linkSystemLibrary("wlroots-0.20", .{});
 
-    const weather_mod = b.createModule(.{
-        .root_source_file = b.path("src/ui/weather.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    weather_mod.addImport("wayland", wayland);
-    weather_mod.addImport("wlroots", wlroots);
-    weather_mod.addImport("core", b.createModule(.{ .root_source_file = b.path("src/core/style.zig") }));
-
-    const moon_mod = b.createModule(.{
-        .root_source_file = b.path("src/util/moon.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    moon_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
+    // Weather + moon modules REMOVED 2026-09-17 (Barticus: "remove the
+    // weather widget ASAP") — widget, painter, moon renderer and test
+    // targets all deleted.
 
     // ── libkmedia dependency / module ──────────────────────────────────────
     const c_kmedia_mod = b.createModule(.{
@@ -142,8 +128,6 @@ pub fn build(b: *std.Build) void {
     root_mod.addImport("xkbcommon", xkbcommon);
     root_mod.addImport("pixman", pixman);
     root_mod.addImport("toml", toml);
-    root_mod.addImport("weather", weather_mod);
-    root_mod.addImport("moon", moon_mod);
     root_mod.addImport("kmedia", libkmedia_mod);
     root_mod.addOptions("build_stamp", stamp);
     root_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
@@ -209,37 +193,6 @@ pub fn build(b: *std.Build) void {
     // compiling; leaving it out of the build keeps `zig build` green while
     // notifications flow through the Python bridge installed as a systemd
     // user service (config/systemd/user/kidulwm-notify-bridge.service).
-
-    const peek_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/test_peek_weather.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    peek_test_mod.addImport("wayland", wayland);
-    peek_test_mod.addImport("wlroots", wlroots);
-    peek_test_mod.addImport("core", b.createModule(.{ .root_source_file = b.path("src/core/style.zig") }));
-    peek_test_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
-    peek_test_mod.linkSystemLibrary("cairo", .{});
-    const peek_test_exe = b.addExecutable(.{ .name = "peek-weather-test", .root_module = peek_test_mod });
-    const peek_test_run = b.addRunArtifact(peek_test_exe);
-    peek_test_run.step.dependOn(b.getInstallStep());
-    const peek_test_step = b.step("peek-weather-test", "Render weather peek pill to /tmp/peek_weather_s*.png");
-    peek_test_step.dependOn(&peek_test_run.step);
-
-    const moon_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/test_moon.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    moon_test_mod.addImport("moon", moon_mod);
-    moon_test_mod.linkSystemLibrary("cairo", .{});
-    const moon_test_exe = b.addExecutable(.{ .name = "moon-test", .root_module = moon_test_mod });
-    const moon_test_run = b.addRunArtifact(moon_test_exe);
-    moon_test_run.step.dependOn(b.getInstallStep());
-    const moon_test_step = b.step("moon-test", "Render moon test strip to /tmp/moon_test.png");
-    moon_test_step.dependOn(&moon_test_run.step);
 
     const gauge_test_mod = b.createModule(.{
         .root_source_file = b.path("src/test_gauge.zig"),

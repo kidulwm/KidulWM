@@ -5,7 +5,6 @@ const linux = std.os.linux;
 const Style = @import("../core/style.zig").Style;
 const Theme = @import("../core/theme.zig").Theme;
 const DataBuffer = @import("../render/buffer.zig").DataBuffer;
-const WeatherWidget = @import("weather.zig").WeatherWidget;
 const GaugeWidget = @import("gauge.zig").GaugeWidget;
 const DrivesWidget = @import("drives.zig").DrivesWidget;
 const NetworkWidget = @import("network.zig").NetworkWidget;
@@ -20,11 +19,11 @@ const NetworkWidget = @import("network.zig").NetworkWidget;
 /// (e12ff6e~1:src/ui/tray.zig — geometry constants transcribed, not
 /// re-tuned):
 ///
-///   LEFT peek, top-to-bottom:  weather (moon + temp, 215 logical pill),
-///                              KSD logo bottom-anchored (inert click).
-///                              (gauges + drives REMOVED 2026-09-16: gauges
-///                              default-off per Barticus; drives belong to
-///                              kfiles. Painters remain in-tree for opt-in.)
+///   LEFT peek, top-to-bottom:  KSD logo bottom-anchored (inert click).
+///                              (weather REMOVED 2026-09-17 per Barticus —
+///                              "just remove ASAP". gauges + drives REMOVED
+///                              2026-09-16: gauges default-off; drives belong
+///                              to kfiles. Painters remain in-tree for opt-in.)
 ///   RIGHT peek, top-to-bottom: network icon in a 34*scale status strip,
 ///                              24h clock + 3-line date beneath it.
 ///
@@ -55,27 +54,17 @@ const clock_max_pill_base: f64 = 185.0; // logical, multiplied by scale
 const clock_max_pill_lo: i32 = 80;
 const clock_pill_w_lo: i32 = 20;
 const clock_pill_h_lo: i32 = 40;
-// Weather pill (old tray drawWeatherWidget, ~lines 2679-2687).
-// vmargin 16 (was 8): pill top = 16+4 = 20 = clock_peek_vmargin, so the moon
-// (painted in the weather widget's 34*scale status strip, center 17px below
-// the pill top) sits dead level with the network sigs icon on the right peek
-// (Barticus 2026-09-16: moon and sigs MUST be level).
-const weather_peek_hmargin: i32 = 2;
-const weather_peek_vmargin: i32 = 16;
-// Weather pill: tall enough for moon band + big temp + min/max + condition
-// icon at full size. 215 clipped the icon over the bottom edge (Barticus
-// 2026-09-16: weather widget "over the bottom").
-const weather_max_pill_side: i32 = 320; // logical, every output (CFC law)
+// Weather pill REMOVED (2026-09-17): constants deleted with the painter.
 // Gauge pill (old tray drawGaugeWidget, ~lines 2944-2955).
 const gauge_peek_hmargin: i32 = 2;
 const gauge_peek_vmargin: i32 = 8;
-const gauge_weather_height: i32 = 320; // matches weather_max_pill_side
+const gauge_weather_height: i32 = 320; // matches the removed weather pill side
 // Drives widget PARKED (Barticus 2026-09-16): not painted by default — drive
 // visibility lives in kfiles. Painter + constants kept in-tree for later
 // opt-in; do not call drawDrivesWidget from refreshWidgets until then.
 const drives_peek_hmargin: i32 = 2;
 const drives_peek_vmargin: i32 = 8;
-const drives_weather_height: i32 = 320; // matches weather_max_pill_side
+const drives_weather_height: i32 = 320; // matches the removed weather pill side
 // KSD logo (old tray drawLogoWidget, ~lines 2808-2822).
 const logo_margin: i32 = 17;
 const logo_fit_scale: f64 = 0.85;
@@ -123,7 +112,6 @@ pub const Peek = struct {
     // Restored peek widgets (per-output buffers, shared widget STATE lives
     // in the Widgets struct on the server — initialized at server init,
     // never lazily).
-    weather_slot: WidgetSlot = .{},
     gauge_slot: WidgetSlot = .{},
     drives_slot: WidgetSlot = .{},
     logo_slot: WidgetSlot = .{},
@@ -136,7 +124,7 @@ pub const Peek = struct {
     pub fn deinit(self: *Peek) void {
         if (self.left_tree) |t| t.node.destroy();
         if (self.right_tree) |t| t.node.destroy();
-        inline for (.{ "weather_slot", "gauge_slot", "drives_slot", "logo_slot", "clock_slot" }) |name| {
+        inline for (.{ "gauge_slot", "drives_slot", "logo_slot", "clock_slot" }) |name| {
             const slot = &@field(self, name);
             if (slot.scene_buffer) |sb| sb.node.destroy();
             if (slot.buffer) |b| wlr.Buffer.drop(b);
@@ -206,7 +194,6 @@ pub const Peek = struct {
     /// Repaint every restored peek widget. Cache fields gate the redraw so
     /// a no-change call repositions only — same pattern as the old painters.
     pub fn refreshWidgets(self: *Peek, widgets: *Widgets) void {
-        self.drawWeatherWidget(widgets);
         self.drawLogoWidget(widgets);
         self.drawClockWidget(widgets);
     }
@@ -385,62 +372,8 @@ pub const Peek = struct {
     // ── Restored widget painters (ported verbatim geometry from ─────────
     // ── e12ff6e~1:src/ui/tray.zig — do NOT re-tune) ──────────────────────
 
-    /// Weather widget, top of the left peek. Port of old tray
-    /// drawWeatherWidget (lines 2663-2766). Redraw gated on minute, theme
-    /// generation, scale, and pill box.
-    fn drawWeatherWidget(self: *Peek, widgets: *Widgets) void {
-        const box = self.leftPeekBox() orelse return;
-        if (box.width <= 0 or box.height <= 0) return;
-        const tree = self.left_tree orelse return;
-        const widget = &self.weather_slot;
-
-        const current_minute = currentMinuteOfDay();
-        const style_ = self.style;
-        const theme_gen = widgets.theme.generation;
-        const scale: f32 = @floatFromInt(self.scale);
-
-        // Geometry below is verbatim from the old tray drawWeatherWidget.
-        const peek_hmargin = weather_peek_hmargin;
-        const peek_vmargin = weather_peek_vmargin;
-        // CFC scale law: logical geometry NEVER multiplies by scale — scale
-        // is applied once at raster time. 215 logical on every output.
-        const max_pill_side: i32 = weather_max_pill_side;
-        const pill_w: i32 = @max(20, @min(box.width - 2 * peek_hmargin, max_pill_side));
-        const pill_h: i32 = @max(40, @min(box.height - 2 * peek_vmargin, max_pill_side));
-        const pill_x = box.x + peek_hmargin + @divTrunc(box.width - 2 * peek_hmargin - pill_w, 2);
-        // AT THE TOP: pill_y is the top edge of the peek box. Corners stay
-        // locked; gauges and notifs float below.
-        const pill_y = box.y + peek_vmargin;
-
-        const redraw = widget.scene_buffer == null or
-            widget.last_w != pill_w or
-            widget.last_h != pill_h or
-            widget.last_x != pill_x or
-            widget.last_y != pill_y or
-            widget.last_scale != scale or
-            widget.last_minute != current_minute or
-            widget.last_theme_generation != theme_gen;
-
-        if (!redraw) {
-            tree.node.setPosition(pill_x, pill_y);
-            tree.node.raiseToTop();
-            return;
-        }
-
-        widget.last_w = pill_w;
-        widget.last_h = pill_h;
-        widget.last_x = pill_x;
-        widget.last_y = pill_y;
-        widget.last_scale = scale;
-        widget.last_minute = current_minute;
-        widget.last_theme_generation = theme_gen;
-
-        paintSlot(widgets.allocator, widget, tree, pill_w, pill_h, pill_x, pill_y, scale, struct {
-            fn paint(cr: *c.cairo_t, w: *Widgets, dev_w: i32, dev_h: i32, px: i32, py: i32, sc: f32, st: Style) void {
-                w.weather.renderPeek(cr, .{ .x = px, .y = py, .width = dev_w, .height = dev_h }, st, sc);
-            }
-        }.paint, widgets, style_);
-    }
+    // Weather widget REMOVED (Barticus 2026-09-17): the moon/temp pill is
+    // gone from the left peek. Painter, state, slot and constants deleted.
 
     /// Gauge widget below the weather pill, left peek. Port of old tray
     /// drawGaugeWidget (lines 2932-3032).
@@ -852,12 +785,11 @@ const PeekBox = struct { x: i32, y: i32, width: i32, height: i32 };
 
 /// Shared widget state for the peek strips. Owned by the server,
 /// initialized at server init — never lazily. Poll pattern ported from the
-/// old overlay update(): weather.update() (10-min cache read internally),
-/// network.update() (2s scan internally) run from the server's widget
-/// timer; gauge/drives sample at paint time (no update method, as before).
+/// old overlay update(): network.update() (2s scan internally) runs from
+/// the server's widget timer; gauge/drives sample at paint time (no update
+/// method, as before). Weather polling removed with the widget.
 pub const Widgets = struct {
     allocator: std.mem.Allocator,
-    weather: WeatherWidget,
     gauge: GaugeWidget,
     drives: DrivesWidget,
     network: NetworkWidget,
@@ -869,7 +801,6 @@ pub const Widgets = struct {
     pub fn init(allocator: std.mem.Allocator, theme: *const Theme) Widgets {
         return .{
             .allocator = allocator,
-            .weather = WeatherWidget.init(allocator),
             .gauge = GaugeWidget.init(allocator),
             .drives = DrivesWidget.init(allocator),
             .network = NetworkWidget.init(allocator),
@@ -878,7 +809,6 @@ pub const Widgets = struct {
     }
 
     pub fn deinit(self: *Widgets) void {
-        self.weather.deinit();
         self.gauge.deinit();
         self.drives.deinit();
         self.network.deinit();
@@ -888,7 +818,6 @@ pub const Widgets = struct {
 
     /// Poll the stateful widgets — call from the server's widget timer.
     pub fn update(self: *Widgets) void {
-        self.weather.update();
         self.network.update();
     }
 
