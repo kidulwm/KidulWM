@@ -36,6 +36,20 @@ AEST (rename swap; backup kidulwm.bak-smartlock). Live at next relog.
   on, defeats DPMS; one keypress away is enough), lock/password (scoped
   in Sep-17 addendum below), ext-idle-notify for foreign clients.
 
+### VOLUME — compositor-owned session master (6efce2d, same deploy)
+- Server.master_volume/muted; volumeStep(±0.05) + volumeToggleMute apply
+  per press via pactl set-sink-volume/mute @DEFAULT_SINK@ (ksound's own
+  pactl-verb pattern; ksound keeps per-stream policy/floor, we own the
+  user-facing knob — no double mixer).
+- XF86Audio{Raise,Lower,Mute}Volume bound unmodified in defaults (remote
+  buttons hit them directly); all nine XF86Audio* names added to
+  parseKeysym for user rebinding; volume_up/down/mute actions parse.
+- Blind-first-press: volume keys act while BLANKED, screen stays black
+  (granny law complete: play/pause/stop/next/prev/seek ±10s + vol/mute).
+  Sighted intercept fires before the Mod4/Ctrl bind match.
+- STILL PARKED: volume persistence across restarts (~/.config/kidulwm/
+  volume state file, later); MediaWidget next/prev are stubs (_ = self).
+
 ---
 ## ADDENDUM — Sep 17 2026 (keybinds FIXED + screen blanking + weather PARKED)
 
