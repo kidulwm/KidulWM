@@ -2,6 +2,26 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
+## 2026-09-17 VERDICT 29: CARD 2b part 1 + CARD 2c (kvisd half) LANDED
+
+KidulWM 6b73fc7 (DEPLOYED /usr/local/bin sha256 01889df1…, takes effect
+on next compositor reload): XdgForeignRegistry + XdgForeignV2 created at
+boot — the exporter/importer globals the slide's host surface will bind.
+kmedia 17f45c8: kvisd binds zxdg_importer_v2, parentTo/unparent real,
+'parent <handle>'/'unparent' live on kvis.sock.
+ARCHITECTURE NOTE (replaces HANDOFF session-22's subsurface sketch):
+xdg-foreign parents TOPLEVELS. kvisd's video surface stays a toplevel
+child of the slide's host surface; the compositor positions it over the
+.video slide rect by app_id com.kidul.kvis. kvisd letterboxes inside its
+own surface — the §9a matte-overlap class dies structurally, the 20s
+wedge + A→B freeze classes gain the process wall. All embedded-path
+verdicts (19-21 freeze hunt, 5e84470 cache-key law) are EMBEDDED-ONLY —
+they die with the module, not carried into kvisd. Fresh A→B owed on the
+new path as the acceptance test.
+NEXT: CARD 2b part 2 — internal client host surface per .video slide,
+export, parent verb, placement. Full attack order in kmedia/HANDOFF.md
+session 23. Karaoke SHELVED (Barticus 2026-09-17).
+
 ## 2026-09-17 VERDICT 27: weather widget PARKED + keybind conf FIXED + blanking born
 
 1. WEATHER WIDGET PARKED (removed 46757df, NOT deleted from history).
