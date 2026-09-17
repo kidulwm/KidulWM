@@ -2,6 +2,23 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
+
+## 2026-09-17 VERDICT 31: CHROME LAW locked + boot-open gated (host)
+
+KidulWM 198d057: A5 boot ladder gated behind KIDULWM_BOOT_MEDIA. Host
+default OFF — the media player slide does NOT open at boot here; it is
+a Mod4+m slide like any other. TV-profile restores the boot ladder with
+KIDULWM_BOOT_MEDIA=1.
+
+KidulWM 228abf6: CHROME LAW (Barticus, LOCKED) — fullscreen video = ZERO
+chrome. The chrome ring cost ~6% CPU (2→8) and painted over the picture.
+videoSlidePaint now skips the ring entirely when the video slide is
+fullscreen; windowed (peek/parked) keeps it. Deployed d2ae35f0.
+
+Slice 3 (placement) gets a clean law to build against: fullscreen =
+pixels edge-to-edge, zero chrome; windowed = chrome ring only, kvisd
+surface UNDER the ring.
+
 ## 2026-09-17 VERDICT 30: CARD 2b slices 1+2 LANDED — internal client + slide lifecycle
 
 KidulWM 5b0aff3 (slice 1): src/ipc/internal_client.zig — the compositor's
