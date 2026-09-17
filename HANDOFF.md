@@ -11,7 +11,7 @@ THE OVERLAY TRAY IS DEAD: src/ui/tray.zig (4323 lines) deleted with all 102
 server.zig touchpoints (makeTrayHost, per-frame update, pointer hit-testing —
 PTR-CLAIM class gone), keyboard.zig capture block :191-222, IPC
 tray_select_next/prev/activate/tray_toggle_card (message.zig + control).
-tray_toggle (keybind + IPC) → homeSlideFocusOrSpawn; weather_toggle_card same.
+tray_toggle (keybind + IPC) → homeSlideFocusOrSpawn. weather widget: picture only (1c147a9) — no IPC, no card, no slide linkage.
 
 Notification ingress redirected to Server-owned NotificationStore (8-ring,
 fixed spans, alloc-free, generation counter); home slide NOTIFICATIONS CFC
