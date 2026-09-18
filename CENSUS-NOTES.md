@@ -3,6 +3,47 @@
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
 
+## 2026-09-18 VERDICT 35: IPC-thread event-loop re-entrancy — video-slide spawn deferred to main loop
+
+The Sep-18 10:53 hard freeze (Barticus power-cycled) is now on disk
+(journald persistent + watchdog). Two distinct defects separated:
+
+THE FREEZE (separate, still open): kidulwm pid 138389 RSS 167MB -> ~1.94GB
+over ~90s (~80MB/s burst), then wedged — i915 near-idle (~60 irq/s), CPU
+easing 48->37%, no coredump, last journal line a routine mDNS block. That is
+the prewarm-OOM class (CENSUS 17) re-armed in the kvisd placement path
+(placeKvisWindow / videoSlidePaint), NOT the deleted decoder. Next hunt.
+
+CRASH FIXED HERE: coredump pid 54465 (plus ~10 Sep-17 crashes) — SIGSEGV
+stack: Thread.callFn -> ipc.control.handleLine -> handleRequest ->
+videoSlideHostSpawn -> InternalClient.create -> pumpRoundtrip ->
+event_loop.dispatch(1). The IPC control socket runs handleRequest on a
+dedicated thread (ipcThreadLoop); media_play (video) called
+videoSlideSpawnRightOfPlayer -> videoSlideHostSpawn -> InternalClient.create
+/ HostSurface.create -> sync() -> pumpRoundtrip, re-entering the MAIN
+wl_event_loop while wl_display_run dispatches it on the main thread. Two
+threads dispatching one wl_display = SIGSEGV. The internal-client handshake
+(socketpair + wl_client + registry + exporter) and the scene-graph mutation
+MUST run on the main thread only.
+
+FIX: media_play (video) no longer spawns inline on the IPC thread. It sets
+Server.pending_video_spawn = output and calls requestLayout(); the existing
+layout-pipe deferral (handleLayoutEventFd, main loop) consumes the flag and
+runs videoSlideSpawnRightOfPlayer there, so videoSlideHostSpawn and its
+event-loop pump run on the main thread. Keybind path (mediaSlideKey) was
+already main-thread — untouched. 21 lines, src/server.zig.
+
+VERIFIED headless: kvisd + kidulwm headless, media_card_toggle + media_play
+(video path) over IPC -> compositor ALIVE, "internal client up", "video host
+surface exported", "video slide spawned right of player", "kvis parent
+deferred" (fake file, expected). close-evidence.sh 3-round PASS.
+Debug/test/ReleaseSafe clean.
+
+HOST TEST OWED (Barticus): restart session, restart kvisd (orphaned-socket
+note under verdict 34), play a movie via the media UI -> no crash. Then the
+RSS wedge is the next hunt.
+
+
 ## 2026-09-18 VERDICT 34: kvisd classification + media focus gate (host test regressions)
 
 Barticus host test of CARD 2b slice 4 exposed four symptoms, all ONE root:

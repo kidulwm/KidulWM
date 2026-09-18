@@ -429,6 +429,12 @@ pub const Server = struct {
     /// Output that owns the live video slide (one per session — the player's
     /// row). Null while no .video slide exists.
     video_slide_output: ?*Output = null,
+    /// CARD 2b slice 4 FIX: a media_play request from the IPC thread wants
+    /// the .video slide spawned. The spawn touches the scene graph AND pumps
+    /// the MAIN wl_event_loop (internal-client handshake); the IPC thread
+    /// must do neither (concurrent wl_display dispatch = SIGSEGV). Deferred
+    /// to handleLayoutEventFd via the requestLayout pipe.
+    pending_video_spawn: ?*Output = null,
     /// Peek widget timer (right-peek clock painter + widget polls, on the
     /// minute).
     peek_widget_timer: ?*wl.EventSource = null,
@@ -640,7 +646,13 @@ pub const Server = struct {
                     var oit = self.outputs.iterator(.forward);
                     while (oit.next()) |o| {
                         if (o.deck.findKind(.media_player) != null and o.media_slide.isOpen()) {
-                            self.videoSlideSpawnRightOfPlayer(o);
+                            // FIX: defer to the MAIN loop (handleLayoutEventFd).
+                            // videoSlideSpawnRightOfPlayer mutates the scene graph
+                            // and pumps the server event loop — both forbidden on
+                            // the IPC thread (concurrent wl_display dispatch →
+                            // SIGSEGV; the Sep-18 hard crash backtrace).
+                            self.pending_video_spawn = o;
+                            self.requestLayout();
                             break;
                         }
                     }
@@ -3353,6 +3365,14 @@ pub const Server = struct {
         var buf: [16]u8 = undefined;
         _ = linux.read(server.layout_pipe[0], &buf, buf.len);
         server.applyLayout();
+        // CARD 2b slice 4 FIX: run a deferred IPC video-slide spawn here, on
+        // the main loop. It re-enters this loop (internal-client handshake)
+        // and mutates the scene graph — the IPC thread must never do either.
+        // applyLayout() above already settled the layout this request queued.
+        if (server.pending_video_spawn) |vout| {
+            server.pending_video_spawn = null;
+            server.videoSlideSpawnRightOfPlayer(vout);
+        }
         return 0;
     }
 
