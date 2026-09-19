@@ -120,12 +120,13 @@ virsh -c qemu:///system qemu-agent-command ksd-reset --cmd '{"execute":"guest-ss
 
 If guest agent is not responsive, use the SPICE console or the serial console instead.
 
-## Deploy KidulWM — WORK VM = ksd-reset (2026-09-19)
+## Deploy KidulWM — workbench is PHASE-DEPENDENT (2026-09-19)
 
-The reset work (Phase 0→5) happens IN the ksd-reset VM. The host runs niri
-as the workbench, NOT kidulwm — kidulwm is product-in-dev there. So the old
-"deploy HOST FIRST" law is superseded for reset work: build on host, deploy
-to ksd-reset, `systemctl restart kidulwm`.
+SYSTEM.md is the arbiter ("1 file to rule"). Phase 2 (RSS wedge) is GPU-only
+→ HOST: kidulwm runs on the host's i915 (GL, NOT pixman) via an sddm login.
+Everything else (software/pixman) stays in ksd-reset. Build ReleaseSafe on
+host; deploy to the active target (mv-over swap + .bak, never cp on running
+binary).
 
 ksd-reset runs kidulwm as a SYSTEM service on tty1 (not a user session):
 `/etc/systemd/system/kidulwm.service`, `User=kidul`, `WLR_RENDERER=pixman`
