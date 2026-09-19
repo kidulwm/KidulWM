@@ -15,6 +15,17 @@
 # Host kidulwm DEPLOYED 0fc87a0d (GL, current main) + control 46b89df5
 # (verdict 40). Test video = Raya (already in library via
 # /mnt/sda_backup/Jelly/Kids Movies). big-buck-bunny deleted (corrupted).
+#
+# PARKED (at Phase-2 base): CONSOLIDATE the kidulwm-development skill — it is a
+# 100KB god-file at its size cap. Clean shave, not a cut: dedupe the repeated
+# lessons (~15 restated 3-6x: "stop means stop", "one change per deploy",
+# "Barticus judges the screen"), archive dated incidents to references/, route
+# surviving rules to their existing concern-skills (glass-look, kidulwm-chrome,
+# kidulwm-chrome-bleed, kidulwm-ui-visual-iteration, wayland-compositor-customization,
+# stale-binary-detection, debugging-practices, zig-systems-development,
+# ksd-release-and-backup, kidulwm-codeberg-workflow, kidulwm-v2) and leave
+# kidulwm-development a THIN ROUTER. Then streamline the workflow. Also prune
+# the 20+ /usr/local/bin/kidulwm.bak-* binaries (same bloat, binary surface).
 
 # ─────────────────────────────────────────────────────────────────────
 # §9 STAGE-3 PLAN — Phase 2: kill the RSS wedge  (for the next session)
