@@ -1,8 +1,39 @@
-# CURRENT STATE 2026-09-19 — PHASE 0 + CARD 1.5 + CARD 2 COMPLETE (verdicts 36+37+38). IPC = main-loop fd source (36); terminal split landed (37); kvisd→kplayd rename landed (38) — kplay.sock, KplayClient, placeKplayWindow, binary kplayd. WORK VM = ksd-reset (kidul@192.168.122.87); fresh-one FROZEN (perfect widget sizes) — DO NOT TOUCH. Next: Phase 2 (RSS wedge).
+# CURRENT STATE 2026-09-19 — VERDICT 43 (gracePeriod input swallow, DEPLOYED de63c8d7, relog OWED): blank-screen password LEAK fixed — while screens off + a 2s post-wake gracePeriod, all key+pointer input is swallowed (nothing blind-typed/clicked reaches an app). NO lock on a TV (verdict): profiles/keyToOpen is the primitive, lock = geek-profile opt-in. WORK VM = ksd-reset (kidul@192.168.122.87); fresh-one FROZEN. NOTE: nested-smoke unlinked the LIVE kidulwm-control.sock (ping ConnectFailed) — relog restores it + activates the fix; bobdotrix dies on sddm relog.
 
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 
 ---
+## ADDENDUM — Sep 19 2026 (smartLock gracePeriod — blank-screen password LEAK FIXED)
+
+Barticus caught it live: coming back from the idle blank, the tail of a
+typed password landed in the FOCUSED TERMINAL as plain text. Root cause:
+blank is blanking-only (no lock) and blind-first-press swallowed ONE key —
+first key woke + dropped, the rest flowed to the app. A black screen reads
+as "locked", so password entry leaks every wake.
+
+Same blind-input-forwards class in THREE places: keyboard press (one-key
+swallow), keyboard release (forwarded unconditionally), pointer
+motion/absolute/button/axis (forwarded while off — blind clicks).
+
+VERDICT: NO lock on a TV. Profiles (keyToOpen accounts) are the primitive;
+blank stays anti-burn; lock is geek-profile opt-in. Naming: blank =
+fadeOutOfExistence, wake = fadeIntoExistence, swallow window = gracePeriod
+(ksound-fade model).
+
+FIX (24dd60d, signed): while screens_off swallow every key (press+release;
+blind-safe media/volume still fire, releases never wake); on wake open a 2s
+gracePeriod (beginInputGrace/inInputGrace) swallowing every key AND pointer
+event. server.zig + keyboard.zig + pointer.zig.
+
+DEPLOYED host: /usr/local/bin/kidulwm sha256 de63c8d7 (.bak-bf3c565f).
+OWED: relog + repro — type a password at a blanked screen, confirm nothing
+lands in the terminal. (bobdotrix dies on the relog; this + CENSUS 43 IS
+the handoff.)
+
+CAVEAT: nested-smoke is NOT runnable while the live compositor owns
+wayland-1, and the script's `rm -f $IPC_SOCK` unlinked the LIVE
+kidulwm-control.sock (ping now ConnectFailed). The relog restores it.
+
 ## ADDENDUM — Sep 18 2026 early am (CARD 2b slice 4 — EMBEDDED PLAYER DELETED, DEPLOYED)
 
 Built from main @ slice-4 commit, coderBob, TASKCARD-2b-slice4.

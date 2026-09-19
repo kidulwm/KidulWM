@@ -16,6 +16,9 @@
 # law drafted + teardown bug cluster named. Verdict 42 (ad11d7b): BLACK-SCREEN
 # root cause = z-order (kplayd buried under black placeholder) — FIXED, host
 # deployed bf3c565f, restart+repro OWED. GHOST (media tree survives quit) OPEN.
+# Verdict 43 (24dd60d): blank-screen password LEAK — gracePeriod swallow
+# (no lock on a TV; profiles/keyToOpen is the primitive). DEPLOYED de63c8d7,
+# relog+repro OWED. nested-smoke broke the live control socket — relog fixes.
 # Test video = Raya (/mnt/sda_backup/Jelly/Kids Movies); BBB deleted (corrupt).
 #
 # PARKED (at Phase-2 base): CONSOLIDATE the kidulwm-development skill — it is a
@@ -58,6 +61,47 @@
 # (real MEDIA/WEATHER/SIGNALS feeds) — that's a DIFFERENT, now-moot lineage
 # (the tray was demolished). The live "stage 3" is Phase 2 above.
 
+
+## 2026-09-19 VERDICT 43: blank-screen password LEAK — gracePeriod swallow (input-blind class)
+
+THE BUG (Barticus live): coming back from the smartLock idle blank, the
+tail of a typed password landed in the FOCUSED TERMINAL as plain text.
+Root cause: blank is blanking-only (no lock — LOCKSCREEN scoped in HANDOFF
+2026-09-17, never built) and blind-first-press swallowed exactly ONE key —
+first key woke + dropped, everything after flowed to the focused app. A
+black screen reads as "locked", so muscle-memory password entry leaks its
+tail every wake.
+
+AUDIT — same blind-input-forwards class in THREE places:
+  1. keyboard press   — the one-key swallow (known leak).
+  2. keyboard release — forwarded UNCONDITIONALLY, bypassed screens_off.
+  3. pointer motion/absolute/button/axis — forwarded while off; a blind
+     click (cursor invisible) hits whatever's under it.
+
+VERDICT (Barticus): NO lock on a TV. A lock guards a private session on a
+private device; a TV is a shared appliance — profiles (keyToOpen accounts)
+are the primitive, not a password wall. Blank stays anti-burn. Lock =
+geek-profile opt-in, never global. Naming: blank = fadeOutOfExistence,
+wake = fadeIntoExistence, swallow window = gracePeriod (ksound-fade model).
+
+FIX (24dd60d): while screens_off swallow every key (press+release;
+blind-safe media/volume still fire, releases never wake); on wake open a
+2s gracePeriod (beginInputGrace/inInputGrace) swallowing every key AND
+pointer event until the screen settles. Nothing blind-typed or blind-
+clicked reaches an app. server.zig + keyboard.zig + pointer.zig.
+
+BUILD: Debug + ReleaseSafe clean. nested-smoke NOT runnable this session —
+live compositor owns wayland-1 (socket lock) AND the script's `rm -f
+$IPC_SOCK` unlinked the LIVE kidulwm-control.sock (kidulwm-control ping now
+ConnectFailed). Relog restores the socket and activates the binary.
+
+DEPLOYED host: /usr/local/bin/kidulwm sha256 de63c8d7 (.bak-bf3c565f).
+OWED: Barticus relog + repro — type a password at a blanked screen, confirm
+nothing lands in the focused terminal. (bobdotrix dies on the sddm relog —
+this verdict IS the handoff.)
+
+NEXT (polish, separate, parked): literal fadeIntoExistence/fadeOutOfExistence
+visual ramp; keyToOpen profile picker as the wake flow.
 
 ## 2026-09-19 VERDICT 42: BLACK-SCREEN root cause = z-order (kplayd buried under placeholder)
 
