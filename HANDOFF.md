@@ -1,4 +1,4 @@
-# CURRENT STATE 2026-09-19 — PHASE 0 + CARD 1.5 COMPLETE (verdicts 36+37). IPC = main-loop fd source (verdict 36); terminal body-organ/tentacle split landed (verdict 37): escape hatch getty@tty2 enabled on ksd-reset, spawnCommand inherits env (no re-typed WAYLAND_DISPLAY/XDG_RUNTIME_DIR), ghostty = the one terminal via launch-kidul-terminal.sh (alacritty deleted, Mod4+w parked). Deployed to ksd-reset (sha bea11929). WORK VM = ksd-reset (kidul@192.168.122.87); fresh-one is FROZEN (perfect widget sizes) — DO NOT TOUCH. Next: Card 2 (kvisd->kplayd rename), Phase 2 (RSS wedge).
+# CURRENT STATE 2026-09-19 — PHASE 0 + CARD 1.5 + CARD 2 COMPLETE (verdicts 36+37+38). IPC = main-loop fd source (36); terminal split landed (37); kvisd→kplayd rename landed (38) — kplay.sock, KplayClient, placeKplayWindow, binary kplayd. WORK VM = ksd-reset (kidul@192.168.122.87); fresh-one FROZEN (perfect widget sizes) — DO NOT TOUCH. Next: Phase 2 (RSS wedge).
 
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 

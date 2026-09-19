@@ -10,6 +10,37 @@
 # widget sizes) — never touch it.
 
 
+## 2026-09-19 VERDICT 38: CARD 2 LANDED — kvisd → kplayd rename (naming law §7)
+
+The mechanical rename sweep, done ONCE as its own card (never piecemeal).
+"kvis" is GONE from both source trees; the cross-process contract is now
+kplay.sock + app_id com.kidul.kplay + KplayClient + placeKplayWindow +
+classifyKplay, consistent across kmedia and KidulWM.
+
+SCOPE:
+  - kmedia: binary kvisd→kplayd, socket kvis.sock→kplay.sock, files
+    kvisd_main.zig→kplayd_main.zig, kvisd_shell.zig→kplayd_shell.zig,
+    docs kvis-engine→kplay-engine, kvis-process→kplay-process,
+    TASKCARD-1-kvis-process→kplay-process. Commit f2ff36f (signed G).
+  - KidulWM: KvisClient→KplayClient, kvis_client.zig→kplay_client.zig,
+    placeKvisWindow→placeKplayWindow, classifyKvis→classifyKplay,
+    video_kvis_client→video_kplay_client, docs/law kvis.md→kplay.md,
+    close-evidence.sh KVISD→KPLAYD. Commit efb98c6 (signed G).
+  - kmedia 104/104 lines, KidulWM 193/178 — identifier-only, zero behavior
+    change. grep gate: 0 "kvis"/"Kvis"/"KVIS" in src/ or build.zig.
+
+VERIFIED: both repos build + test clean; ReleaseSafe built; deployed to
+ksd-reset (kplayd 579686c, kidulwm d6644508) — compositor verdict OK.
+Host migrated: kplayd --user unit + /usr/local/bin/kplayd, kplay.sock live,
+old kvisd process/unit/socket gone.
+
+LEFT OVERS (note only, harmless): fossil /usr/local/bin/kvisd binary still on
+the HOST (root-owned; removal was blocked on timeout, not attempted again).
+No process, no unit, no socket references it. Remove whenever convenient.
+
+Next: Phase 2 (RSS wedge 80MB/s→1.9GB).
+
+
 ## 2026-09-19 VERDICT 37: CARD 1.5 LANDED — terminal body-organ/tentacle split (I1, I2)
 
 Two halves, both live bugs, both fixed.
