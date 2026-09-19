@@ -513,6 +513,13 @@ pub const Server = struct {
     /// playbackInhibitsBlank() is false.
     last_input_us: u64 = 0,
     blank_timer: ?*wl.EventSource = null,
+    /// gracePeriod (2026-09-19): MONOTONIC-µs deadline while input is
+    /// swallowed after a fade-into-existence (wake). Blind input — a
+    /// password typed at a black screen, an accidental two-key mash, a
+    /// blind click — is discarded, never forwarded to the focused slide.
+    /// 0 = not in grace. Checked by keyboard.zig handleKey and every
+    /// pointer.zig handler.
+    input_grace_until_us: u64 = 0,
     /// Session master volume (2026-09-17): 0.0-1.0. Compositor-owned —
     /// ksound owns per-stream policy/floor, we own the user-facing knob.
     /// Applied via pactl set-sink-input-volume @DEFAULT_SINK@ per press
@@ -3025,6 +3032,30 @@ pub const Server = struct {
         self.last_input_us = @as(u64, @intCast(ts.sec)) * 1_000_000 + @as(u64, @intCast(@divTrunc(ts.nsec, 1000)));
         // Rearm the poll so a long-idle machine doesn't tick forever.
         self.rearmBlankTimer();
+    }
+
+    /// gracePeriod open: swallow all input for 2s after a fade-into-
+    /// existence (wake). Mirrors ksound's fade-in grace — nothing forwards
+    /// to an app until the screen has visibly settled.
+    pub fn beginInputGrace(self: *Server) void {
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(.MONOTONIC, &ts);
+        self.input_grace_until_us = @as(u64, @intCast(ts.sec)) * 1_000_000
+            + @as(u64, @intCast(@divTrunc(ts.nsec, 1000))) + 2_000_000; // 2s gracePeriod
+    }
+
+    /// True while inside the post-wake gracePeriod. Cheap in steady state:
+    /// one compare when the deadline is already cleared.
+    pub fn inInputGrace(self: *Server) bool {
+        if (self.input_grace_until_us == 0) return false;
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(.MONOTONIC, &ts);
+        const now_us = @as(u64, @intCast(ts.sec)) * 1_000_000 + @as(u64, @intCast(@divTrunc(ts.nsec, 1000)));
+        if (now_us >= self.input_grace_until_us) {
+            self.input_grace_until_us = 0;
+            return false;
+        }
+        return true;
     }
 
     fn rearmBlankTimer(self: *Server) void {

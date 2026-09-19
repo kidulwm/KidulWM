@@ -85,10 +85,9 @@ const KeyboardDevice = struct {
             server.seat.setKeyboard(self.keyboard);
             std.log.info("KidulWM: seat keyboard elected: {s}", .{self.input_device.name orelse "?"});
         }
-        if (event.state != .pressed) {
-            server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
-            return;
-        }
+        // smartLock: every key event (press OR release) counts as activity.
+        server.noteInputActivity();
+
         const keyboard = server.seat.getKeyboard() orelse {
             server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
             return;
@@ -118,24 +117,29 @@ const KeyboardDevice = struct {
             @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
         ) > 0;
 
-        // smartLock (2026-09-17): every key press counts as activity.
-        server.noteInputActivity();
-
-        // BLIND-FIRST-PRESS LAW (Barticus 2026-09-17 — "granny doesn't need
-        // her glasses"): while screens are off, the FIRST press is either
-        //   blind-safe action (play/pause/seek keysyms) → execute the
-        //     action, screen STAYS black;
-        //   visual/navigation action (Mod4+*, Ctrl+*, F11 — anything bound
-        //     that changes what you look at) → wake the screen FIRST and
-        //     swallow the press; press again now that you can see;
-        //   unbound ordinary key → wake + swallow (never types into apps).
+        // GRACE PERIOD (fadeOutOfExistence → fadeIntoExistence). While the
+        // screen is off, or inside the post-wake gracePeriod, swallow every
+        // key event (press AND release): a black screen reads as "locked",
+        // so a password typed at it — or an accidental two-key mash — is
+        // discarded, never forwarded to the focused slide. Blind-safe
+        // media/volume keys still fire while OFF (sound-only, granny can
+        // hear the result); a release never wakes.
         if (server.screens_off) {
-            if (!mod4_active and !ctrl_active and isBlindSafeKeysym(sym)) {
+            if (event.state == .pressed and !mod4_active and !ctrl_active and isBlindSafeKeysym(sym)) {
                 std.log.info("KidulWM: blind-first-press sym=0x{x} (screen stays off)", .{@intFromEnum(sym)});
                 if (handleBlindSafeKeysym(server, sym)) return;
-                // fell through (no handler for that keysym) → just wake
+                // fell through (no handler for that keysym) → wake below
             }
-            server.screensOffSet(false);
+            if (event.state == .pressed) {
+                server.screensOffSet(false); // fadeIntoExistence
+                server.beginInputGrace(); // gracePeriod: swallow-all
+            }
+            return;
+        }
+        if (server.inInputGrace()) return; // gracePeriod: discard until settled
+
+        if (event.state != .pressed) {
+            server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
             return;
         }
         // Volume keys work sighted too — they're bound unmodified so the

@@ -81,6 +81,7 @@ const PointerDevice = struct {
         const self: *PointerDevice = @fieldParentPtr("motion", listener);
         const server = self.manager.server;
         server.noteInputActivity();
+        if (server.screens_off or server.inInputGrace()) return;
         server.cursor.move(null, event.delta_x, event.delta_y);
         // SINGLE CURSOR TRUTH (2026-09-15): never accumulate deltas into a
         // parallel cursor_x/cursor_y — wlroots clamps the real cursor to the
@@ -108,6 +109,7 @@ const PointerDevice = struct {
         const self: *PointerDevice = @fieldParentPtr("motion_absolute", listener);
         const server = self.manager.server;
         server.noteInputActivity();
+        if (server.screens_off or server.inInputGrace()) return;
         var box: wlr.Box = undefined;
         server.output_layout.getBox(null, &box);
         server.cursor.warpAbsolute(null, event.x * @as(f64, @floatFromInt(box.width)), event.y * @as(f64, @floatFromInt(box.height)));
@@ -128,6 +130,7 @@ const PointerDevice = struct {
         const self: *PointerDevice = @fieldParentPtr("button", listener);
         const server = self.manager.server;
         server.noteInputActivity();
+        if (server.screens_off or server.inInputGrace()) return;
         if (event.state == .pressed) {
             if (server.handlePointerClick(server.cursor_x, server.cursor_y)) {
                 server.logPointerDiagnostic("click", server.cursor_x, server.cursor_y);
@@ -148,6 +151,7 @@ const PointerDevice = struct {
         const self: *PointerDevice = @fieldParentPtr("axis", listener);
         const server = self.manager.server;
         server.noteInputActivity();
+        if (server.screens_off or server.inInputGrace()) return;
         if (server.handlePointerAxis(server.cursor_x, server.cursor_y, event.delta)) {
             return;
         }
