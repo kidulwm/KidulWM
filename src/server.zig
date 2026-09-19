@@ -3287,6 +3287,13 @@ pub const Server = struct {
                 if (output.video_slide.tree) |tree| {
                     tree.node.raiseToTop();
                 }
+                // kplayd's video surface must stay ABOVE the slide's black
+                // placeholder card — the raiseToTop above would otherwise bury
+                // it (the "sound but black screen" bug). Re-raise after the
+                // slide tree so the real video wins the z-order.
+                if (self.kplay_window) |kw| {
+                    kw.scene_tree.node.raiseToTop();
+                }
                 self.overlay_tree.node.raiseToTop();
             }
 
