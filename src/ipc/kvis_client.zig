@@ -18,7 +18,6 @@ pub const Error = error{
     SocketFailed,
     ConnectFailed,
     WriteFailed,
-    ReplyTimeout,
     DaemonError,
     OutOfMemory,
 };
@@ -36,13 +35,18 @@ pub const KvisClient = struct {
             break :blk std.fmt.bufPrint(&pbuf, "/run/user/{d}/kvis.sock", .{linux.getuid()}) catch return error.NoRuntimeDir;
         };
 
-        const fd: linux.fd_t = @intCast(linux.socket(linux.AF.UNIX, linux.SOCK.SEQPACKET | linux.SOCK.CLOEXEC, 0));
+        const fd: linux.fd_t = @intCast(linux.socket(linux.AF.UNIX, linux.SOCK.SEQPACKET | linux.SOCK.CLOEXEC | linux.SOCK.NONBLOCK, 0));
         if (fd < 0) return error.SocketFailed;
         errdefer _ = linux.close(fd);
 
         var addr: linux.sockaddr.un = .{ .family = linux.AF.UNIX, .path = [_]u8{0} ** 108 };
         if (path.len >= addr.path.len) return error.NoRuntimeDir;
         @memcpy(addr.path[0..path.len], path);
+        // Phase 0 (I5): NON-BLOCKING connect. kvisd's openPath runs demux +
+        // EGL init synchronously, so under a rapid open storm it stops
+        // accept()ing and its backlog fills — a blocking connect() here
+        // would stall the MAIN loop. Non-blocking connect fails fast
+        // (EAGAIN on full backlog) instead; the verb is fire-and-forget.
         if (linux.connect(fd, @ptrCast(&addr), @sizeOf(linux.sockaddr.un)) != 0)
             return error.ConnectFailed;
 
@@ -59,33 +63,36 @@ pub const KvisClient = struct {
         if (sn <= 0) return error.WriteFailed;
     }
 
-    /// Wait for one reply line (bounded: ~2s worst case via poll).
-    /// kvisd broadcasts 'event ...' lines to every client — skip those;
-    /// we want the ok/err reply to OUR verb.
-    fn recvReply(self: *KvisClient, buf: []u8) Error![]const u8 {
-        var waited_ms: u32 = 0;
-        while (waited_ms < 2000) : (waited_ms += 20) {
+    /// Read the reply to our verb IF kvisd has answered already. NON-BLOCKING:
+    /// the reply is logging-only — every caller's `catch` just logs, never
+    /// branches on it. kvisd's "open" reply is legitimately slow (openPath
+    /// runs demux+probe AND ensureShell's EGL init before replying `ok` —
+    /// hundreds of ms on a virtio GPU), so a synchronous reply wait would
+    /// stall the main loop (I5). A missing reply here is normal, not failure.
+    /// SEQPACKET = one record per read; skip 'event' broadcasts, capped so
+    /// we never spin.
+    fn recvReply(self: *KvisClient, buf: []u8) ?[]const u8 {
+        var skips: u8 = 0;
+        while (skips < 8) : (skips += 1) {
             var pfd = [_]linux.pollfd{.{ .fd = self.fd, .events = linux.POLL.IN, .revents = 0 }};
-            const ready = linux.poll(&pfd, 1, 20);
-            if (@as(isize, @bitCast(ready)) <= 0) continue;
+            const ready = linux.poll(&pfd, 1, 0); // timeout 0 = never block
+            if (@as(isize, @bitCast(ready)) <= 0) return null;
             const n = linux.read(self.fd, buf.ptr, buf.len);
             const sn: isize = @bitCast(n);
-            if (sn <= 0) return error.WriteFailed; // daemon dropped us
+            if (sn <= 0) return null; // daemon dropped us
             const line = std.mem.trim(u8, buf[0..@intCast(sn)], " \r\n\t");
             if (std.mem.startsWith(u8, line, "event ")) continue; // broadcast, not our reply
             return line;
         }
-        return error.ReplyTimeout;
+        return null;
     }
 
     fn verb(self: *KvisClient, line: []const u8) Error!void {
         var rbuf: [1024]u8 = undefined;
         try self.send(line);
-        const r = try self.recvReply(&rbuf);
+        const r = self.recvReply(&rbuf) orelse return; // not answered yet — fine (I5: no block)
         if (std.mem.eql(u8, r, "ok")) return;
         if (std.mem.startsWith(u8, r, "err")) return error.DaemonError;
-        // Unknown reply shape — treat as failure so callers notice.
-        return error.DaemonError;
     }
 
     /// open <path> — start playback (video spawns the kvisd shell).

@@ -3,6 +3,49 @@
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
 
+## 2026-09-19 VERDICT 36: PHASE 0 COMPLETE — IPC control socket is a main-loop fd source (I5)
+
+The verdict-35 deferral fixed ONE crash call-site. This is the root fix: the
+IPC control socket no longer runs on a thread at all. ipcThreadLoop,
+ipc_thread, ipc_running are deleted; the control socket (listener + every
+client fd) is now a wl_event_loop fd source. handleLine/handleRequest run on
+the MAIN loop. Zero scene-graph/event-loop work off-thread (grep-verified).
+
+THREE bugs were found and fixed in the same seam:
+
+1. (pre-existing, carried over from epoll version) control.zig readClient
+   parsed from `base` = the pre-read offset, so a request whose JSON landed in
+   one read() and whose '\n' landed in a later read() was silently DROPPED —
+   the buffered JSON at buf[0..] was skipped, the bare newline parsed as an
+   empty line, and the client hung 3s. Symptom: bimodal 3s stalls under rapid
+   connect/close (27/100 get_layout). Fix: parse from position 0.
+
+2. (introduced by retiring the deferral too eagerly) handleRequest -> media_play
+   -> videoSlideSpawnRightOfPlayer -> pumpRoundtrip -> event_loop.dispatch(1)
+   RE-ENTERS the loop from inside readClient's parse, re-firing the control
+   socket fd source and corrupting the in-flight buffer. Fix: (a) restored the
+   pending_video_spawn deferral to handleLayoutEventFd (the spawn must run
+   OUTSIDE the read path), and (b) a `reading` re-entrancy guard in the control
+   server (level-triggered, so a skipped call re-fires cleanly).
+
+3. kvis.sock verbs were BLOCKING on the main loop: KvisClient.connect is a
+   blocking connect and recvReply waited up to 2s (the header's "kvisd replies
+   in 20ms" is FALSE — openPath runs demux+EGL-init synchronously, hundreds of
+   ms on virtio). Fix: SOCK_NONBLOCK connect + non-blocking reply read; the
+   reply is logging-only, so a missing reply is normal, not failure.
+
+ACCEPTANCE (ksd-reset VM, matched-binary): 100x get_layout 0 fails max 4ms;
+50x media_play 0 fails max 27ms; compositor alive, zero panic/SIGSEGV/abort/
+pump-stall. nested-smoke + nested-focus-stress PASS on host.
+
+The verdict-35 deferral comment was wrong about WHY it existed: it was not
+just "off the IPC thread" — it keeps the event-loop pump OUT of the read
+path. Deferral is load-bearing for re-entrancy, not merely for thread safety.
+
+Next: Card 1.5 (terminal body-organ/tentacle split), Card 2 (kvisd->kplayd
+rename). RSS wedge (80MB/s -> 1.9GB) still open -> Phase 2.
+
+
 ## 2026-09-18 VERDICT 35: IPC-thread event-loop re-entrancy — video-slide spawn deferred to main loop
 
 The Sep-18 10:53 hard freeze (Barticus power-cycled) is now on disk

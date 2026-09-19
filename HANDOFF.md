@@ -1,3 +1,5 @@
+# CURRENT STATE 2026-09-19 — PHASE 0 COMPLETE (verdict 36). IPC control socket = main-loop fd source, ipcThreadLoop deleted. Crash class dead at root. Changes UNCOMMITTED on main @ 737c2ed: src/ipc/control.zig, src/ipc/kvis_client.zig, src/server.zig. Deployed + verified on ksd-reset VM (100x get_layout 0 fails, 50x media_play 0 fails). Next: commit verdict 36, then Card 1.5 (terminal split), Card 2 (kvisd->kplayd rename).
+
 # KidulWM HANDOFF — Sep 16 2026 (session: tray-slide birth, stage 1 landed)
 
 ---

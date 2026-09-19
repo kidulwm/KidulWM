@@ -373,14 +373,10 @@ pub const Server = struct {
     cursor_y: f64,
 
     ipc_server: ipc.control.Server,
-    ipc_thread: ?std.Thread,
-    ipc_running: std.atomic.Value(bool),
     /// Guards the wlroots scene graph against cross-thread mutation.
-    /// The IPC thread (mediaSlideToggle/Close via kidulwm-control)
-    /// destroys scene nodes while the render thread (Output.handleFrame:
-    /// scene commit) walks the same graph — pixman abort on live regions, 2026-09-06
-    /// session-killer. Take this on BOTH sides of any scene touch that
-    /// can cross threads. Held per-frame; IPC close waits ≤ 1 vsync.
+    /// (Phase 0 retires the IPC thread, so this is now uncontended on the
+    /// main loop — kept as a no-op guard pending a dedicated removal card.)
+    /// Held per-frame; scene touch that could cross threads waits ≤ 1 vsync.
     scene_mutex: std.atomic.Mutex = .unlocked,
 
     state: State,
@@ -429,11 +425,13 @@ pub const Server = struct {
     /// Output that owns the live video slide (one per session — the player's
     /// row). Null while no .video slide exists.
     video_slide_output: ?*Output = null,
-    /// CARD 2b slice 4 FIX: a media_play request from the IPC thread wants
-    /// the .video slide spawned. The spawn touches the scene graph AND pumps
-    /// the MAIN wl_event_loop (internal-client handshake); the IPC thread
-    /// must do neither (concurrent wl_display dispatch = SIGSEGV). Deferred
-    /// to handleLayoutEventFd via the requestLayout pipe.
+    /// Deferred video-slide spawn. handleRequest runs INSIDE control.zig's
+    /// readClient parse loop (a main-loop fd-source callback). videoSlideSpawn
+    /// -> videoSlideHostSpawn -> InternalClient.create -> pumpRoundtrip ->
+    /// event_loop.dispatch(1) RE-ENTERS the loop, re-firing the control-socket
+    /// fd source and corrupting readClient's in-flight buffer. So the spawn is
+    /// deferred to handleLayoutEventFd (the layout pipe), the one fd-source
+    /// that is already the proven-safe re-entry point.
     pending_video_spawn: ?*Output = null,
     /// Peek widget timer (right-peek clock painter + widget polls, on the
     /// minute).
@@ -642,15 +640,19 @@ pub const Server = struct {
                 self.kvisOpen(p.path);
                 // VIDEO = REAL SLIDE (stage 3): non-music playback spawns
                 // the .video slide right of the player and walks focus.
+                // Phase 0 (I5): handleRequest runs on the MAIN loop now, so
+                // the spawn (scene graph + internal-client pump) is legal
+                // inline — no verdict-35 deferral needed.
                 if (!isMusicPath(p.path)) {
                     var oit = self.outputs.iterator(.forward);
                     while (oit.next()) |o| {
                         if (o.deck.findKind(.media_player) != null and o.media_slide.isOpen()) {
-                            // FIX: defer to the MAIN loop (handleLayoutEventFd).
-                            // videoSlideSpawnRightOfPlayer mutates the scene graph
-                            // and pumps the server event loop — both forbidden on
-                            // the IPC thread (concurrent wl_display dispatch →
-                            // SIGSEGV; the Sep-18 hard crash backtrace).
+                            // DEFER to handleLayoutEventFd (main loop, layout
+                            // pipe). The spawn pumps the event loop, which must
+                            // not re-enter readClient's parse loop (buffer
+                            // corruption). Phase 0 keeps handleRequest on the
+                            // main loop; the deferral is about RE-ENTRANCY,
+                            // not thread safety.
                             self.pending_video_spawn = o;
                             self.requestLayout();
                             break;
@@ -855,8 +857,6 @@ pub const Server = struct {
             .layer_trees = undefined,
             .focused_window = null,
             .ipc_server = undefined,
-            .ipc_thread = null,
-            .ipc_running = std.atomic.Value(bool).init(false),
             .state = .{},
             .theme = style.default(),
             .theme_runtime = Theme.initDefaults(),
@@ -1029,6 +1029,7 @@ pub const Server = struct {
         self.socket_path = path;
         self.ipc_server = try ipc.control.Server.create(self.allocator, .{
             .socket_path = path,
+            .event_loop = self.wl_server.getEventLoop(),
             .state = self,
             .handler = struct {
                 fn handle(s: *anyopaque, req: ipc.message.Request) ipc.message.Response {
@@ -1036,9 +1037,9 @@ pub const Server = struct {
                 }
             }.handle,
         });
-
-        self.ipc_running.store(true, .monotonic);
-        self.ipc_thread = try std.Thread.spawn(.{}, ipcThreadLoop, .{self});
+        // Phase 0 (I5): the control socket is a main-loop fd source, not a
+        // thread. handleLine/handleRequest run on the main loop.
+        try self.ipc_server.start();
     }
 
     pub fn start(self: *Server, no_backend: bool, maybe_socket_name: ?[:0]const u8) !void {
@@ -1085,11 +1086,6 @@ pub const Server = struct {
         // wl_display_destroy asserts if clients are still connected.
         self.wl_server.destroyClients();
 
-        if (self.ipc_thread) |thread| {
-            self.ipc_running.store(false, .monotonic);
-            thread.join();
-            self.ipc_thread = null;
-        }
         self.ipc_server.destroy();
 
         self.media_player.deinit();
@@ -3347,28 +3343,17 @@ pub const Server = struct {
         self.last_focused_slide_id = current_focused_slide_id;
     }
 
-    fn ipcThreadLoop(self: *Server) void {
-        std.log.info("KidulWM: IPC thread started", .{});
-        while (self.ipc_running.load(.monotonic)) {
-            self.ipc_server.tick() catch |err| {
-                std.log.err("ipc tick error: {}", .{err});
-            };
-            var ts = std.posix.timespec{ .sec = 0, .nsec = 10 * std.time.ns_per_ms };
-            _ = linux.nanosleep(&ts, null);
-        }
-        std.log.info("KidulWM: IPC thread stopping", .{});
-    }
-
     fn handleLayoutEventFd(_fd: c_int, _mask: wl.EventMask, server: *Server) c_int {
         _ = _fd;
         _ = _mask;
         var buf: [16]u8 = undefined;
         _ = linux.read(server.layout_pipe[0], &buf, buf.len);
         server.applyLayout();
-        // CARD 2b slice 4 FIX: run a deferred IPC video-slide spawn here, on
-        // the main loop. It re-enters this loop (internal-client handshake)
-        // and mutates the scene graph — the IPC thread must never do either.
-        // applyLayout() above already settled the layout this request queued.
+        // Deferred video-slide spawn (see pending_video_spawn). Runs here, on
+        // the main loop, OUTSIDE the control socket's readClient parse loop —
+        // the spawn's event-loop pump is a legal re-entry from this pipe
+        // source, but corrupts readClient's buffer if done inline in
+        // handleRequest.
         if (server.pending_video_spawn) |vout| {
             server.pending_video_spawn = null;
             server.videoSlideSpawnRightOfPlayer(vout);
