@@ -31,7 +31,7 @@ pub fn build(b: *std.Build) void {
     scanner.addCustomProtocol(b.path("protocol/wlr-output-power-management-unstable-v1.xml"));
     scanner.addCustomProtocol(b.path("protocol/kidul-settings-tray-v1.xml"));
     // xdg-foreign v2 (CARD 2b): the internal client exports the video
-    // slide's host surface; kvisd imports the handle.
+    // slide's host surface; kplayd imports the handle.
     scanner.addCustomProtocol(b.path("protocol/xdg-foreign-unstable-v2.xml"));
 
     scanner.generate("wl_compositor", 4);

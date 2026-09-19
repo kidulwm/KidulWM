@@ -37,7 +37,7 @@ const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
 const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
-const kvis_client_mod = @import("ipc/kvis_client.zig");
+const kplay_client_mod = @import("ipc/kplay_client.zig");
 const media_mod = @import("ui/media.zig");
 const peek_mod = @import("ui/peek.zig");
 const keybinds = @import("config/keybinds.zig");
@@ -119,8 +119,8 @@ pub const KeyRingEntry = struct {
 };
 
 /// CARD 2b slice 4: extension sniff for the media_play IPC verb — music
-/// paths play headless in kvisd (no video slide); everything else spawns
-/// the .video slide. Granny-simple v1; kvisd makes its own decode call.
+/// paths play headless in kplayd (no video slide); everything else spawns
+/// the .video slide. Granny-simple v1; kplayd makes its own decode call.
 fn isMusicPath(path: []const u8) bool {
     const exts = [_][]const u8{ ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".wma" };
     const ext = std.fs.path.extension(path);
@@ -148,10 +148,10 @@ pub const Output = struct {
     /// Fullscreen video slide surface (kind .video slide, spawned right of
     /// the player on playback start; placeholder black surface for now).
     video_slide: tray_slide_mod.TraySlide = .{},
-    /// CARD 2b slice 2: the slide's exported host toplevel (kvisd parents
+    /// CARD 2b slice 2: the slide's exported host toplevel (kplayd parents
     /// its video surface to this via xdg-foreign). One per video slide.
     video_host_surface: ?*@import("ipc/internal_client.zig").HostSurface = null,
-    video_kvis_client: ?@import("ipc/kvis_client.zig").KvisClient = null,
+    video_kplay_client: ?@import("ipc/kplay_client.zig").KplayClient = null,
     /// Permanent per-output edge peeks (TASKCARD-3): EXIT dots + counts,
     /// one click router, and the restored peek widget stack (weather /
     /// gauges / drives / KSD logo left; network + clock right). Born on
@@ -284,7 +284,7 @@ pub const Output = struct {
         }
         // Home/media/video slide surfaces die with the output (their scene
         // trees live in the output's render path). Playback itself lives in
-        // kvisd (out of process) — nothing here can dangle decoded frames.
+        // kplayd (out of process) — nothing here can dangle decoded frames.
         while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.server.scene_mutex.unlock();
         if (self.home_slide.tree) |tree| {
@@ -410,8 +410,8 @@ pub const Server = struct {
     notifications: tray_slide_mod.NotificationStore = .{},
     /// The media PLAYER's home (Barticus law 2026-09-15): Server owns the
     /// MediaWidget. CARD 2b slice 4: playback itself is out of process in
-    /// kvisd; this widget is the card UI + the now-playing MIRROR (cached
-    /// metadata set on kvis open, cleared on close).
+    /// kplayd; this widget is the card UI + the now-playing MIRROR (cached
+    /// metadata set on kplay open, cleared on close).
     media_player: media_mod.MediaWidget,
     // Overview lens: virtual cursor (recency position among unparked minis).
     // The ring node lives per-output (Output.overview_ring) — the lens is
@@ -449,8 +449,8 @@ pub const Server = struct {
 
     decoration_manager: *wlr.XdgDecorationManagerV1,
 
-    /// xdg-foreign (CARD 2b, kvis attack): the media slide exports its
-    /// surface, kvisd imports the handle and parents its video surface.
+    /// xdg-foreign (CARD 2b, kplay attack): the media slide exports its
+    /// surface, kplayd imports the handle and parents its video surface.
     /// Registry first, then the v2 globals (exporter + importer).
     xdg_foreign_registry: *wlr.XdgForeignRegistry,
     xdg_foreign_v2: *wlr.XdgForeignV2,
@@ -460,12 +460,12 @@ pub const Server = struct {
     /// first video-slide spawn; null until then.
     internal_client: ?*@import("ipc/internal_client.zig").InternalClient = null,
 
-    /// CARD 2b slice 3: kvisd's video toplevel (app_id "com.kidul.kvis"),
+    /// CARD 2b slice 3: kplayd's video toplevel (app_id "com.kidul.kplay"),
     /// tracked server-side OUTSIDE the deck/windows list — no deck slide,
     /// no chrome, no focus. Its scene tree is pinned over the video slide's
-    /// rect on every layout (placeKvisWindow). Null while kvisd has no
+    /// rect on every layout (placeKplayWindow). Null while kplayd has no
     /// video surface up.
-    kvis_window: ?*Window = null,
+    kplay_window: ?*Window = null,
 
     new_output: wl.Listener(*wlr.Output),
     new_toplevel_decoration: wl.Listener(*wlr.XdgToplevelDecorationV1),
@@ -634,10 +634,10 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .media_play => |p| {
-                // CARD 2b slice 4: playback = kvis.sock verbs only. The
-                // compositor never decodes a frame; kvisd owns the player.
-                self.kvisCloseAny(); // one player, one truth
-                self.kvisOpen(p.path);
+                // CARD 2b slice 4: playback = kplay.sock verbs only. The
+                // compositor never decodes a frame; kplayd owns the player.
+                self.kplayCloseAny(); // one player, one truth
+                self.kplayOpen(p.path);
                 // VIDEO = REAL SLIDE (stage 3): non-music playback spawns
                 // the .video slide right of the player and walks focus.
                 // Phase 0 (I5): handleRequest runs on the MAIN loop now, so
@@ -662,7 +662,7 @@ pub const Server = struct {
                 return .{ .ok = true, .message = "media play requested" };
             },
             .media_toggle => {
-                self.kvisTogglePause();
+                self.kplayTogglePause();
                 return .{ .ok = true };
             },
             .media_next => {
@@ -672,7 +672,7 @@ pub const Server = struct {
                 return .{ .ok = true };
             },
             .media_seek => |p| {
-                self.kvisSeekRel(p.seconds);
+                self.kplaySeekRel(p.seconds);
                 return .{ .ok = true };
             },
             .notification_test => |p| {
@@ -1829,57 +1829,57 @@ pub const Server = struct {
     }
 
     /// ONE PLAYER PER SESSION (law: media-is-a-slide.md ruling 3). CARD 2b
-    /// slice 4: the one player is kvisd, out of process — close whatever it
+    /// slice 4: the one player is kplayd, out of process — close whatever it
     /// has open before a new 'open' lands (take-over, granny-simple).
-    fn kvisCloseAny(self: *Server) void {
+    fn kplayCloseAny(self: *Server) void {
         // Prefer an already-connected client (video slide owns one); else
         // a short-lived connection just for the close verb.
         var oit = self.outputs.iterator(.forward);
         while (oit.next()) |o| {
-            if (o.video_kvis_client) |*kc| {
+            if (o.video_kplay_client) |*kc| {
                 kc.close() catch {};
                 return;
             }
         }
-        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
             var kc = kc0;
             defer kc.destroy();
             kc.close() catch {};
         } else |_| {}
     }
 
-    /// kvis.sock 'open <path>' — start playback in kvisd (video spawns its
+    /// kplay.sock 'open <path>' — start playback in kplayd (video spawns its
     /// shell; music is headless). Logged for the harness evidence line.
-    pub fn kvisOpen(self: *Server, path: []const u8) void {
+    pub fn kplayOpen(self: *Server, path: []const u8) void {
         if (path.len == 0) return;
         var oit = self.outputs.iterator(.forward);
         while (oit.next()) |o| {
-            if (o.video_kvis_client) |*kc| {
+            if (o.video_kplay_client) |*kc| {
                 kc.open(path) catch |err| {
-                    std.log.warn("[kvis] open failed via slide client: {s}", .{@errorName(err)});
+                    std.log.warn("[kplay] open failed via slide client: {s}", .{@errorName(err)});
                 };
-                std.log.info("[kvis] open sent (slide client): {s}", .{path});
+                std.log.info("[kplay] open sent (slide client): {s}", .{path});
                 return;
             }
         }
-        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
             var kc = kc0;
             defer kc.destroy();
-            std.log.info("[kvis] open sent: {s}", .{path});
+            std.log.info("[kplay] open sent: {s}", .{path});
             kc.open(path) catch |err| {
-                std.log.warn("[kvis] open reply err: {s}", .{@errorName(err)});
+                std.log.warn("[kplay] open reply err: {s}", .{@errorName(err)});
                 return;
             };
         } else |err| {
-            std.log.warn("[kvis] connect failed (kvisd down?): {s}", .{@errorName(err)});
+            std.log.warn("[kplay] connect failed (kplayd down?): {s}", .{@errorName(err)});
         }
     }
 
-    /// Toggle pause via kvis.sock. One player one truth = kvis.sock status;
+    /// Toggle pause via kplay.sock. One player one truth = kplay.sock status;
     /// v1 flips the mirrored cached state optimistically (Granny law).
-    pub fn kvisTogglePause(self: *Server) void {
+    pub fn kplayTogglePause(self: *Server) void {
         const do_resume = !self.media_player.cached.playing;
-        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
             var kc = kc0;
             defer kc.destroy();
             if (do_resume) {
@@ -1893,20 +1893,20 @@ pub const Server = struct {
         }
     }
 
-    /// Relative seek via kvis.sock 'seek_rel <seconds>'.
-    pub fn kvisSeekRel(self: *Server, seconds: f64) void {
-        if (kvis_client_mod.KvisClient.connect(self.allocator)) |kc0| {
+    /// Relative seek via kplay.sock 'seek_rel <seconds>'.
+    pub fn kplaySeekRel(self: *Server, seconds: f64) void {
+        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
             var kc = kc0;
             defer kc.destroy();
             kc.seekRel(seconds) catch |err| {
-                std.log.warn("[kvis] seek_rel failed: {s}", .{@errorName(err)});
+                std.log.warn("[kplay] seek_rel failed: {s}", .{@errorName(err)});
             };
         } else |_| {}
     }
 
-    /// Stop via kvis.sock 'close' + clear the now-playing mirror.
-    pub fn kvisStop(self: *Server) void {
-        self.kvisCloseAny();
+    /// Stop via kplay.sock 'close' + clear the now-playing mirror.
+    pub fn kplayStop(self: *Server) void {
+        self.kplayCloseAny();
         self.media_player.clearNowPlaying();
     }
 
@@ -1969,7 +1969,7 @@ pub const Server = struct {
         // Reopen-lands-on-the-card LAW (Barticus, 2026-09-12): the widget IS
         // the card reference (cached title/art/selection), so keep it alive
         // across destroy/respawn while its music lives (out of process in
-        // kvisd — the widget only mirrors now-playing state).
+        // kplayd — the widget only mirrors now-playing state).
         const keep_widget = output.media_slide.widget_ready and
             output.media_slide.widget.is_music;
         if (output.media_slide.widget_ready and !keep_widget) {
@@ -2056,7 +2056,7 @@ pub const Server = struct {
         defer self.scene_mutex.unlock();
         if (!output.media_slide.isOpen()) return;
         // CARD 2b slice 4: closing the media slide never crashes — there is
-        // nothing in-process to tear down. Playback (if any) lives in kvisd;
+        // nothing in-process to tear down. Playback (if any) lives in kplayd;
         // a video slide close sends the 'close' verb on its own path.
         // Destroy the card buffer node FIRST (leaking it left a stale frame
         // on screen — the "quit not clearing" bug), then the tree.
@@ -2091,7 +2091,7 @@ pub const Server = struct {
             std.log.err("KidulWM: [2b-smoke] internal client FAILED: {s}", .{@errorName(err)});
             return;
         };
-        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kvis host (smoke)") catch |err| {
+        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kplay host (smoke)") catch |err| {
             std.log.err("KidulWM: [2b-smoke] host surface export FAILED: {s}", .{@errorName(err)});
             return;
         };
@@ -2124,48 +2124,48 @@ pub const Server = struct {
 
         // FULLSCREEN LAW (Barticus 2026-09-18): the fullscreen flag must
         // take effect IMMEDIATELY — a fresh layout hides the peek and raises
-        // the slide edge-to-edge before kvisd's surface even maps. Without
+        // the slide edge-to-edge before kplayd's surface even maps. Without
         // this the old frame (peeks + windowed player) lingers one beat.
         self.requestLayout();
 
-        // CARD 2b slice 2: spawn the exported host toplevel for kvisd to
+        // CARD 2b slice 2: spawn the exported host toplevel for kplayd to
         // parent onto. Failure is logged but non-fatal — the slide still
-        // works as a deck object; kvis video simply has nothing to bind.
+        // works as a deck object; kplay video simply has nothing to bind.
         self.videoSlideHostSpawn(output);
 
         std.log.info("KidulWM: video slide spawned right of player", .{});
     }
 
-    /// Slice 2: host surface + export + kvis parent handshake for the
+    /// Slice 2: host surface + export + kplay parent handshake for the
     /// video slide. Order: internal client → host toplevel (committed,
-    /// exported) → kvis.sock connect → parent <handle>. kvisd replies
+    /// exported) → kplay.sock connect → parent <handle>. kplayd replies
     /// 'err parent_failed' if its shell isn't up yet (no video playing) —
     /// logged, and the slide's media path (slice 3/4) will retry parent
     /// after 'open'.
     fn videoSlideHostSpawn(self: *Server, output: *Output) void {
         const ic_mod = @import("ipc/internal_client.zig");
-        const kvis_mod = @import("ipc/kvis_client.zig");
+        const kplay_mod = @import("ipc/kplay_client.zig");
         const ic = self.ensureInternalClient() catch |err| {
             std.log.warn("KidulWM: video host: internal client unavailable ({s})", .{@errorName(err)});
             return;
         };
-        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kvis host") catch |err| {
+        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kplay host") catch |err| {
             std.log.warn("KidulWM: video host: surface/export failed ({s})", .{@errorName(err)});
             return;
         };
         output.video_host_surface = host;
         std.log.info("KidulWM: video host surface exported, handle={s}", .{host.handle.?});
 
-        // kvisd may not be running (music-only session). Connect failure
+        // kplayd may not be running (music-only session). Connect failure
         // is silent-ish: the open path (slice 3) connects again lazily.
-        if (kvis_mod.KvisClient.connect(self.allocator)) |client| {
-            output.video_kvis_client = client;
-            var kc = output.video_kvis_client.?;
+        if (kplay_mod.KplayClient.connect(self.allocator)) |client| {
+            output.video_kplay_client = client;
+            var kc = output.video_kplay_client.?;
             kc.parent(host.handle.?) catch |err| {
-                std.log.info("KidulWM: video host: kvis parent deferred ({s})", .{@errorName(err)});
+                std.log.info("KidulWM: video host: kplay parent deferred ({s})", .{@errorName(err)});
             };
         } else |_| {
-            std.log.info("KidulWM: video host: kvisd not reachable yet (parent deferred)", .{});
+            std.log.info("KidulWM: video host: kplayd not reachable yet (parent deferred)", .{});
         }
     }
 
@@ -2226,27 +2226,27 @@ pub const Server = struct {
         }
         tree.node.setPosition(target.x, target.y);
 
-        // CARD 2b slice 3: re-pin kvisd's video surface over the new
+        // CARD 2b slice 3: re-pin kplayd's video surface over the new
         // slide rect (walks/dwell re-expansion land here).
-        self.placeKvisWindow();
+        self.placeKplayWindow();
     }
 
-    /// CARD 2b slice 3: pin kvisd's video toplevel over the video slide's
+    /// CARD 2b slice 3: pin kplayd's video toplevel over the video slide's
     /// rect. Pure compositor-side scene-tree work — no client roundtrip
     /// (pumpRoundtrip law). The rect math is identical to videoSlidePaint
     /// (deck.targetForSlide + output box offset), so a fullscreen slide
-    /// gets kvisd edge-to-edge over the whole output with ZERO chrome
-    /// (CHROME LAW) and a windowed slide gets kvisd at the windowed rect
+    /// gets kplayd edge-to-edge over the whole output with ZERO chrome
+    /// (CHROME LAW) and a windowed slide gets kplayd at the windowed rect
     /// UNDER the chrome ring (the ring is raised above the slide tree
-    /// inside videoSlidePaint, and kvisd's tree is raised above the slide
-    /// tree here but left below overlay_tree). kvisd letterboxes INSIDE
+    /// inside videoSlidePaint, and kplayd's tree is raised above the slide
+    /// tree here but left below overlay_tree). kplayd letterboxes INSIDE
     /// its own surface — we never paint matte.
     ///
     /// Called from: window map (window.zig handleMap), videoSlidePaint,
     /// and applyLayout (after the video slide paints). Idempotent: it is
-    /// a pure function of (kvis_window, video_slide_output, deck state).
-    pub fn placeKvisWindow(self: *Server) void {
-        const window = self.kvis_window orelse return;
+    /// a pure function of (kplay_window, video_slide_output, deck state).
+    pub fn placeKplayWindow(self: *Server) void {
+        const window = self.kplay_window orelse return;
         const output = self.video_slide_output orelse {
             window.scene_tree.node.setEnabled(false);
             return;
@@ -2262,11 +2262,11 @@ pub const Server = struct {
         target.x += box.x;
         target.y += box.y;
         if (target.width == 0 or target.height == 0) {
-            // Parked/off-screen slide: hide kvisd's surface with it.
+            // Parked/off-screen slide: hide kplayd's surface with it.
             window.scene_tree.node.setEnabled(false);
             return;
         }
-        // Tell kvisd the surface size so it renders to fill (it letterboxes
+        // Tell kplayd the surface size so it renders to fill (it letterboxes
         // internally); the compositor never scales video itself.
         const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
         const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
@@ -2275,10 +2275,10 @@ pub const Server = struct {
         }
         window.setLayoutTarget(target.x, target.y, target.width, target.height);
         window.scene_tree.node.setEnabled(true);
-        // CARD 2b slice 4 (folded fix): raise kvisd's tree above the slide
+        // CARD 2b slice 4 (folded fix): raise kplayd's tree above the slide
         // tree in ALL modes — windowed left the slide tree (black
         // placeholder card) on top of the video. CHROME LAW fullscreen =
-        // zero chrome edge-to-edge; windowed ring visibility vs kvisd's
+        // zero chrome edge-to-edge; windowed ring visibility vs kplayd's
         // matte stays a HOST eye-test verdict (inset follow-up if needed).
         window.scene_tree.node.raiseToTop();
         self.overlay_tree.node.raiseToTop();
@@ -2297,13 +2297,13 @@ pub const Server = struct {
     }
 
     fn videoSlideCloseOn(self: *Server, output: *Output) void {
-        // CARD 2b slice 2 teardown: unparent + close over kvis.sock, then
+        // CARD 2b slice 2 teardown: unparent + close over kplay.sock, then
         // destroy the host toplevel (revokes the export handle).
-        if (output.video_kvis_client) |*kc| {
+        if (output.video_kplay_client) |*kc| {
             kc.unparent() catch {};
             kc.close() catch {};
             kc.destroy();
-            output.video_kvis_client = null;
+            output.video_kplay_client = null;
             // Playback ended with the video slide — clear the now-playing
             // mirror (music close follows the same verb on its own path).
             self.media_player.clearNowPlaying();
@@ -2577,15 +2577,15 @@ pub const Server = struct {
                     .search => {},
                     .result => {
                         if (widget.category == .music) {
-                            // MUSIC PATH: kvisd headless open (out of
+                            // MUSIC PATH: kplayd headless open (out of
                             // process), mirror now-playing, dismiss slide.
                             // Grab entry before closing (getLibrary is global).
                             const entry = widget.selectedResultEntry();
                             const path = widget.selectedResultPath();
                             if (path.len > 0 and entry != null) {
                                 const e = entry.?;
-                                self.kvisCloseAny();
-                                self.kvisOpen(path);
+                                self.kplayCloseAny();
+                                self.kplayOpen(path);
                                 self.media_player.setMusicNowPlaying(
                                     std.mem.sliceTo(e.title, 0),
                                     std.mem.sliceTo(e.artist, 0),
@@ -2595,14 +2595,14 @@ pub const Server = struct {
                             self.mediaSlideToggle();
                             return true;
                         }
-                        // Movies / TV: kvisd open + VIDEO = REAL SLIDE
+                        // Movies / TV: kplayd open + VIDEO = REAL SLIDE
                         // (stage 3): spawn a fullscreen .video slide
                         // IMMEDIATELY RIGHT of the player and walk focus to
                         // it; the player slips left into the peek, alive.
                         const path = widget.selectedResultPath();
                         if (path.len > 0) {
-                            self.kvisCloseAny();
-                            self.kvisOpen(path);
+                            self.kplayCloseAny();
+                            self.kplayOpen(path);
                             self.videoSlideSpawnRightOfPlayer(out);
                         }
                     },
@@ -3045,7 +3045,7 @@ pub const Server = struct {
     ///   visual playback (video/karaoke/LIVE TV) + playing → inhibit
     ///   audio-only music + playing                        → inhibit iff conf
     ///   paused / stopped / nothing                        → never inhibit
-    /// True while music is playing (mirrored from kvis open; the slideless
+    /// True while music is playing (mirrored from kplay open; the slideless
     /// blank-inhibit question — see playbackInhibitsBlank).
     pub fn playbackInhibitsBlank(self: *Server) bool {
         const mp = &self.media_player;
@@ -3616,38 +3616,38 @@ pub const Server = struct {
             std.log.err("failed to create window for toplevel: {}", .{err});
             return;
         };
-        // CARD 2b slice 3: kvisd's video surface (app_id "com.kidul.kvis")
+        // CARD 2b slice 3: kplayd's video surface (app_id "com.kidul.kplay")
         // is NOT a normal slide — no deck entry, no chrome, no focus. It is
         // tracked server-side and pinned over the video slide's rect every
-        // layout (placeKvisWindow). It stays a toplevel child of the video
+        // layout (placeKplayWindow). It stays a toplevel child of the video
         // slide's host surface (xdg-foreign), never a wl_subsurface.
         if (toplevel.app_id) |app_id| {
-            if (std.mem.eql(u8, std.mem.sliceTo(app_id, 0), "com.kidul.kvis")) {
-                window.is_kvis = true;
-                self.kvis_window = window;
-                std.log.info("KidulWM: kvisd video toplevel tracked id={d} (no deck/chrome/focus)", .{window.id});
+            if (std.mem.eql(u8, std.mem.sliceTo(app_id, 0), "com.kidul.kplay")) {
+                window.is_kplay = true;
+                self.kplay_window = window;
+                std.log.info("KidulWM: kplayd video toplevel tracked id={d} (no deck/chrome/focus)", .{window.id});
                 return;
             }
         }
         self.windows.append(window);
     }
 
-    /// kvisd sets its app_id ("com.kidul.kvis") AFTER xdg_toplevel creation
+    /// kplayd sets its app_id ("com.kidul.kplay") AFTER xdg_toplevel creation
     /// (get_toplevel precedes set_app_id by protocol order), so
     /// handleNewXdgToplevel — which reads toplevel.app_id at creation — always
-    /// sees null and appends kvisd's video surface to the normal window list.
+    /// sees null and appends kplayd's video surface to the normal window list.
     /// Re-classify here, on set_app_id, and pull the window out of the deck
-    /// citizens: kvisd's video surface gets no slide, no chrome, no focus —
-    /// placeKvisWindow pins it over the video slide rect instead.
+    /// citizens: kplayd's video surface gets no slide, no chrome, no focus —
+    /// placeKplayWindow pins it over the video slide rect instead.
     /// Idempotent: a toplevel already born with the app_id set (the early
-    /// handleNewXdgToplevel path) is already is_kvis and is skipped.
-    pub fn classifyKvis(self: *Server, window: *Window) void {
-        if (window.is_kvis) return;
-        if (!std.mem.eql(u8, window.app_id.asSlice(), "com.kidul.kvis")) return;
-        window.is_kvis = true;
-        self.kvis_window = window;
+    /// handleNewXdgToplevel path) is already is_kplay and is skipped.
+    pub fn classifyKplay(self: *Server, window: *Window) void {
+        if (window.is_kplay) return;
+        if (!std.mem.eql(u8, window.app_id.asSlice(), "com.kidul.kplay")) return;
+        window.is_kplay = true;
+        self.kplay_window = window;
         if (window.link.prev != null) window.link.remove();
-        std.log.info("KidulWM: kvisd video toplevel classified id={d} (no deck/chrome/focus)", .{window.id});
+        std.log.info("KidulWM: kplayd video toplevel classified id={d} (no deck/chrome/focus)", .{window.id});
     }
 
     fn handleNewLayerSurface(listener: *wl.Listener(*wlr.LayerSurfaceV1), layer_surface: *wlr.LayerSurfaceV1) void {

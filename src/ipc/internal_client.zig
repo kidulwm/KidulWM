@@ -3,7 +3,7 @@
 //! side) → wl_display_connect_to_fd (client side) → registry sync →
 //! wl_compositor + xdg_wm_base + zxdg_exporter_v2. One host xdg_toplevel
 //! per .video slide; the surface never paints — it exists to be exported
-//! (handle sent to kvisd) and to carry the video rect for the compositor's
+//! (handle sent to kplayd) and to carry the video rect for the compositor's
 //! placement pass.
 //!
 //! DEADLOCK LAW: this client talks to its OWN server on the SAME thread.
@@ -192,7 +192,7 @@ pub const InternalClient = struct {
 };
 
 /// One host xdg_toplevel per .video slide. Never paints; exists to be
-/// exported (zxdg_exporter_v2 → handle sent to kvisd over kvis.sock) and
+/// exported (zxdg_exporter_v2 → handle sent to kplayd over kplay.sock) and
 /// to carry the video rect for the compositor's placement pass.
 pub const HostSurface = struct {
     allocator: std.mem.Allocator,
@@ -201,7 +201,7 @@ pub const HostSurface = struct {
     toplevel: *client.xdg.Toplevel,
     exported: *client.zxdg.ExportedV2,
 
-    /// Owned copy of the export handle (the token kvisd imports).
+    /// Owned copy of the export handle (the token kplayd imports).
     handle: ?[]u8 = null,
 
     pub fn create(ic: *InternalClient, app_id: [*:0]const u8, title: [*:0]const u8) Error!*HostSurface {

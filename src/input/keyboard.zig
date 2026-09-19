@@ -232,7 +232,7 @@ const KeyboardDevice = struct {
     fn handleBlindSafeKeysym(server: *Server, sym: xkb.Keysym) bool {
         switch (sym) {
             xkb.Keysym.XF86AudioPlay, xkb.Keysym.XF86AudioPause => {
-                server.kvisTogglePause();
+                server.kplayTogglePause();
                 return true;
             },
             xkb.Keysym.XF86AudioNext => {
@@ -242,15 +242,15 @@ const KeyboardDevice = struct {
                 return true;
             },
             xkb.Keysym.XF86AudioForward => {
-                server.kvisSeekRel(10.0);
+                server.kplaySeekRel(10.0);
                 return true;
             },
             xkb.Keysym.XF86AudioRewind => {
-                server.kvisSeekRel(-10.0);
+                server.kplaySeekRel(-10.0);
                 return true;
             },
             xkb.Keysym.XF86AudioStop => {
-                server.kvisStop();
+                server.kplayStop();
                 return true;
             },
             xkb.Keysym.XF86AudioRaiseVolume => {

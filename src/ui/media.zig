@@ -636,14 +636,14 @@ pub const MediaWidget = struct {
     last_energy: f64 = 0,
     last_helix_us: u64 = 0,
     // CARD 2b slice 4: the in-process Player + WatchState + generation
-    // machinery is DELETED (verdict 28 — kvisd owns playback; the
+    // machinery is DELETED (verdict 28 — kplayd owns playback; the
     // compositor never decodes a frame). The widget keeps library/search/
     // selection/art/card painting + `cached` (peek now-playing state,
-    // mirrored from kvis.sock opens by Server).
+    // mirrored from kplay.sock opens by Server).
 
     /// True while music started from the media slide is playing out-of-
-    /// process via kvisd (headless open verb). Drives the now-playing line
-    /// in renderPeek. Set/cleared by Server on kvis open/close.
+    /// process via kplayd (headless open verb). Drives the now-playing line
+    /// in renderPeek. Set/cleared by Server on kplay open/close.
     is_music: bool = false,
 
     focus: ControlFocus = .category,
@@ -1189,7 +1189,7 @@ pub const MediaWidget = struct {
     }
 
     /// CARD 2b slice 4: music now-playing bookkeeping only — playback
-    /// itself is a kvis.sock 'open' verb issued by the Server (kvisd
+    /// itself is a kplay.sock 'open' verb issued by the Server (kplayd
     /// headless, out of process). This just mirrors what the peek shows.
     pub fn setMusicNowPlaying(self: *MediaWidget, title: []const u8, artist: []const u8) void {
         self.is_music = true;
@@ -1204,7 +1204,7 @@ pub const MediaWidget = struct {
         self.cached.artist[alen] = 0;
     }
 
-    /// Playback stopped/closed (kvis 'close' verb landed or a new open
+    /// Playback stopped/closed (kplay 'close' verb landed or a new open
     /// took over) — clear the now-playing mirror.
     pub fn clearNowPlaying(self: *MediaWidget) void {
         self.is_music = false;

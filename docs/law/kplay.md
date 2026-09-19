@@ -1,7 +1,7 @@
-# LAW: KVIS — one owner per truth (DRAFT for Barticus lock, 2026-09-12)
+# LAW: KPLAY — one owner per truth (DRAFT for Barticus lock, 2026-09-12)
 
 ## The sentence
-ksound owns EVERYONE'S sound truth. kvis owns OUR playback. The
+ksound owns EVERYONE'S sound truth. kplay owns OUR playback. The
 compositor owns FOREIGN pixels. Nothing anywhere holds two owners, and
 every bug lands in one file family by its first symptom.
 
@@ -22,39 +22,39 @@ arbitration, and routing. The meter (FFT tap) answers loudness ONLY,
 never liveness (screens.md precedent; verdict 11). ksound carries NO
 clock and touches NO pixels.
 
-## LAW 2 — kvis: our playback, whole and sealed
-kvis is a PROCESS (the standalone kmedia grown up) owning the entire
+## LAW 2 — kplay: our playback, whole and sealed
+kplay is a PROCESS (the standalone kmedia grown up) owning the entire
 product playback path: demux, decode, rings, the DAC-anchored graph-
 paced clock, presentation. A/V sync never crosses a process boundary —
-the clock lives whole inside kvis. kvis is the parent of its own video
+the clock lives whole inside kplay. kplay is the parent of its own video
 surface and nothing else.
 
 ## LAW 3 — Zero-copy is non-negotiable, and survives the boundary
 dmabufs are file descriptors; they cross processes by design
 (SCM_RIGHTS / linux-dmabuf-v1, which the compositor already serves to
-every client). kvis submits dmabuf buffers like any Wayland client:
+every client). kplay submits dmabuf buffers like any Wayland client:
 GPU-to-GPU, zero copies — proven on this host by standalone kmedia
 0c5308c (~2% CPU, VAAPI surface straight to screen). A process
 boundary never means a memcpy.
 
-## LAW 4 — The slide parents kvis; nothing parents anything else
-The media slide owns geometry, focus, and letterboxing; kvis's surface
+## LAW 4 — The slide parents kplay; nothing parents anything else
+The media slide owns geometry, focus, and letterboxing; kplay's surface
 is a subsurface parented into it. Slide moves, video rides — the
 "mediaPlayer acts like a slide" fix falls out of the structure.
 Foreign AV (browser, games, anything) is a plain Wayland client of the
 compositor: its pixels are the compositor's everyday job, its sound is
-ksound's everyday table. No foreign pixel ever enters kvis; no kvis
+ksound's everyday table. No foreign pixel ever enters kplay; no kplay
 pixel ever enters the compositor's logic.
 
 ## LAW 5 — Crash containment is structural
-If kvis wedges, the compositor keeps breathing and can NAME the corpse
+If kplay wedges, the compositor keeps breathing and can NAME the corpse
 — no more power-button recoveries, no more volatile-journal mysteries.
-A new kvis process is a new decoder pool: stale VA surfaces die with
+A new kplay process is a new decoder pool: stale VA surfaces die with
 the old process. The generation law (dmabuf key = surface id +
 generation) gains a process wall in front of it.
 
 ## LAW 6 — One clock, borrowed crystals (from screens.md, restated)
-kvis paces to the PRESENTING slave's vsync via Wayland frame
+kplay paces to the PRESENTING slave's vsync via Wayland frame
 callbacks, per-output, read live. Screens report their credentials;
 nobody stores per-screen timing tables. The DAC is the only clock.
 
@@ -63,7 +63,7 @@ nobody stores per-screen timing tables. The DAC is the only clock.
 |--------------------------------------------|------------------------------|
 | No sound / wrong device / who's playing    | ksound floor table (1 query) |
 | Liveness lies (dot, widget, butterfly)     | impossible — only the floor  |
-| Our movie: stutter / sync / crash          | kvis (Player clock + rings)  |
+| Our movie: stutter / sync / crash          | kplay (Player clock + rings)  |
 | Our movie: slide won't sit / focus wrong   | media.zig (thin geometry)    |
 | Browser/foreign vid broken                 | compositor scene graph; else |
 |                                            | THEIR bug, not ours          |

@@ -50,11 +50,11 @@ pub const Window = struct {
     id: u32,
     link: wl.list.Link,
 
-    /// CARD 2b slice 3: kvisd's video toplevel (app_id "com.kidul.kvis").
+    /// CARD 2b slice 3: kplayd's video toplevel (app_id "com.kidul.kplay").
     /// Lives outside the deck/windows list: no slide, no chrome, no focus.
     /// The compositor pins its scene tree over the video slide's rect every
-    /// layout (Server.placeKvisWindow).
-    is_kvis: bool = false,
+    /// layout (Server.placeKplayWindow).
+    is_kplay: bool = false,
 
     animation: animation.WindowAnimation,
 
@@ -172,9 +172,9 @@ pub const Window = struct {
         const window: *Window = @fieldParentPtr("set_app_id", listener);
         window.captureAppId();
         window.refreshPeekLabel();
-        // kvisd sets app_id after toplevel creation — re-classify here so
+        // kplayd sets app_id after toplevel creation — re-classify here so
         // its video surface never becomes a deck slide (focus/chrome/peek).
-        window.server.classifyKvis(window);
+        window.server.classifyKplay(window);
     }
 
     fn refreshPeekLabel(window: *Window) void {
@@ -593,10 +593,10 @@ pub const Window = struct {
             wlr.FractionalScaleManagerV1.notifyScale(window.toplevel.base.surface, scale);
             window.toplevel.base.surface.sendEnter(output.wlr_output);
         }
-        // CARD 2b slice 3: kvisd's video toplevel bypasses the deck entirely
+        // CARD 2b slice 3: kplayd's video toplevel bypasses the deck entirely
         // (no slide, no focus) — it is pinned over the video slide's rect.
-        if (window.is_kvis) {
-            window.server.placeKvisWindow();
+        if (window.is_kplay) {
+            window.server.placeKplayWindow();
             window.server.requestLayout();
             return;
         }
@@ -645,8 +645,8 @@ pub const Window = struct {
     fn handleToplevelDestroy(listener: *wl.Listener(void)) void {
         const window: *Window = @fieldParentPtr("toplevel_destroy", listener);
         std.log.info("KidulWM: toplevel destroy fired id={d}", .{window.id});
-        if (window.server.kvis_window == window) {
-            window.server.kvis_window = null;
+        if (window.server.kplay_window == window) {
+            window.server.kplay_window = null;
         }
         if (window.server.focused_window == window) {
             window.server.clearFocus();
@@ -660,7 +660,7 @@ pub const Window = struct {
         window.scene_tree.node.destroy();
         window.detachListeners();
         window.server.deckForWindow(window).removeWindow(window.id);
-        // Guarded: classifyKvis already unlinked a kvis window from the
+        // Guarded: classifyKplay already unlinked a kplay window from the
         // windows list; a second remove() would null-deref.
         if (window.link.prev != null) window.link.remove();
         window.server.allocator.destroy(window);
