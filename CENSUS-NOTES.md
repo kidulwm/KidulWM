@@ -1568,3 +1568,53 @@ structural); slide paints letterbox matte and NAMES the corpse.
 Session-21 wedge (verdict 19 tail, tray-path caveat): SUPERSEDED as a
 hunt — if the wedge returns at all, it returns inside kvisd where it
 can be named and killed. Do not re-probe the embedded path.
+
+## VERDICT 41 — slide-geometry reset (2026-09-19, bobdotrix + Barticus)
+
+DONE + verified this session:
+- kplayd blackscreen HALF: kplayd.service had no WAYLAND_DISPLAY → shell
+  stayed null (headless) → black slide. Added Environment=WAYLAND_DISPLAY=
+  wayland-1. kplayd now logs "shell live: EGL/GLES2 zero-copy present" +
+  "parented to slide via xdg-foreign" + "dmabuf zero-copy import live
+  1920x800". But the media slide is STILL black — see OPEN 1.
+- audio: ALSA Master 86%→100% (0dB) + pipewire sink→100% + alsactl store
+  (persists reboot). Granny policy LOCKED: hardware pinned loud, ksound is
+  the only loudness authority (fades + floor).
+- testPlayer (Mod4+v → ~/.local/bin/kmedia) redeployed to current build —
+  it plays. It is NOT the product; the media player (kplayd slide) is.
+
+OPEN (real targets, next session):
+1. Media player STILL black + no sound. kplayd renders (zero-copy live) but
+   the .video slide closes right after spawn — session.log: "video slide
+   spawned right of player" → "video slide closed (deck settles on player)".
+   The slide never shows kplayd's frames.
+2. Ghost after quit (CONFIRMED, Barticus): the media slide's scene tree
+   SURVIVES quit — the card paints as a peek sliver over the background /
+   under the widgets even after full quit, and can never refocus. `mediaSlideCloseOn`
+   (server.zig:2052) DOES destroy the tree, so this is deck/tree divergence:
+   suspect `mediaSlideClose` routes through `currentDeck()` (focus) instead
+   of the OUTPUT that owns `media_slide.tree` (multi-output), and/or a
+   `removeCompositorSlide` path that skips closeOn. The reconcile guard
+   (mediaSlideRefresh:1994) only fires on the next applyLayout.
+3. Slide geometry (spec frozen: docs/law/slide-geometry.md):
+   - empty-slide-left / empty-slide-right = before_first/after_last, ALWAYS
+     present, EXIT-signed, focus lands on them (walk stops 1-past-last).
+   - 'sentinel' FORBIDDEN (ksd-vocabulary-law): one word for two jobs
+     (end-stop + media-slot); TASKCARD-3 reified them → the end-stop died.
+   - peek geometry excludes parked/hidden slides (none should render).
+   - vertical origin folds in the KSD logo height (EXITs too high / weather
+     pushed up = logo height never accounted).
+   - compositor surfaces (media/overview/home) ride a slot; never share the
+     end-stop's name/flag/lifecycle.
+
+Architecture direction (Barticus-locked):
+- The full-screen PLAYER is its own normal slide, spawned "just like an app".
+- quit = quit: ESC on video fully tears down; the slidedeck slides the media
+  player back into focus like any other slide (no sentinel / borrowed slot).
+- The tray slide has the SAME "not quitting" trap — fix both through ONE
+  teardown owner.
+
+NEXT (fresh session): fix the teardown (one owner destroys the slide's scene
+tree, routed through the output that OWNS it, not currentDeck focus); then
+reconcile the slide model toward the spec. Workbench ksd-reset (pixman);
+fresh-one stays the frozen geometry reference (booted read-only, shut back down).
