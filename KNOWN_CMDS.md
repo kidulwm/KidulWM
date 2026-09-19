@@ -32,22 +32,26 @@ Live reference. Verified commands only. If a command is here, it worked.
 
 ## TRIP WIRES (read before touching session/spawn code)
 
-  1. Install path = /usr/local/bin, NOT /usr/bin. tray.zig and
-     server.zig spawn absolute /usr/local/bin/... paths. (Earlier
-     revisions of this file said /usr/bin — that was wrong; nothing
-     was ever installed there.)
-  2. uid-1000 assumption: spawn envp hardcodes
-     XDG_RUNTIME_DIR=/run/user/1000 (server.zig spawn helper,
-     tray.zig x4, launch-kfiles.sh). Correct while dad is uid 1000
-     and the only user. A second user breaks satellite launches
-     silently. Do not "fix" by cleverness mid-session — refactor is
-     a product-side task.
+  1. Install path = /usr/local/bin, NOT /usr/bin. Spawn strings use
+     absolute /usr/local/bin/... paths. (Earlier revisions of this file
+     said /usr/bin — that was wrong; nothing was ever installed there.)
+  2. uid-1000 assumption: ksd-reset runs as User=kidul (uid 1000), so
+     XDG_RUNTIME_DIR=/run/user/1000 holds. The compositor now INHERITS its
+     environment to children (Card 1.5) instead of hardcoding it — identity
+     comes from the service unit's Environment= lines, never re-typed in
+     spawn strings. A second user still breaks things; that's the Phase 1
+     (supervisor) fix, not a mid-session patch.
   3. wayland-1 contract: the compositor's socket name comes from
-     KIDULWM_WAYLAND_DISPLAY (main.zig), but ALL spawn strings
-     hardcode WAYLAND_DISPLAY=wayland-1. The session wrapper MUST
-     export KIDULWM_WAYLAND_DISPLAY=wayland-1 so both sides agree.
+     KIDULWM_WAYLAND_DISPLAY (main.zig), and Card 1.5 now seeds
+     WAYLAND_DISPLAY into the compositor's own environ (server.zig start()),
+     so spawned clients inherit it. The service unit must still export
+     XDG_RUNTIME_DIR=/run/user/1000.
   4. Satellites must exist at their /usr/local/bin paths BEFORE the
-     session is exercised — tray launches fail silently otherwise.
+     session is exercised — spawns fail silently otherwise.
+  5. TERMINAL (Card 1.5): ONE terminal = ghostty via
+     /usr/local/bin/launch-kidul-terminal.sh (Mod4+Return). alacritty is
+     GONE, Mod4+w is PARKED/unbound. The wrapper carries ghostty-specific
+     env (GHOSTTY_RESOURCES_DIR); identity is inherited, not re-typed.
 
 ## Build / test on host
 
@@ -89,78 +93,67 @@ remote-viewer spice://127.0.0.1:5900
 virsh -c qemu:///system console fresh-one
 ```
 
-## SSH into a VM
+## SSH into a VM (CURRENT, 2026-09-19)
 
-`fresh-one`: `kidul@127.0.0.1:2260`
-`cachyos-kidulwm`: setup depends on hostfwd below.
+Work VM (reset bench): `ksd-reset` — `kidul@192.168.122.87` (plain NAT, port 22)
+Frozen reference (widget sizes): `fresh-one` — `kidul@192.168.122.96` (DO NOT TOUCH — old code, pre-tray-demolition)
+`cachyos-kidulwm` and the rest: shut off / stale.
+
+Real IPs come from `virsh -c qemu:///system domifaddr <vm>` (or the guest agent).
+The old `127.0.0.1:2260` (fresh-one) and `127.0.0.1:2222` (cachyos) hostfwd
+mappings are STALE — do not use them.
 
 Use the existing key:
 
 ```bash
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1
+ssh -i ~/.ssh/id_ed25519_kidulwm kidul@192.168.122.87   # ksd-reset (work)
+ssh -i ~/.ssh/id_ed25519_kidulwm kidul@192.168.122.96   # fresh-one (frozen)
 ```
 
-If a VM does not have SSH forwarding yet, add one after it starts:
+VM sudo password is `kidul` (the `echo kidul | sudo -S ...` pattern below).
+
+If a VM rejects the key, inject it via guest agent — but first the agent must be running:
 
 ```bash
-# for fresh-one, port 2260 -> guest 22
-virsh -c qemu:///system qemu-monitor-command fresh-one --hmp 'hostfwd_add tcp::2260-:22'
-
-# for cachyos-kidulwm, port 2222 -> guest 22
-virsh -c qemu:///system qemu-monitor-command cachyos-kidulwm --hmp 'hostfwd_add tcp::2222-:22'
-ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519_kidulwm -C 'kidulwm@dotrix.org'
-ssh -p 2222 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1
-```
-
-If the VM rejects the key, inject it via guest agent — but first the agent must be running:
-
-```bash
-virsh -c qemu:///system qemu-agent-command fresh-one --cmd '{"execute":"guest-ssh-add-authorized-keys","arguments":{"username":"kidul","keys":["$(cat ~/.ssh/id_ed25519_kidulwm.pub)"]}}'
+virsh -c qemu:///system qemu-agent-command ksd-reset --cmd '{"execute":"guest-ssh-add-authorized-keys","arguments":{"username":"kidul","keys":["$(cat ~/.ssh/id_ed25519_kidulwm.pub)"]}}'
 ```
 
 If guest agent is not responsive, use the SPICE console or the serial console instead.
 
-## Deploy KidulWM — HOST FIRST (law, restated by Barticus 2026-09-07)
+## Deploy KidulWM — WORK VM = ksd-reset (2026-09-19)
 
-ALL KidulWM work and deploys happen ON THE HOST unless Barticus explicitly
-says VM. Host deploy is: build ReleaseSafe, copy to /usr/local/bin, then
-restart the compositor SESSION (SDDM wayland session — restarting it kills
-the host session, so confirm with Barticus before bouncing it).
+The reset work (Phase 0→5) happens IN the ksd-reset VM. The host runs niri
+as the workbench, NOT kidulwm — kidulwm is product-in-dev there. So the old
+"deploy HOST FIRST" law is superseded for reset work: build on host, deploy
+to ksd-reset, `systemctl restart kidulwm`.
 
-WORKFLOW (locked 2026-09-07): Bob builds + installs the binary; Barticus
-restarts the session himself. Bob never bounces the host session.
+ksd-reset runs kidulwm as a SYSTEM service on tty1 (not a user session):
+`/etc/systemd/system/kidulwm.service`, `User=kidul`, `WLR_RENDERER=pixman`
+(software renderer — it's a headless VM). Deploy = install to
+`/usr/local/bin/kidulwm` + `systemctl restart kidulwm`.
 
 ```bash
 cd /home/dad/dev/KidulWM
 zig build -Doptimize=ReleaseSafe
-sudo install -m 755 zig-out/bin/kidulwm /usr/local/bin/kidulwm.new
-sudo install -m 755 zig-out/bin/kidulwm-control /usr/local/bin/kidulwm-control.new
-sudo mv /usr/local/bin/kidulwm.new /usr/local/bin/kidulwm
-sudo mv /usr/local/bin/kidulwm-control.new /usr/local/bin/kidulwm-control
-# install+rename, not plain cp: the running compositor has the binary
-# mapped and cp fails with ETXTBSY. Then Barticus restarts the session.
-```
 
-## Deploy KidulWM to a VM (only when Barticus asks)
+scp -i ~/.ssh/id_ed25519_kidulwm \
+  zig-out/bin/kidulwm zig-out/bin/kidulwm-control scripts/launch-kidul-terminal.sh \
+  kidul@192.168.122.87:/tmp/
 
-```bash
-cd /home/dad/dev/KidulWM
-zig build
-
-scp -P 2260 -i ~/.ssh/id_ed25519_kidulwm \
-  zig-out/bin/kidulwm zig-out/bin/kidulwm-control \
-  kidul@127.0.0.1:/tmp/
-
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 \
-  'sudo systemctl stop kidulwm && sudo cp /tmp/kidulwm /tmp/kidulwm-control /usr/bin/ && sudo systemctl start kidulwm'
+ssh -i ~/.ssh/id_ed25519_kidulwm kidul@192.168.122.87 \
+  'echo kidul | sudo -S install -m 755 /tmp/kidulwm /usr/local/bin/kidulwm.new && \
+   echo kidul | sudo -S mv /usr/local/bin/kidulwm.new /usr/local/bin/kidulwm && \
+   echo kidul | sudo -S cp /tmp/launch-kidul-terminal.sh /usr/local/bin/ && \
+   echo kidul | sudo -S chmod 755 /usr/local/bin/launch-kidul-terminal.sh && \
+   echo kidul | sudo -S systemctl restart kidulwm'
+# install + rename-swap, not plain cp: cp on a running binary = ETXTBSY.
 ```
 
 Then verify:
 
 ```bash
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 'systemctl status kidulwm --no-pager'
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 'journalctl -u kidulwm -n 40 --no-pager'
-ssh -p 2260 -i ~/.ssh/id_ed25519_kidulwm kidul@127.0.0.1 'tail -n 40 /tmp/kidulwm-service.log'
+ssh -i ~/.ssh/id_ed25519_kidulwm kidul@192.168.122.87 'systemctl is-active kidulwm'
+ssh -i ~/.ssh/id_ed25519_kidulwm kidul@192.168.122.87 'echo kidul | sudo -S journalctl -u kidulwm -n 40 --no-pager'
 ```
 
 ## Offline binary patch (if VM is unreachable)

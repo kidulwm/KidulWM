@@ -1053,6 +1053,13 @@ pub const Server = struct {
         };
         std.log.info("KidulWM: Wayland socket {s}", .{name});
 
+        // I1 single-authority seed (Card 1.5): publish our socket name as
+        // WAYLAND_DISPLAY in our OWN environment, so every spawned tentacle
+        // inherits it downstream — never re-typed in a spawn string. setenv
+        // copies, so this is safe even when `name` points into the
+        // auto-socket stack buffer.
+        _ = setenv("WAYLAND_DISPLAY", name.ptr, 1);
+
         if (!no_backend) {
             try self.backend.start();
             self.backend_started = true;
@@ -3942,14 +3949,12 @@ pub const Server = struct {
         }
         argv[argc] = null;
 
-        const envp = [_:null]?[*:0]const u8{
-            "WAYLAND_DISPLAY=wayland-1",
-            "XDG_RUNTIME_DIR=/run/user/1000",
-            "GTK_CSD=0",
-            "GHOSTTY_RESOURCES_DIR=/usr/share/ghostty",
-            null,
-        };
-        _ = linux.execve(argv[0].?, &argv, &envp);
+        // I1 (Card 1.5): inherit the compositor's own environment — identity
+        // (WAYLAND_DISPLAY, XDG_RUNTIME_DIR) and CSD policy (GTK_CSD) flow
+        // from one authority. Tentacle-specific needs live in the per-app
+        // wrapper (launch-kidul-terminal.sh), not here.
+        const envp: [*:null]const ?[*:0]const u8 = @ptrCast(std.c.environ);
+        _ = linux.execve(argv[0].?, &argv, envp);
         linux.exit(127);
     }
 

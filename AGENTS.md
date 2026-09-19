@@ -6,12 +6,18 @@ When working on this repository, treat these files as authoritative before guess
 
 Source of truth: `KNOWN_CMDS.md` in this repository.
 
-- DEFAULT IS THE HOST (law, Barticus 2026-09-07): build ReleaseSafe on the
-  host, deploy to `/usr/local/bin/kidulwm`. VM deploys only when Barticus
-  explicitly asks.
-- **fresh-one**: SSH to `kidul@192.168.122.96` (plain NAT, port 22; the old
-  `127.0.0.1:2260` hostfwd is stale), key `~/.ssh/id_ed25519_kidulwm`
-- **cachyos-kidulwm**: SSH to `kidul@127.0.0.1:2222`, same key
+- Reset work (Phase 0→5) happens IN the ksd-reset VM. Host runs niri as the
+  workbench, not kidulwm. Build ReleaseSafe on host, deploy to ksd-reset,
+  `systemctl restart kidulwm`.
+- **ksd-reset** (work VM): SSH `kidul@192.168.122.87` (plain NAT, port 22),
+  key `~/.ssh/id_ed25519_kidulwm`. kidulwm runs as a SYSTEM service on tty1,
+  `WLR_RENDERER=pixman` (software renderer). sudo password = `kidul`.
+- **fresh-one** (FROZEN reference — widget sizes): SSH `kidul@192.168.122.96`.
+  DO NOT TOUCH. It runs pre-tray-demolition code (Aug 28) whose widgets are
+  the perfect-size reference. Revert any accidental change.
+- **cachyos-kidulwm**: shut off; the `127.0.0.1:2222` hostfwd is stale.
+- Old `127.0.0.1:2260` (fresh-one) hostfwd is stale — use real IPs via
+  `virsh -c qemu:///system domifaddr <vm>`.
 
 ## Secrets / credentials
 

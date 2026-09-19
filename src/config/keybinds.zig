@@ -51,13 +51,12 @@ const Keybind = struct {
 
 fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     var list = std.ArrayList(Keybind).empty;
-    const ghostty = allocator.dupe(u8, "/usr/bin/ghostty") catch &[_]u8{};
-    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Return, .action = .{ .spawn = ghostty } }) catch {
-        if (ghostty.len > 0) allocator.free(ghostty);
-    };
-    const alacritty = allocator.dupe(u8, "/usr/bin/alacritty") catch &[_]u8{};
-    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.w, .action = .{ .spawn = alacritty } }) catch {
-        if (alacritty.len > 0) allocator.free(alacritty);
+    // THE terminal (Card 1.5): one terminal concept, one key. The wrapper
+    // carries the terminal's own needs; identity is inherited, never re-typed.
+    // Mod4+w is PARKED (unbound) per Barticus 2026-09-19.
+    const terminal = allocator.dupe(u8, "/usr/local/bin/launch-kidul-terminal.sh") catch &[_]u8{};
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.Return, .action = .{ .spawn = terminal } }) catch {
+        if (terminal.len > 0) allocator.free(terminal);
     };
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.j, .action = .focus_next }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.k, .action = .focus_prev }) catch {};
@@ -410,7 +409,7 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "fullscreen_toggle")) return .fullscreen_toggle;
         if (std.mem.eql(u8, str, "wm_reset")) return .wm_reset;
         if (std.mem.eql(u8, str, "open_slide")) {
-            const cmd = allocator.dupe(u8, "/usr/bin/ghostty") catch return null;
+            const cmd = allocator.dupe(u8, "/usr/local/bin/launch-kidul-terminal.sh") catch return null;
             return .{ .spawn = cmd };
         }
         if (std.mem.startsWith(u8, str, "spawn ")) {

@@ -3,6 +3,44 @@
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 
 
+## 2026-09-19 VERDICT 37: CARD 1.5 LANDED — terminal body-organ/tentacle split (I1, I2)
+
+Two halves, both live bugs, both fixed.
+
+HALF 1 — ESCAPE HATCH RESTORED (ksd-reset): getty@tty1 was disabled (correct,
+kidulwm owns tty1) but getty@tty2 was ALSO disabled — kidulwm death = black
+screen, SSH-only recovery. getty@tty2 is now enabled + active on ksd-reset
+(agetty live on tty2). The body keeps its mouth.
+
+HALF 2 — TENTACLE LOGIC OUT OF THE FACE:
+  - spawnCommand (server.zig) no longer fabricates a hardcoded envp
+    (WAYLAND_DISPLAY=wayland-1, XDG_RUNTIME_DIR=/run/user/1000, GTK_CSD=0,
+    GHOSTTY_RESOURCES_DIR). It now execve()s with std.c.environ — the
+    compositor's own environment, inherited. Identity is seeded ONCE:
+    start() setenv()s WAYLAND_DISPLAY=<socket name> into the compositor's own
+    environ (from the authoritative addSocket name), so every spawned client
+    inherits it downstream. GTK_CSD/GDK_DEBUG/QT_* flow from
+    applyTitleBarEnvironment (already in the compositor's environ).
+  - TWO terminals (ghostty on Mod4+Return, alacritty on Mod4+w) collapsed to
+    ONE: ghostty via /usr/local/bin/launch-kidul-terminal.sh. alacritty
+    deleted; Mod4+w PARKED (unbound) per Barticus. The wrapper carries
+    ghostty-specific env (GHOSTTY_RESOURCES_DIR) — "the tentacle carries its
+    own needs"; identity is inherited, never re-typed.
+
+VERIFIED (ksd-reset, matched binary sha bea11929): compositor boots verdict
+OK (22 keybinds), terminal spawns via wrapper -> ghostty maps as
+com.mitchellh.ghostty window 1; child environ shows WAYLAND_DISPLAY +
+XDG_RUNTIME_DIR inherited (no body-authored env). Deployment via
+systemctl restart kidulwm (system service on tty1, pixman).
+
+DEPLOY NOTE: the OLD "deploy HOST FIRST" law is SUPERSEDED for reset work —
+work happens in ksd-reset VM (kidul@192.168.122.87); host runs niri. fresh-one
+is FROZEN (pre-tray-demolition, perfect widget sizes) — DO NOT TOUCH. Both
+facts recorded in AGENTS.md + KNOWN_CMDS.md (stale 2260/2222 hostfwd removed).
+
+Next: Card 2 (kvisd->kplayd rename), Phase 2 (RSS wedge 80MB/s->1.9GB).
+
+
 ## 2026-09-19 VERDICT 36: PHASE 0 COMPLETE — IPC control socket is a main-loop fd source (I5)
 
 The verdict-35 deferral fixed ONE crash call-site. This is the root fix: the
