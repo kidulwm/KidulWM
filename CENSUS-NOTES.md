@@ -1,6 +1,13 @@
 # MEDIA CENSUS — live hunt state (bobdotrix, started 2026-09-09)
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
+#
+# DEPLOY TARGET (LOCKED 2026-09-19): we are BACK IN THE VMs. ksd-reset
+# (kidul@192.168.122.87) is the work VM — build on host, deploy to ksd-reset,
+# `systemctl restart kidulwm`. The host is NOT the mission: it runs niri as
+# the daily driver until kidulwm can take over. Tweaking the host is fine;
+# treating it as the deploy target is not. fresh-one is FROZEN (perfect
+# widget sizes) — never touch it.
 
 
 ## 2026-09-19 VERDICT 37: CARD 1.5 LANDED — terminal body-organ/tentacle split (I1, I2)
