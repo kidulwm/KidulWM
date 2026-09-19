@@ -100,8 +100,14 @@ OWED: Barticus relog + repro — type a password at a blanked screen, confirm
 nothing lands in the focused terminal. (bobdotrix dies on the sddm relog —
 this verdict IS the handoff.)
 
-NEXT (polish, separate, parked): literal fadeIntoExistence/fadeOutOfExistence
-visual ramp; keyToOpen profile picker as the wake flow.
+NEXT (polish, separate, parked): keyToOpen profile picker as the wake flow.
+And the fadeIntoExistence REVEAL (Barticus design, 2026-09-19): the blank is
+already a black screen, so waking does a "movie-edge split" — the top and
+bottom edges part from the middle, revealing the CENTER first and opening
+until the full screen shows. The reveal duration == the gracePeriod, so the
+keys become active again the SAME instant the reveal completes. The input
+hold is never invisible: Granny sees the screen "open", and when it's fully
+open the keys respond — no "screen on but dead keys" confusion.
 
 ## 2026-09-19 VERDICT 42: BLACK-SCREEN root cause = z-order (kplayd buried under placeholder)
 
