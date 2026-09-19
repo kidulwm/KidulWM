@@ -816,9 +816,9 @@ Phase 2 of the realignment port (docs/law/port-mapping.md) landed.
   (never a ghostty.conf), target <100 MB. Not now.
 
 ### Media seeded (/usr/share/kidul/media/)
-- big-buck-bunny-720p.mov, elephants-dream-720p.mov (CC-BY),
-  nasa-earth-blue-marble.jpg (PD), colorbars test pattern. music/ empty
-  (need CC/PD source).
+- elephants-dream-720p.mov (CC-BY), nasa-earth-blue-marble.jpg (PD),
+  colorbars test pattern. music/ empty (need CC/PD source).
+  (big-buck-bunny REMOVED 2026-09-19 — corrupted source; never re-seed.)
 
 ### NOT on the image yet (next workstream)
 - KidulWM binary, kiduldm, kidul-init. The VM boots to a getty.

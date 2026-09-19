@@ -9,10 +9,11 @@
 # treating it as the deploy target is not. fresh-one is FROZEN (perfect
 # widget sizes) — never touch it.
 #
-# CURRENT POSITION (2026-09-19, end of session): Phase 0 DONE (verdict 36),
-# Card 1.5 DONE (verdict 37), Card 2 DONE (verdict 38). All committed + signed,
-# all on main. Next work = Phase 2 — the RSS wedge. See §9 STAGE-3 PLAN below
-# for what that looks like in a fresh session.
+# CURRENT POSITION (2026-09-19): Phase 0 (36), Card 1.5 (37), Card 2 (38)
+# DONE, committed+signed, on main AND pushed to Codeberg. Phase 2 step 1
+# (repro the wedge) attempted in the VM — does NOT fire there (pixman, no
+# GPU). Verdict 39 below: the repro moves to the HOST (real i915). Test video
+# = Raya; big-buck-bunny deleted everywhere (corrupted).
 
 # ─────────────────────────────────────────────────────────────────────
 # §9 STAGE-3 PLAN — Phase 2: kill the RSS wedge  (for the next session)
@@ -43,6 +44,59 @@
 # (real MEDIA/WEATHER/SIGNALS feeds) — that's a DIFFERENT, now-moot lineage
 # (the tray was demolished). The live "stage 3" is Phase 2 above.
 
+
+## 2026-09-19 VERDICT 39: PHASE 2 STEP 1 — wedge does NOT repro in the VM; host path locked
+
+Reproduced the full verdict-35 media path end-to-end in ksd-reset and watched
+RSS. Result: the wedge does NOT fire in the VM.
+
+REPRO RIG (now permanent on ksd-reset):
+  - kmedia-watchdog.service: 1s RSS heartbeat -> /var/log/kmedia-watchdog.log
+    (kidulwm + kplayd rss/cpu + last relevant journald line).
+  - LINGER FIX: `loginctl enable-linger kidul` + restart kidulwm. Without it,
+    logind recycled /run/user/1000 out from under kidulwm-control.sock
+    (bound-but-unlinked) -> kidulwm-control ConnectFailed. This is the exact
+    orphaned-socket trap Phase 1 (I1/I2) retires.
+  - kplayd launch: `WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=/run/user/1000
+    /usr/local/bin/kplayd` (as kidul; no unit yet — dead-after-reboot live).
+  - Trigger: `kidulwm-control media_card_toggle` then `media_play <path>`.
+
+RESULT: kidulwm RSS flat (~26MB idle -> ~90MB during playback, then flat 45s);
+kplayd stable ~390MB/~30% cpu (software 720p decode); zero [present]/FRAMES
+churn. No wedge.
+
+ROOT CAUSE OF NON-REPRO: the wedge is a dmabuf/EGL zero-copy import churn
+(SETBUFFER-IMPORT-CHURN / UNTHROTTLED-IMPORT). That path only exists on a
+GPU. ksd-reset is pixman + WLR_ALLOCATOR=shm (software renderer, by design);
+kplayd's log proves no GPU — VAAPI init failed, EGL "failed to create dri2
+screen", ZINK vkCreateInstance failed (virtio-gpu has no 3D). Under shm,
+wlroots releases old buffers correctly -> no churn. The CENSUS §9 "repro in
+the VM" plan is now retired; the wedge is GPU-only.
+
+DECISION (Barticus): repro moves to the HOST (real i915 + VAAPI + dmabuf),
+where verdict-35 actually saw 167MB -> 1.94GB. Host is green-lit for in/out
+of niri ("back to login is a 1 liner", "just don't rfkill anything").
+
+TEST VIDEO: big-buck-bunny is CORRUPTED — deleted from the VM AND removed
+from ksd-golden/scripts/seed-media.sh (never re-seed). Canonical test video
+= Raya: /mnt/sda_backup/Jelly/Kids Movies/Raya.and.the.Last.Dragon.mkv
+(Barticus's own rip, host-only — Disney IP, NOT seeded).
+
+SESSION HANDOFF LAW (Barticus 2026-09-19): bobdotrix does NOT survive an sddm
+login on the host — the hermes -> ghostty -> niri chain dies with the display
+session. That is fine: document state here so the next session resumes. Do all
+host-prep that needs no login cycle, record the exact next commands, then hand
+off.
+
+NEXT (host repro — documented for handoff):
+  1. Host has i915 + RTX 3060. Wedge fingerprint is i915; pin the iGPU.
+  2. Run kidulwm on the host WITHOUT WLR_RENDERER=pixman (GL/gles2), on a
+     spare VT so niri pauses (does not die) — or via a fresh sddm login.
+  3. Copy Raya to a host media path; start kplayd (GL path, VAAPI + dmabuf)
+     + watchdog; media_play Raya; watch RSS for the ~80MB/s climb.
+  GOTCHA: the corrupted-BBB run showed black screen — a non-rendering video
+  yields no churn, so confirm frames actually present before trusting a flat
+  RSS reading.
 
 ## 2026-09-19 VERDICT 38: CARD 2 LANDED — kvisd → kplayd rename (naming law §7)
 
