@@ -12,9 +12,11 @@
 # CURRENT POSITION (2026-09-19): Phase 0 (36), Card 1.5 (37), Card 2 (38)
 # DONE, committed+signed, pushed to Codeberg. Phase 2 step 1 attempted in the
 # VM — does NOT fire there (pixman, no GPU). Verdict 39: repro moves to HOST.
-# Host kidulwm DEPLOYED 0fc87a0d (GL, current main) + control 46b89df5
-# (verdict 40). Test video = Raya (already in library via
-# /mnt/sda_backup/Jelly/Kids Movies). big-buck-bunny deleted (corrupted).
+# Host kidulwm GL deployed (verdict 40). Verdict 41 (09b6740): slide-geometry
+# law drafted + teardown bug cluster named. Verdict 42 (ad11d7b): BLACK-SCREEN
+# root cause = z-order (kplayd buried under black placeholder) — FIXED, host
+# deployed bf3c565f, restart+repro OWED. GHOST (media tree survives quit) OPEN.
+# Test video = Raya (/mnt/sda_backup/Jelly/Kids Movies); BBB deleted (corrupt).
 #
 # PARKED (at Phase-2 base): CONSOLIDATE the kidulwm-development skill — it is a
 # 100KB god-file at its size cap. Clean shave, not a cut: dedupe the repeated
@@ -56,6 +58,42 @@
 # (real MEDIA/WEATHER/SIGNALS feeds) — that's a DIFFERENT, now-moot lineage
 # (the tray was demolished). The live "stage 3" is Phase 2 above.
 
+
+## 2026-09-19 VERDICT 42: BLACK-SCREEN root cause = z-order (kplayd buried under placeholder)
+
+Verdict 41's "video slide closes right after spawn" was a MISREAD. Live host
+session (kidulwm d01ca07): the "video slide closed (deck settles on player)"
+log line was Barticus's OWN Ctrl+q (close_focused — visible in debug_status
+key_ring), not a spontaneous teardown. The .video slide spawns and stays up.
+The real bug is sound-only BLACK SCREEN.
+
+EVIDENCE (live host repro, Bob.Marley.One.Love.2024.mkv):
+  - kplayd fully healthy: VA-API hw decode ACTIVE (silicon), "shell live:
+    EGL/GLES2 zero-copy present", "parented to slide via xdg-foreign",
+    "dmabuf zero-copy import live 1920x800". Frames decode + import.
+  - Sound plays, NO picture → the frames never reach the visible scene.
+
+ROOT CAUSE: the video slide paints a BLACK placeholder card
+(renderBlackToBuffer). applyLayout calls videoSlidePaint (which internally
+raises kplayd's surface ABOVE the slide via placeKplayWindow) and then
+immediately does `output.video_slide.tree.node.raiseToTop()`, re-burying
+kplayd under the placeholder. Net z-order: overlay > black placeholder >
+kplayd surface. One raise undoes the other.
+
+FIX (ad11d7b): after the slide-tree raiseToTop in applyLayout, re-raise
+`kplay_window`'s scene tree so the real video wins. 7 lines, src/server.zig.
+
+DEPLOYED host: /usr/local/bin/kidulwm sha256 bf3c565f (rollback
+.bak-210938). OWED: Barticus restart + repro → expect picture + sound.
+
+STILL OPEN (separate, verdict 41 OPEN #2): GHOST after quit — media slide's
+scene tree survives quit. mediaSlideClose/mediaSlideToggle/mediaSlideFocusOrSpawn
+route through currentDeck() (FOCUS) instead of the output that OWNS
+media_slide.tree; on the 2-monitor host a close while focus is elsewhere is
+a silent no-op. Fix = give the media slide an owner (mirror video_slide_output),
+route close/spawn through the owner. NEXT card after this repro passes.
+
+Test video = Raya; BBB deleted (corrupted).
 
 ## 2026-09-19 VERDICT 40: WORKBENCH → HOST + kidulwm GL deployed (0fc87a0d)
 
