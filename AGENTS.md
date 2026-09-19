@@ -6,9 +6,10 @@ When working on this repository, treat these files as authoritative before guess
 
 Source of truth: `KNOWN_CMDS.md` in this repository.
 
-- Reset work (Phase 0→5) happens IN the ksd-reset VM. Host runs niri as the
-  workbench, not kidulwm. Build ReleaseSafe on host, deploy to ksd-reset,
-  `systemctl restart kidulwm`.
+- Workbench is PHASE-DEPENDENT — SYSTEM.md is the arbiter ("1 file to rule").
+  Phase 2 (RSS wedge) is GPU-only → HOST: kidulwm runs on the host's i915
+  (GL, NOT pixman) via an sddm login. Everything else (software/pixman) stays
+  in ksd-reset. Build ReleaseSafe on host; deploy to the active target.
 - **ksd-reset** (work VM): SSH `kidul@192.168.122.87` (plain NAT, port 22),
   key `~/.ssh/id_ed25519_kidulwm`. kidulwm runs as a SYSTEM service on tty1,
   `WLR_RENDERER=pixman` (software renderer). sudo password = `kidul`.
