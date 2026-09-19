@@ -8,6 +8,40 @@
 # the daily driver until kidulwm can take over. Tweaking the host is fine;
 # treating it as the deploy target is not. fresh-one is FROZEN (perfect
 # widget sizes) — never touch it.
+#
+# CURRENT POSITION (2026-09-19, end of session): Phase 0 DONE (verdict 36),
+# Card 1.5 DONE (verdict 37), Card 2 DONE (verdict 38). All committed + signed,
+# all on main. Next work = Phase 2 — the RSS wedge. See §9 STAGE-3 PLAN below
+# for what that looks like in a fresh session.
+
+# ─────────────────────────────────────────────────────────────────────
+# §9 STAGE-3 PLAN — Phase 2: kill the RSS wedge  (for the next session)
+# ─────────────────────────────────────────────────────────────────────
+# The wedge fingerprint (verdict 35): kidulwm RSS 167MB → ~1.94GB over ~90s
+# (~80MB/s burst), then wedged — i915 near-idle, CPU easing 48→37%, no
+# coredump. Suspects named in SYSTEM.md §6 Phase 2: SETBUFFER-IMPORT-CHURN and
+# UNTHROTTLED-IMPORT in the prewarm/placement path (placeKplayWindow /
+# videoSlidePaint, CENSUS verdict-17 prewarm-OOM class re-armed in the kplayd
+# placement path — NOT the deleted decoder).
+#
+# Phase 2 order (from SYSTEM.md §6):
+#   1. Reproduce the wedge in the VM (port the watchdog + persistent journal;
+#      ~80MB/s → ~1.9GB → render-loop-wedge is the fingerprint).
+#   2. Pin the exact leak line via the VM repro (instrument placeKplayWindow +
+#      the scene-buffer import).
+#   3. Design the pool: ONE refcounted type owning VAAPI-surface → dmabuf →
+#      EGL → scene-buffer, ownership by constructor (I4), not generation-guard.
+#   4. Land zero-copy (~2% CPU); ring/cache sizing as a named constant-pair.
+#   GOTCHAS: gen-key falsification (don't re-key on pool ids alone); pin the
+#   iGPU render node never NULL; per-frame setBuffer texture churn (fd leak
+#   fires on the miss path).
+#   GATE: flat RSS after warmup, bounded fds, hours of playback, VA-API +
+#   dmabuf zero-copy active, ~2% CPU, no power-off. Barticus eyes on the exact
+#   host binary.
+#
+# NOTE: "stage 3" in older HANDOFF text meant the tray-slide stage-3
+# (real MEDIA/WEATHER/SIGNALS feeds) — that's a DIFFERENT, now-moot lineage
+# (the tray was demolished). The live "stage 3" is Phase 2 above.
 
 
 ## 2026-09-19 VERDICT 38: CARD 2 LANDED — kvisd → kplayd rename (naming law §7)
@@ -38,7 +72,12 @@ LEFT OVERS (note only, harmless): fossil /usr/local/bin/kvisd binary still on
 the HOST (root-owned; removal was blocked on timeout, not attempted again).
 No process, no unit, no socket references it. Remove whenever convenient.
 
-Next: Phase 2 (RSS wedge 80MB/s→1.9GB).
+BRANCH FIX (same session): kmedia had been committing to a stale themed
+branch `dac-paced-clock` (16 commits ahead of main). Fast-forwarded main →
+dac-paced-clock, deleted the redundant branch. kmedia is now on main, clean,
+single branch. KidulWM was already on main.
+
+Next: Phase 2 (RSS wedge 80MB/s→1.9GB). See §9 stage-3 preview below.
 
 
 ## 2026-09-19 VERDICT 37: CARD 1.5 LANDED — terminal body-organ/tentacle split (I1, I2)
