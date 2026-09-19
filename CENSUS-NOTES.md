@@ -2,18 +2,19 @@
 # Read THIS FILE first in any new session during the media hunt. Update it
 # after every repro/verdict. Delete/retire it into HANDOFF when done.
 #
-# DEPLOY TARGET (LOCKED 2026-09-19): we are BACK IN THE VMs. ksd-reset
-# (kidul@192.168.122.87) is the work VM — build on host, deploy to ksd-reset,
-# `systemctl restart kidulwm`. The host is NOT the mission: it runs niri as
-# the daily driver until kidulwm can take over. Tweaking the host is fine;
-# treating it as the deploy target is not. fresh-one is FROZEN (perfect
-# widget sizes) — never touch it.
+# WORKBENCH (READJUSTED 2026-09-19): Phase 2 (RSS wedge) is GPU-only, so the
+# workbench moves BACK TO THE HOST for this phase — kidulwm runs on the host's
+# real i915/VAAPI/dmabuf (GL, NOT pixman). ksd-reset stays the software/pixman
+# workbench for everything else. fresh-one FROZEN, never touch. Host deploy =
+# ReleaseSafe build on host -> /usr/local/bin/kidulwm (mv-over swap + .bak).
+# bobdotrix does NOT survive an sddm login — document handoff here first.
 #
 # CURRENT POSITION (2026-09-19): Phase 0 (36), Card 1.5 (37), Card 2 (38)
-# DONE, committed+signed, on main AND pushed to Codeberg. Phase 2 step 1
-# (repro the wedge) attempted in the VM — does NOT fire there (pixman, no
-# GPU). Verdict 39 below: the repro moves to the HOST (real i915). Test video
-# = Raya; big-buck-bunny deleted everywhere (corrupted).
+# DONE, committed+signed, pushed to Codeberg. Phase 2 step 1 attempted in the
+# VM — does NOT fire there (pixman, no GPU). Verdict 39: repro moves to HOST.
+# Host kidulwm DEPLOYED 0fc87a0d (GL, current main) + control 46b89df5
+# (verdict 40). Test video = Raya (already in library via
+# /mnt/sda_backup/Jelly/Kids Movies). big-buck-bunny deleted (corrupted).
 
 # ─────────────────────────────────────────────────────────────────────
 # §9 STAGE-3 PLAN — Phase 2: kill the RSS wedge  (for the next session)
@@ -44,6 +45,30 @@
 # (real MEDIA/WEATHER/SIGNALS feeds) — that's a DIFFERENT, now-moot lineage
 # (the tray was demolished). The live "stage 3" is Phase 2 above.
 
+
+## 2026-09-19 VERDICT 40: WORKBENCH → HOST + kidulwm GL deployed (0fc87a0d)
+
+Phase 2 (RSS wedge) is GPU-only, so the workbench moves back to the HOST for
+this phase — kidulwm runs on the host's real i915 (GL, NOT pixman).
+
+DEPLOYED (host, mv-over swap + .bak rollback):
+  - /usr/local/bin/kidulwm         0fc87a0d (ReleaseSafe, current main, GL)
+    prev = .bak-efd5e060 (Sep 18 Phase-0 build — stale, pre-Card-1.5/rename).
+  - /usr/local/bin/kidulwm-control 46b89df5 (matched pair).
+  - kplayd already current on host (579686c = verdict 38), socket live, pid up.
+
+MEDIA: Raya is ALREADY in the host library — no copy needed. media.zig
+hardcodes /mnt/sda_backup/Jelly/Kids Movies as a scan root; the whole Jelly
+tree (Kids Movies/Shows, Movies, Shows, Music) is live there. STALE: the scan
+list also carries /mnt/hostmedia/jelly/* — a mount that no longer exists —
+dead no-ops; clean up later, harmless now.
+
+LESSON (Barticus, re-emphasized): UPDATE THE CENSUS ASAP AFTER EVERY DEPLOY —
+do not defer it. It has bitten before.
+
+NEXT (host repro, next session after the sddm login): run kidulwm GL on host
+i915 -> kplayd up -> media_play Raya -> watch RSS for the ~80MB/s climb.
+Confirm frames actually present (black screen = no churn = false negative).
 
 ## 2026-09-19 VERDICT 39: PHASE 2 STEP 1 — wedge does NOT repro in the VM; host path locked
 
