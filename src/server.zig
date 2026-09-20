@@ -2238,7 +2238,12 @@ pub const Server = struct {
             // CHROME LAW (Barticus 2026-09-17, LOCKED): fullscreen video
             // = ZERO chrome. The ring cost ~6% CPU (2→8) and painted over
             // the picture. Only windowed (peek/parked) shows the ring.
-            const is_fullscreen = deck.slides.items[idx].fullscreen;
+            // FULLSCREEN-FOCUS LAW (Barticus 2026-09-20): "fullscreen" for
+            // side-effects means fullscreen AND focused — a fullscreen slide
+            // walked off-focus is a STANDARD slide (border + restraints),
+            // not a chrome-less fullscreen taking over the side.
+            const is_fullscreen = deck.slides.items[idx].fullscreen and
+                deck.empty_slot == .none and idx == deck.focused_index;
             if (!is_fullscreen) {
                 const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
                 if (chrome_buf) |cb| {
@@ -3225,16 +3230,17 @@ pub const Server = struct {
 
             // PEEK (TASKCARD-3): permanent per-output edge peeks. Signage
             // follows the deck state. VISIBILITY LAW: the whole peek set
-            // (widgets + signage) hides ONLY while any slide on this
-            // output's deck is fullscreen — fullscreen apps own the edges.
+            // (widgets + signage) hides ONLY while the FOCUSED slide is
+            // fullscreen — fullscreen apps own the edges. A fullscreen
+            // slide walked off-focus is a standard slide, so the peek
+            // must stay visible (it is where that slide now lives).
             {
                 const bs: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
                 const n_slides = output.deck.slides.items.len;
-                var any_fullscreen = false;
-                for (output.deck.slides.items) |slide| {
-                    if (slide.fullscreen) any_fullscreen = true;
-                }
-                output.peek.setHidden(any_fullscreen);
+                const focused_fullscreen = output.deck.empty_slot == .none and
+                    output.deck.focused_index < n_slides and
+                    output.deck.slides.items[output.deck.focused_index].fullscreen;
+                output.peek.setHidden(focused_fullscreen);
                 const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
                     (output.deck.empty_slot == .after_last and n_slides > 0);
                 const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < n_slides) or
