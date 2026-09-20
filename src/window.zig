@@ -702,6 +702,17 @@ pub const Window = struct {
     fn handleCommit(listener: *wl.Listener(*wlr.Surface), surface: *wlr.Surface) void {
         const window: *Window = @fieldParentPtr("commit", listener);
         window.server.ft_commit += 1;
+        // Per-client attribution: name the committer at idle (the "thick
+        // tentacle" hunt). ft_commit alone is a global count and can't say
+        // WHO keeps the render loop awake — this split does.
+        const app = window.app_id.asSlice();
+        if (appSliceContains(app, "ghostty")) {
+            window.server.ft_commit_ghostty += 1;
+        } else if (appSliceContains(app, "kplay")) {
+            window.server.ft_commit_kplay += 1;
+        } else {
+            window.server.ft_commit_other += 1;
+        }
         if (window.toplevel.base.initial_commit) {
             // Send the initial configure now that the XDG surface role is initialized.
             _ = window.toplevel.setSize(0, 0);

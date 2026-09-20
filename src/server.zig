@@ -313,10 +313,11 @@ pub const Output = struct {
         self.server.ft_rendered += 1;
         if (now_us -| self.server.ft_last_log_us >= 1_000_000) {
             self.server.ft_last_log_us = now_us;
-            std.log.info("KidulWM: FRAMETRACE rendered={d} layout={d} peek={d} scale={d} reveal={d} notify={d} commit={d}", .{
+            std.log.info("KidulWM: FRAMETRACE rendered={d} layout={d} peek={d} scale={d} reveal={d} notify={d} commit={d} ghostty={d} kplay={d} other={d}", .{
                 self.server.ft_rendered, self.server.ft_layout, self.server.ft_peek,
                 self.server.ft_scale, self.server.ft_reveal, self.server.ft_notify,
                 self.server.ft_commit,
+                self.server.ft_commit_ghostty, self.server.ft_commit_kplay, self.server.ft_commit_other,
             });
         }
         var it = self.server.windows.iterator(.forward);
@@ -425,6 +426,9 @@ pub const Server = struct {
     ft_reveal: u64 = 0,
     ft_notify: u64 = 0,
     ft_commit: u64 = 0,
+    ft_commit_ghostty: u64 = 0,
+    ft_commit_kplay: u64 = 0,
+    ft_commit_other: u64 = 0,
     ft_last_log_us: u64 = 0,
 
     /// Minimal notification feed (stage 2 demolition): replaces the dead
