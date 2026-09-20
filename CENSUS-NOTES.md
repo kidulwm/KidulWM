@@ -26,6 +26,16 @@
 # judder is a DISPLAY-MODE issue (deferred, not player-clock) — see verdict 44.
 # Test video = Raya (/mnt/sda_backup/Jelly/Kids Movies); BBB deleted (corrupt).
 #
+# NEXT SESSION STARTS HERE (bobdotrix, 2026-09-20):
+#   Phase 0 / Card 1.5 / Card 2 are DONE. Phase 2 is IN PROGRESS. Next move =
+#   Phase 2 step 1 HOST repro: sddm login -> kidulwm GL (i915) -> kplayd up ->
+#   media_play Raya -> watch kidulwm RSS for the ~80MB/s -> ~1.9GB wedge climb.
+#   Confirm frames actually PRESENT (black screen = no churn = false negative;
+#   verdict 42 z-order fix + verdict 43 leak fix are both in the deployed
+#   de63c8d7/24dd60d build). Host binary is current source (0 drift). KidulWM
+#   pushed to Codeberg (0/0). kmedia timing reverts done + eye-test confirmed.
+#   bobdotrix dies on the sddm login — the handoff above IS the bridge.
+#
 # PARKED (at Phase-2 base): CONSOLIDATE the kidulwm-development skill — it is a
 # 100KB god-file at its size cap. Clean shave, not a cut: dedupe the repeated
 # lessons (~15 restated 3-6x: "stop means stop", "one change per deploy",
