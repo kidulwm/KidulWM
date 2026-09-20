@@ -14,19 +14,27 @@ kmedia + ksd-input-claim-law skills.
 # bobdotrix does NOT survive an sddm login — document handoff here first.
 #
 # CURRENT POSITION (2026-09-20): Phase 0 (36), Card 1.5 (37), Card 2 (38)
-# DONE, committed+signed, pushed to Codeberg. Phase 2 is IN PROGRESS and
-# RESCOPED (verdict 45): the embedded player is DELETED, so the zero-copy
-# chain lives in kplayd/kmedia, NOT the compositor. Next move = Phase 2 step 1
-# HOST repro: watch BOTH processes' RSS to learn which one owns the wedge.
-# Host binary current source (0 drift), KidulWM pushed to Codeberg (0/0).
-# Test video = Raya (/mnt/sda_backup/Jelly/Kids Movies); BBB deleted (corrupt).
+# DONE, committed+signed. Phase 2 IN PROGRESS + RESCOPED (verdict 45):
+# embedded player DELETED, zero-copy chain lives in kplayd/kmedia.
+# Test video = Raya (/mnt/sda_backup/Jelly/Kids Movies).
+#
+# LOG-GATE DEPLOYED (verdict 46, commit 8f85879): dev-trace (handleCommit /
+# setSurfaceOffsetForFocus / BTN-NOTIFY / PTR-ENTER / pointer-diag) demoted
+# info->debug. /usr/local/bin/kidulwm = 4544249f (stamp 8f85879, kmedia 1db5571),
+# .bak-37fcf59. TAKES EFFECT ON RELOG. Watchdog now logs kplayd RSS too.
+# Commit NOT yet pushed to Codeberg (owes post-relog verify + push).
+#
+# FINDING (verdict 46): idle CPU ~30-55% is NOT the watchdog (0.2%) and NOT the
+# logging (16 lines/s is cheap). i915_irqs climbs ~28/s while idle = continuous
+# frame scheduling -> the RENDER LOOP is the suspect, not the commit path (the
+# no-op guards already kill the commit->damage->redraw loop). This IS the
+# Phase 2 compositor-side suspect (verdict 45), not scope creep.
 #
 # NEXT SESSION STARTS HERE (2026-09-20):
-#   Phase 2 step 1 HOST repro: sddm login -> kidulwm GL (i915) -> kplayd up ->
-#   media_play Raya -> watch kidulwm AND kplayd RSS for the ~80MB/s -> ~1.9GB
-#   wedge climb. Confirm frames PRESENT (black = no churn = false negative).
-#   Whichever process climbs names the wedge owner (verdict 45 rescope).
-#   bobdotrix dies on the sddm login — the handoff above IS the bridge.
+#   1. RELOG (sddm login cycle — kills niri + bobdotrix). 2. Confirm log silent
+#   + re-measure CPU/i915_irqs post-gate. 3. Phase 2 step 1 HOST repro: kplayd
+#   up -> media_play Raya -> watch kidulwm AND kplayd RSS for ~80MB/s -> ~1.9GB
+#   climb (watchdog now captures BOTH). Confirm frames PRESENT (black=false neg).
 #
 # PARKED (at Phase-2 base):
 #   - CONSOLIDATE kidulwm-development skill (100KB god-file at size cap).
@@ -86,6 +94,41 @@ the presentation-timing lane (verdict 44) stays closed until the render loop
 stops wedging.
 
 ACTION: none to deploy. This is a spec correction + a dead-code finding.
+
+
+## 2026-09-20 VERDICT 46: idle-resource audit — log gate deployed; render loop is the CPU suspect
+
+Barticus asked whether our idle cost is the accumulated watchdogs/extras or
+the compositor. Measured, not guessed (host, kidulwm live on i915 GL, no video).
+
+MEASUREMENT:
+  - kmedia-watchdog.sh = 0.2% CPU / 4MB RSS. NOT the cost.
+  - kidulwm = ~30-55% CPU idle, 543MB RSS, 8 commits/sec from ghostty (id=4).
+  - kplayd = 0.4% CPU, 451MB RSS retained AFTER closing Raya — a Phase 2
+    leak-or-retention item to chase.
+  - RAM split: KSD stack ~1.4GB (kidulwm 543 + kplayd 451 + ghostty 169 +
+    hermes 236); the rest is host dev infra (mullvad 140 / ollama 44 /
+    libvirtd 38 / Xorg-sddm-greeter 140) absent from a Granny TV. kidulwm
+    grown 117MB->543MB with no per-feature attribution = the record-keeping gap.
+
+FINDING: i915_irqs climbs ~28/s while idle = kidulwm continuously schedules
+frames. The commit path already has no-op guards (setSurfaceOffset /
+applyContainment early-return on unchanged geometry) so this is NOT the old
+commit->damage->redraw feedback loop. The ~30-55% idle CPU is the RENDER LOOP
+staying awake — the real compositor-side Phase 2 suspect (verdict 45), to be
+perf'd after the log is silent.
+
+ACTION (deployed, staged): commit 8f85879 (signed B&B) demotes per-commit /
+pointer dev-trace (handleCommit, setSurfaceOffsetForFocus, BTN-NOTIFY,
+PTR-ENTER, pointer-diag) info->debug — compiled OUT of ReleaseSafe, still live
+in Debug builds. /usr/local/bin/kidulwm = 4544249f, .bak-37fcf59. Watchdog also
+extended to log kplayd RSS (kplayd_rss/kplayd_cpu) — it was kidulwm-only, a
+false-negative hole in the wedge repro. Commit not yet pushed to Codeberg.
+
+OWED (relog kills bobdotrix): relog -> confirm log silent + re-measure CPU +
+i915_irqs post-gate; then Phase 2 step 1 HOST repro (media_play Raya, watch
+BOTH processes' RSS). If CPU is still hot, perf the render loop (scheduleFrame
+re-arm) — that is on-path Phase 2 work, not a detour.
 
 
 ## 2026-09-20 VERDICT 44: timing-tweak detour CLOSED — grid + ring-depth reverted (scope creep)
