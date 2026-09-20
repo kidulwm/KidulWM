@@ -695,6 +695,7 @@ pub const Window = struct {
 
     fn handleCommit(listener: *wl.Listener(*wlr.Surface), surface: *wlr.Surface) void {
         const window: *Window = @fieldParentPtr("commit", listener);
+        window.server.ft_commit += 1;
         if (window.toplevel.base.initial_commit) {
             // Send the initial configure now that the XDG surface role is initialized.
             _ = window.toplevel.setSize(0, 0);

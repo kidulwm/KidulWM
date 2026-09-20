@@ -310,6 +310,15 @@ pub const Output = struct {
         while (!self.server.scene_mutex.tryLock()) std.atomic.spinLoopHint();
         defer self.server.scene_mutex.unlock();
         const now_us = animation.nowUs();
+        self.server.ft_rendered += 1;
+        if (now_us -| self.server.ft_last_log_us >= 1_000_000) {
+            self.server.ft_last_log_us = now_us;
+            std.log.info("KidulWM: FRAMETRACE rendered={d} layout={d} peek={d} scale={d} reveal={d} notify={d} commit={d}", .{
+                self.server.ft_rendered, self.server.ft_layout, self.server.ft_peek,
+                self.server.ft_scale, self.server.ft_reveal, self.server.ft_notify,
+                self.server.ft_commit,
+            });
+        }
         var it = self.server.windows.iterator(.forward);
         while (it.next()) |window| {
             _ = window.tickAnimation(now_us);
@@ -403,6 +412,20 @@ pub const Server = struct {
     last_focused_slide_id: u32 = 0,
     current_transition_kind: animation.AnimationKind = .snap,
     next_window_id: u32 = 1,
+
+    /// Phase 2 step 2 (verdict 45): frame-source diagnostic counters. Single-
+    /// threaded main loop, so plain u64 (no atomics). ft_rendered counts
+    /// handleFrame invocations; each ft_* site counts scheduleFrame arms;
+    /// FRAMETRACE logs once per second from handleFrame so the per-source rate
+    /// names whoever schedules frames at idle.
+    ft_rendered: u64 = 0,
+    ft_layout: u64 = 0,
+    ft_peek: u64 = 0,
+    ft_scale: u64 = 0,
+    ft_reveal: u64 = 0,
+    ft_notify: u64 = 0,
+    ft_commit: u64 = 0,
+    ft_last_log_us: u64 = 0,
 
     /// Minimal notification feed (stage 2 demolition): replaces the dead
     /// overlay tray's NotificationWidget. Rendered by the home slide's
@@ -1026,6 +1049,7 @@ pub const Server = struct {
         while (it.next()) |output| {
             output.peek.refreshClock();
             output.peek.refreshWidgets(&self.peek_widgets);
+            self.ft_peek += 1;
             output.wlr_output.scheduleFrame();
         }
         self.peek_widget_timer.?.timerUpdate(msToNextMinute()) catch {};
@@ -1161,6 +1185,7 @@ pub const Server = struct {
         _ = linux.write(self.layout_pipe[1], &[_]u8{1}, 1);
         var output_it = self.outputs.iterator(.forward);
         while (output_it.next()) |output| {
+            self.ft_layout += 1;
             output.wlr_output.scheduleFrame();
         }
     }
@@ -3622,6 +3647,7 @@ pub const Server = struct {
         // (they may have mapped while the output was still at scale 1).
         self.syncOutputScaleToWindows(wlr_output, scale);
         self.requestLayout();
+        self.ft_scale += 1;
         wlr_output.scheduleFrame();
     }
 
@@ -3871,7 +3897,10 @@ pub const Server = struct {
         if (reveal_buffer != null) {
             server.wallpaper_anim = .{ .active = true, .start_us = animation.nowUs(), .effect = .fade, .progress = 0 };
             var it4 = server.outputs.iterator(.forward);
-            while (it4.next()) |output| output.wlr_output.scheduleFrame();
+            while (it4.next()) |output| {
+                server.ft_reveal += 1;
+                output.wlr_output.scheduleFrame();
+            }
             std.log.info("KidulWM: wallpaper reveal 'fade' started", .{});
         }
         return 0;
@@ -3910,7 +3939,10 @@ pub const Server = struct {
         } else {
             // Re-arm so the reveal advances at the output's refresh rate.
             var it3 = self.outputs.iterator(.forward);
-            while (it3.next()) |output| output.wlr_output.scheduleFrame();
+            while (it3.next()) |output| {
+                self.ft_reveal += 1;
+                output.wlr_output.scheduleFrame();
+            }
         }
     }
 
@@ -3941,6 +3973,7 @@ pub const Server = struct {
         self.notifications.add(title, body, source_id);
         var it = self.outputs.iterator(.forward);
         while (it.next()) |output| {
+            self.ft_notify += 1;
             output.wlr_output.scheduleFrame();
         }
     }
