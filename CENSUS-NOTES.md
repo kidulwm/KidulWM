@@ -13,22 +13,26 @@ kmedia + ksd-input-claim-law skills.
 # ReleaseSafe build on host -> /usr/local/bin/kidulwm (mv-over swap + .bak).
 # bobdotrix does NOT survive an sddm login — document handoff here first.
 #
-# CURRENT POSITION (2026-09-20 ~19:15): verdict 50 DEPLOYED (00245f4b, commit
-# 57dab29 signed B&B), RELOG OWED. FRAMETRACE read done post-relog — confirms
-# wlroots auto-schedules off client commit/damage (ghostty ~8 commits/s), NOT
-# any scheduleFrame site. Phase 2 step 1 DONE (wedge owner = kidulwm), step 2
-# IN PROGRESS. Phase 0 (36), Card 1.5 (37), Card 2 (38) DONE. Raya = test video.
+# CURRENT POSITION (2026-09-20 ~19:25): verdict 50 + tracer DEPLOYED (869c68a9,
+# commits 57dab29 + f5b4beb signed B&B), RELOG OWED. FRAMETRACE read done —
+# wlroots auto-schedules off client commit/damage, NOT any scheduleFrame site.
+# NEW: per-client commit attribution (ghostty/kplay/other) added to FRAMETRACE.
+# Phase 2 step 1 DONE (wedge owner = kidulwm), step 2 IN PROGRESS. Raya = video.
 #
-# VERDICT 50 (this entry, below): chrome cache-key false-miss fixed. PLUS a
-# stale-premise correction: the ledger's proposed "damage-clipped commit"
-# (scene_output.commit(damage)) is a NON-FIX on wlroots 0.20.1 — commit() takes
-# StateOptions (timer/color_transform/swapchain), NOT a damage region; damage is
-# tracked INTERNALLY (SceneOutput.damage_ring + pending_commit_damage). There is
-# no full-redraw-every-frame to fix. The idle CPU source is therefore NOT
-# "full-scene redraw" — it is whatever keeps ghostty committing ~8/s and keeps
-# the render loop hot per commit. NEXT recon must answer: WHY does ghostty
-# commit ~8/s at idle, and is each commit a cheap damage-clipped redraw or an
-# expensive one?
+# KEY FINDING THIS SESSION (Barticus caught it): the "thick tentacle" committing
+# ~8/s at idle is a STOCK ghostty — CachyOS package ghostty 1.3.1-2.2, a full
+# GTK4 + libadwaita + gtk4-layer-shell app (ldd confirms libgtk-4/libadwaita-1/
+# gtk4-layer-shell). The stripped-back ghostty fork is the END GAME and is NOT
+# built yet. So the idle commit rate is GTK4 frame-clock + libadwaita + GSK
+# machinery, NOT a light terminal. kidulwm itself links NO GTK (pure Zig/wlroots/
+# cairo; only transitive libglib). The Zig-GTK4 plan has NOT leaked into the
+# compositor — it is a separate tentacle (rkt-dashboard/gauge shells).
+# VERDICT 50 also killed a stale premise: "damage-clipped commit" is a NON-FIX
+# on wlroots 0.20.1 (commit() takes StateOptions, damage is internal).
+#
+# NEXT SESSION (post-relog): read FRAMETRACE's ghostty=/kplay=/other= split to
+# NAME the idle committer by rate. Then answer: is each ghostty commit a cheap
+# damage-clipped redraw or an expensive one? Dig the GTK4 frame-clock driver.
 #
 # LOG-GATE DEPLOYED (verdict 46, commit 8f85879): dev-trace (handleCommit /
 # setSurfaceOffsetForFocus / BTN-NOTIFY / PTR-ENTER / pointer-diag) demoted
