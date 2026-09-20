@@ -13,12 +13,22 @@ kmedia + ksd-input-claim-law skills.
 # ReleaseSafe build on host -> /usr/local/bin/kidulwm (mv-over swap + .bak).
 # bobdotrix does NOT survive an sddm login — document handoff here first.
 #
-# CURRENT POSITION (2026-09-20 ~17:55): verdict 49 DEPLOYED (3f42fd60, commit
-# b3329c0), RELOG OWED. Phase 2 step 1 HOST repro DONE — wedge owner NAMED:
-# kidulwm (compositor), not kplayd. Idle FRAMETRACE read: wlroots auto-schedules
-# off client commit/damage (ghostty tentacle), NOT any scheduleFrame site.
-# Phase 0 (36), Card 1.5 (37), Card 2 (38) DONE. Phase 2 IN PROGRESS.
-# Raya = test video.
+# CURRENT POSITION (2026-09-20 ~19:15): verdict 50 DEPLOYED (00245f4b, commit
+# 57dab29 signed B&B), RELOG OWED. FRAMETRACE read done post-relog — confirms
+# wlroots auto-schedules off client commit/damage (ghostty ~8 commits/s), NOT
+# any scheduleFrame site. Phase 2 step 1 DONE (wedge owner = kidulwm), step 2
+# IN PROGRESS. Phase 0 (36), Card 1.5 (37), Card 2 (38) DONE. Raya = test video.
+#
+# VERDICT 50 (this entry, below): chrome cache-key false-miss fixed. PLUS a
+# stale-premise correction: the ledger's proposed "damage-clipped commit"
+# (scene_output.commit(damage)) is a NON-FIX on wlroots 0.20.1 — commit() takes
+# StateOptions (timer/color_transform/swapchain), NOT a damage region; damage is
+# tracked INTERNALLY (SceneOutput.damage_ring + pending_commit_damage). There is
+# no full-redraw-every-frame to fix. The idle CPU source is therefore NOT
+# "full-scene redraw" — it is whatever keeps ghostty committing ~8/s and keeps
+# the render loop hot per commit. NEXT recon must answer: WHY does ghostty
+# commit ~8/s at idle, and is each commit a cheap damage-clipped redraw or an
+# expensive one?
 #
 # LOG-GATE DEPLOYED (verdict 46, commit 8f85879): dev-trace (handleCommit /
 # setSurfaceOffsetForFocus / BTN-NOTIFY / PTR-ENTER / pointer-diag) demoted
@@ -84,6 +94,37 @@ kmedia + ksd-input-claim-law skills.
 # Dmabuf cache-key law: never key a dmabuf cache on surface id alone (pools
 #   reuse ids across decoders -> stale hit renders freed GPU surfaces).
 
+
+## 2026-09-20 VERDICT 50: chrome cache-key false-miss FIXED; "damage-clipped commit" is a NON-FIX
+
+FRAMETRACE read post-relog (live, 3f42fd60): rendered climbs ~13.6/s while ALL
+ft_* counters stay flat (layout=26, peek=86, scale=2, reveal=310, notify=0);
+commit climbs ~8.2/s. Confirms wlroots auto-schedules frames off the client
+commit/damage path — the ghostty tentacle (~8 commits/s) keeps the render loop
+awake. NOT any of the 6 scheduleFrame sites. Verdict 48's fork is resolved.
+
+FIX (57dab29, signed): the label term in updateChrome's cache key
+(window.zig:501) compared self.chrome_label.asSlice() against the computed
+label. With edges==.all the computed label is null, so the term read "Ghostty"
+vs "" and never matched -> full chrome regen on every updateChrome(.all). When
+edges != .all it was a self-comparison that always matched. Zero discrimination
+either way — and label changes already force regen via refreshPeekLabel zeroing
+chrome_width/chrome_height. Dropped the term. Deployed 00245f4b (.bak-3f42fd60).
+
+STALE-PREMISE CORRECTION (load-bearing): the ledger's next move — "damage-
+clipped commit, scene_output.commit(damage) not null" — is a NON-FIX. On the
+pinned wlroots 0.20.1 (build.zig.zon), SceneOutput.commit takes StateOptions
+(timer/color_transform/swapchain), NOT a damage region. Damage is tracked
+INTERNALLY (SceneOutput.damage_ring + private.pending_commit_damage). There is
+no "full-scene redraw every frame, no damage clipping" to fix — commit(null)
+already clips to the damage ring. The verdict-48 recon note was written against
+the OLD wlroots mental model.
+
+NEXT RECON (Phase 2 step 2, re-pointed): WHY does ghostty commit ~8/s at idle
+(the thick tentacle), and is each commit a cheap damage-clipped redraw or an
+expensive one? The idle CPU (~74% instant, i915_irqs ~106/s) is NOT full-redraw
+cost and NOT the chrome regen (~0.3/s) — it is the render loop staying hot per
+client commit. Dig the ghostty commit driver next.
 
 ## 2026-09-20 VERDICT 49: fullscreen side-effects gate on focused, not sticky flag — FIXED
 
