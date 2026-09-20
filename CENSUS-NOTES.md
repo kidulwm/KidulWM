@@ -19,6 +19,11 @@
 # Verdict 43 (24dd60d): blank-screen password LEAK — gracePeriod swallow
 # (no lock on a TV; profiles/keyToOpen is the primitive). DEPLOYED de63c8d7,
 # relog+repro OWED. nested-smoke broke the live control socket — relog fixes.
+# Verdict 44 (kmedia e4ad0b9+7d6af90): REVERTED the two timing tweaks — the
+# vsync presentation grid (90bfcb9, cross-timebase anchor → added jitter) and
+# per-stream ring depth (fbc27e2, premature I4). kmedia source back to pre-grid
+# b4149bd-equivalent, deployed /usr/local/bin/kplayd sha 6b6b040b. 24p-on-60Hz
+# judder is a DISPLAY-MODE issue (deferred, not player-clock) — see verdict 44.
 # Test video = Raya (/mnt/sda_backup/Jelly/Kids Movies); BBB deleted (corrupt).
 #
 # PARKED (at Phase-2 base): CONSOLIDATE the kidulwm-development skill — it is a
@@ -61,6 +66,34 @@
 # (real MEDIA/WEATHER/SIGNALS feeds) — that's a DIFFERENT, now-moot lineage
 # (the tray was demolished). The live "stage 3" is Phase 2 above.
 
+
+## 2026-09-20 VERDICT 44: timing-tweak detour CLOSED — grid + ring-depth reverted (scope creep)
+
+RESET SCOPE CALL (Barticus, big-picture): the vsync presentation grid (session 26,
+90bfcb9) and per-stream ring depth (session 27, fbc27e2) are NOT reset work. Per
+SYSTEM.md §5 a change is (a) invariant-closer, (b) bugfix, or (c) deferred — neither
+tweak clears that bar. 24p-on-60Hz judder is a DISPLAY-MODE issue (mode-match
+24/48/120Hz), not a player-clock bug. Ring depth is premature: Phase 2 does ring
+sizing as a named constant-pair inside the resource pool, not a per-stream cap.
+
+THE GRID REGRESSED PLAYBACK (why it was worse, not just unhelpful): tick() anchored
+vsync_origin_us to masterClockUs() — the AUDIO clock — but stepped it by
+vsync_interval_us measured from wall-clock (MONOTONIC) frameDone deltas. Cross-
+timebase anchor: grid phase locked to the DAC clock, advanced by the compositor's
+frame timer. Those drift apart, so the snap-to-grid edge wandered phase inside the
+real vsync → reads as added jitter, not the smooth 2:3 it aimed for.
+
+ACTION (done, kmedia):
+  e4ad0b9  Revert grid   (restores tick(0), disabled-grid legacy state)
+  7d6af90  Revert ring-depth (parked; commit stays in history for Phase 2)
+  Source now byte-identical to b4149bd (pre-grid). Built ReleaseSafe, deployed
+  /usr/local/bin/kplayd sha 6b6b040b (mv-swap; .bak-8e7f6d9d kept). Restarted
+  kplayd.service; running inode confirms 6b6b040b. EYE-TEST OWED: playback should
+  read back to the cleaner pre-grid behaviour.
+
+BACK ON THE RESET PATH: Phase 0 (IPC → main-loop) then Phase 2 (resource pool +
+kill the RSS wedge). The wedge is the jitter root cause; presentation timing is
+deck-chairs until the render loop stops wedging.
 
 ## 2026-09-19 VERDICT 43: blank-screen password LEAK — gracePeriod swallow (input-blind class)
 
