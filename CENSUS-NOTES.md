@@ -13,10 +13,10 @@ kmedia + ksd-input-claim-law skills.
 # ReleaseSafe build on host -> /usr/local/bin/kidulwm (mv-over swap + .bak).
 # bobdotrix does NOT survive an sddm login — document handoff here first.
 #
-# CURRENT POSITION (2026-09-20): Phase 0 (36), Card 1.5 (37), Card 2 (38)
-# DONE, committed+signed. Phase 2 IN PROGRESS + RESCOPED (verdict 45):
-# embedded player DELETED, zero-copy chain lives in kplayd/kmedia.
-# Test video = Raya (/mnt/sda_backup/Jelly/Kids Movies).
+# CURRENT POSITION (2026-09-20 ~17:25): verdict 47 relog DONE (running eafc798e).
+# Phase 2 step 2 tracer DEPLOYED (verdict 48, commit e4cd405, binary 387008ec,
+# .bak-eafc798e). RELOG OWED to activate. Phase 0 (36), Card 1.5 (37), Card 2
+# (38) DONE. Phase 2 IN PROGRESS + RESCOPED (verdict 45). Raya = test video.
 #
 # LOG-GATE DEPLOYED (verdict 46, commit 8f85879): dev-trace (handleCommit /
 # setSurfaceOffsetForFocus / BTN-NOTIFY / PTR-ENTER / pointer-diag) demoted
@@ -82,6 +82,45 @@ kmedia + ksd-input-claim-law skills.
 # Dmabuf cache-key law: never key a dmabuf cache on surface id alone (pools
 #   reuse ids across decoders -> stale hit renders freed GPU surfaces).
 
+
+## 2026-09-20 VERDICT 48: Phase 2 step 2 — frame-source tracer DEPLOYED; render-loop recon + chrome_label bug
+
+RECON (bobdotrix, host kidulwm live, no theory):
+  - Render loop is EVENT-DRIVEN, sole entry = Output.handleFrame (server.zig
+    305): tick animations -> tick wallpaper reveal -> scene_output.commit(null)
+    -> sendFrameDone. It does NOT re-arm frames.
+  - scene_output.commit(NULL) = FULL-scene redraw every frame (no damage
+    clipping) across BOTH outputs (eDP 1080p@144 + HDMI 4K@60). This is why
+    each frame is expensive, independent of who arms it.
+  - scheduleFrame has exactly 6 sites, all bounded/event-driven: peek
+    minute-timer (1029), requestLayout (1164), scale-change (3625),
+    wallpaper-reveal start (3874) + tick (3913), notification (3944). NONE
+    explains ~100/s i915_irqs delta or ~38% idle CPU.
+  - requestLayout is NOT storming: applyLayout logged 22x in a 2-min session.
+  - CONFIRMED BUG (candidate fix, next verdict): chrome cache-miss loop.
+    updateChrome (window.zig 493) computes label=null when edges==.all but the
+    cache key still compares self.chrome_label (never cleared on regen), so
+    every updateChrome(.all) regenerates the full 1673x1064@2x cairo chrome.
+    40 CHROME create / 31 destroy in the 2-min log. Expensive but ~0.3/s —
+    not the 100fps source alone.
+  - libinput "system too slow" (30-134ms) = the event loop starved by whatever
+    the render loop is doing. This is the user-facing symptom.
+
+ACTION (deployed, awaiting relog): commit e4cd405 adds per-source scheduleFrame
+  counters + handleFrame render count + client-commit count, logged 1/s as
+  "FRAMETRACE rendered=.. layout=.. peek=.. scale=.. reveal=.. notify=..
+  commit=..". Binary 387008ec at /usr/local/bin/kidulwm (.bak-eafc798e).
+  Running process still eafc798e — safe, no relog yet.
+
+OWED (relog kills bobdotrix): relog, then
+  grep FRAMETRACE /home/dad/.local/state/kidulwm/session.log | tail -40
+  READ: rendered delta/s = real frame rate. Whichever ft_* counter climbs in
+  step with it IS the idle frame source. If rendered climbs but ALL ft_* stay
+  ~flat, wlroots is auto-scheduling (commit/damage path) -> dig there.
+  THEN: fix the chrome_label cache key; consider scene_output.commit(damage)
+  instead of null for the full-redraw cost.
+  5 KidulWM commits now UNPUSHED (8f85879 34c129f 38bc43a 8c5ce3b e4cd405).
+  kmedia still has NO git remote (flag).
 
 ## 2026-09-20 VERDICT 47: focusOutputNext empty-stage desync FIXED; "WHERE AM I" systemic finding
 
