@@ -120,8 +120,10 @@ MEASUREMENT (RSS):
   - kplayd HEALTHY: 429MB idle -> 577MB during decode -> 482MB after stop.
     CPU 0.4% throughout. Hardware decode + zero-copy import working as designed.
   - kidulwm THE WEDGE: 282MB idle -> 912MB during playback (+630MB in ~10s),
-    then CONTINUED stepping up after stop: 942 -> 1159 -> 1171MB, CPU 36%
-    (higher than the ~25% during playback). Does not settle.
+    then stepped up through the Bluey ramp to ~1160MB and PLATEAUED FLAT
+    (1159.89MB for 60s+ post-stop, CPU ~33%). It does not release the ~880MB
+    it gained — retention, not runaway growth: a one-time allocation that's
+    never freed, consistent with the Phase 2 resource-pool wedge.
 
   => The RSS wedge owner is the COMPOSITOR (kidulwm placement/card churn),
      not kplayd. Verdict 45's "owner UNKNOWN" is now answered.
