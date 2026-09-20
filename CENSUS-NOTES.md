@@ -82,6 +82,26 @@ kmedia + ksd-input-claim-law skills.
 #   - Weather widget redo (new design, not clamps — see verdict 27 below).
 #   - Peek-unit law (%-of-peek sizing) — deferred polish pass.
 #   - Screens law (Boss/slaves/pack) — docs/law/screens.md, locked.
+#
+# NEW CARD (2026-09-20, Barticus) — HOUSE TEXT-SIZE TOKEN + remote scroll wheel:
+#   TBD date. NOT discussed before tonight. The idea: a smooth scroll wheel on
+#   the remote adjusts text size on the focused slide, so Granny sets the right
+#   size from the lounge chair, and ALL our apps come ready with the same sized
+#   CFC text. The CFC payoff: one token, every app follows.
+#   SHAPE (agreed in conversation): do NOT build per-slide "remote -> focused
+#   slide -> that slide's font size" as a hack. Build ONE house text-size token
+#   (per-output, integer-scaled, like the existing CFC scale law) that every
+#   THIN-tentacle app reads through the one shared painter (kpaint — see the
+#   thin/thick + kpaint discussion, also new this session). Remote scroll wheel
+#   just nudges that single token; all CFC text follows. This is the typography
+#   half of the renderer-unification decision, and it supersedes the parked
+#   "kfiles font ramp (typography law)" crumb in HANDOFF.
+#   PRE-EXISTING HOOKS: theme.toml [typography] font_size_s/m/l=13/16/22, loaded
+#   once in core/theme.zig (fixed, not runtime). output_layout_config.zig:24
+#   already tags "text size" as the future per-output setting shape. Integer
+#   scale from pixel density (CFC scale law, server.zig ~3470) is the model.
+#   Frontier: token must live per-OUTPUT (two outputs, different scales) and be
+#   integer-scaled, never fractional, to stay crisp (CFC law).
 
 # ─────────────────────────────────────────────────────────────────────
 # PROCESS LAWS (load-bearing for all reset work)
