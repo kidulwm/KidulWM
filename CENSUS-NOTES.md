@@ -88,8 +88,8 @@ ACTION (done, kmedia):
   7d6af90  Revert ring-depth (parked; commit stays in history for Phase 2)
   Source now byte-identical to b4149bd (pre-grid). Built ReleaseSafe, deployed
   /usr/local/bin/kplayd sha 6b6b040b (mv-swap; .bak-8e7f6d9d kept). Restarted
-  kplayd.service; running inode confirms 6b6b040b. EYE-TEST OWED: playback should
-  read back to the cleaner pre-grid behaviour.
+  kplayd.service; running inode confirms 6b6b040b. EYE-TEST CONFIRMED (Barticus,
+  2026-09-20): playback reads back to prior state — grid was the regression.
 
 BACK ON THE RESET PATH: Phase 0 (IPC → main-loop) then Phase 2 (resource pool +
 kill the RSS wedge). The wedge is the jitter root cause; presentation timing is
