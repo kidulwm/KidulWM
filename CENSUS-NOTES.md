@@ -31,10 +31,34 @@ kmedia + ksd-input-claim-law skills.
 # Phase 2 compositor-side suspect (verdict 45), not scope creep.
 #
 # NEXT SESSION STARTS HERE (2026-09-20):
-#   1. RELOG (sddm logout/login — kills the kidulwm session + bobdotrix). 2. Confirm log silent
-#   + re-measure CPU/i915_irqs post-gate. 3. Phase 2 step 1 HOST repro: kplayd
-#   up -> media_play Raya -> watch kidulwm AND kplayd RSS for ~80MB/s -> ~1.9GB
-#   climb (watchdog now captures BOTH). Confirm frames PRESENT (black=false neg).
+#   POST-RELOG STATE VERIFIED (bobdotrix 2026-09-20 ~15:52): relog ALREADY DONE
+#   (kidulwm pid 465925, started 15:39:58). Running binary == deployed == HEAD:
+#   kidulwm 4544249f (8f85879), kplayd 6b6b040b. Log gate LIVE + verified SILENT
+#   (dev-trace grep = 0). RESULT: idle CPU STILL ~40% (kidulwm), i915_irqs still
+#   ~100/s. Log gate is CONFIRMED not-the-fix — verdict 46 was right that logging
+#   was never the cause. The render loop / damage source IS the target.
+#   NEW DATA: eDP-1 = 1920x1080 @144Hz + HDMI-A-1 = 3840x2160 @60Hz (2 outputs
+#   live). A 144Hz panel amplifies any residual idle damage into 144 commits/s.
+#   Live windows: ghostty mapped (the 8 commits/s thick tentacle); video-slide-
+#   host unmapped; kplayd toplevel NOT mapped (no video playing). kidulwm RSS
+#   flat 528MB / kplayd 429MB — no wedge at idle, as expected.
+#   BAR/BUTTONS HYPOTHESIS (Barticus) CHECKED: transport bar + 2 buttons are GONE
+#   from the compositor (verdict 33 deleted media_video.zig; media.zig has zero
+#   transport/seek/scrub/button code). mediaSlideRefresh is verdict-17 guarded
+#   (not a hot loop). kplayd 0.2% CPU = not looping. So no compositor code is
+#   "searching for" the absent bar/buttons. Idle wake = damage-driven render-loop
+#   churn, NOT an orphaned bar/button poll.
+#
+#   NEXT (Phase 2 step 2, compositor side): instrument WHO schedules frames /
+#   damages at idle — render loop is event-driven (no free-running loop;
+#   scheduleFrame sites all bounded: peek minute-timer 1029, requestLayout 1164,
+#   scale change 3623, one-shot wallpaper reveal 3872/3911/3942). Prime suspects:
+#   ghostty commit damage (thick tentacle) and/or a requestLayout storm. THEN
+#   Phase 2 step 1 HOST repro (media_play Raya, watch BOTH RSS in
+#   /var/log/kmedia-watchdog.log) to name the wedge owner.
+#   Raya: /mnt/sda_backup/Jelly/Kids Movies/Raya.and.the.Last.Dragon.mkv.
+#   3 KidulWM commits UNPUSHED (8f85879, 34c129f, 38bc43a) — push owed. kmedia
+#   checkout has NO git remote configured (flag).
 #
 # PARKED (at Phase-2 base):
 #   - CONSOLIDATE kidulwm-development skill (100KB god-file at size cap).
@@ -58,6 +82,37 @@ kmedia + ksd-input-claim-law skills.
 # Dmabuf cache-key law: never key a dmabuf cache on surface id alone (pools
 #   reuse ids across decoders -> stale hit renders freed GPU surfaces).
 
+
+## 2026-09-20 VERDICT 47: focusOutputNext empty-stage desync FIXED; "WHERE AM I" systemic finding
+
+TWO KEYS CONFIRMED LIVE (Barticus + session log):
+  - Mod4+Ctrl+O (moveFocusedToOutputNext) WORKS — full move HDMI<->eDP observed
+    (pos 123,1088 <-> 123,8, chrome scale 2<->1). ONE GAP: it never calls
+    notifyScale, so the client is not told its scale changed on a cross-scale
+    (1.0<->2.0) move — renders at the old output's scale. Visual fine; wasted
+    GPU + latent wrong-size. Polish, not the bug.
+  - Mod4+O (focusOutputNext) = the "everything weird" key. Root cause: it set
+    focused_output = target UNCONDITIONALLY, then only focused a window IF the
+    target deck had a slide. Empty eDP -> focused_output=eDP while the focused
+    window stays on HDMI -> the two "where am I focused" answers desync ->
+    cursor warp, spawn-target, and focus-follows all act weird.
+  FIX (this commit): return early when the target deck is empty or in a
+    virtual end-slot. focusOutputNext now only lands on a stage with a real
+    slide. Build clean; deployed eafc798e (.bak 4544249f). RELOG OWED.
+
+SYSTEMIC FINDING (Barticus, GSI): "every app suffers WHERE AM I with no
+  answer." The compositor is the sole authority for client placement identity
+  = output (enter/leave) + scale (notifyScale) + size (configure), and it
+  answers inconsistently: notifyScale at map + scale-change ONLY (not on
+  cross-output move); configure-size for the focused slide only (external
+  clients grid-snap past it -> centered windowed 1673x1064, not fullscreen).
+  mediaPlayer/kplayd, terminals, browser webkit all carry this wound. This is
+  I1 restated for the placement domain. Candidate Phase-2/I1 card: ONE
+  placement-identity path (output+scale+size) applied on every transition.
+
+ALSO SEEN: libinput "event processing lagging / system too slow" (mouse +
+  Planck dropping events) = the ~40% idle render loop starving the event loop.
+  This is the user-facing symptom of the Phase 2 step 2 render-loop fire.
 
 ## 2026-09-20 VERDICT 45: PHASE 2 RESCOPED — pool owner moved to kplayd; DmabufBuffer is dead
 

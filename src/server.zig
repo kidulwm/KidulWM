@@ -2986,14 +2986,16 @@ pub const Server = struct {
         if (next == null) next = self.outputs.first();
         const target = next orelse return;
 
-        self.focused_output = target;
-        // Focus that deck's current slide if it has one.
+        // Only move focus when the target stage has a real slide to hand it
+        // to. The old shape set focused_output unconditionally, desyncing it
+        // from the focused window on an empty stage (focus says eDP, window
+        // still on HDMI) — the "everything weird" state.
         const deck = &target.deck;
-        if (deck.slides.items.len > 0 and deck.empty_slot == .none) {
-            const slide = deck.slides.items[deck.focused_index];
-            if (self.windowById(slide.window_id)) |window| {
-                self.focusWindow(window);
-            }
+        if (deck.slides.items.len == 0 or deck.empty_slot != .none) return;
+        self.focused_output = target;
+        const slide = deck.slides.items[deck.focused_index];
+        if (self.windowById(slide.window_id)) |window| {
+            self.focusWindow(window);
         }
         self.warpCursorToFocus();
         self.requestLayout();
