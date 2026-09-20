@@ -137,6 +137,11 @@ pub const Output = struct {
     link: wl.list.Link,
     frame: wl.Listener(*wlr.Output),
     destroy: wl.Listener(*wlr.Output),
+    /// Phase 2 step 2 (verdict 50+): per-output render counter. handleFrame
+    /// bumps THIS (plus the global server.ft_rendered) so FRAMETRACE can
+    /// split the idle frame rate per output — the global counter folds a
+    /// 144Hz + 60Hz two-output rig into one number and hides who wakes.
+    ft_rendered: u64 = 0,
     deck: slidedeck.SlideDeck,
     /// Overview slide for THIS output's deck (per-output by ruling).
     overview: overview_slide_mod.OverviewSlide = .{},
@@ -311,6 +316,7 @@ pub const Output = struct {
         defer self.server.scene_mutex.unlock();
         const now_us = animation.nowUs();
         self.server.ft_rendered += 1;
+        self.ft_rendered += 1;
         if (now_us -| self.server.ft_last_log_us >= 1_000_000) {
             self.server.ft_last_log_us = now_us;
             std.log.info("KidulWM: FRAMETRACE rendered={d} layout={d} peek={d} scale={d} reveal={d} notify={d} commit={d} ghostty={d} kplay={d} other={d}", .{
@@ -319,6 +325,10 @@ pub const Output = struct {
                 self.server.ft_commit,
                 self.server.ft_commit_ghostty, self.server.ft_commit_kplay, self.server.ft_commit_other,
             });
+            var oit = self.server.outputs.iterator(.forward);
+            while (oit.next()) |out| {
+                std.log.info("KidulWM: FRAMETRACE-OUT {s} rendered={d}", .{ out.wlr_output.name, out.ft_rendered });
+            }
         }
         var it = self.server.windows.iterator(.forward);
         while (it.next()) |window| {
