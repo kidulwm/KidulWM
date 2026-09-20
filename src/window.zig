@@ -491,14 +491,20 @@ pub const Window = struct {
 
         const style_gen = self.server.chrome_style_generation;
         const label = if (edges.eql(chrome_renderer.EdgeMode.all)) null else self.chrome_label.asSlice();
+        // NOTE: label is intentionally NOT part of the cache key. The only
+        // writer of chrome_label is refreshPeekLabel, which zeroes
+        // chrome_width/chrome_height on any change, so the regen is already
+        // forced by the w/h mismatch above. Comparing chrome_label here was a
+        // false-miss loop: with edges==.all the computed label is null, so the
+        // term read "Ghostty" vs "" and never matched -> full chrome regen on
+        // every updateChrome(.all). (Verdict 48's cache-miss bug.)
         const same = self.chrome_tree != null and
             self.chrome_width == w and
             self.chrome_height == h and
             self.chrome_focused == focused and
             self.chrome_edges.eql(edges) and
             self.chrome_scale == scale and
-            self.chrome_style_generation == style_gen and
-            std.mem.eql(u8, self.chrome_label.asSlice(), if (label) |l| l else "");
+            self.chrome_style_generation == style_gen;
         if (same) return;
 
         if (self.chrome_tree != null) {
