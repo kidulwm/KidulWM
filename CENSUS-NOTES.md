@@ -13,10 +13,12 @@ kmedia + ksd-input-claim-law skills.
 # ReleaseSafe build on host -> /usr/local/bin/kidulwm (mv-over swap + .bak).
 # bobdotrix does NOT survive an sddm login — document handoff here first.
 #
-# CURRENT POSITION (2026-09-20 ~17:25): verdict 47 relog DONE (running eafc798e).
-# Phase 2 step 2 tracer DEPLOYED (verdict 48, commit e4cd405, binary 387008ec,
-# .bak-eafc798e). RELOG OWED to activate. Phase 0 (36), Card 1.5 (37), Card 2
-# (38) DONE. Phase 2 IN PROGRESS + RESCOPED (verdict 45). Raya = test video.
+# CURRENT POSITION (2026-09-20 ~17:55): verdict 49 DEPLOYED (3f42fd60, commit
+# b3329c0), RELOG OWED. Phase 2 step 1 HOST repro DONE — wedge owner NAMED:
+# kidulwm (compositor), not kplayd. Idle FRAMETRACE read: wlroots auto-schedules
+# off client commit/damage (ghostty tentacle), NOT any scheduleFrame site.
+# Phase 0 (36), Card 1.5 (37), Card 2 (38) DONE. Phase 2 IN PROGRESS.
+# Raya = test video.
 #
 # LOG-GATE DEPLOYED (verdict 46, commit 8f85879): dev-trace (handleCommit /
 # setSurfaceOffsetForFocus / BTN-NOTIFY / PTR-ENTER / pointer-diag) demoted
@@ -81,6 +83,62 @@ kmedia + ksd-input-claim-law skills.
 #   hand off. This ledger IS the bridge.
 # Dmabuf cache-key law: never key a dmabuf cache on surface id alone (pools
 #   reuse ids across decoders -> stale hit renders freed GPU surfaces).
+
+
+## 2026-09-20 VERDICT 49: fullscreen side-effects gate on focused, not sticky flag — FIXED
+
+Barticus hit it live during the Raya repro: the video slide "took over" — a
+fullscreen slide walked off-focus stayed chrome-less and suppressed the peek,
+so he couldn't reach it to close it.
+
+ROOT: the .video slide's fullscreen flag is STICKY (set at spawn, stays until
+Mod4+f toggles it). targetForSlide (slidedeck.zig 601) already gates fullscreen
+GEOMETRY on delta==0 (focused) — so the rect correctly falls back to a standard
+peek/windowed slide off-focus. But two side-effects read the raw flag:
+
+  1. videoSlidePaint (server.zig 2241) — chrome decision: rendered zero chrome
+     whenever fullscreen was set, even off-focus. Off-focus video got no border.
+  2. peek visibility (server.zig 3235) — hid the peek while ANY slide was
+     fullscreen, so walking off the fullscreen video left the peek suppressed
+     and the slide visually unreachable (the "can't get back to it" symptom).
+
+FIX (b3329c0): both now gate on 'fullscreen AND focused' (empty_slot==.none and
+idx==focused_index), matching the geometry gate. Focused video = insta
+fullscreen zero-chrome (unchanged); off-focus video = standard slide with
+border + visible, reachable peek. Deployed 3f42fd60 (.bak-387008ec). RELOG OWED.
+
+DESIGN NOTE (Barticus, locked): fullscreen is a property of the FOCUSED slide.
+Side-effects (chrome, peek visibility) must derive from focus, never the sticky
+flag. This is the FULLSCREEN-FOCUS LAW, noted in both code sites.
+
+## 2026-09-20 PHASE 2 STEP 1 HOST REPRO — wedge owner NAMED (kidulwm, not kplayd)
+
+Played Raya on the host (kidulwm live, i915 GL). Sampler (2s cadence, kidulwm +
+kplayd RSS/CPU + FRAMETRACE + watchdog line) captured the full ramp.
+
+MEASUREMENT (RSS):
+  - kplayd HEALTHY: 429MB idle -> 577MB during decode -> 482MB after stop.
+    CPU 0.4% throughout. Hardware decode + zero-copy import working as designed.
+  - kidulwm THE WEDGE: 282MB idle -> 912MB during playback (+630MB in ~10s),
+    then CONTINUED stepping up after stop: 942 -> 1159 -> 1171MB, CPU 36%
+    (higher than the ~25% during playback). Does not settle.
+
+  => The RSS wedge owner is the COMPOSITOR (kidulwm placement/card churn),
+     not kplayd. Verdict 45's "owner UNKNOWN" is now answered.
+
+IDLE FRAMETRACE (verdict 48 tracer, live): rendered climbs ~13/s continuously
+while ALL ft_* counters stay flat (layout=14, peek~8, scale=2, reveal=332,
+notify=0). commit climbs ~8.7/s in lockstep (ghostty client commits). This is
+the verdict-48 fork resolved: wlroots AUTO-SCHEDULES frames off the
+commit/damage path — NOT off any of the 6 scheduleFrame sites. The ~8.7/s
+ghostty client commit (the verdict-46 "thick tentacle") is what keeps the
+render loop awake at idle. Next: damage-clipped commit (scene_output.commit
+with damage, not null) to cut the full-redraw cost.
+
+CHROME cache-miss bug (verdict 48) CONFIRMED live: 44 misses this session, all
+'label X->""' gen 0->0 — the cache key never matches because chrome_label is
+never cleared on regen. Candidate fix for next verdict.
+
 
 
 ## 2026-09-20 VERDICT 48: Phase 2 step 2 — frame-source tracer DEPLOYED; render-loop recon + chrome_label bug
