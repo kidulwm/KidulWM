@@ -396,7 +396,7 @@ pub const Window = struct {
     pub fn setSurfaceOffsetForFocus(self: *Window) void {
         const surface = self.toplevel.base.surface;
         if (!surface.mapped) {
-            std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} skipped (not mapped)", .{self.id});
+            std.log.debug("KidulWM: setSurfaceOffsetForFocus id={d} skipped (not mapped)", .{self.id});
             return;
         }
 
@@ -404,17 +404,17 @@ pub const Window = struct {
         const target_w: f64 = self.animation.target_w;
         const target_h: f64 = self.animation.target_h;
 
-        std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} target={d}x{d} geom={d}x{d}@{d},{d} buffer={d}x{d}", .{ self.id, @as(i32, @intFromFloat(target_w)), @as(i32, @intFromFloat(target_h)), geom.width, geom.height, geom.x, geom.y, surface.current.width, surface.current.height });
+        std.log.debug("KidulWM: setSurfaceOffsetForFocus id={d} target={d}x{d} geom={d}x{d}@{d},{d} buffer={d}x{d}", .{ self.id, @as(i32, @intFromFloat(target_w)), @as(i32, @intFromFloat(target_h)), geom.width, geom.height, geom.x, geom.y, surface.current.width, surface.current.height });
 
         // Avoid division by zero: if geometry or committed buffer is not yet
         // known, fall back to no-op. handleCommit will re-run this once the
         // first buffer arrives.
         if (geom.width <= 0 or geom.height <= 0) {
-            std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} skipped (bad geometry)", .{self.id});
+            std.log.debug("KidulWM: setSurfaceOffsetForFocus id={d} skipped (bad geometry)", .{self.id});
             return;
         }
         if (surface.current.width <= 0 or surface.current.height <= 0) {
-            std.log.info("KidulWM: setSurfaceOffsetForFocus id={d} skipped (no buffer)", .{self.id});
+            std.log.debug("KidulWM: setSurfaceOffsetForFocus id={d} skipped (no buffer)", .{self.id});
             return;
         }
 
@@ -705,7 +705,7 @@ pub const Window = struct {
         // has committed, so the scene buffer did not exist when applyLayout ran.
         if (window.server.focused_window == window) {
             const target = window.animation;
-            std.log.info("KidulWM: handleCommit focused id={d} target={d:.0}x{d:.0} buffer={d}x{d} geom={d}x{d}", .{ window.id, target.target_w, target.target_h, surface.current.width, surface.current.height, window.toplevel.base.geometry.width, window.toplevel.base.geometry.height });
+            std.log.debug("KidulWM: handleCommit focused id={d} target={d:.0}x{d:.0} buffer={d}x{d} geom={d}x{d}", .{ window.id, target.target_w, target.target_h, surface.current.width, surface.current.height, window.toplevel.base.geometry.width, window.toplevel.base.geometry.height });
             window.setSurfaceOffsetForFocus();
         }
 

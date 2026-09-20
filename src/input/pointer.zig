@@ -141,7 +141,7 @@ const PointerDevice = struct {
         // (e.g. touch or a fresh seat), so ensure the surface is entered.
         _ = server.pointerEnterAtCursor();
         const result = server.seat.pointerNotifyButton(event.time_msec, event.button, event.state);
-        std.log.info("KidulWM: BTN-NOTIFY btn=0x{x} state={s} serial={d} focused={}", .{ event.button, @tagName(event.state), result, server.seat.pointer_state.focused_surface != null });
+        std.log.debug("KidulWM: BTN-NOTIFY btn=0x{x} state={s} serial={d} focused={}", .{ event.button, @tagName(event.state), result, server.seat.pointer_state.focused_surface != null });
         if (event.state == .pressed) {
             server.focusAtCursor();
         }

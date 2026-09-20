@@ -2844,7 +2844,7 @@ pub const Server = struct {
             const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse continue;
             const surface = scene_surface.surface;
             if (self.seat.pointer_state.focused_surface != surface) {
-                std.log.info("KidulWM: PTR-ENTER layer ns={s} nx={d:.0} ny={d:.0}", .{ ls.layer_surface.namespace, nx, ny });
+                std.log.debug("KidulWM: PTR-ENTER layer ns={s} nx={d:.0} ny={d:.0}", .{ ls.layer_surface.namespace, nx, ny });
                 self.seat.pointerNotifyEnter(surface, nx, ny);
             }
             return .{ .sx = nx, .sy = ny };
@@ -2861,7 +2861,7 @@ pub const Server = struct {
             const scene_surface = wlr.SceneSurface.tryFromBuffer(scene_buffer) orelse continue;
             const surface = scene_surface.surface;
             if (self.seat.pointer_state.focused_surface != surface) {
-                std.log.info("KidulWM: PTR-ENTER id={d} surface={*} nx={d:.0} ny={d:.0}", .{ window.id, surface, nx, ny });
+                std.log.debug("KidulWM: PTR-ENTER id={d} surface={*} nx={d:.0} ny={d:.0}", .{ window.id, surface, nx, ny });
                 self.seat.pointerNotifyEnter(surface, nx, ny);
             }
             return .{ .sx = nx, .sy = ny };
@@ -4070,7 +4070,7 @@ pub const Server = struct {
         };
         if (now - S.last < 1_000_000) return;
         S.last = now;
-        std.log.info("KidulWM: pointer {s} x={d:.1} y={d:.1}", .{ tag, x, y });
+        std.log.debug("KidulWM: pointer {s} x={d:.1} y={d:.1}", .{ tag, x, y });
     }
 
     fn applyTheme(self: *Server, key: []const u8, value: []const u8) void {
