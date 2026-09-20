@@ -13,11 +13,25 @@ kmedia + ksd-input-claim-law skills.
 # ReleaseSafe build on host -> /usr/local/bin/kidulwm (mv-over swap + .bak).
 # bobdotrix does NOT survive an sddm login — document handoff here first.
 #
-# CURRENT POSITION (2026-09-20 ~19:25): verdict 50 + tracer DEPLOYED (869c68a9,
-# commits 57dab29 + f5b4beb signed B&B), RELOG OWED. FRAMETRACE read done —
-# wlroots auto-schedules off client commit/damage, NOT any scheduleFrame site.
-# NEW: per-client commit attribution (ghostty/kplay/other) added to FRAMETRACE.
+# CURRENT POSITION (2026-09-20 ~20:50): verdict 50 + tracer DEPLOYED 869c68a9
+# (commits 57dab29 + f5b4beb signed B&B) AND RELOG DONE — running pid 830305 ==
+# /usr/local/bin/kidulwm == 869c68a9 byte-identical, live since 20:39. Git HEAD =
+# 3f381ff (2 doc-only CENSUS commits past the deployed code; nothing undelivered).
+# 15 commits UNPUSHED to Codeberg (ledger earlier said 3 — stale; list below).
+# FRAMETRACE live 10s idle sample: rendered 14.2/s, commit 9.4/s = ghostty 9.4/s
+# (100% of commits), all 6 scheduleFrame sites flat, kplay=0 other=0. Idle
+# committer NAMED = ghostty. NEW GAP: rendered 14.2 vs 9.4 commit = ~4.8 wakes/s
+# with NO named source (not commit, not any scheduleFrame site) — next question.
 # Phase 2 step 1 DONE (wedge owner = kidulwm), step 2 IN PROGRESS. Raya = video.
+#
+# SURGERY DEPLOYED (2026-09-20 ~22:00): per-output render counter. The global
+# ft_rendered folded a 144Hz+60Hz two-output rig into one number, so the
+# "rendered 14.2 vs commit 9.4" gap was un-attributable. handleFrame now bumps
+# per-Output ft_rendered AND emits FRAMETRACE-OUT {s} rendered={d} per output.
+# Deployed c360c8cc (.bak-869c68a9), build+test clean, signed. RELOG OWED.
+# POST-RELOG (bobdotrix dies on relog): grep FRAMETRACE-OUT, compute per-output
+# rate deltas. Expect ghostty's 9.4/s pinned to one output and ~4.8/s of
+# self-wake on the other (eDP 144Hz prime suspect) — names the idle waster.
 #
 # KEY FINDING THIS SESSION (Barticus caught it): the "thick tentacle" committing
 # ~8/s at idle is a STOCK ghostty — CachyOS package ghostty 1.3.1-2.2, a full
