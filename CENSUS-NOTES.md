@@ -31,7 +31,7 @@ kmedia + ksd-input-claim-law skills.
 # Phase 2 compositor-side suspect (verdict 45), not scope creep.
 #
 # NEXT SESSION STARTS HERE (2026-09-20):
-#   1. RELOG (sddm login cycle — kills niri + bobdotrix). 2. Confirm log silent
+#   1. RELOG (sddm logout/login — kills the kidulwm session + bobdotrix). 2. Confirm log silent
 #   + re-measure CPU/i915_irqs post-gate. 3. Phase 2 step 1 HOST repro: kplayd
 #   up -> media_play Raya -> watch kidulwm AND kplayd RSS for ~80MB/s -> ~1.9GB
 #   climb (watchdog now captures BOTH). Confirm frames PRESENT (black=false neg).

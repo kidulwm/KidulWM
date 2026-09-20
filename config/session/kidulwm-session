@@ -1,7 +1,7 @@
 #!/bin/sh
-# kidulwm-session — SDDM session entry for the B&B workbench.
-# Law: docs/law/daily-driver.md (workbench keeps GRUB + SDDM; niri remains
-# the escape-hatch session). Trip wires: KNOWN_CMDS.md "TRIP WIRES".
+# kidulwm-session — SDDM session entry for kidulwm (the daily driver).
+# Law: docs/law/daily-driver.md — niri stays installed as the escape hatch.
+# Trip wires: KNOWN_CMDS.md "TRIP WIRES".
 #
 # Guarantees the two contracts the compositor's spawn strings hardcode:
 #   XDG_RUNTIME_DIR=/run/user/<uid>  (uid-1000 assumption inside compositor)
