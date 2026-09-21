@@ -3220,6 +3220,26 @@ pub const Server = struct {
         self.requestLayout();
     }
 
+    /// Card A (god code, render-path law): when the video slide is focused
+    /// AND fullscreen, kplayd's buffer is the sole visible node and wlroots
+    /// can scan it out directly — but the overlay_tree node (peek + chrome
+    /// rings, already visually empty here) still stacks above it and defeats
+    /// scanout. Disable overlay_tree for that exact case, re-enable otherwise
+    /// (FULLSCREEN-FOCUS LAW: gate on fullscreen AND focused). Called from
+    /// applyLayout so every fullscreen enter/walk/close passes ONE authority.
+    fn syncScanoutOverlay(self: *Server) void {
+        const focused_fullscreen = blk: {
+            const output = self.video_slide_output orelse break :blk false;
+            const deck = &output.deck;
+            const idx = deck.findKind(.video) orelse break :blk false;
+            break :blk deck.slides.items[idx].fullscreen and
+                deck.empty_slot == .none and idx == deck.focused_index;
+        };
+        if (focused_fullscreen)
+            std.log.info("KidulWM: scanout candidate — disabling overlay_tree (focused fullscreen video)", .{});
+        self.overlay_tree.node.setEnabled(!focused_fullscreen);
+    }
+
     pub fn applyLayout(self: *Server) void {
         self.layout_requested.store(false, .monotonic);
         std.log.info("KidulWM: applyLayout called", .{});
@@ -3433,6 +3453,10 @@ pub const Server = struct {
         }
 
         self.last_focused_slide_id = current_focused_slide_id;
+
+        // Card A (god code): on a focused fullscreen video slide, drop
+        // overlay_tree so kplayd's buffer can scan out directly.
+        self.syncScanoutOverlay();
     }
 
     fn handleLayoutEventFd(_fd: c_int, _mask: wl.EventMask, server: *Server) c_int {

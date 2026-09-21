@@ -31,6 +31,43 @@ kmedia + ksd-input-claim-law skills.
 #   DO NOT disable NVIDIA. The TV is the product display; a dark TV is worse
 #   than the wedge. Report back, keep NVIDIA, wedge stays open (deferred).
 
+# VERDICT 53 (bobdotrix 2026-09-21) — HUB WORKED + GOD CODE LOCKED + CARD A inc1 DEPLOYED
+#
+# HUB WORKED (post-relog check done): TV on Intel card1 DP-3 (3840x2160 scale=2),
+# eDP-1 also card1; NVIDIA card0 HDMI-A-1 + DP-5 BOTH disconnected. Cross-GPU
+# staging wedge STRUCTURALLY CLOSED (decode+present both Intel). NVIDIA still
+# awake (P0 23W, runtime_status=active, kidulwm+Xorg hold refs) — PARK OWED
+# (blacklist nvidia modules, or runtime-PM hard suspend). nvidia-smi shows
+# kidulwm 2MiB (WLR_DRM_DEVICES still lists card0) + Xorg 4MiB.
+#
+# GOD CODE = the name everything converges on; NOT a new phase/refactor. LOCKED
+# as docs/law/godcodemode.md. Recon SHRANK the fork: ONLY the CHAMFER corner-clip
+# needs a wlroots patch (0.20.2 has no corner primitive at all). Scanout is
+# already native (wire it); present-mode = OUR four-axis derivation; slide
+# protocol = OUR extension. So slide-protocol + shared-painter "kslate" +
+# scanout-by-default = pure KidulWM, zero fork. The sole patch (chamfer) is the
+# generic piece to hand back AFTER kidulStyle is recognisable. Patchset-not-fork
+# against pinned 0.20.2. Four axes = KIND/GEOMETRY/FOCUS/MOTION; present-mode is
+# a DERIVED function, never stored.
+#
+# CARD A increment 1 DEPLOYED (9fe3b374, .bak-c360c8cc): syncScanoutOverlay() at
+# end of applyLayout disables overlay_tree when the video slide is focused AND
+# fullscreen, so kplayd's buffer is the sole visible node and wlroots scans out
+# directly. Gate = fullscreen AND focused (FULLSCREEN-FOCUS LAW). Log marker:
+# "scanout candidate — disabling overlay_tree".
+#   POST-RELOG TEST (bobdotrix dies on relog):
+#     1. media_play Raya -> fullscreen video slide on TV.
+#     2. grep "scanout candidate" ~/.local/state/kidulwm/session.log == present.
+#     3. kidulwm CPU during playback: ~2-5% = scanout ENGAGED (win). ~15-33% =
+#        overlay disabled but wlroots didn't scan -> next inc targets kplayd's
+#        buffer shape (xdg subtree -> bare SceneBuffer).
+#     4. Walk video off-focus: peek + chrome MUST return (overlay re-enabled).
+#     5. Close video: peek + chrome normal both outputs.
+#   KNOWN LIMIT (inc1): fullscreen video also hides peek/chrome on the second
+#   output (overlay_tree is global). Fine for the single-TV product; per-output
+#   scanout state lands with the slide protocol (Card D). niri = escape hatch.
+#   SPRING CLEAN NOTE: ~65 .bak-* binaries now (parked item said "20+" — stale).
+
 # VERDICT 52 (bobdotrix 2026-09-21) — SCANOUT RECON DONE: present path has ONE seam, direct scanout is wlroots-native but unwired
 #
 # THE PRESENT PATH (confirmed in tree, wlroots 0.20.1):
