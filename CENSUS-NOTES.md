@@ -8,6 +8,51 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 54 (bobdotrix 2026-09-21) — SLIDE ROUTING + PAUSE-ON-ASIDE (bddc1c5, DEPLOYED b83da5e2)
+#
+# SYMPTOM (Barticus): opening a media card spawns the fullscreen video but
+# pushes the media player to the OTHER screen — the two outputs' decks were
+# meeting. "Each screen is its own slideDeck; the two never meet."
+#
+# ROOT CAUSE: spawn routing used the single global focused_output via
+# currentDeck(). media_play already iterated outputs to find the player (correct),
+# but media_card_toggle / homeSlideFocusOrSpawn / assignOutput resolved the
+# target stage from GLOBAL focus, not the pointer. focusFollowsCursor flapping
+# at the eDP-1/DP-3 seam (cursor x ~1920, the old side-by-side auto-placement)
+# flipped focused_output every twitch, so the card/video landed on whichever
+# stage focus last touched.
+#
+# FIX (bddc1c5): cursorOutput() / spawnDeck() — a NEW slide (media card, home
+# launcher, fresh app window) routes by the POINTER's output (CFC law: the
+# cursor is the focus you can see); focus-follow stays on currentDeck.
+# assignOutput is cursor-first too. The global focused_output is now a
+# focus-follow hint only, never a spawn authority.
+#
+# PAUSE-ON-ASIDE (same commit, Barticus ruling): the .video slide FREEZES
+# playback when walked off-focus (pause verb) and RESUMES when walked back
+# (resume verb). Edge-triggered via the new video_focused field in applyLayout.
+# OVERRIDES the old "A4 rides at windowed rect" (session-and-deck-spec §2).
+# LIVE catch-up-to-edge (seek_abs to live) = follow-on when the IPTV rail
+# lands (deferred; resume already lands near the edge since a paused live
+# stream stops advancing).
+#
+# outputs.toml CORRECTED (~/.config/kidulwm): dead HDMI-A-1 (NVIDIA) -> DP-3
+# {0,0} above eDP-1 {0,1080}; both 1920 logical wide = laptop centred under
+# the TV. No more side-by-side auto-placement (that was the flapping seam).
+#
+# DEPLOYED /usr/local/bin/kidulwm b83da5e2 (.bak-9fe3b374). RELOG OWED.
+# POST-RELOG TEST (Barticus):
+#   1. Outputs: TV (DP-3) ABOVE, laptop (eDP-1) BELOW, centred, no side-by-side.
+#   2. media_play on the TV -> fullscreen video IN the TV slide; player peeks
+#      left ON THE TV. Laptop deck untouched.
+#   3. Walk off the video (Mod4+j/l): PAUSES (log "walked aside — pause").
+#      Walk back: RESUMES ("refocused — resume").
+#   4. media_card_toggle with cursor on the laptop -> card opens on the LAPTOP.
+#   5. Watch the return z-order ("comes back under the widgets"): pause-on-aside
+#      means the video is frozen, not playing under the bands; the fullscreen
+#      return is handled by syncScanoutOverlay (Card A inc1). Flag if it still
+#      renders under the bands on return.
+
 # VERDICT 53 (bobdotrix 2026-09-21) — HUB WORKED + GOD CODE LOCKED + CARD A inc1 DEPLOYED
 #
 # HUB WORKED (post-relog check done): TV on Intel card1 DP-3 (3840x2160 scale=2),

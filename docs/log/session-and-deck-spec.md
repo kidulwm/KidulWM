@@ -56,9 +56,11 @@ A launcher that stays open after launching is litter.
   visible. Quit the video slide → it destroys → the deck settles back
   onto the player. No return-index bookkeeping: the walk IS the state
   machine. The `openMediaSlide` "flag only, deck undisturbed underneath"
-  sentinel is DEMOLISHED. A4 (fullscreen plays ball) applies to the
-  video slide for free: walk away mid-video and it rides at windowed
-  rect, dwell, re-expands.
+  sentinel is DEMOLISHED. PAUSE-ON-ASIDE (Barticus, 2026-09-21, overrides
+  A4's "rides at windowed rect"): walking off a PLAYING video slide PAUSES
+  it — the deck walks away, playback freezes at the windowed rect instead of
+  riding. Walking back RESUMES it (live catch-up-to-edge is a follow-on when
+  the IPTV rail lands).
   - Video slide spawns RIGHT of the player always, so the player is
     always one Mod4+j away and "back" is always the same direction.
 

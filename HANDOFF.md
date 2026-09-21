@@ -12,12 +12,14 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current position (2026-09-21)
 
-  - GodCodeMode LOCKED — docs/law/godcodemode.md (slide protocol + kslate +
-    scanout-by-default; fork = chamfer-only patchset, not a fork).
-  - Card A inc1 DEPLOYED (9fe3b374) — scanout overlay toggle. RELOG + Raya owed.
-  - NVIDIA blacklisted; WLR_DRM_DEVICES=/dev/dri/card1. REBOOT owed.
-  - Verdict 53 in CENSUS holds the exact post-reboot/post-relog test steps.
-  - 7 commits ahead of Codeberg — push waits for the reset (standing policy).
+  - Verdict 54 DEPLOYED (bddc1c5, /usr/local/bin/kidulwm b83da5e2, .bak-9fe3b374):
+    slide routing (cursor owns new slides — media card / home launcher / app
+    window) + pause-on-aside (video freezes when walked off-focus, resumes on
+    return). outputs.toml corrected: DP-3 {0,0} above eDP-1 {0,1080}.
+  - RELOG OWED to pick up b83da5e2 + the new outputs.toml. Test steps in
+    CENSUS verdict 54.
+  - GodCodeMode LOCKED; Card A inc1 scanout overlay toggle still live (verdict 53).
+  - NVIDIA blacklisted; WLR_DRM_DEVICES=/dev/dri/card1. REBOOT still owed.
 
 ## Next action
 
