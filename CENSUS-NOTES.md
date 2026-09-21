@@ -6,6 +6,31 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
+# RELOG-IN-PROGRESS HANDOFF (bobdotrix 2026-09-21) — CHECK HUB, THEN GO NO-NVIDIA
+#
+# Barticus is reloading RIGHT NOW with the TV moved to the USB-C hub
+# (verdict-51 re-cable). bobdotrix dies on this relog; this note is the bridge.
+#
+# BASELINE (pre-reload, captured): HDMI-A-1 = connected (TV on NVIDIA),
+# card1 DP-1/DP-2 = disconnected, USB-C port0 had NO partner.
+#
+# FIRST POST-RELOG CHECK — did the hub work?
+#   /sys/class/drm/card1/card1-DP-1/status  (or DP-2) == connected
+#   AND /sys/class/drm/card0/card0-HDMI-A-1/status == disconnected
+#   => TV now on Intel iGPU. That kills the cross-GPU staging wedge at the root.
+#
+# IF HUB WORKED — GO NO-NVIDIA STRAIGHT AWAY:
+#   1. Confirm dGPU idle: nvidia-smi (P8/power state, no processes).
+#   2. runtime_status at /sys/bus/pci/devices/0000:01:00.0/power/runtime_status
+#      == "suspended" (or at least not "active" while idle).
+#   3. If still active, park it: runtime PM (auto) or blacklist nvidia modules
+#      so decode+present are BOTH Intel. Record what you did in this ledger.
+#   4. Re-run the wedge repro (media_play Raya): kidulwm RSS must stay FLAT.
+#
+# IF HUB DID NOT WORK (TV dark / still on HDMI-A-1):
+#   DO NOT disable NVIDIA. The TV is the product display; a dark TV is worse
+#   than the wedge. Report back, keep NVIDIA, wedge stays open (deferred).
+
 # VERDICT 52 (bobdotrix 2026-09-21) — SCANOUT RECON DONE: present path has ONE seam, direct scanout is wlroots-native but unwired
 #
 # THE PRESENT PATH (confirmed in tree, wlroots 0.20.1):
