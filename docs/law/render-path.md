@@ -1,8 +1,8 @@
-# Render path law — presentation & scanout (LOCKED 2026-09-21)
+# Render path law — presentation & scanout (FOLDED into godcodemode.md)
 
-Status: LOCKED (Barticus 2026-09-21). Scanout first, then gating. The slide
-protocol / shared painter / "GodCodeMode" is a SEPARATE spec, wargamed after
-this law lands.
+Status: FOLDED 2026-09-21. Superseded by docs/law/godcodemode.md (Card A/B
+= scanout + gating). Kept here only as the archived scanout rationale; the
+live truth is godcodemode.md.
 
 ## The problem (why "not buttery smooth" + CPU hammering are the SAME bug)
 
