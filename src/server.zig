@@ -462,6 +462,12 @@ pub const Server = struct {
     /// Output that owns the live video slide (one per session — the player's
     /// row). Null while no .video slide exists.
     video_slide_output: ?*Output = null,
+    /// PAUSE-ON-ASIDE edge state: true while the .video slide is the focused
+    /// slide on its output. A false->true transition resumes playback; a
+    /// true->false transition pauses it (the slide was walked aside into the
+    /// peek). Edge-triggered in applyLayout so the verb fires once per move,
+    /// never per layout tick.
+    video_focused: bool = false,
     /// Deferred video-slide spawn. handleRequest runs INSIDE control.zig's
     /// readClient parse loop (a main-loop fd-source callback). videoSlideSpawn
     /// -> videoSlideHostSpawn -> InternalClient.create -> pumpRoundtrip ->
@@ -1490,6 +1496,37 @@ pub const Server = struct {
         return &self.deck;
     }
 
+    /// Return the output under the pointer, or null. THE CURSOR IS THE FOCUS
+    /// YOU CAN SEE (CFC law): a NEW slide (media card, home launcher) opens on
+    /// the stage the pointer rests on — never the stage that merely last held
+    /// keyboard focus. This is the "each screen is its own slideDeck, the two
+    /// never meet" routing authority: spawn goes by the pointer, focus-follow
+    /// goes by currentDeck. The single global focused_output is a focus-follow
+    /// hint only; it must never decide where a new slide is born.
+    fn cursorOutput(self: *Server) ?*Output {
+        self.syncCursorMirror();
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |output| {
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            if (self.cursor_x >= @as(f64, @floatFromInt(box.x)) and
+                self.cursor_x < @as(f64, @floatFromInt(box.x + box.width)) and
+                self.cursor_y >= @as(f64, @floatFromInt(box.y)) and
+                self.cursor_y < @as(f64, @floatFromInt(box.y + box.height)))
+            {
+                return output;
+            }
+        }
+        return null;
+    }
+
+    /// The deck that receives a NEW slide: cursor output first (CFC law),
+    /// fall back to currentDeck for headless/smoke runs and boot edges.
+    fn spawnDeck(self: *Server) *slidedeck.SlideDeck {
+        if (self.cursorOutput()) |output| return &output.deck;
+        return self.currentDeck();
+    }
+
     /// Assign a window to the best available output when it maps.
     /// CFC law: everything follows focus, and the CURSOR is the focus you
     /// can see. When the pointer rests on a different stage than the focused
@@ -1499,6 +1536,13 @@ pub const Server = struct {
     /// so the two halves can't stay in disagreement for long either way.
     pub fn assignOutput(self: *Server, window: *Window) void {
         if (window.output != null) return;
+        // CFC law: the CURSOR's stage owns a new window before any focus
+        // hint. Granny moves the mouse to the TV, clicks, and the app opens
+        // on the TV — not on the stage that last held keyboard focus.
+        if (self.cursorOutput()) |output| {
+            window.output = output;
+            return;
+        }
         if (self.focused_output) |output| {
             window.output = output;
             return;
@@ -1745,7 +1789,7 @@ pub const Server = struct {
     /// slide if this row has one, else spawn one at index 0 and focus it.
     /// At most one per row; never auto-respawned; standard quit destroys it.
     pub fn homeSlideFocusOrSpawn(self: *Server) void {
-        const deck = self.currentDeck();
+        const deck = self.spawnDeck();
         // Siblings never both: if the overview slide is open on this row,
         // close its scene tree before the home slide spawns into the row.
         if (deck.overview_slide_open) {
@@ -1939,6 +1983,29 @@ pub const Server = struct {
         }
     }
 
+    /// PAUSE-ON-ASIDE: the video slide was walked out of focus. Freeze
+    /// playback (file and live alike — the DAC clock holds, the ring stops
+    /// draining). Idempotent daemon-side.
+    fn kplayPauseForAside(self: *Server) void {
+        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
+            var kc = kc0;
+            defer kc.destroy();
+            kc.pause() catch {};
+        } else |_| {}
+    }
+
+    /// PAUSE-ON-ASIDE: the video slide walked back into focus. Resume from
+    /// the frozen position. Live catch-up-to-edge (seek_abs to live) is a
+    /// follow-on card when the IPTV rail lands; resume already lands near the
+    /// live edge because a paused live stream stops advancing.
+    fn kplayResumeForFocus(self: *Server) void {
+        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
+            var kc = kc0;
+            defer kc.destroy();
+            kc.unpause() catch {};
+        } else |_| {}
+    }
+
     /// Relative seek via kplay.sock 'seek_rel <seconds>'.
     pub fn kplaySeekRel(self: *Server, seconds: f64) void {
         if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
@@ -1962,9 +2029,15 @@ pub const Server = struct {
     /// Close = destroy it through the stock path — NO return-index
     /// bookkeeping; the deck settles back naturally.
     pub fn mediaSlideToggle(self: *Server) void {
-        const deck = self.currentDeck();
+        const deck = self.spawnDeck();
         if (deck.findKind(.media_player) != null) {
-            self.mediaSlideClose();
+            // Close in THIS deck (the cursor's stage), not currentDeck — a
+            // toggle must be symmetric with where it opened.
+            if (self.outputForDeck(deck)) |output| {
+                self.mediaSlideCloseOn(output);
+            }
+            _ = deck.removeCompositorSlide(.media_player);
+            self.requestLayout();
             return;
         }
         // Spawn: the player slide lands at index 0 of the current row.
@@ -1985,7 +2058,7 @@ pub const Server = struct {
     /// Focus the media player slide (spawn if missing) — the
     /// media_card_toggle redirect target.
     pub fn mediaSlideFocusOrSpawn(self: *Server) void {
-        const deck = self.currentDeck();
+        const deck = self.spawnDeck();
         if (deck.findKind(.media_player)) |idx| {
             deck.focusWindowByIndex(idx);
             self.clearFocus();
@@ -2165,6 +2238,7 @@ pub const Server = struct {
         output.video_slide.tree = tree;
         tree.node.raiseToTop();
         self.video_slide_output = output;
+        self.video_focused = true;
         self.clearFocus();
         self.videoSlidePaint(output);
 
@@ -2343,6 +2417,7 @@ pub const Server = struct {
             self.videoSlideCloseOn(output);
             _ = output.deck.removeCompositorSlide(.video);
             self.video_slide_output = null;
+            self.video_focused = false;
             self.requestLayout();
         }
     }
@@ -3453,6 +3528,29 @@ pub const Server = struct {
         }
 
         self.last_focused_slide_id = current_focused_slide_id;
+
+        // PAUSE-ON-ASIDE edge trigger: fire once when the .video slide crosses
+        // the focused<->aside boundary, never per layout tick.
+        {
+            const video_focused = blk: {
+                const output = self.video_slide_output orelse break :blk false;
+                const deck = &output.deck;
+                if (deck.empty_slot != .none) break :blk false;
+                const idx = deck.focused_index;
+                if (idx >= deck.slides.items.len) break :blk false;
+                break :blk deck.slides.items[idx].kind == .video;
+            };
+            if (video_focused != self.video_focused) {
+                self.video_focused = video_focused;
+                if (video_focused) {
+                    std.log.info("KidulWM: video slide refocused — resume playback", .{});
+                    self.kplayResumeForFocus();
+                } else {
+                    std.log.info("KidulWM: video slide walked aside — pause playback", .{});
+                    self.kplayPauseForAside();
+                }
+            }
+        }
 
         // Card A (god code): on a focused fullscreen video slide, drop
         // overlay_tree so kplayd's buffer can scan out directly.
