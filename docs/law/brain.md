@@ -39,19 +39,34 @@ The whole art is pushing content DOWN the stack: fast memory stays a clean
 index; knowledge lives in 3-5 and is pulled only when its tentacle is active.
 Do NOT grow Layer 1. A full index is a slow brain.
 
+## The north star (why — kmedia/docs/law/local-brain.md)
+
+This law is the STRUCTURE of the brain. Its WHY lives in local-brain.md
+(locked 2026-08-29): the cloud LLM is the last hole in full-stack ownership;
+the end state is a purpose-built, as-small-as-feasible LOCAL model trained
+ONLY on the KSD corpus — "no Pokémon stats, no Kardashian birthdays," the
+groomed weight cut. That is "the LLM without the pikachu."
+
+THE CORPUS LAW: docs-first is not hygiene, it is corpus curation. Every law,
+HANDOFF, and decision log is a training example of how decisions get made
+here. The whole spring clean — keep everything, place it better — is building
+the training set for the brain that eventually comes home.
+
 ## The future (LATER EDITION, not now)
 
 Barticus's read: we can eventually do BETTER than an LLM at Layers 2 and 5.
 Deterministic scripts — tentacle-like, flying over FPGAs — land a more accurate
 result every time than a probabilistic model can. That is a second/third-edition
-product. Today the LLM is the prototyping BOB; the FPGA is the eventual home;
-this five-layer Brain is the cortex being built now in software, to be the
-same shape on the appliance later. godCodemode (present-path) is the body's
-reflex; this Brain is what sits above it.
+product; local-brain.md holds the full north star, this law holds the loading
+shape. Today the LLM is the prototyping BOB; the FPGA is the eventual home; the
+five-layer Brain is the cortex built now in software, to be the same shape on
+the appliance later. godCodemode (present-path) is the body's reflex; this
+Brain is what sits above it.
 
 ## Parenting
 
 This law is the spine. documentation.md (file ROLES + lifecycle) is its
 mechanics — a doc's role says WHEN it retires; this law says WHERE it lives
 and in what order it loads. KSD-INDEX.md is Layer 2's surface; the SKILL-INDEX
-is the same surface for the skills side.
+is the same surface for the skills side. local-brain.md (kmedia) is the north
+star this law serves — structure here, destination there.
