@@ -67,6 +67,14 @@ kmedia + ksd-input-claim-law skills.
 #   output (overlay_tree is global). Fine for the single-TV product; per-output
 #   scanout state lands with the slide protocol (Card D). niri = escape hatch.
 #   SPRING CLEAN NOTE: ~65 .bak-* binaries now (parked item said "20+" — stale).
+#
+# NVIDIA BLACKLIST DEPLOYED (2026-09-21, bobdotrix): /etc/modprobe.d/
+#   blacklist-nvidia.conf (nvidia/nvidia_drm/nvidia_modeset/nvidia_uvm) +
+#   kidulwm-session WLR_DRM_DEVICES=/dev/dri/card1 (card0 dropped). No initramfs
+#   regen needed (MODULES=() empty, nvidia loads from rootfs via udev).
+#   REBOOT OWED to take effect; POST-REBOOT VERIFY: `lsmod | grep -c nvidia`
+#   == 0, `ls /sys/class/drm/` has no card0, `nvidia-smi` gone, dGPU D3cold.
+#   Reversible: delete the conf + regen initramfs.
 
 # VERDICT 52 (bobdotrix 2026-09-21) — SCANOUT RECON DONE: present path has ONE seam, direct scanout is wlroots-native but unwired
 #
