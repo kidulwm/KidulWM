@@ -6,6 +6,43 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
+# VERDICT 52 (bobdotrix 2026-09-21) — SCANOUT RECON DONE: present path has ONE seam, direct scanout is wlroots-native but unwired
+#
+# THE PRESENT PATH (confirmed in tree, wlroots 0.20.1):
+#   Output.handleFrame (server.zig:310) -> scene_output.commit(null) (341) ->
+#   sendFrameDone. Every frame walks the WHOLE scene graph and re-composites
+#   through the GPU renderer. No direct-scanout attempt, no frame gating.
+#   That one seam is the root of BOTH live symptoms: fullscreen video jitter
+#   (no zero-copy passthrough) + idle 36% CPU (ghostty GTK4 commit ~14/s
+#   wakes the loop, every wake = full re-composite of both outputs).
+#
+# WLROOTS 0.20.1 ALREADY EXPOSES EVERYTHING (bindings present, zero use):
+#   wlr_output_is_direct_scanout_allowed, SceneBuffer.OutputSample.
+#   direct_scanout, SceneOutput.buildState/commitState, StateOptions. We link
+#   these and call none. The fix is wiring, not invention.
+#
+# THE STRUCTURAL BLOCKER TO SCANOUT TODAY (why fullscreen video can't scan):
+#   kplayd's video surface is a SceneXdgSurface inside a per-window
+#   scene_tree, raised to top but left BELOW overlay_tree. overlay_tree
+#   (peek + chrome rings) is always enabled and raiseToTop()'d — peek hides
+#   its child trees on fullscreen but the overlay_tree node itself stays up.
+#   wlroots direct scanout requires a SINGLE buffer covering the output with
+#   NOTHING above it, no scale transform. So today: fullscreen video =
+#   wallpaper + layer strata + slide card + kplayd surface + overlay_tree all
+#   composited. Scanout needs the fullscreen path to collapse to: kplayd
+#   buffer alone, overlay_tree (and slide card + wallpaper) disabled/hidden,
+#   opaque, exact-cover.
+#
+# NEXT CARD (render-path law, LOCKED docs/law/render-path.md): scanout first,
+#   then gating. Card A = fullscreen-video scanout reachability: on focused
+#   fullscreen video slide, disable overlay_tree + hide wallpaper/card so
+#   kplayd's buffer is the sole cover, then verify wlroots engages direct
+#   scanout (log evidence + CPU ~2-5%). Card B = frame gating: handleFrame
+#   skips commit when no scene damage + no active animation + no pending
+#   layout (kills the idle 36%). Slow path (thin tentacles) unchanged.
+#   GHOSTTY FORK + slide-protocol/"GodCodeMode" = separate spec, wargamed
+#   after this law lands. Cross-GPU re-cable (verdict 51) still deferred.
+
 # WEDGE ROOT-CAUSED + FOCUS DEADLOCK (bobdotrix 2026-09-20 ~22:30) — VERDICT 51 (LOCKED 2026-09-21)
 #
 # WEDGE = cross-GPU staging retention (I4). Live repro (Raya, ACTIVE playback,
