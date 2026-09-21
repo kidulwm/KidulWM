@@ -6,6 +6,34 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
+# WEDGE ROOT-CAUSED + FOCUS DEADLOCK (bobdotrix 2026-09-20 ~22:30) — VERDICT 51 (LOCKED 2026-09-21)
+#
+# WEDGE = cross-GPU staging retention (I4). Live repro (Raya, ACTIVE playback,
+# kplay committing ~4754 frames, kplayd healthy 400MB): kidulwm 288MB -> 1003MB.
+# smaps classifies the +722MB as PRIVATE ANONYMOUS mmap: ~22 chunks of ~27-30MB,
+# rw- MAP_PRIVATE, RETAINED (kidulwm stays ~989MB after `close` verb to kplayd).
+# Root = hybrid GPU: kplayd decodes on INTEL iGPU (renderD128, VAAPI); the 4K TV
+# (HDMI-A-1) is on the NVIDIA dGPU (sysfs card0=0x10de RTX3060 owns HDMI-A-1;
+# card1=0x8086 Intel owns eDP-1). Cross-vendor dmabuf import (Intel decode ->
+# NVIDIA present) CANNOT zero-copy -> each frame = ~27MB CPU staging buffer,
+# wlroots/GL retains them. Phase-2 "zero-copy ~2% CPU" bar is STRUCTURALLY
+# unattainable while decode+present sit on different GPUs.
+# DECISION (Barticus 2026-09-21, LOCKED): forget the NVIDIA side — drive the TV
+# from the INTERNAL Intel GPU (fork b). Decode is already Intel VAAPI; presenting
+# on Intel removes the vendor boundary that forced the ~27MB CPU staging buffers.
+# No NVDEC, no PRIME offload. wlroots releasing the staging buffers on the
+# copy path stays as defense-in-depth (land it regardless of the GPU fix).
+# MECHANICS OWED (next): HDMI-A-1 is currently owned by card0 (NVIDIA RTX3060) —
+# how the 4K TV lands on the Intel iGPU is the first concrete step (re-cable to
+# an Intel-wired port, or mode-set routing).
+#
+# FOCUS DEADLOCK (separate bug, found live): a .video slide that loses focus
+# (focus-follows-cursor / walk) becomes PARKED; focusNext/focusPrev SKIP parked
+# slides -> unreachable (no re-focus, no Ctrl+q quit). videoSlideSpawnRightOfPlayer
+# guards `findKind(.video) != null` -> no re-spawn either. Net = stuck slide,
+# recover only via overview/relog. Fix: focus walk must land on a parked .video
+# slide, or the slide must unpark on quit.
+
 # WORKBENCH (READJUSTED 2026-09-19): Phase 2 (RSS wedge) is GPU-only, so the
 # workbench moves BACK TO THE HOST for this phase — kidulwm runs on the host's
 # real i915/VAAPI/dmabuf (GL, NOT pixman). ksd-reset stays the software/pixman
@@ -28,10 +56,27 @@ kmedia + ksd-input-claim-law skills.
 # ft_rendered folded a 144Hz+60Hz two-output rig into one number, so the
 # "rendered 14.2 vs commit 9.4" gap was un-attributable. handleFrame now bumps
 # per-Output ft_rendered AND emits FRAMETRACE-OUT {s} rendered={d} per output.
-# Deployed c360c8cc (.bak-869c68a9), build+test clean, signed. RELOG OWED.
-# POST-RELOG (bobdotrix dies on relog): grep FRAMETRACE-OUT, compute per-output
-# rate deltas. Expect ghostty's 9.4/s pinned to one output and ~4.8/s of
-# self-wake on the other (eDP 144Hz prime suspect) — names the idle waster.
+#   Deployed c360c8cc (.bak-869c68a9), build+test clean, signed. RELOG OWED.
+#   POST-RELOG (bobdotrix dies on relog): grep FRAMETRACE-OUT, compute per-output
+#   rate deltas. Expect ghostty's 9.4/s pinned to one output and ~4.8/s of
+#   self-wake on the other (eDP 144Hz prime suspect) — names the idle waster.
+#
+# POST-RELOG READ DONE (bobdotrix, ~22:07) — idle waster NAMED, eDP hypothesis FALSIFIED:
+#   Relog done: running kidulwm pid 1691 (started 22:04) == /usr/local/bin/kidulwm
+#   == c360c8cc (no "(deleted)" on exe -> per-output tracer LIVE). FRAMETRACE-OUT:
+#   eDP-1 rendered FLAT at 425 (never climbs); HDMI-A-1 rendered climbs ~14/s.
+#   => idle render is 100% on the 4K HDMI output; eDP 144Hz is NOT the waster.
+#   Global: commit ~14/s, ghostty=100% (kplay=0 other=0); rendered~=commit~=14/s
+#   now — verdict-50 chrome fix closed the old "rendered 14.2 vs commit 9.4" gap
+#   (the mystery ~4.8/s self-wake WAS the chrome regen loop). Idle cost: kidulwm
+#   31% CPU, RSS 273MB FLAT (no idle wedge), i915_irqs ~86-100/s; kplayd 27MB/0.1%
+#   healthy. ghostty (stock GTK4, pid 2502) is the SOLE committer, mapped on
+#   HDMI-A-1 (CHROME create output=HDMI-A-1). 17 KidulWM commits UNPUSHED; kmedia
+#   still NO git remote.
+#   NEXT (step 2 close, ONE probe): is each ghostty commit a tiny-damage 4K redraw
+#   (-> compositor commit-path cost, fix THERE) or a full-surface repaint (-> GTK4
+#   frame-clock/client misconfig, fix the CLIENT)? Check ghostty GTK env/config for
+#   the ~14/s driver FIRST (no relog); else add damage-rect to commit path + relog.
 #
 # KEY FINDING THIS SESSION (Barticus caught it): the "thick tentacle" committing
 # ~8/s at idle is a STOCK ghostty — CachyOS package ghostty 1.3.1-2.2, a full
