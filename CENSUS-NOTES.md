@@ -23,9 +23,17 @@ kmedia + ksd-input-claim-law skills.
 # on Intel removes the vendor boundary that forced the ~27MB CPU staging buffers.
 # No NVDEC, no PRIME offload. wlroots releasing the staging buffers on the
 # copy path stays as defense-in-depth (land it regardless of the GPU fix).
-# MECHANICS OWED (next): HDMI-A-1 is currently owned by card0 (NVIDIA RTX3060) —
-# how the 4K TV lands on the Intel iGPU is the first concrete step (re-cable to
-# an Intel-wired port, or mode-set routing).
+# MECHANICS RESOLVED (bobdotrix 2026-09-21): HDMI-A-1 is hardwired to the NVIDIA
+# dGPU (card0) — muxless laptop, no mux, no software routing. The Intel iGPU's
+# only external outputs are DP-1/DP-2 = the Thunderbolt 4 / USB-C port. So the
+# fix is a RE-CABLE: TV -> USB-C hub -> TB4 port, then park NVIDIA.
+# DEFERRED ("later thing" — Barticus has a USB-C hub ready for it):
+#   BARTICUS does: plug the TV into the USB-C hub / TB4 port (USB-C->HDMI).
+#   BOBDOTRIX does, when re-cabled: (1) verify TV lights on Intel DP-1/DP-2;
+#   (2) park/disable NVIDIA (runtime PM or BIOS); (3) re-run the wedge repro —
+#   kidulwm RSS flat, no staging growth; (4) confirm audio still Intel HDA
+#   analog (default sink already is); (5) close verdict 51, retire the
+#   cross-GPU staging root-cause.
 #
 # FOCUS DEADLOCK (separate bug, found live): a .video slide that loses focus
 # (focus-follows-cursor / walk) becomes PARKED; focusNext/focusPrev SKIP parked
