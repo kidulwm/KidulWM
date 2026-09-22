@@ -1583,6 +1583,9 @@ pub const Server = struct {
             deck.closeOverviewSlide();
             self.focusReturnFromOverview(deck);
         } else {
+            // fullscreen.md LAW: navigation exits fullscreen — opening the
+            // overview retires the playing video first (same as focusNext).
+            if (self.video_slide_output != null) self.videoSlideClose();
             // Siblings never both: if a home slide holds this row, destroy
             // it before the overview takes over the slot state.
             if (deck.findKind(.home) != null) {
@@ -2808,6 +2811,11 @@ pub const Server = struct {
     /// Focus the next slide, pushing into the virtual empty slot past the end
     /// instead of wrapping around.
     pub fn focusNext(self: *Server) void {
+        // fullscreen.md LAW: fullscreen is a MODE, not a deck position. Any
+        // deck-navigation input exits it — retire the playing video to its
+        // card FIRST (teardown kplayd + the .video slide, deck settles on the
+        // player), then move. Never navigate with the video slide still up.
+        if (self.video_slide_output != null) self.videoSlideClose();
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
         deck.focusNext();
@@ -2829,6 +2837,9 @@ pub const Server = struct {
     /// Focus the previous slide, pushing into the virtual empty slot before the
     /// first slide instead of wrapping around.
     pub fn focusPrev(self: *Server) void {
+        // fullscreen.md LAW: navigation exits fullscreen — retire the video
+        // to its card first, then move (mirror of focusNext).
+        if (self.video_slide_output != null) self.videoSlideClose();
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
         deck.focusPrev();
