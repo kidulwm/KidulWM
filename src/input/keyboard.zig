@@ -339,13 +339,11 @@ const KeyboardDevice = struct {
                             return true;
                         },
                         .media_player => {
+                            // fullscreen.md: close card = QUIT. If the video is
+                            // up, exit fullscreen first (fade out + teardown,
+                            // sound dies), then close the card.
+                            if (server.video_fullscreen) server.videoFullscreenExit();
                             server.mediaSlideClose();
-                            return true;
-                        },
-                        .video => {
-                            // Quit on the video slide destroys it; the deck
-                            // settles back onto the player naturally.
-                            server.videoSlideClose();
                             return true;
                         },
                         .app => {},

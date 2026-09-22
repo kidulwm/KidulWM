@@ -75,11 +75,43 @@ home; fullscreen is a transient mode the card enters and leaves.
 - CHROME LAW (fullscreen = zero chrome) and the vocab visibility law
   (peeks hidden while fullscreen).
 
+## The present choreography (LOCKED 2026-09-22 — "the kidul way")
+
+How the fullscreen mode hands the screen over, both directions. The timing IS
+the style; get it wrong and it reads cheap and desperate.
+
+- Controlled present, never pop-on-receive. The video NEVER shows the moment
+  its first decoded frame arrives. It fades in over black. "Show as soon as
+  we receive" looks desperate and shocks the old granny; controlling the in
+  and out precisely is the difference between a hack and the kidul way —
+  and it costs only an opacity ramp (Fade-only law, GPU-free).
+
+ENTER (card -> black -> video):
+  1. black curtain fades 0->1  (~180ms smoothstep) — deck + peeks fade to black
+  2. hold black until kplayd's surface maps (zero energy — no frame re-arm)
+  3. video fades 0->1 over the black (~180ms) — it fades ITS OWN pixels in
+  4. at rest: curtain stays at opacity 1 behind the video (invisible, free —
+     it is the black the exit fade will reveal); video edge-to-edge, zero
+     chrome, scanout.
+
+EXIT (video -> black -> card):
+  1. video fades 1->0 (~180ms) — revealing the black curtain behind it
+  2. teardown kplayd + host (sound dies with the video)
+  3. curtain fades 1->0 (~180ms) — deck + peeks fade back in
+  4. at rest: curtain destroyed, card still focused, never moved
+
+- One easing language everywhere: the same t*t*(3-2t) smoothstep as the
+  wallpaper boot reveal. Two opacity ramps (curtain + video), both on scene
+  nodes. No per-pixel passes, no geometry motion. The card is a normal slide
+  the whole time — it never moves, never parks, never peeks.
+- z-order: deck < overlay_tree(peeks) < curtain < kplay_window. Re-asserted
+  every tick while fullscreen is active (applyLayout raises overlay_tree on
+  every layout event and would strand the peeks above the curtain).
+- Movie "edging" (an iris/wipe/whirlpool reveal) is DEFERRED — requires
+  research to do without looking cheap; the fade is the professional v1.
+
 ## Open after lock
 
-- Implementation: compositor (exit-fullscreen-on-navigation + .video-slide
-  teardown + focus-walk fix), kplayd (retire/resume_us), browser
-  (leave-fullscreen signal). The code commit records what it corrects so
-  the prior binary is the drop-back.
 - Play-in-card preview: DEFERRED INDEFINITELY — only if it ever earns it,
   and only if it can be done without feeling buggy. Not part of this law.
+- Movie edging: DEFERRED — fade is the style until edging is researched.

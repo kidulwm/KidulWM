@@ -39,11 +39,12 @@ pub const Split = struct {
     }
 };
 
-/// Compositor-owned slide kinds (TASKCARD-3): home, media player, and the
-/// fullscreen video slide are REAL deck.slides entries — no special flags,
-/// no empty-slot tricks. `window_id` holds a compositor-generated id that
-/// never collides with a client window id (see SlideDeck.compositor_id_base).
-pub const SlideKind = enum { app, home, media_player, video };
+/// Compositor-owned slide kinds (TASKCARD-3): home and media player are REAL
+/// deck.slides entries — no special flags, no empty-slot tricks. Fullscreen
+/// video is NOT a slide kind: it is a MODE the media card enters and leaves
+/// (fullscreen.md). `window_id` holds a compositor-generated id that never
+/// collides with a client window id (see SlideDeck.compositor_id_base).
+pub const SlideKind = enum { app, home, media_player };
 
 pub const Slide = struct {
     window_id: u32,
@@ -362,12 +363,6 @@ pub const SlideDeck = struct {
             self.clampFocus();
         }
         return true;
-    }
-
-    /// Insert a new slide immediately right of `index` and focus it
-    /// (video spawns RIGHT of the player, TASKCARD-3 stage 3).
-    pub fn addCompositorSlideRightOf(self: *SlideDeck, kind: SlideKind, index: usize) u32 {
-        return self.addCompositorSlide(kind, @min(index + 1, self.slides.items.len), false);
     }
 
     /// Open the overview slide at the end of the row. The focused
@@ -861,17 +856,6 @@ test "compositor slide: real deck entry at index 0, focus walks stock paths" {
     try std.testing.expectEqual(@as(usize, 1), deck.slides.items.len);
     try std.testing.expectEqual(@as(usize, 0), deck.focused_index);
     try std.testing.expect(!deck.removeCompositorSlide(.home));
-
-    // Video spawns RIGHT of the player slide.
-    const pid = deck.addCompositorSlide(.media_player, 0, false);
-    _ = pid;
-    const pidx = deck.findKind(.media_player).?;
-    _ = deck.addCompositorSlideRightOf(.video, pidx);
-    try std.testing.expectEqual(@as(usize, pidx + 1), deck.findKind(.video).?);
-    try std.testing.expectEqual(@as(usize, pidx + 1), deck.focused_index);
-    // Quit on video: deck settles back onto the player (left neighbour).
-    try std.testing.expect(deck.removeCompositorSlide(.video));
-    try std.testing.expectEqual(@as(usize, pidx), deck.focused_index);
 }
 
 test "overview slide toggle round-trips" {

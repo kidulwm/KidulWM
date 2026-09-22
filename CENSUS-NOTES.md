@@ -8,6 +8,48 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 56 (bobdotrix 2026-09-22) — THE .VIDEO SLIDE IS DELETED; FULLSCREEN = MODE + PRESENT CHOREOGRAPHY
+#
+# Barticus's call: "the mediaPlayer slide should just be a normal slide." The
+# .video deck slide (spawn-right-of-player, focus-walk, player-slip-to-peek,
+# black placeholder, chrome ring, rect-chase) is GONE. Fullscreen video is now
+# a MODE the card enters and leaves — the card never moves, never parks, never
+# peeks. Net code: -36 lines (318 in, 354 out).
+#
+# THE PRESENT CHOREOGRAPHY (docs/law/fullscreen.md "the kidul way", LOCKED):
+#   ENTER: black curtain 0->1 (~180ms) -> hold black, zero energy, until
+#          kplayd maps -> video fades ITS OWN pixels 0->1 over black -> at rest
+#          curtain stays at opacity 1 behind the video (invisible, free — the
+#          black the exit fade reveals), scanout. Controlled present: NEVER
+#          pop-on-receive.
+#   EXIT:  video 1->0 (reveals curtain) -> teardown kplayd+host -> curtain
+#          1->0 -> deck back in. Card still focused, never moved.
+#   z-order: deck < overlay(peeks) < curtain < kplayd, re-asserted every tick
+#   (applyLayout would strand peeks above the curtain). Same t*t*(3-2t)
+#   smoothstep as the boot reveal — one easing language.
+#
+# DELETED: SlideKind.video, addCompositorSlideRightOf, videoSlideSpawnRightOf
+# Player, videoSlidePaint, videoSlideClose/CloseOn, Output.video_slide, the
+# black placeholder + chrome ring, pause-on-aside (video_focused +
+# kplayPauseForAside/kplayResumeForFocus — fullscreen owns the output, there
+# is no "aside"), renderBlackToBuffer, the slidedeck .video test.
+# KEPT/REWIRED: kplay_window tracking + placeKplayWindow (now pins edge-to-edge
+# over the full output, no rect chase), host surface + xdg-foreign parent
+# handshake (videoHostSpawn), syncScanoutOverlay (gate = fullscreen AND idle
+# phase, re-fires from the tick's phase edges), nav retire (focusNext/Prev +
+# overview + mediaSlideClose + keyboard quit all -> videoFullscreenExit).
+#
+# State machine: FullscreenPhase enum (idle/fade_to_black/wait_video/
+# fade_video_in/fade_video_out/fade_from_black) + curtain_anim struct +
+# video_fullscreen/video_fullscreen_output. Driven per-frame from handleFrame
+# (tickFullscreen) alongside tickWallpaperReveal.
+#
+# NOT DEPLOYED YET — compile + `zig build test` clean only. EYE-TEST OWED on
+# the TV (host). DROP-BACK = 1edcea7 (verdict 55, binary 1afc2343).
+#   POST-RELOG TEST: play a movie -> card fades to black -> video fades in
+#   edge-to-edge. Quit/nav -> video fades to black -> card fades back in,
+#   still focused. No card-to-peek slip, no focus deadlock, no pop-on-receive.
+
 # VERDICT 55 (bobdotrix 2026-09-22) — FULLSCREEN IS A MODE, NOT A DECK POSITION (law 8626a03 + 599a6c8, DEPLOYED 1afc2343)
 #
 # LAW LOCKED (docs/law/fullscreen.md, 8626a03): the screen is CFC for the eyes

@@ -23,6 +23,19 @@ const DataBuffer = @import("render/buffer.zig").DataBuffer;
 /// blend master vs theme-tinted copies so no foreign colours ever show.
 pub const WallpaperEffect = enum { fade };
 
+/// Fullscreen-video present phases (fullscreen.md: fullscreen is a MODE, not
+/// a deck position). The card never moves; a black curtain + the kplayd
+/// surface fade in/out in a controlled sequence (kidul present law: the
+/// video fades in, it never pops in on the first decoded frame).
+pub const FullscreenPhase = enum {
+    idle, // no transition in flight
+    fade_to_black, // curtain 0->1: deck + peeks fade to black
+    wait_video, // black; waiting for kplayd's surface to map
+    fade_video_in, // kplay surface 0->1 over black
+    fade_video_out, // kplay surface 1->0 -> black (exit)
+    fade_from_black, // curtain 1->0: deck fades back in
+};
+
 /// Pixel handoff from the wallpaper worker thread to the main thread.
 pub const WallpaperResult = struct {
     pixels: []u8, // page_allocator-owned ARGB32
@@ -50,40 +63,6 @@ const c_std = @cImport({
 
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn unsetenv(name: [*:0]const u8) c_int;
-
-/// Placeholder black surface for the video slide (TASKCARD-3 stage 3):
-/// deck mechanics only — real kmedia/mpv playback wiring is a later card.
-fn renderBlackToBuffer(width: i32, height: i32, scale: u32) ?*wlr.Buffer {
-    if (width <= 0 or height <= 0) return null;
-    const s: i32 = @max(1, @as(i32, @intCast(scale)));
-    const pw: i32 = width * s;
-    const ph: i32 = height * s;
-    const surface = cairo.cairo_image_surface_create(cairo.CAIRO_FORMAT_ARGB32, pw, ph) orelse return null;
-    if (cairo.cairo_surface_status(surface) != cairo.CAIRO_STATUS_SUCCESS) {
-        cairo.cairo_surface_destroy(surface);
-        return null;
-    }
-    const cr = cairo.cairo_create(surface) orelse {
-        cairo.cairo_surface_destroy(surface);
-        return null;
-    };
-    defer cairo.cairo_destroy(cr);
-    cairo.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
-    cairo.cairo_paint(cr);
-    cairo.cairo_surface_flush(surface);
-    const data = cairo.cairo_image_surface_get_data(surface) orelse {
-        cairo.cairo_surface_destroy(surface);
-        return null;
-    };
-    const stride = cairo.cairo_image_surface_get_stride(surface);
-    const buf_size = @as(usize, @intCast(stride)) * @as(usize, @intCast(ph));
-    const buf = DataBuffer.create(data[0..buf_size], pw, ph, stride) catch {
-        cairo.cairo_surface_destroy(surface);
-        return null;
-    };
-    cairo.cairo_surface_destroy(surface);
-    return buf;
-}
 
 fn applyTitleBarEnvironment(show_title_bars: bool) void {
     if (show_title_bars) {
@@ -119,8 +98,8 @@ pub const KeyRingEntry = struct {
 };
 
 /// CARD 2b slice 4: extension sniff for the media_play IPC verb — music
-/// paths play headless in kplayd (no video slide); everything else spawns
-/// the .video slide. Granny-simple v1; kplayd makes its own decode call.
+/// paths play headless in kplayd (no video surface); everything else enters
+/// fullscreen mode. Granny-simple v1; kplayd makes its own decode call.
 fn isMusicPath(path: []const u8) bool {
     const exts = [_][]const u8{ ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wav", ".wma" };
     const ext = std.fs.path.extension(path);
@@ -150,11 +129,9 @@ pub const Output = struct {
     home_slide: tray_slide_mod.TraySlide = .{},
     /// Media player slide content painter state (kind .media_player slide).
     media_slide: media_slide_mod.MediaSlide = .{},
-    /// Fullscreen video slide surface (kind .video slide, spawned right of
-    /// the player on playback start; placeholder black surface for now).
-    video_slide: tray_slide_mod.TraySlide = .{},
-    /// CARD 2b slice 2: the slide's exported host toplevel (kplayd parents
-    /// its video surface to this via xdg-foreign). One per video slide.
+    /// CARD 2b slice 2: the exported host toplevel (kplayd parents its video
+    /// surface to this via xdg-foreign). One per fullscreen session — lives
+    /// on the output that owns the media card, NOT a deck slide.
     video_host_surface: ?*@import("ipc/internal_client.zig").HostSurface = null,
     video_kplay_client: ?@import("ipc/kplay_client.zig").KplayClient = null,
     /// Permanent per-output edge peeks (TASKCARD-3): EXIT dots + counts,
@@ -185,7 +162,6 @@ pub const Output = struct {
             .overview = .{},
             .home_slide = .{},
             .media_slide = .{},
-            .video_slide = .{},
             .peek = peek_mod.Peek.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,
@@ -298,12 +274,6 @@ pub const Output = struct {
             self.home_slide.card_buffer = null;
             self.home_slide.chrome_buffer = null;
         }
-        if (self.video_slide.tree) |tree| {
-            tree.node.destroy();
-            self.video_slide.tree = null;
-            self.video_slide.card_buffer = null;
-            self.video_slide.chrome_buffer = null;
-        }
         self.peek.deinit();
     }
 
@@ -335,6 +305,7 @@ pub const Output = struct {
             _ = window.tickAnimation(now_us);
         }
         self.server.tickWallpaperReveal(now_us);
+        self.server.tickFullscreen(now_us);
 
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
@@ -459,23 +430,32 @@ pub const Server = struct {
     /// A5 boot ladder latch: the media PLAYER slide is spawned once, on the
     /// first output to land.
     boot_player_spawned: bool = false,
-    /// Output that owns the live video slide (one per session — the player's
-    /// row). Null while no .video slide exists.
-    video_slide_output: ?*Output = null,
-    /// PAUSE-ON-ASIDE edge state: true while the .video slide is the focused
-    /// slide on its output. A false->true transition resumes playback; a
-    /// true->false transition pauses it (the slide was walked aside into the
-    /// peek). Edge-triggered in applyLayout so the verb fires once per move,
-    /// never per layout tick.
-    video_focused: bool = false,
-    /// Deferred video-slide spawn. handleRequest runs INSIDE control.zig's
-    /// readClient parse loop (a main-loop fd-source callback). videoSlideSpawn
-    /// -> videoSlideHostSpawn -> InternalClient.create -> pumpRoundtrip ->
-    /// event_loop.dispatch(1) RE-ENTERS the loop, re-firing the control-socket
-    /// fd source and corrupting readClient's in-flight buffer. So the spawn is
-    /// deferred to handleLayoutEventFd (the layout pipe), the one fd-source
-    /// that is already the proven-safe re-entry point.
+    /// FULLSCREEN-IS-A-MODE (fullscreen.md): true while a video plays
+    /// fullscreen over its card. The card stays a normal focused slide; the
+    /// deck does NOT move; kplayd's surface is pinned edge-to-edge over this
+    /// output; a black curtain fades the deck in/out. One per session.
+    video_fullscreen: bool = false,
+    /// Output owning the fullscreen video (the card's row). Null while off.
+    video_fullscreen_output: ?*Output = null,
+    /// Deferred fullscreen-enter. handleRequest runs INSIDE control.zig's
+    /// readClient parse loop (a main-loop fd-source callback). Entering
+    /// fullscreen -> videoHostSpawn -> InternalClient.create ->
+    /// pumpRoundtrip -> event_loop.dispatch(1) RE-ENTERS the loop, re-firing
+    /// the control-socket fd source and corrupting readClient's in-flight
+    /// buffer. So the enter is deferred to handleLayoutEventFd (the layout
+    /// pipe), the one fd-source that is already the proven-safe re-entry point.
     pending_video_spawn: ?*Output = null,
+    /// Black fade curtain: a fullscreen 1x1 black scene buffer, opacity-ramped
+    /// only (Fade-only law — GPU-free, one float on the node). Created on
+    /// fullscreen enter, destroyed at rest. Sits above the deck + peeks, below
+    /// kplayd (z: deck < overlay_tree < curtain < kplay_window).
+    curtain_buffer: ?*wlr.SceneBuffer = null,
+    /// Curtain fade state machine. ~180ms per phase, smoothstepped, driven
+    /// per-frame like the wallpaper reveal (tickFullscreen).
+    curtain_anim: struct {
+        phase: FullscreenPhase = .idle,
+        start_us: u64 = 0,
+    } = .{},
     /// Peek widget timer (right-peek clock painter + widget polls, on the
     /// minute).
     peek_widget_timer: ?*wl.EventSource = null,
@@ -499,14 +479,14 @@ pub const Server = struct {
     xdg_foreign_v2: *wlr.XdgForeignV2,
 
     /// CARD 2b slice 1: the compositor's own Wayland client for slide-host
-    /// surfaces (one host xdg_toplevel per .video slide). Created lazily on
-    /// first video-slide spawn; null until then.
+    /// surfaces (one host xdg_toplevel per fullscreen video session). Created
+    /// lazily on first fullscreen enter; null until then.
     internal_client: ?*@import("ipc/internal_client.zig").InternalClient = null,
 
     /// CARD 2b slice 3: kplayd's video toplevel (app_id "com.kidul.kplay"),
     /// tracked server-side OUTSIDE the deck/windows list — no deck slide,
-    /// no chrome, no focus. Its scene tree is pinned over the video slide's
-    /// rect on every layout (placeKplayWindow). Null while kplayd has no
+    /// no chrome, no focus. Its scene tree is pinned edge-to-edge over the
+    /// fullscreen output (placeKplayWindow). Null while kplayd has no
     /// video surface up.
     kplay_window: ?*Window = null,
 
@@ -688,21 +668,18 @@ pub const Server = struct {
                 // compositor never decodes a frame; kplayd owns the player.
                 self.kplayCloseAny(); // one player, one truth
                 self.kplayOpen(p.path);
-                // VIDEO = REAL SLIDE (stage 3): non-music playback spawns
-                // the .video slide right of the player and walks focus.
-                // Phase 0 (I5): handleRequest runs on the MAIN loop now, so
-                // the spawn (scene graph + internal-client pump) is legal
-                // inline — no verdict-35 deferral needed.
+                // FULLSCREEN IS A MODE (fullscreen.md): non-music playback
+                // enters fullscreen mode on the media card's output. The card
+                // never moves; a curtain fades it out and the video fades in.
                 if (!isMusicPath(p.path)) {
                     var oit = self.outputs.iterator(.forward);
                     while (oit.next()) |o| {
                         if (o.deck.findKind(.media_player) != null and o.media_slide.isOpen()) {
                             // DEFER to handleLayoutEventFd (main loop, layout
-                            // pipe). The spawn pumps the event loop, which must
-                            // not re-enter readClient's parse loop (buffer
-                            // corruption). Phase 0 keeps handleRequest on the
-                            // main loop; the deferral is about RE-ENTRANCY,
-                            // not thread safety.
+                            // pipe). Entering fullscreen spawns the host surface
+                            // + pumps the event loop, which must not re-enter
+                            // readClient's parse loop (buffer corruption). The
+                            // deferral is about RE-ENTRANCY, not thread safety.
                             self.pending_video_spawn = o;
                             self.requestLayout();
                             break;
@@ -1585,7 +1562,7 @@ pub const Server = struct {
         } else {
             // fullscreen.md LAW: navigation exits fullscreen — opening the
             // overview retires the playing video first (same as focusNext).
-            if (self.video_slide_output != null) self.videoSlideClose();
+            if (self.video_fullscreen) self.videoFullscreenExit();
             // Siblings never both: if a home slide holds this row, destroy
             // it before the overview takes over the slot state.
             if (deck.findKind(.home) != null) {
@@ -1986,29 +1963,6 @@ pub const Server = struct {
         }
     }
 
-    /// PAUSE-ON-ASIDE: the video slide was walked out of focus. Freeze
-    /// playback (file and live alike — the DAC clock holds, the ring stops
-    /// draining). Idempotent daemon-side.
-    fn kplayPauseForAside(self: *Server) void {
-        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
-            var kc = kc0;
-            defer kc.destroy();
-            kc.pause() catch {};
-        } else |_| {}
-    }
-
-    /// PAUSE-ON-ASIDE: the video slide walked back into focus. Resume from
-    /// the frozen position. Live catch-up-to-edge (seek_abs to live) is a
-    /// follow-on card when the IPTV rail lands; resume already lands near the
-    /// live edge because a paused live stream stops advancing.
-    fn kplayResumeForFocus(self: *Server) void {
-        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
-            var kc = kc0;
-            defer kc.destroy();
-            kc.unpause() catch {};
-        } else |_| {}
-    }
-
     /// Relative seek via kplay.sock 'seek_rel <seconds>'.
     pub fn kplaySeekRel(self: *Server, seconds: f64) void {
         if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
@@ -2072,8 +2026,10 @@ pub const Server = struct {
     }
 
     /// Destroy the media player slide: stock removeWindow path; focus
-    /// settles on the neighbor — NO return-index bookkeeping.
+    /// settles on the neighbor — NO return-index bookkeeping. If the video is
+    /// fullscreen, exit fullscreen first (fade out + teardown, sound dies).
     pub fn mediaSlideClose(self: *Server) void {
+        if (self.video_fullscreen) self.videoFullscreenExit();
         const deck = self.currentDeck();
         if (deck.findKind(.media_player) == null) return;
         if (self.outputForDeck(deck)) |output| {
@@ -2222,50 +2178,210 @@ pub const Server = struct {
         std.log.info("KidulWM: [2b-smoke] PASS (client up, exported, handle received, torn down)", .{});
     }
 
-    // ── Video slide — REAL fullscreen slide right of the player (stage 3) ──
+    // ── Fullscreen video — a MODE the card enters and leaves (fullscreen.md) ──
 
-    /// Playback start on the player slide spawns a fullscreen compositor-
-    /// owned .video slide IMMEDIATELY RIGHT of the player and walks focus
-    /// onto it; the player slips left into the peek, alive. A4 applies via
-    /// the stock path. v1 deck mechanics only: black placeholder surface —
-    /// real kmedia/mpv wiring is a later card.
-    pub fn videoSlideSpawnRightOfPlayer(self: *Server, output: *Output) void {
-        const deck = &output.deck;
-        if (deck.findKind(.video) != null) return;
-        const pidx = deck.findKind(.media_player) orelse return;
-        _ = deck.addCompositorSlideRightOf(.video, pidx);
-        // Fullscreen is a SIZE (playback.md): the video slide fills the
-        // whole output through the stock fullscreen path.
-        deck.slides.items[deck.focused_index].fullscreen = true;
-        const tree = self.scene.tree.createSceneTree() catch return;
-        output.video_slide.tree = tree;
-        tree.node.raiseToTop();
-        self.video_slide_output = output;
-        self.video_focused = true;
-        self.clearFocus();
-        self.videoSlidePaint(output);
-
-        // FULLSCREEN LAW (Barticus 2026-09-18): the fullscreen flag must
-        // take effect IMMEDIATELY — a fresh layout hides the peek and raises
-        // the slide edge-to-edge before kplayd's surface even maps. Without
-        // this the old frame (peeks + windowed player) lingers one beat.
-        self.requestLayout();
-
-        // CARD 2b slice 2: spawn the exported host toplevel for kplayd to
-        // parent onto. Failure is logged but non-fatal — the slide still
-        // works as a deck object; kplay video simply has nothing to bind.
-        self.videoSlideHostSpawn(output);
-
-        std.log.info("KidulWM: video slide spawned right of player", .{});
+    /// Enter fullscreen mode (deferred via pending_video_spawn so the host
+    /// surface + internal-client pump never re-enter readClient's parse loop).
+    /// The card stays a normal focused slide and does NOT move; a black
+    /// curtain fades the deck + peeks to black, then kplayd's surface fades in
+    /// edge-to-edge over it. Idempotent — a second enter while fullscreen is a
+    /// no-op (one player, one fullscreen).
+    pub fn videoFullscreenEnter(self: *Server, output: *Output) void {
+        if (self.video_fullscreen) return;
+        self.video_fullscreen = true;
+        self.video_fullscreen_output = output;
+        self.videoHostSpawn(output);
+        self.curtainEnsure(output);
+        self.curtain_anim.phase = .fade_to_black;
+        self.curtain_anim.start_us = animation.nowUs();
+        output.wlr_output.scheduleFrame();
+        std.log.info("KidulWM: fullscreen enter — curtain fading deck to black", .{});
     }
 
-    /// Slice 2: host surface + export + kplay parent handshake for the
-    /// video slide. Order: internal client → host toplevel (committed,
-    /// exported) → kplay.sock connect → parent <handle>. kplayd replies
-    /// 'err parent_failed' if its shell isn't up yet (no video playing) —
-    /// logged, and the slide's media path (slice 3/4) will retry parent
-    /// after 'open'.
-    fn videoSlideHostSpawn(self: *Server, output: *Output) void {
+    /// Exit fullscreen mode: fade the video out to black, teardown kplayd +
+    /// host, then fade the deck back in. Called on quit AND on navigation
+    /// (retire). The card persists throughout — it never moved.
+    pub fn videoFullscreenExit(self: *Server) void {
+        if (!self.video_fullscreen) return;
+        const output = self.video_fullscreen_output orelse {
+            self.video_fullscreen = false;
+            return;
+        };
+        switch (self.curtain_anim.phase) {
+            .fade_from_black => return, // already exiting
+            .fade_to_black, .wait_video => {
+                // Video never came up (kplayd still spawning): teardown now,
+                // then fade the deck back in from the black we already reached.
+                self.videoTeardown(output);
+                self.curtain_anim.phase = .fade_from_black;
+                self.curtain_anim.start_us = animation.nowUs();
+                output.wlr_output.scheduleFrame();
+                return;
+            },
+            .idle, .fade_video_in, .fade_video_out => {},
+        }
+        self.curtain_anim.phase = .fade_video_out;
+        self.curtain_anim.start_us = animation.nowUs();
+        output.wlr_output.scheduleFrame();
+        std.log.info("KidulWM: fullscreen exit — fading video to black", .{});
+    }
+
+    /// Create the black fade curtain: a 1x1 black buffer stretched fullscreen,
+    /// raised above the deck + peeks, below kplayd. Opacity starts at 0.
+    fn curtainEnsure(self: *Server, output: *Output) void {
+        if (self.curtain_buffer != null) return;
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        if (box.width <= 0 or box.height <= 0) return;
+        const black = [_]u8{ 0, 0, 0, 255 }; // ARGB32 LE = opaque black
+        const buf = DataBuffer.create(&black, 1, 1, 4) catch return;
+        const sb = self.scene.tree.createSceneBuffer(buf) catch {
+            wlr.Buffer.drop(buf);
+            return;
+        };
+        sb.setDestSize(box.width, box.height);
+        sb.node.setPosition(box.x, box.y);
+        sb.setOpacity(0.0);
+        self.curtain_buffer = sb;
+        // deck < overlay_tree(peeks) < curtain < kplay_window
+        self.overlay_tree.node.raiseToTop();
+        sb.node.raiseToTop();
+        if (self.kplay_window) |kw| kw.scene_tree.node.raiseToTop();
+    }
+
+    fn curtainDestroy(self: *Server) void {
+        if (self.curtain_buffer) |sb| {
+            sb.node.destroy();
+            self.curtain_buffer = null;
+        }
+    }
+
+    /// Set opacity on every buffer in kplayd's surface tree. The video fades
+    /// its own pixels; the curtain fades its own. GPU-free (Fade-only law).
+    fn kplaySetOpacity(self: *Server, opacity: f32) void {
+        const window = self.kplay_window orelse return;
+        var o = opacity;
+        window.surface_tree.node.forEachBuffer(*f32, struct {
+            fn iter(buffer: *wlr.SceneBuffer, sx: c_int, sy: c_int, data: *f32) void {
+                _ = sx;
+                _ = sy;
+                buffer.setOpacity(data.*);
+            }
+        }.iter, &o);
+    }
+
+    /// Re-assert fullscreen z-order: deck < overlay_tree(peeks) < curtain <
+    /// kplayd. applyLayout raises overlay_tree on every layout event, which
+    /// would strand the peeks ABOVE the curtain mid-fade (peeks popping over
+    /// the deck as it fades). Called every tick while fullscreen is active so
+    /// the curtain always stays between the deck and the video.
+    fn fullscreenZOrder(self: *Server) void {
+        if (!self.video_fullscreen) return;
+        if (self.curtain_buffer) |sb| {
+            self.overlay_tree.node.raiseToTop();
+            sb.node.raiseToTop();
+        }
+        if (self.kplay_window) |kw| kw.scene_tree.node.raiseToTop();
+    }
+
+    /// Smoothstepped 0..1 over ~180ms, then held. Mirrors the wallpaper reveal
+    /// ramp (t*t*(3-2t)) so both transitions share one easing language.
+    fn fullscreenProgress(self: *Server, now_us: u64) f64 {
+        const duration_us: u64 = 180_000;
+        const elapsed = now_us -| self.curtain_anim.start_us;
+        var t: f64 = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(duration_us));
+        if (t >= 1.0) t = 1.0;
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    /// Per-frame fullscreen transition driver. Called from handleFrame while
+    /// fullscreen is active. Re-arms scheduleFrame until the phase settles.
+    fn tickFullscreen(self: *Server, now_us: u64) void {
+        if (!self.video_fullscreen) return;
+        const output = self.video_fullscreen_output orelse return;
+        self.fullscreenZOrder();
+        const p = self.fullscreenProgress(now_us);
+        switch (self.curtain_anim.phase) {
+            .idle => return,
+            .fade_to_black => {
+                // Curtain 0->1: deck fades to black.
+                if (self.curtain_buffer) |sb| sb.setOpacity(@floatCast(p));
+                if (p >= 1.0) {
+                    self.curtain_anim.phase = .wait_video;
+                    self.curtain_anim.start_us = now_us;
+                    // kplayd may already be up — reveal immediately.
+                    if (self.kplay_window != null) self.curtainRevealVideo();
+                }
+                output.wlr_output.scheduleFrame();
+            },
+            .wait_video => {
+                // Black held; placeKplayWindow triggers the reveal on map. No
+                // frame re-arm — the map event schedules the next frame itself,
+                // so the compositor idles at black (drain no energy) until the
+                // surface is ready.
+            },
+            .fade_video_in => {
+                // Video 0->1 over the black curtain (which stays at 1). The
+                // video fades its own pixels into existence — controlled
+                // present, never a pop-on-receive.
+                self.kplaySetOpacity(@floatCast(p));
+                if (p >= 1.0) {
+                    self.curtain_anim.phase = .idle;
+                    // Video is now the sole visible node: disable overlay_tree
+                    // so wlroots can scan out directly (Card A).
+                    self.syncScanoutOverlay();
+                    std.log.info("KidulWM: fullscreen video revealed", .{});
+                } else {
+                    output.wlr_output.scheduleFrame();
+                }
+            },
+            .fade_video_out => {
+                // Video 1->0, revealing the black curtain behind it.
+                self.kplaySetOpacity(@floatCast(1.0 - p));
+                if (p >= 1.0) {
+                    self.videoTeardown(output);
+                    self.curtain_anim.phase = .fade_from_black;
+                    self.curtain_anim.start_us = now_us;
+                    // Re-enable overlay_tree so the peeks fade back in with
+                    // the deck as the curtain lifts.
+                    self.syncScanoutOverlay();
+                }
+                output.wlr_output.scheduleFrame();
+            },
+            .fade_from_black => {
+                // Curtain 1->0: deck fades back in from black.
+                if (self.curtain_buffer) |sb| sb.setOpacity(@floatCast(1.0 - p));
+                if (p >= 1.0) {
+                    self.curtainDestroy();
+                    self.video_fullscreen = false;
+                    self.video_fullscreen_output = null;
+                    self.curtain_anim.phase = .idle;
+                    self.requestLayout();
+                    std.log.info("KidulWM: fullscreen exited", .{});
+                } else {
+                    output.wlr_output.scheduleFrame();
+                }
+            },
+        }
+    }
+
+    /// kplayd's surface is mapped and the curtain is black: fade the video in
+    /// from 0 over the black. The surface just mapped at full opacity, so snap
+    /// it to 0 first — the fade-in is the controlled present, no pop.
+    fn curtainRevealVideo(self: *Server) void {
+        if (self.curtain_buffer == null) return;
+        self.kplaySetOpacity(0.0);
+        self.curtain_anim.phase = .fade_video_in;
+        self.curtain_anim.start_us = animation.nowUs();
+        if (self.video_fullscreen_output) |o| o.wlr_output.scheduleFrame();
+    }
+
+    /// Host surface + export + kplay parent handshake for the fullscreen
+    /// video. Order: internal client → host toplevel (committed, exported) →
+    /// kplay.sock connect → parent <handle>. kplayd replies 'err parent_failed'
+    /// if its shell isn't up yet (no video playing) — logged, and the open
+    /// path retries parent after 'open'.
+    fn videoHostSpawn(self: *Server, output: *Output) void {
         const ic_mod = @import("ipc/internal_client.zig");
         const kplay_mod = @import("ipc/kplay_client.zig");
         const ic = self.ensureInternalClient() catch |err| {
@@ -2292,163 +2408,72 @@ pub const Server = struct {
         }
     }
 
-    /// Paint the video slide at its stock deck rect (placeholder black
-    /// surface v1 — deck mechanics only). A4: walking away drops it to its
-    /// windowed rect mid-row via targetForSlide, dwell re-expands.
-    pub fn videoSlidePaint(self: *Server, output: *Output) void {
-        const tree = output.video_slide.tree orelse return;
-        const deck = &output.deck;
-        const idx = deck.findKind(.video) orelse {
-            self.videoSlideCloseOn(output);
-            return;
-        };
-        var target = deck.targetForSlide(idx);
-        var box: wlr.Box = undefined;
-        self.output_layout.getBox(output.wlr_output, &box);
-        target.x += box.x;
-        target.y += box.y;
-        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
-        const buf_w: i32 = @intCast(target.width);
-        const buf_h: i32 = @intCast(target.height);
-        if (buf_w <= 0 or buf_h <= 0) return;
-        const geom_same = (buf_w == output.video_slide.card_last_w and
-            buf_h == output.video_slide.card_last_h);
-        if (!geom_same or output.video_slide.card_buffer == null) {
-            const buffer = renderBlackToBuffer(buf_w, buf_h, scale) orelse return;
-            if (output.video_slide.card_buffer) |old| old.node.destroy();
-            const card = tree.createSceneBuffer(buffer) catch {
-                wlr.Buffer.drop(buffer);
-                return;
-            };
-            output.video_slide.card_buffer = card;
-            card.setDestSize(buf_w, buf_h);
-            card.node.raiseToTop();
-            output.video_slide.card_last_w = buf_w;
-            output.video_slide.card_last_h = buf_h;
-
-            // CHROME LAW (Barticus 2026-09-17, LOCKED): fullscreen video
-            // = ZERO chrome. The ring cost ~6% CPU (2→8) and painted over
-            // the picture. Only windowed (peek/parked) shows the ring.
-            // FULLSCREEN-FOCUS LAW (Barticus 2026-09-20): "fullscreen" for
-            // side-effects means fullscreen AND focused — a fullscreen slide
-            // walked off-focus is a STANDARD slide (border + restraints),
-            // not a chrome-less fullscreen taking over the side.
-            const is_fullscreen = deck.slides.items[idx].fullscreen and
-                deck.empty_slot == .none and idx == deck.focused_index;
-            if (!is_fullscreen) {
-                const chrome_buf = tray_slide_mod.renderChromeToBuffer(self.theme, buf_w, buf_h, scale);
-                if (chrome_buf) |cb| {
-                    if (output.video_slide.chrome_buffer) |old| old.node.destroy();
-                    if (tree.createSceneBuffer(cb) catch null) |chrome| {
-                        output.video_slide.chrome_buffer = chrome;
-                        chrome.setDestSize(buf_w, buf_h);
-                        chrome.node.raiseToTop();
-                    } else {
-                        wlr.Buffer.drop(cb);
-                    }
-                }
-            } else if (output.video_slide.chrome_buffer) |old| {
-                old.node.destroy();
-                output.video_slide.chrome_buffer = null;
-            }
-        }
-        tree.node.setPosition(target.x, target.y);
-
-        // CARD 2b slice 3: re-pin kplayd's video surface over the new
-        // slide rect (walks/dwell re-expansion land here).
-        self.placeKplayWindow();
-    }
-
-    /// CARD 2b slice 3: pin kplayd's video toplevel over the video slide's
-    /// rect. Pure compositor-side scene-tree work — no client roundtrip
-    /// (pumpRoundtrip law). The rect math is identical to videoSlidePaint
-    /// (deck.targetForSlide + output box offset), so a fullscreen slide
-    /// gets kplayd edge-to-edge over the whole output with ZERO chrome
-    /// (CHROME LAW) and a windowed slide gets kplayd at the windowed rect
-    /// UNDER the chrome ring (the ring is raised above the slide tree
-    /// inside videoSlidePaint, and kplayd's tree is raised above the slide
-    /// tree here but left below overlay_tree). kplayd letterboxes INSIDE
-    /// its own surface — we never paint matte.
-    ///
-    /// Called from: window map (window.zig handleMap), videoSlidePaint,
-    /// and applyLayout (after the video slide paints). Idempotent: it is
-    /// a pure function of (kplay_window, video_slide_output, deck state).
+    /// Pin kplayd's video toplevel edge-to-edge over the fullscreen output.
+    /// Fullscreen is a mode, not a slide — there is no rect to chase; the
+    /// surface is the whole output, zero chrome. kplayd letterboxes INSIDE its
+    /// own surface; we never paint matte. Also the reveal trigger: when the
+    /// curtain has faded to black and kplayd maps, start the video fade-in.
+    /// Called from: window map (window.zig handleMap) and applyLayout.
     pub fn placeKplayWindow(self: *Server) void {
         const window = self.kplay_window orelse return;
-        const output = self.video_slide_output orelse {
+        const output = self.video_fullscreen_output orelse {
             window.scene_tree.node.setEnabled(false);
             return;
         };
-        const deck = &output.deck;
-        const idx = deck.findKind(.video) orelse {
+        if (!self.video_fullscreen) {
             window.scene_tree.node.setEnabled(false);
             return;
-        };
-        var target = deck.targetForSlide(idx);
+        }
         var box: wlr.Box = undefined;
         self.output_layout.getBox(output.wlr_output, &box);
-        target.x += box.x;
-        target.y += box.y;
-        if (target.width == 0 or target.height == 0) {
-            // Parked/off-screen slide: hide kplayd's surface with it.
+        if (box.width == 0 or box.height == 0) {
             window.scene_tree.node.setEnabled(false);
             return;
         }
         // Tell kplayd the surface size so it renders to fill (it letterboxes
         // internally); the compositor never scales video itself.
-        const w_changed = window.animation.target_w != @as(f64, @floatFromInt(target.width));
-        const h_changed = window.animation.target_h != @as(f64, @floatFromInt(target.height));
+        const w_changed = window.animation.target_w != @as(f64, @floatFromInt(box.width));
+        const h_changed = window.animation.target_h != @as(f64, @floatFromInt(box.height));
         if (w_changed or h_changed) {
-            _ = window.toplevel.setSize(@intCast(target.width), @intCast(target.height));
+            _ = window.toplevel.setSize(@intCast(box.width), @intCast(box.height));
         }
-        window.setLayoutTarget(target.x, target.y, target.width, target.height);
+        window.setLayoutTarget(box.x, box.y, @intCast(box.width), @intCast(box.height));
         window.scene_tree.node.setEnabled(true);
-        // CARD 2b slice 4 (folded fix): raise kplayd's tree above the slide
-        // tree in ALL modes — windowed left the slide tree (black
-        // placeholder card) on top of the video. CHROME LAW fullscreen =
-        // zero chrome edge-to-edge; windowed ring visibility vs kplayd's
-        // matte stays a HOST eye-test verdict (inset follow-up if needed).
+        // kplayd above the curtain (z: deck < overlay < curtain < kplayd).
+        if (self.curtain_buffer) |sb| sb.node.raiseToTop();
         window.scene_tree.node.raiseToTop();
         self.overlay_tree.node.raiseToTop();
-    }
 
-    /// Quit on the video slide destroys it; the deck settles back onto the
-    /// player naturally — NO return-index bookkeeping (the walk IS the
-    /// state machine).
-    pub fn videoSlideClose(self: *Server) void {
-        if (self.video_slide_output) |output| {
-            self.videoSlideCloseOn(output);
-            _ = output.deck.removeCompositorSlide(.video);
-            self.video_slide_output = null;
-            self.video_focused = false;
-            self.requestLayout();
+        // Controlled present: while the curtain is still fading to black, the
+        // video must stay hidden (opacity 0) — a surface that maps early must
+        // never pop over the half-faded deck. Reveal only once black is held.
+        switch (self.curtain_anim.phase) {
+            .fade_to_black => self.kplaySetOpacity(0.0),
+            .wait_video => self.curtainRevealVideo(),
+            else => {},
         }
     }
 
-    fn videoSlideCloseOn(self: *Server, output: *Output) void {
-        // CARD 2b slice 2 teardown: unparent + close over kplay.sock, then
-        // destroy the host toplevel (revokes the export handle).
+    /// Teardown the fullscreen video: unparent + close over kplay.sock, then
+    /// destroy the host toplevel (revokes the export handle). The card is not
+    /// touched — it never moved. Clear the now-playing mirror (music close
+    /// follows the same verb on its own path).
+    fn videoTeardown(self: *Server, output: *Output) void {
         if (output.video_kplay_client) |*kc| {
             kc.unparent() catch {};
             kc.close() catch {};
             kc.destroy();
             output.video_kplay_client = null;
-            // Playback ended with the video slide — clear the now-playing
-            // mirror (music close follows the same verb on its own path).
             self.media_player.clearNowPlaying();
         }
         if (output.video_host_surface) |host| {
             host.destroy();
             output.video_host_surface = null;
         }
-        if (!output.video_slide.isOpen()) return;
-        output.video_slide.tree.?.node.destroy();
-        output.video_slide.tree = null;
-        output.video_slide.card_buffer = null;
-        output.video_slide.chrome_buffer = null;
-        output.video_slide.card_last_w = 0;
-        output.video_slide.card_last_h = 0;
-        std.log.info("KidulWM: video slide closed (deck settles on player)", .{});
+        if (self.kplay_window) |kw| {
+            kw.scene_tree.node.setEnabled(false);
+        }
+        std.log.info("KidulWM: fullscreen video torn down (card persists)", .{});
     }
 
     /// True while any output's media slide is open (keyboard routing).
@@ -2724,15 +2749,14 @@ pub const Server = struct {
                             self.mediaSlideToggle();
                             return true;
                         }
-                        // Movies / TV: kplayd open + VIDEO = REAL SLIDE
-                        // (stage 3): spawn a fullscreen .video slide
-                        // IMMEDIATELY RIGHT of the player and walk focus to
-                        // it; the player slips left into the peek, alive.
+                        // Movies / TV: kplayd open + FULLSCREEN MODE — the
+                        // card stays put and a curtain fade hands the output
+                        // to the video (fullscreen.md).
                         const path = widget.selectedResultPath();
                         if (path.len > 0) {
                             self.kplayCloseAny();
                             self.kplayOpen(path);
-                            self.videoSlideSpawnRightOfPlayer(out);
+                            self.videoFullscreenEnter(out);
                         }
                     },
                     .slider => {},
@@ -2813,9 +2837,9 @@ pub const Server = struct {
     pub fn focusNext(self: *Server) void {
         // fullscreen.md LAW: fullscreen is a MODE, not a deck position. Any
         // deck-navigation input exits it — retire the playing video to its
-        // card FIRST (teardown kplayd + the .video slide, deck settles on the
-        // player), then move. Never navigate with the video slide still up.
-        if (self.video_slide_output != null) self.videoSlideClose();
+        // card FIRST (fade out + teardown, card persists), then move. Never
+        // navigate with the video still up.
+        if (self.video_fullscreen) self.videoFullscreenExit();
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
         deck.focusNext();
@@ -2839,7 +2863,7 @@ pub const Server = struct {
     pub fn focusPrev(self: *Server) void {
         // fullscreen.md LAW: navigation exits fullscreen — retire the video
         // to its card first, then move (mirror of focusNext).
-        if (self.video_slide_output != null) self.videoSlideClose();
+        if (self.video_fullscreen) self.videoFullscreenExit();
         const deck = self.currentDeck();
         if (deck.slides.items.len == 0) return;
         deck.focusPrev();
@@ -3310,20 +3334,16 @@ pub const Server = struct {
     /// AND fullscreen, kplayd's buffer is the sole visible node and wlroots
     /// can scan it out directly — but the overlay_tree node (peek + chrome
     /// rings, already visually empty here) still stacks above it and defeats
-    /// scanout. Disable overlay_tree for that exact case, re-enable otherwise
-    /// (FULLSCREEN-FOCUS LAW: gate on fullscreen AND focused). Called from
-    /// applyLayout so every fullscreen enter/walk/close passes ONE authority.
+    /// Scanout overlay toggle (Card A): when fullscreen video is REVEALED
+    /// (idle phase — kplayd's buffer is the sole visible node), drop
+    /// overlay_tree so wlroots can scan out directly. During the fade phases
+    /// the overlay stays enabled so the peeks fade with the deck under the
+    /// curtain. Called from applyLayout and the fullscreen tick's phase edges.
     fn syncScanoutOverlay(self: *Server) void {
-        const focused_fullscreen = blk: {
-            const output = self.video_slide_output orelse break :blk false;
-            const deck = &output.deck;
-            const idx = deck.findKind(.video) orelse break :blk false;
-            break :blk deck.slides.items[idx].fullscreen and
-                deck.empty_slot == .none and idx == deck.focused_index;
-        };
-        if (focused_fullscreen)
-            std.log.info("KidulWM: scanout candidate — disabling overlay_tree (focused fullscreen video)", .{});
-        self.overlay_tree.node.setEnabled(!focused_fullscreen);
+        const scanout = self.video_fullscreen and self.curtain_anim.phase == .idle;
+        if (scanout)
+            std.log.info("KidulWM: scanout candidate — disabling overlay_tree (fullscreen video)", .{});
+        self.overlay_tree.node.setEnabled(!scanout);
     }
 
     pub fn applyLayout(self: *Server) void {
@@ -3466,20 +3486,6 @@ pub const Server = struct {
                 }
                 self.overlay_tree.node.raiseToTop();
             }
-            if (output.video_slide.isOpen()) {
-                self.videoSlidePaint(output);
-                if (output.video_slide.tree) |tree| {
-                    tree.node.raiseToTop();
-                }
-                // kplayd's video surface must stay ABOVE the slide's black
-                // placeholder card — the raiseToTop above would otherwise bury
-                // it (the "sound but black screen" bug). Re-raise after the
-                // slide tree so the real video wins the z-order.
-                if (self.kplay_window) |kw| {
-                    kw.scene_tree.node.raiseToTop();
-                }
-                self.overlay_tree.node.raiseToTop();
-            }
 
             if (deck_ptr == active_deck) {
                 if (deck_ptr.empty_slot == .none) {
@@ -3540,31 +3546,7 @@ pub const Server = struct {
 
         self.last_focused_slide_id = current_focused_slide_id;
 
-        // PAUSE-ON-ASIDE edge trigger: fire once when the .video slide crosses
-        // the focused<->aside boundary, never per layout tick.
-        {
-            const video_focused = blk: {
-                const output = self.video_slide_output orelse break :blk false;
-                const deck = &output.deck;
-                if (deck.empty_slot != .none) break :blk false;
-                const idx = deck.focused_index;
-                if (idx >= deck.slides.items.len) break :blk false;
-                break :blk deck.slides.items[idx].kind == .video;
-            };
-            if (video_focused != self.video_focused) {
-                self.video_focused = video_focused;
-                if (video_focused) {
-                    std.log.info("KidulWM: video slide refocused — resume playback", .{});
-                    self.kplayResumeForFocus();
-                } else {
-                    std.log.info("KidulWM: video slide walked aside — pause playback", .{});
-                    self.kplayPauseForAside();
-                }
-            }
-        }
-
-        // Card A (god code): on a focused fullscreen video slide, drop
-        // overlay_tree so kplayd's buffer can scan out directly.
+        // Card A (god code): fullscreen video revealed = kplayd scans out.
         self.syncScanoutOverlay();
     }
 
@@ -3581,7 +3563,7 @@ pub const Server = struct {
         // handleRequest.
         if (server.pending_video_spawn) |vout| {
             server.pending_video_spawn = null;
-            server.videoSlideSpawnRightOfPlayer(vout);
+            server.videoFullscreenEnter(vout);
         }
         return 0;
     }
