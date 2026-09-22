@@ -99,6 +99,7 @@ extern fn pw_stream_connect(
 ) c_int;
 extern fn pw_stream_dequeue_buffer(stream: *PwStream) ?*PwBufferLayout;
 extern fn pw_stream_queue_buffer(stream: *PwStream, buffer: *PwBufferLayout) c_int;
+extern fn pw_stream_set_active(stream: *PwStream, active: bool) c_int;
 
 extern fn kmedia_build_audio_format(buf: [*]u8, size: usize, rate: u32, channels: u32) *const SpaPod;
 extern fn kmedia_stream_connect(loop: *PwLoop, events: *const PwStreamEvents, err_buf: [*]u8, err_buf_len: usize) ?*PwStream;
@@ -425,6 +426,8 @@ fn captureMain() void {
     const watchdog = struct {
         fn run() void {
             var silent = false;
+            var active = true; // capture starts active
+            var ticks: u32 = 0;
             while (running.load(.acquire)) {
                 var ts: std.os.linux.timespec = .{ .sec = 0, .nsec = 50 * std.time.ns_per_ms };
                 _ = std.os.linux.nanosleep(&ts, null);
@@ -433,6 +436,22 @@ fn captureMain() void {
                     if (!silent) publishSilence();
                     silent = true;
                 } else silent = false;
+
+                // LIVENESS GATE (verdict 11): the floor table is the ONE
+                // truth for "is audio live?" — and it excludes this listener
+                // (Stream/Input) by class, so it can't self-sustain. Cork the
+                // monitor capture when the room is silent so the sink + graph
+                // can suspend (the idle "pipewire hammering" was this listener
+                // pinning the ALSA driver awake forever); uncork the moment a
+                // playback stream holds the floor. Throttled to ~300ms.
+                ticks +%= 1;
+                if (ticks % 6 == 0) {
+                    const live = audioLive();
+                    if (live != active) {
+                        if (pw_stream) |s| _ = pw_stream_set_active(s, live);
+                        active = live;
+                    }
+                }
             }
         }
     };
