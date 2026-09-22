@@ -8,6 +8,40 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 55 (bobdotrix 2026-09-22) — FULLSCREEN IS A MODE, NOT A DECK POSITION (law 8626a03 + 599a6c8, DEPLOYED 1afc2343)
+#
+# LAW LOCKED (docs/law/fullscreen.md, 8626a03): the screen is CFC for the eyes
+# (sound.md applied to pixels). Fullscreen video owns the output and yields the
+# instant deck navigation takes over. Corrects media-is-a-slide.md ruling 6
+# ("fullscreen is a size") + kplay.md LAW 4 ("slide moves, video rides").
+#
+# CODE (599a6c8, 11 lines): focusNext / focusPrev / overviewToggle now RETIRE a
+# playing video first (videoSlideClose -> teardown kplayd + .video slide, deck
+# settles on the player card) then move. Never navigate with the video slide up.
+# Barticus: quit-to-WALL is the wanted shape — card drops to browsing, position
+# saved to watch-state, re-select the title resumes. NO retire-paused increment.
+#
+# OVERRIDES verdict 54's pause-on-aside for the NAVIGATION case (retire wins;
+# pause-on-aside now only fires on a cursor-walk across outputs — moot on the
+# single-TV appliance). Expected to kill: video riding the deck, the parked
+# .video-slide focus deadlock (verdict 51), placeKplayWindow pin-chasing, the
+# z-order burial (black placeholder over kplayd).
+#
+# EYE-TEST OWED (compile-verified only): play fullscreen -> Mod4+Left/Right ->
+# video quits to the WALL card, deck settles, no crash, no parked slide. Also
+# Mod4+Tab (overview) from fullscreen. DROP-BACK if it fails = b83da5e2
+# (verdict 54, kept as /usr/local/bin/kidulwm.bak-b83da5e2).
+#
+# CROSS-REPO (same session, kmedia): renderD128/shm leak FIXED — the natural
+# end-of-stream path (isDone) freed the player inline and left the EGL/GLES2
+# shell alive (renderD128 fd + shm/cairo leak + use-after-free). Now routes
+# through closePlayer (dropShell first). kplayd deployed 403639f9. Also removed
+# the dead Player.hw_device_ctx field (avcodec_free_context already frees it —
+# a false lead from the prior session). kmedia commits 70606b7 + 704a4d6.
+#
+# NOTE: prior kplayd was a 13.6MB Debug build (plain `zig build` defaults to
+# Debug). Correct deploy is ReleaseSafe (~4.1MB). `zig build -Doptimize=ReleaseSafe`.
+
 # VERDICT 54 (bobdotrix 2026-09-21) — SLIDE ROUTING + PAUSE-ON-ASIDE (bddc1c5, DEPLOYED b83da5e2)
 #
 # SYMPTOM (Barticus): opening a media card spawns the fullscreen video but
