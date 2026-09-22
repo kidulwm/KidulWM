@@ -8,6 +8,31 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 58 (bobdotrix 2026-09-22) — PIPEWIRE "HAMMERING" = ALWAYS-ON FFT MONITOR CAPTURE; NOW CORKED WHEN SILENT [DEPLOYED b729ded2, commit 917e826]
+#
+# SYMPTOM (Barticus): PipeWire hammering on htop with nothing playing.
+# ROOT CAUSE: the "kidulwm-kmedia" sink-monitor LISTENING tap (kmedia.zig
+#   capture thread, kmedia_shim.c pw_stream_new_simple) connects ONCE at boot
+#   (main.zig:38 kmedia.start()) and is never deactivated. As a live
+#   Stream/Input monitor it pins the ALSA sink (graph driver node 57) awake
+#   at full quantum 24/7 — data-loop thread never sleeps (1:51 CPU accumulated
+#   over 5.5h, ~0.6% steady), sink never suspends. LISTENING is legal
+#   (sound.md: "needs no floor") but must not force the graph awake when the
+#   room is silent.
+# FIX (917e826): gate the capture stream's active state on ksound's floor table
+#   — audioLive() (verdict 11 ONE truth; excludes Stream/Input by class so it
+#   cannot self-sustain). The existing silence-watchdog thread now also, every
+#   ~300ms, calls pw_stream_set_active(stream, audioLive()): cork when silent
+#   (sink+graph suspend), uncork the instant a playback stream holds the floor.
+#   Our OWN stream -> native set_active, NOT link-teardown (that is for foreign
+#   streams, ksound HANDOFF). +1 extern fn, +19 lines, src/core/kmedia.zig.
+# DEPLOYED b729ded2 (.bak-5438118f = verdict 56). Build+test clean, signed.
+#   bobdotrix does NOT survive relog — handoff recorded here.
+# POST-RELOG VERIFY (Barticus): nothing playing -> `pw-cli info 48` (or pw-top)
+#   shows kidulwm-kmedia = paused/inactive, and pipewire data-loop CPU ~0 idle;
+#   play a video -> stream uncorks, visualizer live; stop -> re-corks within
+#   ~300ms. If the graph STILL runs idle, the sink is held by something else.
+
 # VERDICT 57 (bobdotrix 2026-09-22) — IDLE-RAM WEDGE RELOCATED: THE .VIDEO SLIDE (same-GPU, NOT fixed by re-cable); verdict 56 DEPLOYED
 #
 # Barticus: "800MB extra at idle" after watching videos — each video adds
