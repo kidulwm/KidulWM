@@ -8,7 +8,40 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
-# VERDICT 56 (bobdotrix 2026-09-22) — THE .VIDEO SLIDE IS DELETED; FULLSCREEN = MODE + PRESENT CHOREOGRAPHY
+# VERDICT 57 (bobdotrix 2026-09-22) — IDLE-RAM WEDGE RELOCATED: THE .VIDEO SLIDE (same-GPU, NOT fixed by re-cable); verdict 56 DEPLOYED
+#
+# Barticus: "800MB extra at idle" after watching videos — each video adds
+# RAM and never lets it go. Host live hunt:
+#   - kidulwm RSS: ~742MB boot steady-state -> +625MB (13:34:06-14, ~78MB/s)
+#     -> +195MB (13:36:55-57), held ~1.6GB after close. Never released.
+#   - smaps: 28 x ~27-30MB rw- MAP_PRIVATE ANON chunks (19x27 8x30 1x31MB)
+#     = ~800MB retained. EXACT verdict-51 "cross-GPU staging" signature —
+#     but ON SAME-GPU now: NVIDIA runtime-suspended, WLR_DRM_DEVICES=
+#     /dev/dri/card1 live, TV on Intel DP-3, kidulwm + kplayd BOTH on
+#     renderD128. Cross-vendor staging is impossible here -> verdict 53's
+#     "cross-GPU, structurally closed" was wrong/incomplete. The retainer is
+#     the .video slide, not the GPU boundary.
+#   - Running binary was 1afc2343 = verdict 55, which STILL carried the
+#     .video slide (renderBlackToBuffer ~33MB black card + chrome_buffer +
+#     host surface, videoSlideSpawnRightOfPlayer). Verdict 56 deletes ALL of
+#     it (fullscreen = a mode the card enters/leaves, teardown kills
+#     host+curtain+kplay on exit).
+#
+# DEPLOYED this session: verdict 56 -> /usr/local/bin/kidulwm = 5438118f,
+#   .bak-1afc2343 kept (drop-back). Build + zig build test clean.
+# ALSO FOUND (kmedia, separate, NOT fixed): kplayd leaks its VA-API device
+#   per video (~1 renderD128 fd + ~72-133MB GEM each). A plain decode probe
+#   (create+decode+avcodec_free_context) closes the fd clean -> the leak is
+#   the zero-copy export/import path's extra ref, NOT the device lifecycle.
+#   Needs the import-path repro to pin before fixing (no UAF guess). The GEM
+#   feeds the SAME 'idle RAM' the compositor retention does.
+#
+# POST-RELOAD VERIFY (Barticus): play 2-3 videos to natural end + quit.
+#   Expect kidulwm RSS ~900MB FLAT after warmup (the bar); and when idle
+#   `ls /proc/$(pgrep -x kplayd)/fd | grep renderD128` = 0 (proves the
+#   kplayd VA leak out too — if >0 the kplayd leak is still open).
+
+# VERDICT 56 (bobdotrix 2026-09-22) — THE .VIDEO SLIDE IS DELETED; FULLSCREEN = MODE + PRESENT CHOREOGRAPHY [DEPLOYED 5438118f 2026-09-22]
 #
 # Barticus's call: "the mediaPlayer slide should just be a normal slide." The
 # .video deck slide (spawn-right-of-player, focus-walk, player-slip-to-peek,
@@ -44,8 +77,9 @@ kmedia + ksd-input-claim-law skills.
 # video_fullscreen/video_fullscreen_output. Driven per-frame from handleFrame
 # (tickFullscreen) alongside tickWallpaperReveal.
 #
-# NOT DEPLOYED YET — compile + `zig build test` clean only. EYE-TEST OWED on
-# the TV (host). DROP-BACK = 1edcea7 (verdict 55, binary 1afc2343).
+# DEPLOYED 5438118f (bobdotrix 2026-09-22, after verdict 57 RSS hunt). EYE-TEST
+# STILL OWED on the TV (host). DROP-BACK = 1edcea7 (verdict 55, binary
+# 1afc2343, kept as /usr/local/bin/kidulwm.bak-1afc2343).
 #   POST-RELOG TEST: play a movie -> card fades to black -> video fades in
 #   edge-to-edge. Quit/nav -> video fades to black -> card fades back in,
 #   still focused. No card-to-peek slip, no focus deadlock, no pop-on-receive.

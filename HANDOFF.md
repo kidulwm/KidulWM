@@ -12,21 +12,24 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current position (2026-09-22)
 
-  - Verdict 56 COMMITTED (596f80b, NOT deployed): the .video deck slide is
-    DELETED. Fullscreen video is now a MODE the media card enters/leaves —
-    card never moves, never parks, never peeks. Black curtain + video
-    fade-in/out ("the kidul way" present choreography, docs/law/fullscreen.md).
-    Net -36 lines. Build + `zig build test` clean.
-  - EYE-TEST OWED on the TV (host): play a movie → card fades to black →
-    video fades in edge-to-edge; quit/nav → fades back, card still focused.
-    DROP-BACK = 1edcea7 (verdict 55, binary 1afc2343).
-  - Prior: verdict 54 DEPLOYED (b83da5e2); GodCodeMode LOCKED; NVIDIA
-    blacklisted, WLR_DRM_DEVICES=/dev/dri/card1, REBOOT still owed.
+  - Verdict 56 DEPLOYED (binary 5438118f): the .video slide is DELETED,
+    fullscreen is a MODE the card enters/leaves. See CENSUS verdicts 57+56.
+    .bak-1afc2343 (verdict 55) is the drop-back.
+  - Verdict 57 (this session): the idle-RAM wedge (~800MB after videos) is
+    the OLD .video slide's retained buffers — SAME-GPU, so verdict 53's
+    "cross-GPU closed" was wrong/incomplete. 28 x ~27-30MB MAP_PRIVATE anon
+    chunks in kidulwm's smaps, surviving close. Verdict 56 deletes the path.
+  - Separate OPEN leak (kmedia/kplayd): VA-API device per video (~1
+    renderD128 fd + ~72-133MB GEM each). Plain decode probe closes clean ->
+    extra ref lives in the zero-copy export/import path; needs that repro
+    before fixing. Recorded in kmedia HANDOFF + CENSUS verdict 57.
 
 ## Next action
 
-  Relog + reboot → media_play a movie → eye-test the fade in/out + scanout
-  ("scanout candidate" in session.log). Details in CENSUS verdict 56.
+  Relog (kidulwm picks up 5438118f). Play 2-3 videos to natural end + quit.
+  Then verify BOTH: kidulwm RSS ~900MB and FLAT after warmup; and idle
+  `ls /proc/$(pgrep -x kplayd)/fd | grep renderD128` = 0. Drop-back if the
+  fullscreen fade misbehaves = kidulwm.bak-1afc2343.
 
 ## Trip wires / commands / secrets
 
