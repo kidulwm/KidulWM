@@ -37,12 +37,20 @@ kmedia + ksd-input-claim-law skills.
 #   RAM climb = unreaped VA-device GEM + shell (72-133MB each) the wedged
 #   close never releases, PLUS the session-30 clean-close VA import-path leak
 #   (separate, still open).
-# FIXED + DEPLOYED (bobdotrix 2026-09-25 ~15:27, kmedia b55fda1 signed):
-#   door (a) = display fd O_NONBLOCK + wl_display_dispatch (non-blocking read),
-#   door (b) = threads_alive counter + 2s bounded join + exit(1) on wedge.
-#   playertest PASS (open->decode->close cycles, bounded join clean).
-#   kplayd deployed 6909a72a (.bak-a64ef0c3 = verdict 59), service restarted:
-#   clean (1 task, 27MB RSS, 0 renderD128 fds, status verb answers).
+# FIXED + DEPLOYED (bobdotrix 2026-09-25, kmedia b55fda1 + 51817f9 signed):
+#   CORRECTION (gdb backtrace of the live wedge, 2nd repro): the real block was
+#   NOT the read path — it was the PRESENT path. render() -> eglSwapBuffers ->
+#   wl_display_dispatch_queue -> ppoll(infinite). eglSwapInterval(1) made
+#   eglSwapBuffers block waiting for the compositor's refresh; when the slide
+#   closed and the compositor stopped presenting, that block was forever. The
+#   read-path fix (door a) removed a real but SEPARATE latent wedge.
+#   REAL FIX (51817f9): eglSwapInterval(0) — eglSwapBuffers never blocks; vsync
+#   pacing is already the shell's frame-callback gate (cb_fresh) in tick().
+#   door (b) = threads_alive + 2s bounded join + exit(1) on wedge (unchanged).
+#   playertest PASS + socket open->close PASS (shell live -> threads joined
+#   bounded, 0 renderD128 fds after close).
+#   kplayd deployed c8b2d9da (.bak-6909a72a = read-path-only; .bak-a64ef0c3 =
+#   verdict 59), service restarted clean (1 task, 27MB RSS, 0 renderD128).
 #   EYE-TEST OWED (Barticus, TV): play->close->play x3 (no wedge, no
 #   play-until-reboot); live cut -> close -> play; after close
 #   `ls /proc/$(pgrep -x kplayd)/fd | grep renderD128` = empty; simulated

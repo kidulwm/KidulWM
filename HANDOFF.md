@@ -12,13 +12,15 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current position (2026-09-25)
 
-  - Verdict 61 FIXED + DEPLOYED (kmedia b55fda1, binary 6909a72a): the
-    "second movie won't play" kplayd poll-loop wedge (door a) — the poll loop
-    blocked in wl_display_read_events' no-timeout Wayland read after the slide
-    closed, so the close verb was never read and the player never torn down.
-    Fix = O_NONBLOCK display fd + wl_display_dispatch (never blocks), plus
-    door (b) bounded teardown (threads_alive counter + 2s join + exit(1) on
-    wedge). See CENSUS verdict 61. Drop-back = .bak-a64ef0c3 (verdict 59).
+  - Verdict 61 FIXED + DEPLOYED (kmedia b55fda1 + 51817f9, binary c8b2d9da): the
+    "second movie won't play" kplayd poll-loop wedge. REAL cause = the PRESENT
+    path: render() -> eglSwapBuffers (interval 1) blocked in
+    wl_display_dispatch_queue forever once the slide closed and the compositor
+    stopped presenting. Fix = eglSwapInterval(0) (never blocks; vsync pacing is
+    the frame-callback gate), plus door (b) bounded teardown (threads_alive +
+    2s join + exit(1)). Also shipped: O_NONBLOCK read path (a separate latent
+    wedge). See CENSUS verdict 61. Drop-back = .bak-6909a72a (read-path-only)
+    / .bak-a64ef0c3 (verdict 59).
   - Verdict 60 DEPLOYED + LIVE (KidulWM a1b2928, kidulwm 03d9f15d): idle-blank
     no longer cuts fullscreen video (playbackInhibitsBlank sees video_fullscreen).
     Relog already done — the running compositor is 03d9f15d.
