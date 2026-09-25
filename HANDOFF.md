@@ -8,35 +8,39 @@ sessions with session_search). Live state lives in the ledger, not here.
 
   1. /home/dad/dev/SYSTEM.md      the constitution — I1-I7 + phase order (arbiter)
   2. /home/dad/dev/KSD-INDEX.md   the map — every doc's role + the STALE list
-  3. CENSUS-NOTES.md              the ledger — verdict 61 = current position + next test
+  3. CENSUS-NOTES.md              the ledger — verdict 62 = current position + next test
 
-## Current position (2026-09-25)
+## Current position (2026-09-25, pre-reboot)
 
+  - Verdict 62 (current): the RAM climb (~5GB) is TWO leaks, both through the
+    zero-copy present path — (a) kidulwm compositor 2.5GB RSS = verdict-57
+    dmabuf-staging fingerprint (33 x ~27.8MB anon chunks), retention returned
+    via per-frame setBuffer -> texture recreate -> GEM leak; (b) kplayd 224MB =
+    session-30 VA-device leak (~1 renderD128 fd + ~72-133MB GEM per video).
+    Also: VAAPI "hwaccel init error" since ~16:19 (decode falls to software) —
+    suspected wedged iHD driver from the leaks; REBOOT to confirm.
   - Verdict 61 FIXED + DEPLOYED (kmedia b55fda1 + 51817f9, binary c8b2d9da): the
-    "second movie won't play" kplayd poll-loop wedge. REAL cause = the PRESENT
-    path: render() -> eglSwapBuffers (interval 1) blocked in
-    wl_display_dispatch_queue forever once the slide closed and the compositor
-    stopped presenting. Fix = eglSwapInterval(0) (never blocks; vsync pacing is
-    the frame-callback gate), plus door (b) bounded teardown (threads_alive +
-    2s join + exit(1)). Also shipped: O_NONBLOCK read path (a separate latent
-    wedge). See CENSUS verdict 61. Drop-back = .bak-6909a72a (read-path-only)
-    / .bak-a64ef0c3 (verdict 59).
-  - Verdict 60 DEPLOYED + LIVE (KidulWM a1b2928, kidulwm 03d9f15d): idle-blank
-    no longer cuts fullscreen video (playbackInhibitsBlank sees video_fullscreen).
-    Relog already done — the running compositor is 03d9f15d.
-  - Verdict 59 DEPLOYED + LIVE (kmedia 5e1cb13): live-TV reconnect open now
-    carries rw_timeout (no play-until-reboot on a dead feed).
+    "second movie won't play" poll-loop wedge — real cause was the PRESENT path
+    (eglSwapBuffers interval 1 blocked in wl_display_dispatch_queue forever once
+    the slide closed). Fix = eglSwapInterval(0). Play-close-play CONFIRMED
+    working by Barticus. Drop-back = .bak-6909a72a / .bak-a64ef0c3.
+  - Verdict 60 DEPLOYED + LIVE (kidulwm 03d9f15d): idle-blank no longer cuts
+    fullscreen video. Relog already done.
+  - Verdict 59 DEPLOYED + LIVE (kmedia 5e1cb13): live-TV reconnect open carries
+    rw_timeout.
 
-## Next action
+## Next action (post-reboot, in order)
 
-  Eye-test on the TV (Barticus), all owed this session:
-    - play -> close -> play x3 (the second movie must just play).
-    - live channel -> let it cut -> close -> play (no wedge).
-    - after close: ls /proc/$(pgrep -x kplayd)/fd | grep renderD128 == empty.
-    - simulated wedge (kill -STOP the reader, then close) -> systemd respawns <3s.
-  Then the separate session-30 clean-close VA-device leak (third ref in
-  Gl.zig importVaFrame) — the RAM climber; needs the import-path repro before
-  any unref (no UAF guess).
+  1. REBOOT/relog (bobdotrix dies on relog — this file is the bridge).
+  2. Verify VAAPI returns: play a video, grep "VA-API hw decode ACTIVE" in the
+     journal. Absent = driver still wedged (separate issue).
+  3. Pin + fix the compositor retention (THE 2.5GB fish): per-frame setBuffer ->
+     texture recreate -> GEM leak. Fix = cache imported buffer per VASurfaceID
+     (~8 slots), create scene node once, setBuffer the cached entry; or
+     destroy+recreate node on surface CHANGE. See verdict 52 Card A + the
+     video-playback-architecture skill.
+  4. Then the kplayd VA-device leak (session 30): pin the import-path ref before
+     any unref (no UAF guess). C probe /tmp/vadevice_probe.c is the template.
 
 ## Trip wires / commands / secrets
 

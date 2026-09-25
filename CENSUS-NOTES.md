@@ -8,6 +8,41 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 62 (bobdotrix 2026-09-25) — RAM CLIMB = TWO LEAKS (compositor dmabuf churn 2.5GB DOMINANT + kplayd VA device 224MB); VAAPI possibly wedged — REBOOT OWED
+#
+# SYMPTOM (Barticus): play-close-play now works (verdict 61 DONE), but RAM
+#   climbs to ~5GB and does not release per video/channel.
+# FINDINGS (live host, measured):
+#   - kidulwm (compositor, pid 210902) RSS 2.5GB = THE "5GB". smaps: 33 x
+#     ~27.8MB anon rw- MAP_PRIVATE chunks = EXACT verdict-57 fingerprint (one
+#     4K P010 frame each). Verdict 56 deleted the .video slide, but retention
+#     returned via the ZERO-COPY present path: kplayd exports a fresh VA
+#     surface each frame, wlroots re-imports + recreates the texture per
+#     setBuffer, texture-destroy path leaks the GEM (skill "setBuffer import
+#     churn" / PER-FRAME DRIVER-CALL CHURN). Total anon rw- = 2.59GB.
+#   - kplayd RSS 224MB: session-30 VA-device leak — 5 leaked renderD128 fds
+#     (drm-engine-video, distinct client-ids 94/98/102/106/110), ~72-133MB GEM
+#     each, one per video. Held by the zero-copy import path (importVaFrame).
+#   - VAAPI symptom: since ~16:19 "hwaccel initialisation returned error"
+#     (h264 VAAPI decode falls back to software) in BOTH kplayd AND a fresh C
+#     probe (/tmp/vadevice_probe.c). At 15:43 VAAPI was ACTIVE. Suspect the
+#     leaked iHD contexts wedged the driver; REBOOT to confirm.
+# VERDICT: two known leaks (verdict 57 + session 30), now both alive through
+#   the zero-copy present path. NOT a regression from verdict 61 (wedge fix is
+#   DONE + confirmed working).
+# NEXT (post-reboot, in order):
+#   1. REBOOT/relog — clears the driver wedge + reaps both leaks.
+#   2. VERIFY VAAPI returns: play a video, grep "VA-API hw decode ACTIVE" in
+#      the journal (absent = driver still wedged, separate issue).
+#   3. PIN + FIX compositor retention (THE 2.5GB fish): per-frame setBuffer ->
+#      texture recreate -> GEM leak. Likely fix = cache imported buffer per
+#      VASurfaceID (~8 slots), create the scene node ONCE, setBuffer the cached
+#      entry; or destroy+recreate the node on surface CHANGE (not per frame).
+#      See verdict 52 Card A + video-playback-architecture skill.
+#   4. THEN kplayd VA-device leak (session 30): pin the import-path ref
+#      (vaExportSurfaceHandle + eglCreateImage holds the device) before any
+#      unref — no UAF guess.
+#
 # VERDICT 61 (bobdotrix 2026-09-25) — "SECOND MOVIE WON'T PLAY" = SESSION-32 POLL-LOOP WEDGE, FIXED + DEPLOYED (eye-test owed)
 #
 # SYMPTOM (Barticus TV test, post-relog, ~15:00): the FIRST movie/TV channel
