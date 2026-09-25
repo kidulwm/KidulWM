@@ -8,6 +8,32 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 60 (bobdotrix 2026-09-25) — IDLE-BLANK CUT THE MOVIE/TV EVERY 10min: playbackInhibitsBlank() never saw fullscreen video [KidulWM a1b2928, DEPLOYED kidulwm 03d9f15d, RELOG OWED]
+#
+# SYMPTOM (Barticus): a screenBlank fires at the 10 min mark and cuts the
+#   movie or TV — should NOT happen while fullscreen is in play.
+# ROOT CAUSE: smartLock idle-blank (keybinds.blank.timeout_s=600 = 10min,
+#   inhibit_visual=true) calls playbackInhibitsBlank() to decide whether to
+#   skip blanking. That fn only read the MUSIC mirror (media_player.cached,
+#   set by setMusicNowPlaying) — the video path (kplayOpen + videoFullscreenEnter)
+#   never sets cached, so fullscreen video (movies / LIVE TV) returned false and
+#   the blank fired mid-watch. SEPARATE from verdict 59 (kmedia reconnect): the
+#   "10min cut" was the BLANK, not the feed.
+# FIX (KidulWM a1b2928, signed): playbackInhibitsBlank() returns inhibit_visual
+#   when video_fullscreen is true (fullscreen-is-a-mode signal, verdict 56).
+# DEPLOYED /usr/local/bin/kidulwm 03d9f15d (.bak-b729ded2 = verdict 58).
+#   RELOG OWED to pick it up (kidulwm is the compositor — never restarted for
+#   the user). bobdotrix dies on relog; this ledger is the bridge.
+#   POST-RELOG TEST: play a movie/TV, no input >10min -> screen stays ON.
+#   Music still does NOT inhibit (inhibit_audio=false; screen may blank while
+#   music plays, per design). Manual Mod4+x blank still works.
+# NOTE (architectural, deferred): TV channels play via kplayOpen -> kplayd
+#   'open' verb (is_live=false), NOT 'open_live' — the compositor's KplayClient
+#   has no open_live method. So the live signal-lost/reconnect path (verdict 59)
+#   is NOT yet exercised by the TV rail; a dead feed ends playback like EOF
+#   instead of reconnecting. The live rail (open_live verb + IPTV rail) is the
+#   deferred follow-on, not this session.
+
 # VERDICT 59 (bobdotrix 2026-09-25) — LIVE-TV RECONNECT/CLOSE WEDGE: hung reopen blocked close(), froze kplayd ("play 10min → cut → no other channel until reboot") [kmedia 5e1cb13, DEPLOYED kplayd a64ef0c3]
 #
 # SYMPTOM (Barticus): play a live channel ~10 min → it cuts; then can't play
