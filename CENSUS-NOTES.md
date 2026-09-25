@@ -8,6 +8,38 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 59 (bobdotrix 2026-09-25) — LIVE-TV RECONNECT/CLOSE WEDGE: hung reopen blocked close(), froze kplayd ("play 10min → cut → no other channel until reboot") [kmedia 5e1cb13, DEPLOYED kplayd a64ef0c3]
+#
+# SYMPTOM (Barticus): play a live channel ~10 min → it cuts; then can't play
+#   ANY other channel until reboot. Channels 7 & 9 (Seven/Nine) also take a
+#   LONG time to start now and still cut out. Most channels fail to (re)play.
+# ROOT CAUSE (code-proven): kmedia Player.reconnectLive() reopened the dead
+#   stream with avformat_open_input(url, null, null) — NO rw_timeout, NO
+#   timeout, and the avio interrupt callback is wired only AFTER open returns.
+#   A hung reopen (stalled mjh.nz `.r` redirect / TLS / DNS) blocked the
+#   READER thread indefinitely. closeInternal() then t.join()s that thread,
+#   so close() wedged kplayd's SINGLE poll loop — no further open_live/close/
+#   status verb was ever serviced. The initial open (openInternal) already
+#   passed rw_timeout=5s/timeout=5s; the reconnect open was the asymmetry.
+#   This is the CLOSE-MUST-NOT-BLOCK-THE-LOOP law (video-playback-arch skill).
+# FIX (kmedia 5e1cb13, signed): reconnect open now passes the SAME live dict
+#   as openInternal (rw_timeout, timeout, buffer_size, probesize,
+#   analyzeduration). A dead reopen fails in ~5s; the reader loop stays
+#   responsive to stop_flag, close() joins bounded. livetest PASS: backoff
+#   retry still recovers (signal-lost -> recovered, clean exit).
+# DEPLOYED /usr/local/bin/kplayd a64ef0c3 (ReleaseSafe, mv-over swap, .bak-
+#   403639f9 kept), service restarted, daemon responsive (status verb clean).
+# OWED (eye-test, TV): play a channel past the ~10min death -> it should
+#   freeze-on-last-frame then recover (or at minimum NOT wedge the daemon);
+#   Escape/switch channel must work without reboot.
+# STILL OPEN (next, "2" of the plan): the ~10min CUT trigger + the 7/9
+#   SLOW-START are UNPINNED — need a live repro (mpv control + KMEDIA_TIMING=1
+#   on 7 & 9) to separate our clock/reconnect from the mjh.nz feed. Lead:
+#   Seven now returns a Yospace CSM playlist (ppId session, #CSM, ad-stitched)
+#   — the skill flags SSAI as a known HLS-demux breaker at ad breaks (~10min
+#   cadence on commercial TV). Nine is a clean master. Indonesian/Java test
+#   channels are parked (test feeds; curation is a later stage, not reset).
+
 # VERDICT 58 (bobdotrix 2026-09-22) — PIPEWIRE "HAMMERING" = ALWAYS-ON FFT MONITOR CAPTURE; NOW CORKED WHEN SILENT [DEPLOYED b729ded2, commit 917e826]
 #
 # SYMPTOM (Barticus): PipeWire hammering on htop with nothing playing.
