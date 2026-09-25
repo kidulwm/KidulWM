@@ -3235,6 +3235,13 @@ pub const Server = struct {
     /// True while music is playing (mirrored from kplay open; the slideless
     /// blank-inhibit question — see playbackInhibitsBlank).
     pub fn playbackInhibitsBlank(self: *Server) bool {
+        // FULLSCREEN VIDEO (movies / LIVE TV) is visual playback by
+        // definition — the deck sits behind a curtain and kplayd's surface
+        // owns the output. The music mirror (cached, set by setMusicNowPlaying)
+        // only covers headless audio; the video path never touches it, so
+        // without this a movie/TV got blanked every timeout_s (600s) — the
+        // "cuts the movie every 10 min" bug. Inhibit iff visual-inhibit is set.
+        if (self.video_fullscreen) return self.keybinds.blank.inhibit_visual;
         const mp = &self.media_player;
         if (!mp.cached.available or !mp.cached.playing) return false;
         if (!mp.is_music) return self.keybinds.blank.inhibit_visual;
