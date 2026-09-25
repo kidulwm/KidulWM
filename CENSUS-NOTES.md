@@ -8,6 +8,49 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 61 (bobdotrix 2026-09-25) — "SECOND MOVIE WON'T PLAY" = SESSION-32 POLL-LOOP WEDGE, FIXED + DEPLOYED (eye-test owed)
+#
+# SYMPTOM (Barticus TV test, post-relog, ~15:00): the FIRST movie/TV channel
+#   plays; close it; the SECOND will not play. RAM still climbs.
+# CONFIRMED (live host, frozen-process forensics matches session 32 exactly):
+#   kplayd pid 190444 (verdict-59 binary a64ef0c3, live since 14:37) holds
+#   28 THREADS (16 av:h264:df* frame threads + threaded-ml demuxer + reader
+#   STILL ALIVE) and 5 renderD128 fds — fd 12 = leaked VA decode device,
+#   fds 19-22 = shell render engine. RSS 233MB vs 27MB clean restart. A player
+#   was opened and NEVER torn down (closePlayer never ran dropShell).
+#   kidulwm RSS 973MB (at the ~900MB verdict-57 bar, near/over).
+#   DOOR (a) PINNED (live thread dump + socket): main thread 190444 parked in
+#   __x64_sys_ppoll.cold (wl_display_read_events' NO-TIMEOUT read on the wayland
+#   fd), threaded-ml demuxer alive in __x64_sys_poll.cold (av_read_frame),
+#   16 av:h264:df* frame threads futex_wait. kplay.sock is SOCK_SEQPACKET and
+#   connect() now returns EAGAIN (listen backlog full — the loop is NOT calling
+#   accept4). Journal silent since 14:55:36. This is door (a): the poll loop
+#   blocked in the Wayland read after the slide closed and the compositor
+#   stopped sending events, so the close verb was never read, closePlayer never
+#   ran, dropShell never ran. NOT door (b) (main thread is in ppoll, not a
+#   futex join).
+# VERDICT: NOT a regression from verdict 59/60 (live-reconnect + idle-blank —
+#   both remain fixed/live). This is the SESSION-32 kplayd poll-loop wedge
+#   (card docs/cards/2026-09-25-kplayd-close-wedge.md, then "DIAGNOSED, FIX
+#   SPEC'D, NOT CODED"). Barticus's test REPRODUCED it — confirming the
+#   diagnosis. The fix landed later this session — see FIXED + DEPLOYED below.
+#   RAM climb = unreaped VA-device GEM + shell (72-133MB each) the wedged
+#   close never releases, PLUS the session-30 clean-close VA import-path leak
+#   (separate, still open).
+# FIXED + DEPLOYED (bobdotrix 2026-09-25 ~15:27, kmedia b55fda1 signed):
+#   door (a) = display fd O_NONBLOCK + wl_display_dispatch (non-blocking read),
+#   door (b) = threads_alive counter + 2s bounded join + exit(1) on wedge.
+#   playertest PASS (open->decode->close cycles, bounded join clean).
+#   kplayd deployed 6909a72a (.bak-a64ef0c3 = verdict 59), service restarted:
+#   clean (1 task, 27MB RSS, 0 renderD128 fds, status verb answers).
+#   EYE-TEST OWED (Barticus, TV): play->close->play x3 (no wedge, no
+#   play-until-reboot); live cut -> close -> play; after close
+#   `ls /proc/$(pgrep -x kplayd)/fd | grep renderD128` = empty; simulated
+#   wedge (kill -STOP reader + close) -> systemd respawns <3s.
+#   FOLLOW-ON (session 30, separate deploy): pin the third ref in Gl.zig
+#   importVaFrame (vaExportSurfaceHandle + eglCreateImage) — clean-close VA
+#   leak; needs the import-path repro before any unref (no UAF guess).
+#
 # VERDICT 60 (bobdotrix 2026-09-25) — IDLE-BLANK CUT THE MOVIE/TV EVERY 10min: playbackInhibitsBlank() never saw fullscreen video [KidulWM a1b2928, DEPLOYED kidulwm 03d9f15d, RELOG OWED]
 #
 # SYMPTOM (Barticus): a screenBlank fires at the 10 min mark and cuts the
