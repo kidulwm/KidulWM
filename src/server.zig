@@ -1997,14 +1997,18 @@ pub const Server = struct {
             self.requestLayout();
             return;
         }
-        // Spawn: the player slide lands at index 0 of the current row.
+        // Spawn: land right of the focused slide and become focused, pushing
+        // the former focus LEFT (same as addWindow). The home slide is the
+        // ONLY far-left (index 0) resident — the media player is a normal
+        // slide, not a far-left sibling.
         if (deck.overview_slide_open) {
             if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
             deck.overview_slide_open = false;
             deck.empty_slot = .none;
         }
         self.focusOutputForDeck(deck);
-        _ = deck.addCompositorSlide(.media_player, 0, false);
+        const insert_at = @min(deck.focused_index + 1, deck.slides.items.len);
+        _ = deck.addCompositorSlide(.media_player, insert_at, false);
         if (self.outputForDeck(deck)) |output| {
             self.mediaSlideOpen(output);
         }
@@ -3468,7 +3472,11 @@ pub const Server = struct {
                     window.setSurfaceOffsetForFocus();
                     window.applyContainment();
                     focused_slide_window = window;
-                    window.updateChrome(true, .all);
+                    if (slide.fullscreen) {
+                        window.clearChrome();
+                    } else {
+                        window.updateChrome(true, .all);
+                    }
                     window.scene_tree.node.raiseToTop();
                     self.overlay_tree.node.raiseToTop();
                 } else {
@@ -3532,7 +3540,11 @@ pub const Server = struct {
                         }
                         window.setSurfaceOffsetForFocus();
                         window.applyContainment();
-                        window.updateChrome(true, .all);
+                        if (slide.fullscreen) {
+                            window.clearChrome();
+                        } else {
+                            window.updateChrome(true, .all);
+                        }
                         window.scene_tree.node.raiseToTop();
                         self.overlay_tree.node.raiseToTop();
                         if (self.deck.empty_slot == .none) {

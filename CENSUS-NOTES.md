@@ -7,6 +7,116 @@ is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
+# (relog handoff 2026-09-28 — current position = VERDICT 64: compositor IS the
+#  leak; two fixes deployed; allocator pin owed. Relog to pick up the deployed
+#  binary, then the "2 suspect review". See verdict 64 block below.)
+
+# (relog handoff 2026-09-27 — SYSTEM FIXES + FULL REBOOT, bobdotrix)
+# System admin session (NOT a KSD code verdict); detail in sda1 change journal.
+#   - kernel split-brain FIXED: linux-cachyos 7.2.8 rebuilt to /boot + limine.conf
+#     (pacman bumped 7.2.6->7.2.8 and deleted the 7.2.6 modules but never rebuilt
+#     /boot — stale 7.2.6 vmlinuz, empty /etc/mkinitcpio.d -> SDDM dead on cachyos).
+#   - fstab FIXED: /mnt/lacie-apocalypse listed twice -> fstab-generator + /boot
+#     mount failure. Removed one line.
+#   - NVIDIA -> COMPUTE-ONLY (SUPERSEDES verdict 53's FULL blacklist): the full
+#     4-module blacklist made ollama model-load HANG (CUDA needs nvidia_uvm).
+#     Now blacklist nvidia_drm + nvidia_modeset ONLY; nvidia + nvidia_uvm stay
+#     loadable. Toggle /usr/local/bin/nvidia-profile (off|gaming: prime-run).
+#     Intel iGPU still drives all screens. verdict 53's POST-REBOOT VERIFY
+#     (nvidia-smi gone / D3cold / no card0) is VOID — nvidia SHOULD be present
+#     but with NO display output.
+#   - bobdotrix approvals.mode -> smart.
+#
+# FULL REBOOT resolves the REBOOT/RELOG OWED markers (53-62) + reaps the leaked
+# GEM. Post-reboot: resume verdict 63's RSS checks fresh.
+
+# VERDICT 64 (bobdotrix 2026-09-28, end of night) — COMPOSITOR IS THE LEAK (CORRECTS 63's "did NOT reproduce"); TWO FIXES DEPLOYED, ALLOCATOR PIN OWED TOMORROW
+#
+# LEAK (live host, Barticus open/close testing over ~1h): kidulwm anon 325MB
+#   -> 3.45GB, RSS 3.6GB, STILL climbing, NO drop on close. kplayd CLEAN every
+#   cycle (respawns 27MB / 0 renderD / 0 GEM — put-to-bed holds). smaps =
+#   verdict-57 fingerprint: ~27.8MB anon rw- chunks coalescing into
+#   83/111/166/250/278MB slabs ("one 4K P010 frame each"). Renderer gles2
+#   (pixman=false), outputs DP-3 (Kogan 4K scale 2) + eDP-1 (1080p scale 1).
+# WHY 63 MISSED IT: tested over RAW kplay.sock (open->close) which never enters
+#   the fullscreen present path. Barticus's Mod4+m flow DOES — host surface +
+#   curtain + scanout + per-frame video import. REPRO-DOOR LAW (video-playback-
+#   architecture skill) named this exact false negative; I stepped on it.
+#   Corrections to 63: the "compositor does NOT retain" + "did NOT reproduce"
+#   lines are VOID for the fullscreen path. kplayd verdict 63 itself stands.
+#
+# FIXES DEPLOYED (src/server.zig, ReleaseSafe hash 39193e2d -> /usr/local/bin/
+#   kidulwm; running pid NOT restarted — relog picks it up):
+#   1. FULLSCREEN CHROME REMOVAL: applyLayout called updateChrome(true, .all)
+#      unconditionally on the focused slide, ignoring slide.fullscreen (the peek
+#      already hid itself via focused_fullscreen; the window chrome had no
+#      matching check). Now clearChrome() when slide.fullscreen, in BOTH the
+#      normal and headless branches. Fullscreen slide = edge-to-edge, zero
+#      chrome, every app (shared focused-slide branch).
+#   2. MEDIA PLAYER SPAWN DIRECTION: was addCompositorSlide(.media_player, 0)
+#      = index 0 (far LEFT, pushed everything RIGHT — backwards vs addWindow).
+#      Barticus: new slide becomes focused + pushes former focus LEFT; home is
+#      the ONLY far-left (index 0) resident. Now spawns at focused_index+1.
+#
+# OWED TOMORROW — "2 SUSPECT REVIEW" (pin the allocator, then fix). Both fire
+#   on fullscreen enter/exit layout events:
+#   A. media-slide 33MB ARGB32 re-render (mediaSlideRefresh -> renderToBuffer,
+#      server.zig ~2072; card_dirty guard exists but re-fires on fullscreen
+#      layout events).
+#   B. chrome border regen (updateChrome create/destroy churn, window.zig ~472;
+#      TEMP DIAG "CHROME cache-miss" log still in place).
+#   Plus (skill-documented): per-frame dmabuf import churn — cache per
+#   VASurfaceID (~8 slots), scene node ONCE, setBuffer the cached entry.
+#   Sampler trace: ~/.hermes/profiles/bobdotrix/cache/scratch/ramsample-*.log
+#   (ts kplayd_pid rss fds gem kidulwm_pid rss fds gem anon memavail).
+#   METHOD: relog first (deploys live), re-test, re-run sampler while Barticus
+#   cycles fullscreen, correlate anon delta vs CHROME cache-miss +
+#   mediaSlideRefresh log lines. Don't guess — the log distinguishes A vs B.
+
+# VERDICT 63 VERIFIED LIVE (bobdotrix 2026-09-27, post-reboot) — RAM FLAT, NO LEAK
+#
+# Fresh-boot 3-cycle open->play->close over kplay.sock (Bob.Marley 1080p NV12):
+#   - kplayd DURING: RSS 209-212MB, 5 renderD128 fds, ~180MB GEM. AFTER close:
+#     pid CHANGES every cycle (1761->28743->29095->29407), new proc 0 renderD,
+#     0 GEM, 27MB RSS. The close reply is EMPTY (no "ok") — exit(1) fires BEFORE
+#     reply("ok"), confirming the put-to-bed path runs on EVERY video close (the
+#     VA device still survives close; process death reaps it). By design.
+#   - kidulwm: RSS 262->269->262MB (returns to baseline), GEM 1.111->1.193->1.111GB
+#     (transient +82MB during play, released on close). NO retention. Verdict 62's
+#     "2.5GB compositor climb" CONFIRMED dead post-reboot (was the wedged driver).
+#   - MemAvailable oscillates 61.8-62.1GB, NO downward trend. Final = baseline.
+# VERDICT 63 STILL-OPEN items both RESOLVED: (1) compositor does NOT retain;
+# (2) root fix (avcodec_free_context releasing the zero-copy pool) stays deferred —
+# the exit(1) kill covers it. NOTE for future clients: the `close` verb's "ok"
+# reply is LOST (exit(1) preempts it); kplay client is fire-and-forget so it's
+# harmless, but any future synchronous close waiter will time out.
+
+# VERDICT 63 (bobdotrix 2026-09-25) — KPLAYD VA-DEVICE LEAK = THE RAM CLIMB, FIXED (exit(1)); COMPOSITOR "2.5GB" DID NOT REPRODUCE
+#
+# PIN (live, clean post-reboot): kplayd leaks ~1 VA decode device (renderD128,
+# distinct client-id) + ~440MB GEM per video (4K; ~121MB @1080p). 6 open/close
+# cycles → kidulwm RSS FLAT, kplayd +1 fd + ~440MB GEM per cycle. GEM is SYSTEM
+# RAM on the iGPU → this IS the "5GB climb", NOT the compositor. Verdict 62's
+# "kidulwm 2.5GB dominant" = misattributed (or tied to the since-rebooted
+# wedged-driver state); clean kidulwm does NOT retain buffers.
+#
+# ROOT CAUSE (instrumented, live): avcodec_free_context fails to free the VA
+# device + surface pool in the ZERO-COPY path. dev_ref=2 (normal), frames_ref=81,
+# hw_live=1 (our av_frame_ref/free balanced) — ~79 dangling refs are the DECODER's
+# internal pool, kept alive by the zero-copy export/import path. Plain decode (C
+# probe) frees clean; vaExportSurfaceHandle alone = clean; the successful EGL
+# import is the trigger. Per Barticus: pool count is codec-fixed, pool BYTES scale
+# resolution × bit-depth — the fix must be per-stream-agnostic.
+#
+# FIX (kmedia 31c5c9f, DEPLOYED /usr/local/bin/kplayd): PUT-TO-BED LAW — after
+# dropShell + close, if any renderD fd survives, exit(1) (PROCESS-DEATH IS THE
+# KILL). systemd respawns clean; fd + GEM + pool reaped in one syscall. VERIFIED:
+# 3 open/close cycles → fresh kplayd 0 renderD fds each, RAM flat.
+#
+# STILL OPEN: (1) compositor retention (verdict 62 step 3) did NOT reproduce
+# cleanly — re-examine only if kidulwm RSS ITSELF climbs (not kplayd GEM).
+# (2) root fix (make avcodec_free_context release the pool) deferred — doctrine:
+# don't patch teardown to survive its own bugs.
 
 # VERDICT 62 (bobdotrix 2026-09-25) — RAM CLIMB = TWO LEAKS (compositor dmabuf churn 2.5GB DOMINANT + kplayd VA device 224MB); VAAPI possibly wedged — REBOOT OWED
 #
@@ -31,9 +141,12 @@ kmedia + ksd-input-claim-law skills.
 #   the zero-copy present path. NOT a regression from verdict 61 (wedge fix is
 #   DONE + confirmed working).
 # NEXT (post-reboot, in order):
-#   1. REBOOT/relog — clears the driver wedge + reaps both leaks.
-#   2. VERIFY VAAPI returns: play a video, grep "VA-API hw decode ACTIVE" in
-#      the journal (absent = driver still wedged, separate issue).
+#   1. [DONE 2026-09-25 ~16:30] REBOOT/relog — driver wedge cleared + both
+#      leaks reaped (kplayd 27MB RSS / 1 thread / 0 renderD128 fds; kidulwm
+#      fresh). Confirmed live post-relog.
+#   2. [DONE 2026-09-25 ~16:31] VERIFY VAAPI returns — ffmpeg vaapi decode
+#      probe on renderD128 (Intel iGPU, PCI 00:02.0) decodes h264 clean,
+#      NO "hwaccel init error". iHD wedge CONFIRMED CLEARED by the reboot.
 #   3. PIN + FIX compositor retention (THE 2.5GB fish): per-frame setBuffer ->
 #      texture recreate -> GEM leak. Likely fix = cache imported buffer per
 #      VASurfaceID (~8 slots), create the scene node ONCE, setBuffer the cached
