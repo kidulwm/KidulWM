@@ -29,8 +29,15 @@ kmedia + ksd-input-claim-law skills.
 # GREAT RESET — REMAINING WORK (prioritized, 2026-09-28)
 
 #   1. RELOG VERIFY — DONE (2026-09-28): border visible + RSS flat.
-#   2. KPLAYD VA-DEVICE LEAK root. Gl.zig third ref + avcodec_free_context
-#      zero-copy pool release (deferred; exit(1) put-to-bed is the band-aid).
+#   2. KPLAYD VA-DEVICE LEAK root. PINNED (session 37): the surviving renderD
+#      fd is the VA DECODE DEVICE (drm-engine-video, client-id 137), NOT the
+#      EGL shell. Zero-copy export/import leaves one extra ref that
+#      avcodec_free_context/vaTerminate can't release. FIX candidates (in
+#      order): vaExportSurfaceHandle DRM_PRIME_2 ref released only by
+#      vaDestroySurfaces, held past close; OR eglDestroyImage/releaseImage
+#      not running in zero-copy close order. See kmedia HANDOFF session 37.
+#      exit(1) put-to-bed band-aid still holds. DIAG dump (dumpRenderFds in
+#      kplayd_main.zig) is temporary — remove once the fix lands.
 #   3. TV ~10min CUT + 7/9 channel fail (verdict 59) — confirm if still live.
 #   4. xdg-decoration .client_side flip + GTK_CSD un-flip (applyTitleBarEnv).
 #      Feeds item 5.
