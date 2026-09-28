@@ -26,6 +26,23 @@ kmedia + ksd-input-claim-law skills.
 #   DEPLOYED /usr/local/bin/kidulwm (.bak-95be9e9 = verdict 65 no-chrome).
 #   RELOG OWED — verify border + RSS flat.
 
+# GREAT RESET — REMAINING WORK (prioritized, 2026-09-28)
+
+#   1. RELOG VERIFY (this session): thin border visible + compositor RSS flat.
+#   2. KPLAYD VA-DEVICE LEAK root. Gl.zig third ref + avcodec_free_context
+#      zero-copy pool release (deferred; exit(1) put-to-bed is the band-aid).
+#   3. TV ~10min CUT + 7/9 channel fail (verdict 59) — confirm if still live.
+#   4. xdg-decoration .client_side flip + GTK_CSD un-flip (applyTitleBarEnv).
+#      Feeds item 5.
+#   5. CORNER BLEED on foreign apps (browsers/proton). Client "factory round
+#      corners" still bleed against the compositor frame — SSD/CSD corner
+#      mismatch. OBSERVE this reload first (thin square border may shift it).
+#   6. GRAND DESIGN framing (chamfer). DEFERRED — see ksd-design-language
+#      skill. Sub-order: fix DataBuffer free -> chamfer.frag.glsl frame ->
+#      tune depth on TV -> scallop upgrade.
+#   7. KSD apps fade-to-black self-framing (96% black, no compositor border) —
+#      client-side, the "one system" look. DEFERRED.
+
 # VERDICT 65 (2026-09-28): LEAK PINNED + CHROME LAW. The 27.14MB/layout-event
 #   leak is updateChrome -> DataBuffer.create (window.zig:574), the full-window
 #   ARGB chrome buffer for the rounded-corner border — NOT the media slide, NOT

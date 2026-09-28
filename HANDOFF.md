@@ -58,24 +58,23 @@ sessions with session_search). Live state lives in the ledger, not here.
     full-window chrome buffer). METHOD (reuse): uprobe + --call-graph fp, NOT
     dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
 
-## Next action (RELOG OWED, then follow-on)
+## Next action (RELOG OWED, then backlog)
 
-  FIX DONE + DEPLOYED (95be9e9, .bak-8cb8d52): CHROME LAW (docs/law/chrome.md)
-  — compositor draws no window chrome. updateChrome disabled via chrome_enabled
-  = false (window.zig, body retained + DCE'd renderChrome/surfacePixels). This
-  kills the 27.14MB/layout-event leak AND the rounded-corner clip in one cut;
-  fullscreen is now a bare pass-through, no border, no corner mask.
+  FIX DONE + DEPLOYED (a597f97, .bak-95be9e9): CHROME LAW AMENDED (verdict 66)
+  — thin scene-rect border restored (createSceneRect x4, O(perimeter), no
+  full-window buffer). Leak dead by construction, not by disabling chrome.
+  Border colour = color_border_focused theme token, syncs on
+  chrome_style_generation bump. updateChrome rewritten (scene rects; TEMP DIAG
+  cache-miss/create/destroy logs removed).
 
-  RELOG OWED: verify compositor RSS stops climbing (sampler logs at
-  ~/.hermes/profiles/bobdotrix/cache/scratch/ramsample-*.log).
+  RELOG OWED: verify thin border visible + compositor RSS stays flat (sampler
+  logs at ~/.hermes/profiles/bobdotrix/cache/scratch/ramsample-*.log).
 
-  FOLLOW-ON (per law, optional): xdg-toplevel fullscreen handler, and flip
-  xdg-decoration to .client_side so windowed clients frame themselves — note
-  this also needs applyTitleBarEnvironment un-flipped (GTK_CSD=0 currently
-  blocks CSD).
+  REMAINING WORK: see CENSUS-NOTES.md "GREAT RESET — REMAINING WORK" (the
+  prioritized list). Top after relog: kplayd VA-device leak root (item 2).
 
-  dmabuf import + kplayd are CLEAN (no work there). kmedia audio (SOXR/float32)
-  is done + deployed separately — see the kmedia HANDOFF.
+  dmabuf import is CLEAN. kmedia audio (SOXR/float32) done + deployed
+  separately — see the kmedia HANDOFF.
 
   METHOD (reuse next time): uprobe on the allocator + `--call-graph fp`, NOT
   dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
