@@ -4,16 +4,13 @@ const wlr = @import("wlroots");
 const Server = @import("server.zig").Server;
 const Output = @import("server.zig").Output;
 const animation = @import("core/animation.zig");
-const c = @import("dm").c;
 const chrome_renderer = @import("render/chrome.zig");
-const DataBuffer = @import("render/buffer.zig").DataBuffer;
 
-/// CHROME LAW (docs/law/chrome.md, LOCKED 2026-09-28): the compositor draws
-/// no window chrome — fullscreen is a bare pass-through, windowed is
-/// client-side decorations. The full-window cairo + DataBuffer path is the
-/// 27.14MB-per-layout-event leak (pin 2026-09-28). Disabled, NOT deleted:
-/// flip to true to re-enable a compositor-side frame.
-const chrome_enabled = false;
+/// CHROME LAW (docs/law/chrome.md, amended 2026-09-28): the compositor draws
+/// only a thin scene-rect border — no full-window cairo/DataBuffer (that was
+/// the 27.14MB-per-layout-event leak, pin 2026-09-28). Flip to false to
+/// disable compositor-side framing entirely (KSD apps self-frame).
+const chrome_enabled = true;
 const Style = @import("core/style.zig").Style;
 
 const Label = struct {
@@ -477,123 +474,79 @@ pub const Window = struct {
     }
 
     pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
-        // CHROME LAW (docs/law/chrome.md): compositor draws no window chrome.
+        // CHROME LAW (docs/law/chrome.md, amended 2026-09-28): thin border as
+        // scene rects only — no full-window cairo/DataBuffer (the leak).
         if (chrome_enabled) {
-        // Cache key is the animation TARGET, not the live cur_w/cur_h: the
-        // spring eases cur_* toward target over many frames and sub-pixel
-        // jitter makes @round(cur_*) alternate by 1px, so a cur-based key
-        // never hits — chrome regenerated on every client commit (the
-        // create/destroy churn of 2026-09-07, ~150 fps with all flags
-        // false). Target changes exactly when the real geometry does;
-        // tickAnimation re-calls us while a genuine move/resize animates,
-        // and on the settle frame cur == target so the final regen lands
-        // at exact size.
-        const w: i32 = @intFromFloat(@round(self.animation.target_w));
-        const h: i32 = @intFromFloat(@round(self.animation.target_h));
-        if (w <= 0 or h <= 0) return;
+            // Cache key is the animation TARGET, not the live cur_w/cur_h: the
+            // spring eases cur_* toward target over many frames and sub-pixel
+            // jitter makes a cur-based key never hit (the 2026-09-07 regen
+            // storm). Target changes exactly when geometry does.
+            const w: i32 = @intFromFloat(@round(self.animation.target_w));
+            const h: i32 = @intFromFloat(@round(self.animation.target_h));
+            if (w <= 0 or h <= 0) return;
 
-        // Pick output scale from the output this window is on.
-        var scale: u32 = 1;
-        if (self.output) |output| {
-            scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
-        }
+            var scale: u32 = 1;
+            if (self.output) |output| {
+                scale = @intFromFloat(@max(1.0, output.wlr_output.scale));
+            }
 
-        const style_gen = self.server.chrome_style_generation;
-        const label = if (edges.eql(chrome_renderer.EdgeMode.all)) null else self.chrome_label.asSlice();
-        // NOTE: label is intentionally NOT part of the cache key. The only
-        // writer of chrome_label is refreshPeekLabel, which zeroes
-        // chrome_width/chrome_height on any change, so the regen is already
-        // forced by the w/h mismatch above. Comparing chrome_label here was a
-        // false-miss loop: with edges==.all the computed label is null, so the
-        // term read "Ghostty" vs "" and never matched -> full chrome regen on
-        // every updateChrome(.all). (Verdict 48's cache-miss bug.)
-        const same = self.chrome_tree != null and
-            self.chrome_width == w and
-            self.chrome_height == h and
-            self.chrome_focused == focused and
-            self.chrome_edges.eql(edges) and
-            self.chrome_scale == scale and
-            self.chrome_style_generation == style_gen;
-        if (same) return;
+            const style_gen = self.server.chrome_style_generation;
+            const same = self.chrome_tree != null and
+                self.chrome_width == w and
+                self.chrome_height == h and
+                self.chrome_focused == focused and
+                self.chrome_edges.eql(edges) and
+                self.chrome_scale == scale and
+                self.chrome_style_generation == style_gen;
+            if (same) return;
 
-        if (self.chrome_tree != null) {
-            // TEMP DIAG: which cache field actually missed? The 2026-09-07
-            // storm regens identical 1673x1064 chrome per commit — log the
-            // full old/new key so the culprit field names itself.
-            std.log.info("KidulWM: CHROME cache-miss id={d} wh {d}x{d}->{d}x{d} focus {}->{} edges {}->{} scale {d}->{d} gen {d}->{d} label '{s}'->'{s}'", .{
-                self.id,
-                self.chrome_width,
-                self.chrome_height,
-                w,
-                h,
-                self.chrome_focused,
-                focused,
-                self.chrome_edges,
-                edges,
-                self.chrome_scale,
-                scale,
-                self.chrome_style_generation,
-                style_gen,
-                self.chrome_label.asSlice(),
-                if (label) |l| l else "",
-            });
-        }
+            if (self.chrome_tree) |tree| {
+                tree.node.destroy();
+                self.chrome_tree = null;
+            }
 
-        if (self.chrome_tree) |tree| {
-            tree.node.destroy();
-            std.log.info("KidulWM: CHROME destroy id={d} reason=regen", .{self.id});
-            self.chrome_tree = null;
-        }
+            // Chrome must live in overlay_tree so it renders ABOVE the client
+            // surface (docs/KIDULWM_CHROME_LAYERS.md).
+            const tree = self.server.overlay_tree.createSceneTree() catch return;
+            tree.node.setPosition(
+                @intFromFloat(@round(self.animation.cur_x)),
+                @intFromFloat(@round(self.animation.cur_y)),
+            );
+            tree.node.raiseToTop();
+            tree.node.data = self;
+            self.chrome_tree = tree;
 
-        // Chrome must live in overlay_tree so it renders ABOVE the client
-        // surface.  See docs/KIDULWM_CHROME_LAYERS.md.
-        const tree = self.server.overlay_tree.createSceneTree() catch return;
-        tree.node.setPosition(
-            @intFromFloat(@round(self.animation.cur_x)),
-            @intFromFloat(@round(self.animation.cur_y)),
-        );
-        tree.node.raiseToTop();
-        tree.node.data = self;
-        self.chrome_tree = tree;
-        std.log.info("KidulWM: CHROME create id={d} {d}x{d} at {d},{d} focused={} output={s}", .{
-            self.id,
-            w,
-            h,
-            @as(i64, @intFromFloat(@round(self.animation.cur_x))),
-            @as(i64, @intFromFloat(@round(self.animation.cur_y))),
-            focused,
-            if (self.output) |o| o.wlr_output.name else "none",
-        });
-        self.chrome_width = w;
-        self.chrome_height = h;
-        self.chrome_focused = focused;
-        self.chrome_edges = edges;
-        self.chrome_scale = scale;
-        self.chrome_style_generation = style_gen;
+            self.chrome_width = w;
+            self.chrome_height = h;
+            self.chrome_focused = focused;
+            self.chrome_edges = edges;
+            self.chrome_scale = scale;
+            self.chrome_style_generation = style_gen;
 
-        const style = self.server.theme;
-        const surface = chrome_renderer.renderChrome(style, w, h, focused, scale, edges, label) orelse {
-            tree.node.destroy();
-            self.chrome_tree = null;
-            return;
-        };
-        defer c.cairo_surface_destroy(surface);
-        const pixels = chrome_renderer.surfacePixels(surface);
+            // Thin border: four solid scene rects, O(perimeter), no raster. The
+            // colour is a theme token (color_border_focused), so a theme reload
+            // bumps style_gen above and forces a regen — borders change in sync
+            // with every widget.
+            const style = self.server.theme;
+            const bw: i32 = @max(1, @as(i32, @intFromFloat(@round(style.border_width * @as(f32, @floatFromInt(scale))))));
+            const border = style.color_border_focused.toF32();
 
-        const buffer = DataBuffer.create(pixels.pixels, pixels.width, pixels.height, pixels.stride) catch {
-            tree.node.destroy();
-            self.chrome_tree = null;
-            return;
-        };
-
-        const scene_buffer = tree.createSceneBuffer(buffer) catch {
-            wlr.Buffer.drop(buffer);
-            tree.node.destroy();
-            self.chrome_tree = null;
-            return;
-        };
-        wlr.Buffer.drop(buffer);
-        scene_buffer.setDestSize(w, h);
+            if (edges.top) {
+                const r = tree.createSceneRect(w, bw, &border) catch null;
+                if (r) |rect| rect.node.setPosition(0, 0);
+            }
+            if (edges.bottom) {
+                const r = tree.createSceneRect(w, bw, &border) catch null;
+                if (r) |rect| rect.node.setPosition(0, h - bw);
+            }
+            if (edges.left) {
+                const r = tree.createSceneRect(bw, h, &border) catch null;
+                if (r) |rect| rect.node.setPosition(0, 0);
+            }
+            if (edges.right) {
+                const r = tree.createSceneRect(bw, h, &border) catch null;
+                if (r) |rect| rect.node.setPosition(w - bw, 0);
+            }
         }
     }
 

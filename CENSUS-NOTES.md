@@ -7,12 +7,24 @@ is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
-# (relog handoff 2026-09-28 — current position = VERDICT 65: leak PINNED to
-#  updateChrome -> DataBuffer.create (27.14MB/layout event, ~3GB anon/session),
-#  NOT the media slide / dmabuf. CHROME LAW (docs/law/chrome.md): compositor
-#  draws no window chrome — updateChrome disabled (chrome_enabled=false), so
-#  fullscreen = bare pass-through, no corner mask, no border. Deployed 95be9e9
-#  (.bak-8cb8d52). RELOG OWED — verify RSS stops climbing. See verdict 65 block.)
+# (relog handoff 2026-09-28 — current position = VERDICT 66: CHROME LAW amended,
+#  thin scene-rect border restored (no full-window buffer -> no leak). Deployed
+#  (.bak-95be9e9 = verdict 65 no-chrome). RELOG OWED — Barticus reloads to verify
+#  border visible + RSS stays flat. See verdict 66 block.)
+
+# VERDICT 66 (2026-09-28): CHROME LAW AMENDED — THIN BORDER RESTORED. Borders
+#   are back, but as thin scene-rect strokes (createSceneRect x4, O(perimeter)),
+#   NOT the leaky full-window cairo/DataBuffer path. The 27.14MB/layout leak is
+#   dead BY CONSTRUCTION (no raster buffer at all) — not by disabling chrome.
+#   Law: docs/law/chrome.md amended — thin border only; no full-window buffer;
+#   border colour = color_border_focused theme token, syncs on
+#   chrome_style_generation bump (widgets + borders change together). window.zig
+#   updateChrome rewritten (scene rects; TEMP DIAG cache-miss/create/destroy
+#   logs removed). renderChrome + surfacePixels now dead (renderMiniRing lives).
+#   Design (Barticus): user apps keep this thin border; KSD apps drop the
+#   compositor border and self-frame (fade-to-black, 96% opacity) — client-side.
+#   DEPLOYED /usr/local/bin/kidulwm (.bak-95be9e9 = verdict 65 no-chrome).
+#   RELOG OWED — verify border + RSS flat.
 
 # VERDICT 65 (2026-09-28): LEAK PINNED + CHROME LAW. The 27.14MB/layout-event
 #   leak is updateChrome -> DataBuffer.create (window.zig:574), the full-window
