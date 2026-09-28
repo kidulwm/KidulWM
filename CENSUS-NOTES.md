@@ -28,6 +28,16 @@ kmedia + ksd-input-claim-law skills.
 #   OWED — verify compositor RSS stops climbing. Follow-on: xdg fullscreen
 #   handler + client-side decorations flip (see HANDOFF "Next action").
 
+# KNOWN-GOOD + FALLBACK (Barticus, 2026-09-28): verdict 64 (8cb8d52, kept as
+#   /usr/local/bin/kidulwm.bak-8cb8d52) runs helium with ZERO screen tearing
+#   and very smooth playback, and its matching rounded corners looked really
+#   good. If a later verdict regresses smoothness or visuals, FALL BACK to
+#   kidulwm.bak-8cb8d52.
+#   CAVEAT: 8cb8d52 is the leaky one (27.14MB/layout event, the RSS wedge) —
+#   the smoothness + corners come with the leak. Reconcile by keeping the
+#   windowed corners but killing the full-window buffer (thin border / proper
+#   free), NOT nuking all chrome (verdict 65 did the latter).
+
 # (relog handoff 2026-09-27 — SYSTEM FIXES + FULL REBOOT, bobdotrix)
 # System admin session (NOT a KSD code verdict); detail in sda1 change journal.
 #   - kernel split-brain FIXED: linux-cachyos 7.2.8 rebuilt to /boot + limine.conf
