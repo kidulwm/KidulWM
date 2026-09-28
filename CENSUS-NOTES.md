@@ -7,9 +7,26 @@ is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
-# (relog handoff 2026-09-28 — current position = VERDICT 64: compositor IS the
-#  leak; two fixes deployed; allocator pin owed. Relog to pick up the deployed
-#  binary, then the "2 suspect review". See verdict 64 block below.)
+# (relog handoff 2026-09-28 — current position = VERDICT 65: leak PINNED to
+#  updateChrome -> DataBuffer.create (27.14MB/layout event, ~3GB anon/session),
+#  NOT the media slide / dmabuf. CHROME LAW (docs/law/chrome.md): compositor
+#  draws no window chrome — updateChrome disabled (chrome_enabled=false), so
+#  fullscreen = bare pass-through, no corner mask, no border. Deployed 95be9e9
+#  (.bak-8cb8d52). RELOG OWED — verify RSS stops climbing. See verdict 65 block.)
+
+# VERDICT 65 (2026-09-28): LEAK PINNED + CHROME LAW. The 27.14MB/layout-event
+#   leak is updateChrome -> DataBuffer.create (window.zig:574), the full-window
+#   ARGB chrome buffer for the rounded-corner border — NOT the media slide, NOT
+#   dmabuf (import 18x == close 18x, exonerated). Pin via perf uprobe
+#   (heap.PageAllocator.alloc, --call-graph fp — dwarf/LBR both fail; see skill
+#   zig-allocation-leak-pinning).
+#   Law: docs/law/chrome.md (compositor draws no window chrome — no border, no
+#   corner mask, no full-window buffer; fullscreen = bare pass-through; windowed
+#   = client-side). fullscreen.md rulings 7-8 added. updateChrome disabled via
+#   chrome_enabled=false toggle (body retained, renderChrome/surfacePixels DCE'd).
+#   DEPLOYED /usr/local/bin/kidulwm 95be9e9 (.bak-8cb8d52 = verdict 64). RELOG
+#   OWED — verify compositor RSS stops climbing. Follow-on: xdg fullscreen
+#   handler + client-side decorations flip (see HANDOFF "Next action").
 
 # (relog handoff 2026-09-27 — SYSTEM FIXES + FULL REBOOT, bobdotrix)
 # System admin session (NOT a KSD code verdict); detail in sda1 change journal.

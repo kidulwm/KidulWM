@@ -58,22 +58,21 @@ sessions with session_search). Live state lives in the ledger, not here.
     full-window chrome buffer). METHOD (reuse): uprobe + --call-graph fp, NOT
     dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
 
-## Next action (tomorrow — the fix)
+## Next action (RELOG OWED, then follow-on)
 
-  The pin is done — Suspect B (updateChrome -> DataBuffer.create, 27.14MB). Fix
-  in two moves, per docs/law/fullscreen.md rulings 7-8:
+  FIX DONE + DEPLOYED (95be9e9, .bak-8cb8d52): CHROME LAW (docs/law/chrome.md)
+  — compositor draws no window chrome. updateChrome disabled via chrome_enabled
+  = false (window.zig, body retained + DCE'd renderChrome/surfacePixels). This
+  kills the 27.14MB/layout-event leak AND the rounded-corner clip in one cut;
+  fullscreen is now a bare pass-through, no border, no corner mask.
 
-  1. FULLSCREEN = PURE PASS-THROUGH. No full-window chrome buffer for a
-     fullscreen surface. server.zig has slide.fullscreen -> clearChrome
-     (3475/3543) but NO xdg-toplevel fullscreen handler — an app requesting
-     fullscreen (Helium/WebKit) stays a normal window and keeps the rounded
-     chrome + the leak. Add the xdg fullscreen handler -> clearChrome +
-     pass-through.
+  RELOG OWED: verify compositor RSS stops climbing (sampler logs at
+  ~/.hermes/profiles/bobdotrix/cache/scratch/ramsample-*.log).
 
-  2. WINDOWED PATH: stop leaking the buffer. updateChrome (window.zig:574)
-     dupes a full-window ARGB buffer for a thin border and never releases it.
-     Free it correctly, or stop painting a full-screen raster for a border
-     (per-pixel-chrome-architecture.md is the intended direction).
+  FOLLOW-ON (per law, optional): xdg-toplevel fullscreen handler, and flip
+  xdg-decoration to .client_side so windowed clients frame themselves — note
+  this also needs applyTitleBarEnvironment un-flipped (GTK_CSD=0 currently
+  blocks CSD).
 
   dmabuf import + kplayd are CLEAN (no work there). kmedia audio (SOXR/float32)
   is done + deployed separately — see the kmedia HANDOFF.
