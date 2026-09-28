@@ -7,10 +7,10 @@ is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
-# (relog handoff 2026-09-28 — current position = VERDICT 66: CHROME LAW amended,
-#  thin scene-rect border restored (no full-window buffer -> no leak). Deployed
-#  (.bak-95be9e9 = verdict 65 no-chrome). RELOG OWED — Barticus reloads to verify
-#  border visible + RSS stays flat. See verdict 66 block.)
+# (relog handoff 2026-09-28 RESOLVED — VERDICT 66 RELOG VERIFY PASSED. Border
+#  visible (square, thin — the verdict 66 shape), RSS FLAT 1812700kB over 90s on
+#  a 5h19m compositor (the 27.14MB/layout leak is dead by construction: no raster
+#  buffer exists). See verdict 66 block.)
 
 # VERDICT 66 (2026-09-28): CHROME LAW AMENDED — THIN BORDER RESTORED. Borders
 #   are back, but as thin scene-rect strokes (createSceneRect x4, O(perimeter)),
@@ -28,7 +28,7 @@ kmedia + ksd-input-claim-law skills.
 
 # GREAT RESET — REMAINING WORK (prioritized, 2026-09-28)
 
-#   1. RELOG VERIFY (this session): thin border visible + compositor RSS flat.
+#   1. RELOG VERIFY — DONE (2026-09-28): border visible + RSS flat.
 #   2. KPLAYD VA-DEVICE LEAK root. Gl.zig third ref + avcodec_free_context
 #      zero-copy pool release (deferred; exit(1) put-to-bed is the band-aid).
 #   3. TV ~10min CUT + 7/9 channel fail (verdict 59) — confirm if still live.
