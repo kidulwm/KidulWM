@@ -7,6 +7,13 @@ const animation = @import("core/animation.zig");
 const c = @import("dm").c;
 const chrome_renderer = @import("render/chrome.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
+
+/// CHROME LAW (docs/law/chrome.md, LOCKED 2026-09-28): the compositor draws
+/// no window chrome — fullscreen is a bare pass-through, windowed is
+/// client-side decorations. The full-window cairo + DataBuffer path is the
+/// 27.14MB-per-layout-event leak (pin 2026-09-28). Disabled, NOT deleted:
+/// flip to true to re-enable a compositor-side frame.
+const chrome_enabled = false;
 const Style = @import("core/style.zig").Style;
 
 const Label = struct {
@@ -470,6 +477,8 @@ pub const Window = struct {
     }
 
     pub fn updateChrome(self: *Window, focused: bool, edges: chrome_renderer.EdgeMode) void {
+        // CHROME LAW (docs/law/chrome.md): compositor draws no window chrome.
+        if (chrome_enabled) {
         // Cache key is the animation TARGET, not the live cur_w/cur_h: the
         // spring eases cur_* toward target over many frames and sub-pixel
         // jitter makes @round(cur_*) alternate by 1px, so a cur-based key
@@ -585,6 +594,7 @@ pub const Window = struct {
         };
         wlr.Buffer.drop(buffer);
         scene_buffer.setDestSize(w, h);
+        }
     }
 
     fn handleMap(listener: *wl.Listener(void)) void {

@@ -47,26 +47,39 @@ sessions with session_search). Live state lives in the ledger, not here.
     through the real fullscreen flow (Mod4+m), NOT raw kplay.sock — that's why
     verdict 63's raw-socket test missed it.
 
-## Next action (tomorrow — "2 suspect review")
+  - LEAK PINNED (2026-09-28, same session): Suspect B — chrome, NOT the media
+    slide. perf uprobe on heap.PageAllocator.alloc + `--call-graph fp` caught it:
+      heap.PageAllocator.alloc -> mem.Allocator.dupe -> render.buffer.DataBuffer.create
+      -> window.Window.updateChrome (window.zig:574) -> Server.applyLayout
+    updateChrome dupes a 27.14MB full-window ARGB chrome buffer per layout event
+    and never releases it (~3GB anon/session). dmabuf import EXONERATED
+    (PRIME_FD_TO_HANDLE 18x == drmCloseBufferHandle 18x, balanced). Law amended:
+    docs/law/fullscreen.md rulings 7 (zero chrome = pure pass-through) + 8 (no
+    full-window chrome buffer). METHOD (reuse): uprobe + --call-graph fp, NOT
+    dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
 
-  PIN the exact allocator in the fullscreen present path, then fix. Two
-  suspects, both fire on fullscreen enter/exit layout events:
-    A. media-slide 33MB ARGB32 re-render (mediaSlideRefresh -> renderToBuffer,
-       src/server.zig ~2072; guarded by card_dirty but re-fired on fullscreen
-       layout).
-    B. chrome border regen (updateChrome create/destroy churn, src/window.zig
-       ~472 — TEMP DIAG "CHROME cache-miss" log lines still in place).
-  Also on the table (video-playback-architecture skill): per-frame dmabuf
-  import churn — cache per VASurfaceID (~8 slots), create scene node ONCE,
-  setBuffer the cached entry instead of re-export+import each frame.
-  The sampler /home/dad/.hermes/profiles/bobdotrix/cache/scratch/ramsample-*.log
-  has the full 1s trace (columns: ts kplayd_pid kplayd_rss fds gem kidulwm_pid
-  kidulwm_rss fds gem anon memavail).
+## Next action (tomorrow — the fix)
 
-  METHOD: relog first so the two DEPLOYED fixes are live, re-test, then re-run
-  the sampler while Barticus cycles fullscreen open/close, and read the anon
-  delta against the CHROME cache-miss + mediaSlideRefresh log lines to name
-  A vs B. Don't guess — the log already distinguishes them.
+  The pin is done — Suspect B (updateChrome -> DataBuffer.create, 27.14MB). Fix
+  in two moves, per docs/law/fullscreen.md rulings 7-8:
+
+  1. FULLSCREEN = PURE PASS-THROUGH. No full-window chrome buffer for a
+     fullscreen surface. server.zig has slide.fullscreen -> clearChrome
+     (3475/3543) but NO xdg-toplevel fullscreen handler — an app requesting
+     fullscreen (Helium/WebKit) stays a normal window and keeps the rounded
+     chrome + the leak. Add the xdg fullscreen handler -> clearChrome +
+     pass-through.
+
+  2. WINDOWED PATH: stop leaking the buffer. updateChrome (window.zig:574)
+     dupes a full-window ARGB buffer for a thin border and never releases it.
+     Free it correctly, or stop painting a full-screen raster for a border
+     (per-pixel-chrome-architecture.md is the intended direction).
+
+  dmabuf import + kplayd are CLEAN (no work there). kmedia audio (SOXR/float32)
+  is done + deployed separately — see the kmedia HANDOFF.
+
+  METHOD (reuse next time): uprobe on the allocator + `--call-graph fp`, NOT
+  dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
 
 ## Trip wires / commands / secrets
 

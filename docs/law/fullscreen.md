@@ -53,6 +53,25 @@ home; fullscreen is a transient mode the card enters and leaves.
    moved left). No kplayd, no foreign-pixel ownership — kplay.md LAW 3/4
    stand; the browser is a plain foreign Wayland client.
 
+7. ZERO CHROME = PURE PASS-THROUGH (sharpens rulings 1 + 6, LOCKED
+   2026-09-28). "Zero chrome" is not "no border ring" — it is "the
+   compositor does nothing to the surface." A fullscreen surface is
+   composited straight through: no corner mask, no rounded/chamfered clip,
+   no border, no per-frame geometry clip, no full-window compositor-side
+   buffer. Every pixel the client sends reaches scanout untouched. Highest
+   quality, least resistance — the client owns the frame; the compositor
+   only composites. A foreign client at fullscreen (Helium) already passes
+   through clean with no corner crops and is the reference behaviour.
+
+8. NO FULL-WINDOW CHROME BUFFER (LOCKED 2026-09-28). The compositor must
+   not allocate a full-window ARGB chrome buffer for a fullscreen surface.
+   Such a buffer is waste (a full-screen raster to paint a thin border) and
+   a leak. Pin (2026-09-28, perf uprobe fp-stack): updateChrome →
+   DataBuffer.create dupes a 27.14MB full-window ARGB buffer per layout
+   event and never releases it — ~3GB anon per session, the RSS wedge.
+   Fullscreen makes this buffer not exist; the windowed path must not leak
+   it either.
+
 ## What gets deleted
 
 - "video rides the deck" — kplay.md LAW 4's ride-along for the fullscreen
