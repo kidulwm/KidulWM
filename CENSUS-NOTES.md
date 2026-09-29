@@ -7,6 +7,51 @@ is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
+
+# VERDICT 67 (2026-09-30): DOCTRINE SESSION — kushd rename, Captain law, public
+#   stance, stageStats. NO code change to kidulwm/kmedia binaries; this is the
+#   naming + identity reset that un-fuses three owners and names the succession.
+#   All in SYSTEM.md (the arbiter, on disk — NOT in git) + kmedia usher.md +
+#   screen-stats.md (pushed). Summary for the next session:
+#
+#   1. ksvd -> kushd (THE USHER). The old "supervisor" was the wrong name: it
+#      undersold the job to lifecycle-only. The usher knows every stage, seats
+#      each act, brings it in on time, enforces open & close. ONE actor, two
+#      arms: open/close rules + the stage map (placement). NO baton.
+#   2. THE FACE (kidulwm) = THE CONDUCTOR. It paints the pixels, owns the
+#      baton. The doctrine had double-claimed the baton (ksvd was "the
+#      conductor" in 3 places) — fixed. cue = running order (usher); baton =
+#      paint (conductor). Two different things; their conflation was the bug.
+#   3. OWNER (I1) = holds stageStats (charts) and hands them down. Three
+#      owners now clean: OWNER / USHER / CONDUCTOR.
+#   4. stageStats absorbs screen-stats.md: capability (EDID, forever) + live
+#      mode (per-session) + wall position/role. Identity key = mfg+model+
+#      edid-hash (serial is all-zeros on the Kogan — found live). TV probed:
+#      Kogan KGN/2800 is 60Hz-class (40-62Hz, NO 120Hz), preferred 3840x2160@
+#      30, but advertises native 24.000 + 23.98 at 1080p AND 4K. 24fps film on
+#      a fixed 30/60Hz mode = the judder root; the fix is content-aware mode
+#      select (C3), not a magic mode. Judder substrate = screen-stats C1/C2/C3.
+#   5. PUBLIC STANCE (§7.1): all public = AI training corpus; B&B in control
+#      ALWAYS — suggestions box, NOT community project, more eyes not more
+#      votes. knetd = the one thing built to STAND ALONE (routers, cross-
+#      compiled, decoupling is a LAW). Everything else = made-for-our-machines,
+#      fork-friendly. A stranger forks or sends a suggestion, never steers.
+#   6. CAPTAIN LAW (§7.2): B&B = the Captain — a TEMPORARY ROLE, not an
+#      identity. Held, not owned. The ship outlives the captain; succession is
+#      a design principle, not an afterthought. Duty: find + prepare the next
+#      captain BEFORE stepping down. No absolutes — the wheel is a handover,
+#      not a crown. Held by the most responsible person in the room.
+#
+# NEXT SESSION (the actual work, prioritized):
+#   1. CLOSE Phase 2 gate — the I4 GPU pool (EglShell+PoolImage+assertStandby)
+#      LANDED but the gate is NOT re-verified: flat RSS after warmup, bounded
+#      fds, hours of playback, ~2% CPU on HOST i915. This is the live-bleed
+#      item, highest Granny-visibility. Re-verify before anything else.
+#   2. Phase 1 — build kushd (now spec'd in usher.md). Retires the four-way
+#      supervision split + kvisd-dead-after-reboot. The spec is the ticket.
+#   3. Parallel: judder (screen-stats C1 capture -> C3 mode-select). Spec'd,
+#      not blocking 1-2.
+#   OLD: verdicts 59 (TV cut), 65/66 (chrome/RSS) still carried below.
 # (relog handoff 2026-09-28 RESOLVED — VERDICT 66 RELOG VERIFY PASSED. Border
 #  visible (square, thin — the verdict 66 shape), RSS FLAT 1812700kB over 90s on
 #  a 5h19m compositor (the 27.14MB/layout leak is dead by construction: no raster
@@ -29,15 +74,20 @@ kmedia + ksd-input-claim-law skills.
 # GREAT RESET — REMAINING WORK (prioritized, 2026-09-28)
 
 #   1. RELOG VERIFY — DONE (2026-09-28): border visible + RSS flat.
-#   2. KPLAYD VA-DEVICE LEAK root. PINNED (session 37): the surviving renderD
-#      fd is the VA DECODE DEVICE (drm-engine-video, client-id 137), NOT the
-#      EGL shell. Zero-copy export/import leaves one extra ref that
-#      avcodec_free_context/vaTerminate can't release. FIX candidates (in
-#      order): vaExportSurfaceHandle DRM_PRIME_2 ref released only by
-#      vaDestroySurfaces, held past close; OR eglDestroyImage/releaseImage
-#      not running in zero-copy close order. See kmedia HANDOFF session 37.
-#      exit(1) put-to-bed band-aid still holds. DIAG dump (dumpRenderFds in
-#      kplayd_main.zig) is temporary — remove once the fix lands.
+#   2. KPLAYD VA-DEVICE LEAK root — DONE (session 38/39/40). The surviving
+#      renderD fd is the VA DECODE DEVICE (drm-engine-video), NOT the EGL
+#      shell. Root cause: iHD's vaTerminate does not close the decode device
+#      fd after vaExportSurfaceHandle + Wayland EGL import (driver-level; the
+#      old "extra ref"/pool-corruption theory was WRONG — hw_frames_ctx
+#      ref=121 is just frame threading, thread_count=0 = ~16 threads).
+#      FIX (CORRECTED session 39, do NOT trust session 38's "in-place close"):
+#      session 38's closeRenderFds was REVERTED — close() on a DRM node runs
+#      drm_release() reaping GEM the compositor still imported, so "quit &
+#      re-enter" showed a BLACK SCREEN and the last quit RELOADED THE WM
+#      (use-after-free). The correct terminal answer is PROCESS-DEATH:
+#      closePlayer calls assertStandby() = 0 renderD fds or exit(1) respawn.
+#      The fd leak is an iHD driver wart we STOP DEPENDING ON, never patch in
+#      the hot path. See kmedia HANDOFF session 39/40 (Cuts A/B/C).
 #   3. TV ~10min CUT + 7/9 channel fail (verdict 59) — confirm if still live.
 #   4. xdg-decoration .client_side flip + GTK_CSD un-flip (applyTitleBarEnv).
 #      Feeds item 5.
