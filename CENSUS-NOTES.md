@@ -44,6 +44,26 @@ kmedia + ksd-input-claim-law skills.
 #   SUSPECT (same bug, separate path, NOT yet pinned): overview_card render
 #     (server.zig ~1689) also missing the drop — verify next cycle.
 
+# VERDICT 69 (bobdotrix 2026-09-29, same session) — overview + home-slide
+#   card/chrome per-cycle leak: SAME missing-drop bug as 68, three more sites.
+#   Pinned by the live post-reboot cycle (not uprobe — fingerprint already
+#   known): kidulwm anon 228 -> 350MB (+121MB) on one media-slide open, FLAT
+#   during 2.5min playback (per-render leak DEAD), but NOT reclaimed after the
+#   slide was FULLY closed (still 350MB at +3min). smaps: 2x ~32.7MB + 6x
+#   ~43.5MB anon chunks held post-close.
+#   CAUSE: three more createSceneBuffer callers missing the creator-drop on
+#   success (same one-line shape as the 68 fix):
+#     1. overviewSlideOpen card   (server.zig ~1689) — deck card, ~33MB
+#     2. homeSlideRefresh card    (server.zig ~1859) — tray slide card, ~33MB
+#     3. homeSlideRefresh chrome  (server.zig ~1876) — success path never dropped
+#   FIX: wlr.Buffer.drop(buffer) after createSceneBuffer in all three; the
+#   overview card also gained the error-path drop. DEPLOYED /usr/local/bin/
+#   kidulwm 337fb0a0 (.bak-61366e08 = verdict 68). RELOG OWED: play/close cycle
+#   -> kidulwm anon must RETURN to ~228MB and NOT stack on a second cycle.
+#   SEPARATE (still open, not this dragon): kplayd anon 27 -> 408 -> 252MB on
+#   CLEAN close (0 renderD survived -> no exit(1)) — pin separately.
+
+
 # VERDICT 67 (2026-09-30): DOCTRINE SESSION — kushd rename, Captain law, public
 #   stance, stageStats. NO code change to kidulwm/kmedia binaries; this is the
 #   naming + identity reset that un-fuses three owners and names the succession.

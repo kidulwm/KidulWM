@@ -1687,10 +1687,12 @@ pub const Server = struct {
             return;
         };
         const card = tree.createSceneBuffer(buffer) catch {
+            wlr.Buffer.drop(buffer);
             tree.node.destroy();
             output.overview.tree = null;
             return;
         };
+        wlr.Buffer.drop(buffer);
         output.overview.card_buffer = card;
         // Same scale law as the media slide: rendered at physical pixels,
         // displayed at logical size.
@@ -1860,6 +1862,7 @@ pub const Server = struct {
                 wlr.Buffer.drop(buffer);
                 return;
             };
+            wlr.Buffer.drop(buffer);
             output.home_slide.card_buffer = card;
             // Rendered at physical pixels; pin the display size back to the
             // logical target rect (same scale law as the media slide).
@@ -1875,6 +1878,7 @@ pub const Server = struct {
                 if (output.home_slide.chrome_buffer) |old| old.node.destroy();
                 if (tree.createSceneBuffer(cb) catch null) |chrome| {
                     output.home_slide.chrome_buffer = chrome;
+                    wlr.Buffer.drop(cb);
                     chrome.setDestSize(buf_w, buf_h);
                     chrome.node.raiseToTop();
                 } else {
