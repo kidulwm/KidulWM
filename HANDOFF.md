@@ -8,7 +8,7 @@ sessions with session_search). Live state lives in the ledger, not here.
 
   1. /home/dad/dev/SYSTEM.md      the constitution — I1-I7 + phase order (arbiter)
   2. /home/dad/dev/KSD-INDEX.md   the map — every doc's role + the STALE list
-  3. CENSUS-NOTES.md              the ledger — verdict 64 = current position + next test
+  3. CENSUS-NOTES.md              the ledger — verdict 68 = current position + next test
 
 ## Current position (2026-09-28, end of night — bobdotrix)
 
@@ -58,9 +58,18 @@ sessions with session_search). Live state lives in the ledger, not here.
     full-window chrome buffer). METHOD (reuse): uprobe + --call-graph fp, NOT
     dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
 
-## Next action (RELOG OWED, then backlog)
+## Next action (verdict 68 — RELOG OWED, then re-verify)
 
-  FIX DONE + DEPLOYED (a597f97, .bak-95be9e9): CHROME LAW AMENDED (verdict 66)
+  VERDICT 68 (2026-09-29): media-slide per-cycle leak FIXED + DEPLOYED. The
+  missing wlr.Buffer.drop(buffer) after createSceneBuffer leaked ~27MB per
+  card render (uprobe-pinned: media_slide.renderToBuffer -> DataBuffer.create).
+  Deployed /usr/local/bin/kidulwm 61366e08 (.bak-ca7571d4 = verdict 66).
+  RELOG OWED: play a movie + close -> kidulwm RSS must RETURN to ~336MB
+  baseline (no per-cycle stack). Sampler: ramsample-gate.sh. Also verify the
+  overview_card same-bug suspect (server.zig ~1689).
+  Full pin + root cause: CENSUS-NOTES.md GATE RE-VERIFY + verdict 68.
+
+  (older) FIX DONE + DEPLOYED (a597f97, .bak-95be9e9): CHROME LAW AMENDED (verdict 66)
   — thin scene-rect border restored (createSceneRect x4, O(perimeter), no
   full-window buffer). Leak dead by construction, not by disabling chrome.
   Border colour = color_border_focused theme token, syncs on

@@ -8,6 +8,42 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# GATE RE-VERIFY (bobdotrix 2026-09-29) — PHASE 2 I4 GATE: steady-state leak DEAD,
+#   but PER-CYCLE P010 RETENTION STILL LIVE (stacks). Two clean play/close cycles on
+#   the Kogan (4K DP-3), live sampler 1s + smaps fingerprint.
+#   STEADY-STATE (verdict 66 chrome leak): CONFIRMED DEAD — kidulwm RSS pinned 853MB
+#     for 21min fullscreen playback, delta +0kB/min. VA-device leak dead (kplayd
+#     5 fds/856MB GEM -> 0/0 on pause). assertStandby held.
+#   PER-CYCLE RETENTION (NEW/REMAINING): kidulwm 336 -> 914 (cycle 1) -> 2639MB
+#     (cycle 2). kplayd 27 -> 256 -> 399MB. STACKS, not a warm cache. smaps: 68 x
+#     ~27.8MB anon chunks = EXACT verdict-57/62 "one 4K P010 frame each" fingerprint
+#     (1.89GB), + 2x168MB + 4x45MB + ~1.1GB GEM. Allocated in ~24s on fullscreen
+#     ENTER, never released on EXIT/close.
+#   CONCLUSION: verdict 66 killed the CHROME half only. The P010 staging/import
+#     retention (verdict 64 suspect A / per-frame import churn, ~8-slot cache never
+#     landed) is a SEPARATE leak still open. Daily-driver = OOM after a few movies.
+#   NEXT: pin the allocator — which path mallocs the ~27.8MB chunks on fullscreen
+#     enter and skips free on exit (suspect: per-frame dmabuf import vs media-slide
+#     ARGB32 re-render vs host-surface/curtain setup). Then cache/reuse or free.
+#   METHOD: ramsample-gate.sh (1s RSS/fds/GEM/CPU) + smaps chunk histogram. The
+#     magnitude differed per cycle (500MB vs 1.7GB) — pin the video/frame-count
+#     dependency, don't assume linear.
+#   PINNED + FIXED + DEPLOYED (2026-09-29, same session): uprobe
+#     heap.PageAllocator.alloc --call-graph fp -> len=0x1b29680 (27.17MB) ->
+#     DataBuffer.create <- ui.media_slide.renderToBuffer <- mediaSlideRefresh <-
+#     mediaSlideOpen/Key. NOT the P010 frames (GEM/dmabuf clean), NOT chrome
+#     (verdict 66). It is the MEDIA SLIDE ARGB32 re-render (verdict 64 SUSPECT A).
+#     ROOT CAUSE: renderToBuffer returns *wlr.Buffer (refcount 1); createSceneBuffer
+#     locks it (2); the creator's ref was NEVER dropped on success, so node.destroy()
+#     left refcount 1 and DataBuffer.destroy never fired -> ~27MB leaked per card
+#     render. Every OTHER createSceneBuffer caller drops (curtain/peek/tray);
+#     mediaSlideRefresh was the ONE missing it. FIX: +1 line wlr.Buffer.drop(buffer)
+#     after createSceneBuffer (server.zig mediaSlideRefresh). DEPLOYED
+#     /usr/local/bin/kidulwm 61366e08 (.bak-ca7571d4 = verdict 66). RELOG OWED:
+#     re-run play/close cycle -> kidulwm RSS must RETURN to baseline (no stack).
+#   SUSPECT (same bug, separate path, NOT yet pinned): overview_card render
+#     (server.zig ~1689) also missing the drop — verify next cycle.
+
 # VERDICT 67 (2026-09-30): DOCTRINE SESSION — kushd rename, Captain law, public
 #   stance, stageStats. NO code change to kidulwm/kmedia binaries; this is the
 #   naming + identity reset that un-fuses three owners and names the succession.

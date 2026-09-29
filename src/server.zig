@@ -2118,6 +2118,11 @@ pub const Server = struct {
             wlr.Buffer.drop(buffer);
             return;
         };
+        // createSceneBuffer locks the buffer (refcount +1). Release the
+        // creator's reference so the scene node holds the ONLY ref and
+        // node-destroy actually frees the ~27MB pixel data. Missing this drop
+        // is the per-cycle media-slide retention leak (uprobe-pinned 2026-09-29).
+        wlr.Buffer.drop(buffer);
         output.media_slide.card_buffer = card;
         // The buffer was rendered at physical pixels (target × scale) for
         // crispness; the scene graph shows buffers 1:1 by default, which
