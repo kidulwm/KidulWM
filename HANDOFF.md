@@ -8,9 +8,34 @@ sessions with session_search). Live state lives in the ledger, not here.
 
   1. /home/dad/dev/SYSTEM.md      the constitution — I1-I7 + phase order (arbiter)
   2. /home/dad/dev/KSD-INDEX.md   the map — every doc's role + the STALE list
-  3. CENSUS-NOTES.md              the ledger — verdict 68 = current position + next test
+  3. CENSUS-NOTES.md              the ledger — verdict 70 = current position + next test
 
-## Current position (2026-09-28, end of night — bobdotrix)
+## Current position (2026-09-30, morning — bobdotrix)
+
+  VERDICT 70: RELOG-VERIFY 68/69 PASSED. Four play/close cycles on the live
+  host (Barticus drove Mod4+m / Mod4+q / Mod4+Tab) with the ramsample-gate
+  sampler. kidulwm anon returned to 222MB after every close (deltas +16/+28/
+  +36 kB = noise), no ~27MB/card stack, final +76 kB over the run. kplayd
+  clean each cycle. The four createSceneBuffer creator-drop fixes HOLD.
+  DOCKET #1 CLOSED.
+
+  FOLLOW-UP (Barticus): Escape's mediaSlideToggle path skips
+  videoFullscreenExit (only Mod4+q's close_focused does it). Both close
+  paths should exit fullscreen for parity. Not fixed this session.
+
+## Next action (post verdict 70)
+
+  Docket #2 (CLOSE PHASE 2 GATE — I4 GPU pool): the highest Granny-visibility
+  item. Re-verify flat RSS after warmup, bounded fds, hours of playback, ~2%
+  CPU on host i915. See DOCKETS.draft.md #2 + verdict 67 next#1.
+
+  Docket #3 (PIN kplayd renderD VA-decode leak): decide managed-not-fixed vs
+  chase the iHD wart. See DOCKETS.draft.md #3.
+
+  Plus the small parity fix from verdict 70 (Escape path videoFullscreenExit)
+  — todo'd, low risk, do it in the next ksd code session.
+
+## Older system-admin facts (2026-09-27, still current — NOT KSD code)
 
   - SYSTEM FIXES THIS SESSION (2026-09-27, system admin — NOT KSD code; detail
     in the sda1 change journal /mnt/sda_backup/change-log/CHANGELOG.md):
@@ -57,36 +82,6 @@ sessions with session_search). Live state lives in the ledger, not here.
     docs/law/fullscreen.md rulings 7 (zero chrome = pure pass-through) + 8 (no
     full-window chrome buffer). METHOD (reuse): uprobe + --call-graph fp, NOT
     dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
-
-## Next action (verdict 68 — RELOG OWED, then re-verify)
-
-  VERDICT 68 (2026-09-29): media-slide per-cycle leak FIXED + DEPLOYED. The
-  missing wlr.Buffer.drop(buffer) after createSceneBuffer leaked ~27MB per
-  card render (uprobe-pinned: media_slide.renderToBuffer -> DataBuffer.create).
-  Deployed /usr/local/bin/kidulwm 61366e08 (.bak-ca7571d4 = verdict 66).
-  RELOG OWED: play a movie + close -> kidulwm RSS must RETURN to ~336MB
-  baseline (no per-cycle stack). Sampler: ramsample-gate.sh. Also verify the
-  overview_card same-bug suspect (server.zig ~1689).
-  Full pin + root cause: CENSUS-NOTES.md GATE RE-VERIFY + verdict 68.
-
-  (older) FIX DONE + DEPLOYED (a597f97, .bak-95be9e9): CHROME LAW AMENDED (verdict 66)
-  — thin scene-rect border restored (createSceneRect x4, O(perimeter), no
-  full-window buffer). Leak dead by construction, not by disabling chrome.
-  Border colour = color_border_focused theme token, syncs on
-  chrome_style_generation bump. updateChrome rewritten (scene rects; TEMP DIAG
-  cache-miss/create/destroy logs removed).
-
-  RELOG OWED: verify thin border visible + compositor RSS stays flat (sampler
-  logs at ~/.hermes/profiles/bobdotrix/cache/scratch/ramsample-*.log).
-
-  REMAINING WORK: see CENSUS-NOTES.md "GREAT RESET — REMAINING WORK" (the
-  prioritized list). Top after relog: kplayd VA-device leak root (item 2).
-
-  dmabuf import is CLEAN. kmedia audio (SOXR/float32) done + deployed
-  separately — see the kmedia HANDOFF.
-
-  METHOD (reuse next time): uprobe on the allocator + `--call-graph fp`, NOT
-  dwarf — libc mmap's tail-call breaks dwarf; fp walks the rbp chain past it.
 
 ## Trip wires / commands / secrets
 

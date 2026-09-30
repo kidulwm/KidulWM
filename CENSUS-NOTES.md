@@ -8,6 +8,63 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 70 (bobdotrix 2026-09-30) — RELOG-VERIFY 68/69 PASSED. The four
+#   createSceneBuffer creator-drop fixes (media slide, overview card, home
+#   card, home chrome) are CONFIRMED by the hard play/close cycle, not just
+#   the 2-video snapshot. Method: ramsample-gate.sh 1s sampler on the live
+#   host i915 (GL) while Barticus drove 4 full play/close cycles (Mod4+m open,
+#   video ~10s, Mod4+q quit = full teardown: fullscreen exit + card destroy;
+#   Mod4+Tab overview open/close). RESULT: kidulwm anon 227356 kB baseline,
+#   close-point deltas +16/+28/+36 kB (NOISE, not the ~27MB/card stack), final
+#   +76 kB over the whole run. kplayd clean every cycle (0 renderD fds on
+#   close). Pre-fix verdict 69 measured +121MB on one open and 27-33MB stacking
+#   per card render — all dead. DOCKET #1 CLOSED.
+#   FOLLOW-UP (Barticus): Escape's mediaSlideToggle path does NOT call
+#   videoFullscreenExit — only Mod4+q's close_focused does. Both close paths
+#   should exit fullscreen for parity. Not fixed this session; todo'd.
+
+# KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
+#   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
+#   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this
+#   box, UEFI + efivarfs + bit set; limine snapper entries = already there;
+#   DM = kiduldm; only BOOT-to-editor flag is new). Bootloader = Limine,
+#   firmware Timeout already 0. Non-negotiable: keep ONE held-key at boot
+#   (the mouth, §2.1). Toolchain isolation = ALREADY done (aig `a/` namespace,
+#   pinned 0.16.0, separate binary). CANDY (sysadmin-only): snappies as media
+#   cards with stateDetails — would've saved the knetd outage. NOT frozen;
+#   merge-decision open. Boot claim = TIME-TO-PLAYABLE by STRUCTURE (we
+#   deleted the DM/login gate; public mode has no secrets to gate; personal =
+#   key-cast, no name/password) — beats everyone, Apple included, by removing
+#   a stage, not by ms. Shared floor = firmware POST (hardware, identical for
+#   all).
+
+# LOG LIFECYCLE (bobdotrix 2026-09-29, session with Barticus) — frozen as
+#   SYSTEM.md §2.5 (ring / drain / brain). Kernel ring is a FIXED 128KB
+#   circular buffer (fill-then-overwrite-whole-record, reads snapshot, never
+#   consume) — the last-breath backstop, no watermark to add. The drain reads
+#   /dev/kmsg losslessly (journald today, our plain-text drain at Phase 5);
+#   the ring's overwrite never touches the drain's on-disk copy. Retention is
+#   TWO MODES: DEV MODE (now) = treasure chest, no prune, keep everything for
+#   script refinement (watch for runaway); STEADY MODE = ~150MB fill, weekly
+#   analysis pass (distill to brain) then prune to ~50MB. Analysis cadence is
+#   a bobDotrix/usher job, never the kernel's. Measured real rates this boot:
+#   journald ~5MB/day; watchdog sampler ~9MB/day (the leak, not the budget).
+#   The 3GB/year figure is the BUG, not a target. Watchdog cap + lookup-script
+#   set = separate work-over-time cards.
+
+# DOCTRINE CORRECTION (bobdotrix 2026-09-29, session with Barticus) — the
+#   theatre's top tier was mislabeled. usher.md called it "OWNER = holds
+#   stageStats, captured once" — a facts block, not an owner. Corrected:
+#   KSEAT = the brain (human + authored blueprint, flat file, disk-is-truth);
+#   kushd = the breeder (owns fork/exec/wait/kill = seat acts, terminus PID-1);
+#   kidulwm = the brush (executes pixels, never decides, ZERO policy);
+#   kernel = the physics. The running order is AUTHORED by kseat, READ by the
+#   usher (never owned by it). Applied: SYSTEM.md §2.4 (seam map: fluid
+#   Zig==I4/I6, wlroots==I5, Wayland==tier, waitpid==death; seams cairo/ffmpeg/
+#   iHD/sd-bus) + §7.2 rename; usher.md top tier + §4 handoff. Draft preserved
+#   at docs/design/kseat-theatre.draft.md. OPEN: sd-bus notify-bridge should
+#   route through kushd (contradicts I2/I7) — flag, not yet fixed.
+
 # GATE RE-VERIFY (bobdotrix 2026-09-29) — PHASE 2 I4 GATE: steady-state leak DEAD,
 #   but PER-CYCLE P010 RETENTION STILL LIVE (stacks). Two clean play/close cycles on
 #   the Kogan (4K DP-3), live sampler 1s + smaps fingerprint.
