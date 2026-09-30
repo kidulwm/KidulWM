@@ -173,6 +173,39 @@ kmedia + ksd-input-claim-law skills.
 #   queue), a larger present-path redesign, not this docket.
 #   TEST OWED: relog, play a 24fps film — confirm smooth + commit rate halved.
 
+# VERDICT 78 (bobdotrix 2026-10-01) — BINARY AUDIT POST-RELOG: kplayd CURRENT, kidulwm WAS STALE (redeployed).
+#   Barticus ran verdict 77's owed test (relog + 24fps film) -> "still juttery".
+#   Audited every deployed binary against source (sha + embedded git-rev + cmp):
+#     kplayd = CURRENT (sha 39b082f4 == fresh HEAD build; verdict-77 double-commit
+#       fix ec17c8a IS live). Running pid restarted 07:21 post-relog on this binary.
+#     kidulwm-control = CURRENT (sha match; kadence verb present).
+#     kidulwm = STALE. Deployed binary (mtime 22:16:27) was CLEAN 875d052 (verdict 75),
+#       built 47s BEFORE the verdict-76 findMode fix (5672c93, server.zig "kadence
+#       prefers EDID modes / black-screen prevention") committed 22:17:14 — the fix
+#       never made it into the deployed binary. cmp vs fresh HEAD build = 10655
+#       differing bytes -> findMode NOT in the running compositor. REDEPLOYED at HEAD
+#       1ab3e58 (sha 378b4cad), .bak-875d052 kept. RELOG OWED to activate (running pid
+#       3200771 still on the old inode).
+#   JUDDER RE-VERDICT: the "still juttery" is the 3:2 pulldown HARDWARE CEILING (24fps
+#       on the Kogan's 30Hz-capped 4K, silk.md §6), NOT a stale binary. The double-commit
+#       fix (verdict 77) was a CPU fix (~62/s -> ~30/s commits), not a judder fix — mode
+#       select is DEAD on Kogan (verdict 76). Remaining software lever = silk.md §7
+#   present-path (DRM atomic queue submit-early), gated behind kushd (docket #4).
+
+# VERDICT 79 (bobdotrix 2026-10-01) — DOCKET #12 CPU RE-MEASURE: DOUBLE-COMMIT WAS CPU-NEUTRAL.
+#   Re-measured live via kidulwm-control media_play (A.Minecraft.Movie.mp4, fullscreen
+#   DP-3 4K@30, 40s tick-delta sampler): kplayd ~5.0% + kidulwm ~6.5% = ~11.5% total —
+#   IDENTICAL to the verdict 71/72 baseline (~11.4%). The verdict-77 double-commit removal
+#   (sha-verified live) did NOT move CPU. Reason: a wl_surface_commit is a cheap protocol
+#   round-trip; removing ~32/s of them saves nothing measurable. The real cost is tick()
+#   rendering at the compositor's 30Hz vsync (re-blitting a 24fps frame ~6x/s extra) +
+#   kidulwm scale-2.0 compositing every frame — neither touched by verdict 77.
+#   DOCKET #12 corrected: commit-rate cleanup DONE (real redundancy removed), CPU lever =
+#   silk.md §7 (DRM atomic queue submit-early), gated behind kushd (docket #4). The
+#   "half the ~11% CPU" hypothesis was wrong.
+#   SIDE-NOTE (Barticus): IPC media_toggle did not pause the on-screen playback (kept
+#   playing until card moved to peek, then stuck until reopen+quit). Known, not chased.
+
 # KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
 #   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
 #   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this
