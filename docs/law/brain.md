@@ -39,6 +39,30 @@ The whole art is pushing content DOWN the stack: fast memory stays a clean
 index; knowledge lives in 3-5 and is pulled only when its tentacle is active.
 Do NOT grow Layer 1. A full index is a slow brain.
 
+## The skill shape (one worker per job — locked 2026-09-30)
+
+A skill is a fully-qualified worker for a JOB, named by the job — not a filing
+cabinet topic. The crew-roster rule: one worker per part of the stack, owning
+its job end to end.
+
+Three layers, mirroring this law's own load order:
+
+  SKILL.md      = the worker's routing table — its sub-jobs and where each
+                  reference lives. Loaded on summon; routes, never bulks.
+  references/   = the depth. Each sub-job is a reference, lazy-loaded only
+                  when that sub-task is reached. Jobs-within-jobs live HERE,
+                  not as sibling skills — that is what kills the 1-job-into-4
+                  split.
+  priority/docket = the OUTER sequence across workers (Layer 2 routing), never
+                  encoded inside a single skill.
+
+The graduation rule — the single guard against both failure modes at once: a
+sub-job becomes its own skill only when it has its own independent caller (you
+summon it directly, not reach it through the parent). "Balance a tyre" stays a
+reference inside the tyre fitter; "weld the chassis" is another crew member.
+Cut too fine and one job fragments into many; cut too coarse and a god-skill
+swallows everything and never loads clean.
+
 ## The north star (why — kmedia/docs/law/local-brain.md)
 
 This law is the STRUCTURE of the brain. Its WHY lives in local-brain.md
