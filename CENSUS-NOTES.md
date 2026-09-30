@@ -23,6 +23,28 @@ kmedia + ksd-input-claim-law skills.
 #   videoFullscreenExit — only Mod4+q's close_focused does. Both close paths
 #   should exit fullscreen for parity. Not fixed this session; todo'd.
 
+# VERDICT 71 (bobdotrix 2026-09-30) — PHASE 2 GATE RE-VERIFY: LEAK DEAD, CPU ABOVE TARGET.
+#   Ran the gate soak on the live host i915 (GL): media card open + media_play
+#   A.Minecraft.Movie.mp4 (1920x1040 h264 24fps) fullscreen on DP-3 (4K@30, scale
+#   2.0), ramsample-gate 1s sampler. RESULT:
+#     LEAK DEAD (the Phase 2 core): kidulwm anon pinned 227504 kB, ZERO drift
+#       over 3+ min playback; kplayd fds 5 / kidulwm fds 6, both bounded; GEM
+#       bounded both sides. No per-cycle stack, no steady climb. I4 pool +
+#       verdict 68/69 hold under real playback. Clean close -> kplayd standby
+#       (27MB, 0 renderD). Daily-driver OOM is dead.
+#     CPU ABOVE TARGET: kidulwm ~6.5% + kplayd ~4.9% (single-core %) during
+#       playback = ~11% total vs the ~2% gate number (that 2% was measured on
+#       a 1080p NV12 scanout, pre-compositor-composite). NOT a leak (anon flat),
+#       an EFFICIENCY item.
+#     COMMIT-RATE TELL: kplayd commits ~62/s against a 24fps source (~2.5x).
+#       Two suspects, not yet pinned: (a) wlroots rejecting the direct-scanout
+#       candidate (buffer 1920x1040 vs output 3840x2160 scale 2.0 -> compositing
+#       every frame, kidulwm pays 6.5%); (b) kplayd EGL shell re-presenting at
+#       frame-callback rate regardless of new frames (the verdict-64 per-frame
+#       import churn PoolImage was meant to kill — maybe not fully).
+#   VERDICT: docket #2 NOT closable yet — leak half closed, ~2% CPU half is
+#   not. Pin the commit-rate cause next (overlaps docket #5 judder/mode-select).
+
 # KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
 #   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
 #   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this
