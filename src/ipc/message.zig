@@ -26,6 +26,7 @@ pub const RequestTag = enum {
     notification_test,
     notification_clear,
     arrange_outputs,
+    kadence,
     kfiles_navigate,
     get_windows,
     debug_status,
@@ -82,6 +83,13 @@ pub const Request = union(RequestTag) {
     },
     notification_clear: void,
     arrange_outputs: void,
+    kadence: struct {
+        output: []const u8,
+        width: u32,
+        height: u32,
+        refresh_mhz: u32,
+        scale: ?f32 = null,
+    },
     kfiles_navigate: struct {
         path: []const u8,
     },

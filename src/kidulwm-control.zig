@@ -110,6 +110,41 @@ pub fn main(init: std.process.Init.Minimal) !void {
         }
         if (std.mem.eql(u8, cmd, "notification_clear")) break :blk .{ .notification_clear = {} };
         if (std.mem.eql(u8, cmd, "arrange_outputs")) break :blk .{ .arrange_outputs = {} };
+        if (std.mem.eql(u8, cmd, "kadence")) {
+            const output = it.next() orelse {
+                std.log.err("kadence requires <output> <width> <height> <refresh_mhz> [scale]", .{});
+                return error.MissingArgument;
+            };
+            const width_str = it.next() orelse {
+                std.log.err("kadence requires a width argument", .{});
+                return error.MissingArgument;
+            };
+            const height_str = it.next() orelse {
+                std.log.err("kadence requires a height argument", .{});
+                return error.MissingArgument;
+            };
+            const refresh_str = it.next() orelse {
+                std.log.err("kadence requires a refresh_mhz argument", .{});
+                return error.MissingArgument;
+            };
+            const width = std.fmt.parseInt(u32, width_str, 10) catch {
+                std.log.err("kadence width must be a positive integer", .{});
+                return error.InvalidArgument;
+            };
+            const height = std.fmt.parseInt(u32, height_str, 10) catch {
+                std.log.err("kadence height must be a positive integer", .{});
+                return error.InvalidArgument;
+            };
+            const refresh_mhz = std.fmt.parseInt(u32, refresh_str, 10) catch {
+                std.log.err("kadence refresh_mhz must be a positive integer", .{});
+                return error.InvalidArgument;
+            };
+            const scale: ?f32 = if (it.next()) |s|
+                std.fmt.parseFloat(f32, s) catch null
+            else
+                null;
+            break :blk .{ .kadence = .{ .output = output, .width = width, .height = height, .refresh_mhz = refresh_mhz, .scale = scale } };
+        }
         if (std.mem.eql(u8, cmd, "get_windows")) break :blk .{ .get_windows = {} };
         if (std.mem.eql(u8, cmd, "debug_status")) break :blk .{ .debug_status = {} };
         if (std.mem.eql(u8, cmd, "scene_dump")) break :blk .{ .scene_dump = {} };

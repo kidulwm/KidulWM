@@ -69,6 +69,29 @@ kmedia + ksd-input-claim-law skills.
 #   content-aware mode-select (drop output to 1080p for 1080p source so the
 #   plane scans out directly) = docket #5 territory. Leak remains DEAD.
 
+# VERDICT 73 (bobdotrix 2026-09-30) — KADENCE VERB + THE DOTCLOCK WALL. C3
+#   select's conductor primitive BUILT (uncommitted, deploy = your reload):
+#   `kidulwm-control kadence <output> <w> <h> <refresh_mhz> [scale]`. Plumbed
+#   message.zig (new RequestTag .kadence + struct), kidulwm-control.zig parser,
+#   server.zig setStageKadence (find output by name -> setCustomMode + CFC
+#   scale or override -> atomic commitState -> syncOutputScaleToWindows on
+#   success). Failed commit = ok:false, output untouched. Build ReleaseSafe
+#   clean, tests pass. kidulwm hash 1f0c0541, control 9b7baac9.
+#   THE DOTCLOCK WALL (read the wlroots source, not guessed):
+#     wlroots generate_cvt_mode(..., reduced=false, false) — custom modes are
+#     ALWAYS standard CVT, never reduced-blanking. Kogan EDID caps dotclock at
+#     300 MHz. Standard CVT 2560x1440@60 = 312.25 MHz (REJECTED); @55 = 284;
+#     @48 = ~250; reduced-blanking @60 = 241.5 (what Barticus's old 1440p used,
+#     driven below wlroots' API). So `kadence DP-3 2560 1440 60000` bounces
+#     off the cap; `48000` fits AND is clean 2:2 cadence for 24fps film.
+#   TEST PLAN (your reload, your eyes): reload, then
+#     kidulwm-control kadence DP-3 2560 1440 48000   # 2:2 for 24fps, ~250MHz
+#     kidulwm-control kadence DP-3 3840 2160 30000   # back to native 4K@30
+#   Scale note: CFC law gives 2560-wide -> scale 2 (1280x720 logical). Add an
+#   explicit scale arg (e.g. `... 48000 1.0`) to force 1x if you want the big
+#   desktop. 1440p@60 (your go-to) needs raw-modeline/DRM-level support — a
+#   follow-up card, NOT this verb (wlroots won't emit RB).
+
 # KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
 #   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
 #   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this

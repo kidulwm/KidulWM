@@ -657,6 +657,9 @@ pub const Server = struct {
                 self.arrangeOutputsLive();
                 return .{ .ok = true, .message = "outputs re-arranged" };
             },
+            .kadence => |p| {
+                return self.setStageKadence(p.output, p.width, p.height, p.refresh_mhz, p.scale);
+            },
             .media_card_toggle => {
                 // REDIRECT (TASKCARD-3): focus the media player slide if
                 // this row has one, else spawn it — a real deck slide.
@@ -780,7 +783,7 @@ pub const Server = struct {
             .focus_next => self.currentDeck().focusNext(),
             .focus_prev => self.currentDeck().focusPrev(),
             .subscribe => return .{ .ok = true, .message = "subscription registered" },
-            .set_theme, .reload_theme, .arrange_outputs, .tray_toggle, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .scene_dump, .quit => {},
+            .set_theme, .reload_theme, .arrange_outputs, .kadence, .tray_toggle, .media_card_toggle, .media_play, .media_toggle, .media_next, .media_prev, .media_seek, .notification_test, .notification_clear, .kfiles_navigate, .get_windows, .debug_status, .scene_dump, .quit => {},
         }
         self.requestLayout();
         return .{ .ok = true };
@@ -3923,6 +3926,37 @@ pub const Server = struct {
             placed += 1;
         }
         std.log.info("KidulWM: arrange_outputs re-placed {d} outputs", .{placed});
+    }
+
+    /// C3 select — switch a stage's mode (kadence) at runtime. Content-aware
+    /// mode select's conductor primitive: the usher decides, this executes.
+    /// Sets a CUSTOM mode via wlroots (which generates STANDARD CVT, reduced
+    /// blanking OFF — see the EDID dotclock cap note in usher.md C3), re-picks
+    /// scale by the CFC law unless overridden, commits atomically, and re-syncs
+    /// scale to every window on that output (the Kogan 4K quarter-screen bug).
+    /// A mode whose standard-CVT clock exceeds the panel's EDID dotclock cap
+    /// will be rejected by the connector — the commit fails, we report it, and
+    /// the output is untouched (a failed commit never leaves a half-mode).
+    pub fn setStageKadence(self: *Server, name: []const u8, width: u32, height: u32, refresh_mhz: u32, scale_override: ?f32) ipc.message.Response {
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |output| {
+            if (!std.mem.eql(u8, std.mem.span(output.wlr_output.name), name)) continue;
+
+            var state = wlr.Output.State.init();
+            defer state.finish();
+            state.setEnabled(true);
+            state.setCustomMode(@intCast(width), @intCast(height), @intCast(refresh_mhz));
+            const scale = scale_override orelse pickIntegerScaleForWidth(@intCast(width), output.wlr_output.name);
+            state.setScale(scale);
+            if (!output.wlr_output.commitState(&state)) {
+                std.log.err("KidulWM: kadence {s} -> {d}x{d}@{d}mHz commit FAILED (rejected by connector?)", .{ name, width, height, refresh_mhz });
+                return .{ .ok = false, .message = "kadence commit failed — mode rejected by connector (dotclock cap?)" };
+            }
+            self.syncOutputScaleToWindows(output.wlr_output, scale);
+            std.log.info("KidulWM: kadence {s} -> {d}x{d}@{d}mHz scale={d:.2}", .{ name, width, height, refresh_mhz, scale });
+            return .{ .ok = true, .message = "kadence applied" };
+        }
+        return .{ .ok = false, .message = "no such output" };
     }
 
     fn updateBackgroundLayout(self: *Server, box: *const wlr.Box) void {
