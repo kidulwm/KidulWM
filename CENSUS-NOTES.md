@@ -154,6 +154,25 @@ kmedia + ksd-input-claim-law skills.
 #   valid for the laptop eDP-1 (144Hz native, clean 6:6) and the future
 #   battery-TV panel; on THIS Kogan it cannot help.
 
+# VERDICT 77 (bobdotrix 2026-09-30) — DOCKET #12: DOUBLE-COMMIT REMOVED (kplayd).
+#   Removed the second wl_surface_commit(w.surface) in kplayd_shell.zig render():
+#   presentDmabuf/presentFrame/presentBlack all end in eglSwapBuffers, which on a
+#   wl_egl_window already attach+commit the main surface. The extra commit doubled
+#   the commit rate (verdict 72 ~62/s = 30Hz vsync x 2). The overlay is a DESYNC
+#   subsurface (ensureOverlay), so its own commit applies independently — the parent
+#   needs no re-commit. DEPLOYED /usr/local/bin/kplayd 39b082f4 (ReleaseSafe;
+#   .bak-d3e40c3a = prior). Single-commit now ~30/s (vsync), within the docket #12
+#   "24-30/s" target.
+#   BUILD TRAP (again, see HANDOFF line 405): plain `zig build` ships DEBUG (~13.6MB);
+#   the canonical kplayd build is -Doptimize=ReleaseSafe (~4.1MB). First deploy was
+#   Debug by accident — caught by size, redeployed ReleaseSafe.
+#   RESIDUAL (not a quick fix): render still fires at the compositor 30Hz vsync, so a
+#   24fps frame is re-blitted ~6x/s extra. Skipping that commit would starve the frame
+#   callback (no commit -> no vsync wake -> cb_starved -> late frames = judder). The
+#   clean ~24/s present-by-clock fix is silk.md §7 (submit early into DRM atomic
+#   queue), a larger present-path redesign, not this docket.
+#   TEST OWED: relog, play a 24fps film — confirm smooth + commit rate halved.
+
 # KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
 #   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
 #   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this
