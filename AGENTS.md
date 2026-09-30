@@ -40,4 +40,8 @@ Source of truth: `KNOWN_CMDS.md` in this repository.
 
 ## When in doubt
 
-Read `KNOWN_CMDS.md` first. If it's not there, check `HANDOFF.md` in this repository.
+Read `KNOWN_CMDS.md` first — that's the host core (build/deploy/control).
+Command slices by lane, read only the one your lane needs:
+`KNOWN_CMDS-vm.md` (VM), `KNOWN_CMDS-knetd.md`, `KNOWN_CMDS-aig.md`,
+`KNOWN_CMDS-apocalypse.md`, `KNOWN_CMDS-kmedia.md`.
+If not there, check `HANDOFF.md` in this repository.
