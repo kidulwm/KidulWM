@@ -45,6 +45,30 @@ kmedia + ksd-input-claim-law skills.
 #   VERDICT: docket #2 NOT closable yet — leak half closed, ~2% CPU half is
 #   not. Pin the commit-rate cause next (overlaps docket #5 judder/mode-select).
 
+# VERDICT 72 (bobdotrix 2026-09-30) — PHASE 2 CPU/COMMIT-RATE PINNED. Read the
+#   present path end-to-end (kplayd_shell.zig render/tick + Gl.zig + EglShell
+#   + kidulwm syncScanoutOverlay). The ~62/s commit and ~11% CPU are BOTH
+#   explained, and NEITHER is a leak — they are compositing/render inefficiency.
+#     COMMIT RATE ~62/s: kplayd render() commits the MAIN surface TWICE per
+#       tick when the overlay exists — eglSwapBuffers in presentDmabuf
+#       (Gl.zig:597) + an explicit wl_surface_commit(w.surface) at
+#       kplayd_shell.zig:346 (plus wl_surface_commit(ovl) for the subsurface).
+#       And tick() renders at the COMPOSITOR's vsync (frame-callback fresh),
+#       not the video fps — DP-3 is 30Hz, so ~30Hz x 2 commits = ~60/s against
+#       a 24fps source. So it's not "per-frame import churn" (PoolImage killed
+#       that) — it's double-commit + render-at-vsync.
+#     CPU ~11% (kidulwm 6.5% + kplayd 4.9%): scanout is NOT engaging. Buffer
+#       is 1920x1040 (decoded), output is 3840x2160 @ scale 2.0. wlroots can
+#       only direct-scanout a buffer that matches the output mode/plane; a
+#       1080p buffer on a 4K scale-2.0 output must be COMPOSITED (scaled) every
+#       frame — kidulwm pays the per-frame GL composite at 30Hz. The ~2% gate
+#       number was measured on a 1080p panel scanout, a different geometry.
+#   VERDICT: docket #2 "pin the cause" DONE. The ~2% CPU target is UNACHIEVABLE
+#   on 4K scale-2.0 with 1080p content via compositing — the honest close is
+#   either (a) accept compositing cost as not-a-leak, or (b) the real fix is
+#   content-aware mode-select (drop output to 1080p for 1080p source so the
+#   plane scans out directly) = docket #5 territory. Leak remains DEAD.
+
 # KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
 #   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
 #   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this
