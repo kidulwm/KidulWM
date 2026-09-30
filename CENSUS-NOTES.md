@@ -92,6 +92,39 @@ kmedia + ksd-input-claim-law skills.
 #   desktop. 1440p@60 (your go-to) needs raw-modeline/DRM-level support — a
 #   follow-up card, NOT this verb (wlroots won't emit RB).
 
+# VERDICT 74 (bobdotrix 2026-09-30) — KADENCE DEPLOYED + 1440p DEAD, LANE = 1080p.
+#   kadence is now DEPLOYED to /usr/local/bin/kidulwm (hash 710076d0, matches
+#   zig-out) — corrects verdict 73's "uncommitted/deploy=reload"; it goes live
+#   on the relog happening NOW. 1440p@48 is DEAD as a target: non-native res
+#   (TV rescales 1440p->4K) + non-native refresh (panel V-range 40-62Hz) =
+#   worse than 4K, confirmed by Barticus. The Kogan 4K panel is dotclock-capped
+#   300MHz (EDID "max dotclock 300") -> 4K = 24/25/30Hz ONLY (60 needs ~594MHz).
+#   The lane is NATIVE: 1080p@60 (3:2, standard) or 1080p@24 (pure), both in
+#   the Kogan EDID. Payoff: output==source promotes present from GL-composite
+#   to DRM scanout (Tier 2, no composite pass). Full rationale:
+#   kmedia/docs/design/silk.md (new — cadence/zero-copy study).
+#   TEST PENDING (the relog's first move): kidulwm-control kadence DP-3 1920
+#   1080 60000 -> eyeball a 24fps film; if 3:2 nags, `... 1920 1080 24000`.
+#   Docket #5 reframed to match (1440p@48 dead, lane = 1080p@60/24).
+
+# VERDICT 75 (bobdotrix 2026-09-30) — KADENCE DEPLOY COMPLETE + DOCKET #2 CLOSED.
+#   FOUND + FIXED: verdict 74 deployed the kadence SERVER (/usr/local/bin/kidulwm,
+#   710076d0) but NOT the control client — /usr/local/bin/kidulwm-control was the
+#   pre-kadence Sep 19 build (46b89df5), so `kadence` was an unknown verb on the
+#   deployed client (server + parser both had it, the client alone was stale).
+#   Deployed zig-out/bin/kidulwm-control (9b7baac9) over it; parser liveness
+#   confirmed (no-arg `kadence` -> MissingArgument). kadence is now live
+#   end-to-end; the eyeball test is unblocked.
+#   DOCKET #2 CLOSED: Phase 2 gate re-verified (verdict 71/72) — LEAK DEAD (anon
+#   227504 kB pinned, zero drift, bounded fds/GEM); CPU ~11% is compositing +
+#   kplayd double-commit, NOT a leak (verdict 72). Compositing cost ACCEPTED as
+#   not-a-leak; the efficiency fix = mode-select = docket #5 (kadence built +
+#   deployed, eyeball test pending).
+#   FOLLOW-UP (kplayd commit-rate, new docket #12): ~62/s commits = double-commit
+#   (presentDmabuf eglSwapBuffers + wl_surface_commit at kplayd_shell.zig:346) +
+#   render-at-vsync (tick at 30Hz compositor vs 24fps video). Distinct from
+#   mode-select — a kplayd render-loop fix.
+
 # KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
 #   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
 #   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this
