@@ -3930,13 +3930,16 @@ pub const Server = struct {
 
     /// C3 select — switch a stage's mode (kadence) at runtime. Content-aware
     /// mode select's conductor primitive: the usher decides, this executes.
-    /// Sets a CUSTOM mode via wlroots (which generates STANDARD CVT, reduced
-    /// blanking OFF — see the EDID dotclock cap note in usher.md C3), re-picks
-    /// scale by the CFC law unless overridden, commits atomically, and re-syncs
-    /// scale to every window on that output (the Kogan 4K quarter-screen bug).
-    /// A mode whose standard-CVT clock exceeds the panel's EDID dotclock cap
-    /// will be rejected by the connector — the commit fails, we report it, and
-    /// the output is untouched (a failed commit never leaves a half-mode).
+    /// Prefers an EXISTING EDID mode matching the request (setMode — the
+    /// connector's real, tested timing); only when the panel doesn't advertise
+    /// one do we generate a synthetic STANDARD-CVT custom mode (reduced
+    /// blanking OFF). setCustomMode on a NATIVE/preferred resolution emits a
+    /// standard-CVT timing the Kogan can't sync -> black screen (verdict 76).
+    /// Scale re-picked by the CFC law unless overridden, committed atomically,
+    /// then every window on that output is re-notified of the new scale. A mode
+    /// whose standard-CVT clock exceeds the panel's EDID dotclock cap is
+    /// rejected by the connector — the commit fails, we report it, and the
+    /// output is untouched (a failed commit never leaves a half-mode).
     pub fn setStageKadence(self: *Server, name: []const u8, width: u32, height: u32, refresh_mhz: u32, scale_override: ?f32) ipc.message.Response {
         var oit = self.outputs.iterator(.forward);
         while (oit.next()) |output| {
@@ -3945,7 +3948,11 @@ pub const Server = struct {
             var state = wlr.Output.State.init();
             defer state.finish();
             state.setEnabled(true);
-            state.setCustomMode(@intCast(width), @intCast(height), @intCast(refresh_mhz));
+            if (findMode(output.wlr_output, width, height, refresh_mhz)) |m| {
+                state.setMode(m);
+            } else {
+                state.setCustomMode(@intCast(width), @intCast(height), @intCast(refresh_mhz));
+            }
             const scale = scale_override orelse pickIntegerScaleForWidth(@intCast(width), output.wlr_output.name);
             state.setScale(scale);
             if (!output.wlr_output.commitState(&state)) {
@@ -3957,6 +3964,24 @@ pub const Server = struct {
             return .{ .ok = true, .message = "kadence applied" };
         }
         return .{ .ok = false, .message = "no such output" };
+    }
+
+    /// Find an EDID-advertised mode matching a requested width/height/refresh
+    /// (mHz). Refresh is matched within ±1 Hz so a 59.94 panel mode satisfies a
+    /// "60" request and 23.976 satisfies "24" — we want the connector's exact
+    /// timing, not a synthetic CVT re-derivation of the same nominal mode.
+    fn findMode(wlr_output: *wlr.Output, width: u32, height: u32, refresh_mhz: u32) ?*wlr.Output.Mode {
+        const w: i32 = @intCast(width);
+        const h: i32 = @intCast(height);
+        const r: i32 = @intCast(refresh_mhz);
+        var it = wlr_output.modes.iterator(.forward);
+        while (it.next()) |mode| {
+            if (mode.width != w) continue;
+            if (mode.height != h) continue;
+            const diff: i32 = mode.refresh - r;
+            if (diff >= -1000 and diff <= 1000) return mode;
+        }
+        return null;
     }
 
     fn updateBackgroundLayout(self: *Server, box: *const wlr.Box) void {

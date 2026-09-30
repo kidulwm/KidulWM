@@ -125,6 +125,35 @@ kmedia + ksd-input-claim-law skills.
 #   render-at-vsync (tick at 30Hz compositor vs 24fps video). Distinct from
 #   mode-select — a kplayd render-loop fix.
 
+# VERDICT 76 (bobdotrix 2026-09-30) — KADENCE EYEBALL: MODE-SELECT DEAD ON KOGAN + BLACK-SCREEN BUG FIXED.
+#   Barticus drove the relog test (verdict 74 plan). RESULT (his eyes):
+#     1080p@60 (60000): not better, maybe slightly worse than the 4K@30 baseline.
+#     1080p@24 (24000): WORST by far.
+#     3840x2160@30 (30000, "back to 4K"): BLACK SCREEN — recovered by
+#       re-applying 1080p@60.
+#   ROOT CAUSES (both real; one is a bug, one is a hardware wall):
+#     1. BLACK SCREEN = setStageKadence used setCustomMode for EVERY target,
+#        including the NATIVE 4K@30. setCustomMode emits standard-CVT (reduced
+#        blanking OFF) 4K@30 = ~297MHz, a timing the Kogan can't sync; the
+#        panel's real preferred 4K@30 uses different blanking. 1080p@60 "worked"
+#        only because standard-CVT 1080p@60 ~= CEA 1080p60. FIXED: kadence now
+#        prefers an EXISTING EDID mode (setMode = exact panel timing) when one
+#        matches w/h/refresh within ±1Hz, and only falls back to setCustomMode
+#        when the panel doesn't advertise the mode. DEPLOYED /usr/local/bin/
+#        kidulwm 1d0d87ec (relog to take effect; .bak-710076d0 = verdict 74).
+#     2. MODE-SELECT IS A DEAD END on the Kogan: 1080p is NON-native (the TV
+#        rescales 1080p->4K, the same wall that killed 1440p@48); 24Hz is BELOW
+#        the panel V-range 40-62Hz (EDID lists 1080p@24 as an input mode, the
+#        panel can't run it natively); 4K tops out at 30Hz (dotclock cap). NO
+#        clean cadence exists for 24fps on this panel: 48Hz needs a non-native
+#        res, 120Hz exceeds the cap, 24Hz is out of V-range. Judder on the Kogan
+#        is a HARDWARE CEILING, not a software bug.
+#   NEXT: the silk lever that IS ours is the present path, not mode-select —
+#   docket #12 (kplayd double-commit + render-at-vsync) + the scanout-tier
+#   "submit early into DRM atomic queue" work (silk.md §7). C3 mode-select stays
+#   valid for the laptop eDP-1 (144Hz native, clean 6:6) and the future
+#   battery-TV panel; on THIS Kogan it cannot help.
+
 # KBOOT NOTE (bobdotrix 2026-09-29, end of night) — docs/design/kboot.md.
 #   Drop-back boot by CUE, not key-wait: "BIOS"/"BOOT"/"DM"/snap verbs in the
 #   terminal, one-shot boot vars (OsIndications bit 0 = VERIFIED live on this
