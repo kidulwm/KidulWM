@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 
 // Kidul Files TUI — first-cut Zig file manager.

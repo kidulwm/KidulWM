@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # nested-focus-stress.sh — exercise focus/split IPC under animation load,
 # then shut down cleanly.
 set -euo pipefail

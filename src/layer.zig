@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Layer-shell (zwlr_layer_shell_v1) support — the proper fix for slurp and
 // any future layer client. Design constraints from
 // references/layer-shell-crash-notes.md:

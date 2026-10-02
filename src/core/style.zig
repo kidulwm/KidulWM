@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 
 /// Single source of truth for window chrome dimensions and colours.

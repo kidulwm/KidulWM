@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 const c = @import("c.zig").c;
 const render = @import("render.zig");

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 
 /// Display Manager visual tokens. Matches KidulWM chrome where it makes sense,

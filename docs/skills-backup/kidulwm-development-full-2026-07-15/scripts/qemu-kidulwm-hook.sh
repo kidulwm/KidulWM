@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # /etc/libvirt/hooks/qemu
 # Auto-forward SSH for KidulWM test clones.
 # Name clone domains like "kidulwm-test-<PORT>", e.g. "kidulwm-test-2223".

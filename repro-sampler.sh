@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Phase 2 step 1 host repro sampler — captures RSS + CPU + FRAMETRACE deltas
 # during video playback so we can name the wedge owner (kidulwm vs kplayd)
 # and watch the render loop under load.

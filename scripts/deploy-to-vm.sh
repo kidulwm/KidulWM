@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Deploy KidulWM to the VM once it's reachable
 # Usage: ./deploy-to-vm.sh
 

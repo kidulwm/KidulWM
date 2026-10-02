@@ -9,6 +9,7 @@
 //! kplayd replies synchronously inside its 20ms poll quantum, so a
 //! bounded synchronous exchange is correct here — no async state
 //! machine, no event-loop integration for v1.
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 const std = @import("std");
 const linux = std.os.linux;

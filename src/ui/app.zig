@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 const c_cairo = @cImport({
 c_cDefine("_FORTIFY_SOURCE", "0");

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
 # nested-smoke.sh — launch KidulWM nested under an existing Wayland session,

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 
 /// Physical output arrangement, read from ~/.config/kidulwm/outputs.toml

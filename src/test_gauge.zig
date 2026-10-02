@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 const c_cairo = @import("dm").c;
 const gauge = @import("ui/gauge.zig");

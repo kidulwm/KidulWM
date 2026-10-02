@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
 # nested-three-window.sh — verify KidulWM survives mapping three real XDG toplevels.

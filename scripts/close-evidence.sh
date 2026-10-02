@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 # close-never-crashes evidence (CARD 2b slice 4): open media slide, send
 # media_play (kplay open logged), close the slide, repeat — compositor must

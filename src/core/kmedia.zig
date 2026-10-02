@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // kmedia — Zig-native audio capture + band analysis for KidulWM.
 //
 // Captures the monitor of the default PipeWire sink (the mixed output of

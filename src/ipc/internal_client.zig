@@ -12,6 +12,7 @@
 //! All synchronization goes through pumpRoundtrip(): flush → dispatch the
 //! SERVER loop (timeout 0) → flush server clients → dispatch pending
 //! client events, until the sync callback lands.
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 const std = @import("std");
 const wayland = @import("wayland");

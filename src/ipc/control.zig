@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 const linux = std.os.linux;
 const message = @import("message.zig");
