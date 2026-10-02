@@ -824,6 +824,11 @@ pub const Server = struct {
         _ = try wlr.XdgOutputManagerV1.create(wl_server, output_layout);
         const compositor = try wlr.Compositor.create(wl_server, 6, renderer);
         const scene = try wlr.Scene.create();
+        // zwlr_gamma_control_v1: night-light / colour-temperature clients
+        // (gammastep, wlsunset, noctalia nightlight) submit per-output gamma
+        // LUTs; the scene graph owns set_gamma and applies the LUT at commit.
+        const gamma_control_manager = try wlr.GammaControlManagerV1.create(wl_server);
+        scene.setGammaControlManagerV1(gamma_control_manager);
         const scene_output_layout = try scene.attachOutputLayout(output_layout);
         const xdg_shell = try wlr.XdgShell.create(wl_server, 6);
         // zwlr_layer_shell_v1 (version 5): slurp and any future layer
