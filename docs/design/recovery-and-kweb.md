@@ -40,6 +40,49 @@ Residual (honest): supply-chain silicon hooks, endpoint zero-days, metadata,
 raw legal power. "Capability doesn't exist" is the strongest position, not a
 perfect shield.
 
+## OTA = the green button (two friends)
+
+The Big Red Button's twin, same channel, different verb. OTA done the usual
+way (server-push) is a standing RCE backdoor: the vendor's server writes code
+to every box, so owning the server owns the fleet. The green button inverts
+it and kills the backdoor by construction:
+
+- User-instigated ONLY. The channel does not exist until the user fires it.
+  No standing inbound listener — no listener, no attack surface.
+- Egress-only. The device dials out; it never accepts an unsolicited call.
+- update and rollback are the SAME verb: apply signed image N+1 vs N. One
+  mechanism, no separate rollback channel.
+
+The move that makes it clean: the server is NOT a master — it is a peer. It
+carries its own OMEMO client identity, and that identity is its signature.
+The TV and the server are just two friends chatting over XMPP, mutually
+authenticated, neither privileged. The update is a file transfer sized for
+the firmware (Jingle / bytestream / HTTP Upload under OMEMO). A rogue or
+compromised server is simply unfriended; it never held special power.
+
+Three layers, three different proofs, no single attacker can fake more than
+zero of them:
+
+- OMEMO peer channel   -> who can talk (intent, confidentiality).
+- Release signing key  -> what code is valid (provenance). Held by B&B,
+                          wrapped by the kidulKey; the server never holds it,
+                          only serves blobs it cannot modify.
+- User consent         -> when (the physical act that opens the channel).
+
+The server cannot mint an update. The network cannot read or forge the
+request. Only the user opens the channel; only the release key blesses the
+payload.
+
+Threat model (honest): we are not ghosts. We do not chase anonymity. Three
+wants — safe (no one compromises the update path), not tracked (no telemetry
+unless the user opts in; "mobile" tracking is a user-requested need, consent
+made physical), encrypted (our business remains our business). Presence is a
+feature the user turns on, never a default we impose.
+
+Fill-the-gaps: XMPP + OMEMO + file transfer are mature, open, proven. Reuse
+them wholesale; build only the thin KSD layer on top — the same move that
+made Linux the base and kushd the gap-filler.
+
 ## Licensing (resolved 2026-10-02)
 
 Rule:
