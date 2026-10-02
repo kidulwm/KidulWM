@@ -8,6 +8,31 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 80 (bobdotrix 2026-10-02) — kushd PID-1 FLOOR + POWER VERBS PROVEN + GAMMA CONTROL.
+#   12h coherent session; three lanes landed:
+#   1. kushd = PID-1 (commit c976d02): mountEarly (proc/sysfs/devtmpfs/tmpfs/run
+#      + remount root) + installSignals (SIGTERM/SIGINT/SIGPWR) + shutdown()
+#      (term seats -> SIGKILL stragglers -> sync -> reboot/poweroff). BILL_PATH
+#      -> /etc/kushd/bill.kush. POWER VERBS PROVEN on the ksd-boot COW clone:
+#      SIGTERM -> RB_POWER_OFF ("shut off"), SIGINT -> RB_AUTOBOOT (serial
+#      "reboot: Restarting system" + GRUB reload, loop observed). Signal map
+#      LOCKED: SIGINT=reboot, SIGTERM/SIGPWR=poweroff; no RB_HALT_SYSTEM / kexec
+#      / runlevels. REMAINING (docket #4): initramfs MODULES (serial 8250 / net
+#      / GPU) -> cold reboot E2E (zero systemd + media plays).
+#   2. GAMMA CONTROL (commit 0a708bc): zwlr_gamma_control_v1 wired into kidulwm
+#      (wlr_scene_set_gamma_control_manager_v1, 2 lines in server.zig init).
+#      ReleaseSafe + smoke-test + DEPLOYED /usr/local/bin/kidulwm (.bak kept).
+#      Enables night-light (gammastep installed; wlsunset; noctalia nightlight)
+#      + the movie/sports picture-mode substrate. Glare root cause = cold 6500K
+#      colour temp, NOT the soft-white hex values or the backlight (now 20%).
+#   3. LAW DOCS LOCKED (commit 09c7bc5): power-states.md (boot graph, S3/WoL by
+#      machine class, kmodd device bring-up), cold-storage.md (vault = encrypted
+#      FS, cued not resident), crypto.md (kidulKey root of trust, SSH data lane,
+#      household roster). + aig 0002 (LLD/LLVM glibc 2.39 .sframe, 5c93c0a) +
+#      kfiles home_root/zram (8a541d7) + ksd-golden host-setup-log (1db8a16).
+#   FLAG (Barticus): 10 repos carry an untracked Apache-2.0 LICENSE — contradicts
+#   the GPL law. Left untracked pending his call.
+
 # VERDICT 70 (bobdotrix 2026-09-30) — RELOG-VERIFY 68/69 PASSED. The four
 #   createSceneBuffer creator-drop fixes (media slide, overview card, home
 #   card, home chrome) are CONFIRMED by the hard play/close cycle, not just
