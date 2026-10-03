@@ -15,9 +15,11 @@ kmedia + ksd-input-claim-law skills.
 #   (service), deck/crew (user), quarters (restricted), brig (KVM arm). Three axes
 #   never blurred: class=walls, arm=mechanism, uid=identity. Eye-above law: Captain
 #   ABOARD (wheel) vs KEYE ABOVE (cord) — two powers, never merged. One name per
-#   thing (face=conductor, sails=the boot image). dom0 = the CAPTAIN'S SAFE (the
-#   trust core strongbox). New law docs/law/starship.md (LOCKED); theatre.md +
-#   dom0.md cross-referenced; KSD-INDEX + skill updated.
+#   thing (face=conductor, sails=the boot image). dom0 = the CAPTAIN'S SAFE — NOT
+#   below decks, in the COCKPIT, security 24/7, ONLY the captain has the keys,
+#   skipper dies before he hands them over. SKIPPER'S LAW: nothing is 100% safe;
+#   a good skipper gets you home unscathed through experience + know-how. px never
+#   know the real truth, they just enjoy the show.
 
 # VERDICT 82 (bobdotrix 2026-10-03) — NAME LOCKED "the brig" + vault/brig split corrected.
 #   Barticus overruled "bubble" -> "the brig" (StarShipKidul's ship jail; staunch,

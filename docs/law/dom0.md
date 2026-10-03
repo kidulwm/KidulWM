@@ -44,9 +44,10 @@ allowed to misbehave unattended. Contained AND leashed.
 
 ## The trust core (what stays bare-kernel, network-free)
 
-The trust core is the CAPTAIN'S SAFE (starship.md): the armoured strongbox in
-the captain's quarters that holds the things neither crew, nor sea, nor sky may
-reach.
+The trust core is the CAPTAIN'S SAFE (starship.md) — and it is NOT below decks.
+It sits in the COCKPIT, at the captain's side, with security around it 24/7.
+ONLY the captain has the keys; no other soul has access. The skipper has to
+DIE before he hands over the keys. Neither crew, nor sea, nor sky may reach in.
 
   kushd     the usher — management. No network.
   kvaultd   the secrets — cold, keyed by kidulKey (cold-storage.md).

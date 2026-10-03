@@ -22,10 +22,12 @@ the sails" is the boot image, and the usher/first-mate is the one who makes
 sure every piece is in place before they catch wind. One actor, one name for
 each of its two stances.
 
-DOM0 is the CAPTAIN'S SAFE (dom0.md): the armoured strongbox in the captain's
-quarters that holds the trust root — kidulKey, kvaultd, the usher, the face.
-Neither the crew, nor the sea, nor the sky may reach into it. The safe is why
-the network lives in the brig, not the trust core.
+DOM0 is the CAPTAIN'S SAFE (dom0.md) — and it is NOT below decks. It sits in
+the COCKPIT, at the captain's side, with security around it 24/7. It holds the
+trust root — kidulKey, kvaultd, the usher, the face. ONLY the captain has the
+keys; no other soul has access. The skipper has to DIE before he hands over
+the keys. Neither the crew, nor the sea, nor the sky may reach into it. The
+safe in the cockpit is why the network lives in the brig, not the trust core.
 
 ## The two boundaries — sea and sky
 
@@ -74,3 +76,15 @@ The face is the CONDUCTOR, not "the sails" — the sails belong to the boot
 image ("hoist the sails"), not to the face's permanent name. Every job has one
 home and one word. A thing with two names is the two-owner smell (theatre.md)
 in a new costume.
+
+## The skipper's law — nothing is ever 100% safe
+
+The sea is not always calm; it gets rough, and so does the internet (hackers,
+storms, the whole beer garden of machines). So NOTHING is ever 100% safe — and
+we do not pretend otherwise. The claim is not "unbreachable"; it is that a good
+skipper gets you to your destination unscathed through experience and know-how.
+Defence by architecture (the ponder pays off) buys you the rough-water margin;
+it does not promise calm seas. This is what "colder than Qubes" actually means:
+a better-protected safe and a steadier hand, not a magic hull. And the px
+(the audience, the passengers) never know the real truth — they just enjoy the
+show. That is the whole point of the theatre.
