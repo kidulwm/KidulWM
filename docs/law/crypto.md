@@ -23,7 +23,9 @@ X3DH / double-ratchet layer. All cued tentacles, all connection-time:
                original E2E surface.
   device auth  remote -> NAS/TV. The remote holds the key (kidulKey), proves
                identity to the device it pokes; the device proves back. The
-               control channel (poke / command) is encrypted.
+               control channel (poke / command) is encrypted. The SEAT side —
+               admitting an input device as a trusted keyboard, below seatd —
+               is its own law (input-trust.md): admit by proof, not presence.
   WAN          router -> ISP. The router is the verifier + encryptor for
                everything behind it; it authenticates upstream and encrypts
                the link.

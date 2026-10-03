@@ -1272,8 +1272,6 @@ pub const Server = struct {
             report.appendSlice(self.allocator, "FAIL no outputs\n") catch return;
         } else if (self.output_drop_count > 0) {
             report.print(self.allocator, "FAIL {d} output(s) dropped\n", .{self.output_drop_count}) catch return;
-        } else if (self.input_device_counts.keyboard == 0) {
-            report.appendSlice(self.allocator, "FAIL no keyboard\n") catch return;
         } else if (self.keybinds.binds.items.len == 0) {
             report.appendSlice(self.allocator, "FAIL no keybinds\n") catch return;
         } else {

@@ -8,6 +8,16 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 86 (bobdotrix 2026-10-03) — INPUT TRUST LAW LOCKED: the seat admits input by proof, not presence.
+#   TV has no keyboard; the keyboard is the crypto-connected remote. Seeds live on the
+#   remote/mobile, NOT the vault (vault=cold rest, seed=live proof). Auth is a GATE
+#   BELOW seatd (input-enumeration path, not a daemon): pass=TRUSTED keyboard, fail=
+#   UNTRUSTED. Pair once over the wire, challenge/response on connect. Base keys are
+#   standard HID usage codes; chord layer in /etc/kushd/keycombo.map (pre-settings).
+#   Remote = fallback getty's hand (works when vault cold + kidulwm dark). Doc: docs/law/
+#   input-trust.md. Closes 3 kidul-remote open questions (HID single, carry-key protocol,
+#   seat trust). Also: kidulwm bootcheck no longer FAILs on "no keyboard" (removed branch).
+
 # VERDICT 85 (bobdotrix 2026-10-03) — SEAT MINTED: kidulwm + ksound run under kushd, zero systemd.
 #   kushd mintSession (root, pre-setuid): /run/user/<uid>, setgroups(audio video input
 #   seat render), XDG_RUNTIME_DIR+HOME; seatUid()=/etc/kushd/seat->1000 (no more nobody).
