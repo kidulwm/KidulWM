@@ -5,7 +5,7 @@ machinery, no DM. "Sensible design is all that's needed."
 
 ## The boot graph (time-to-first-playable)
 
-  firmware -> limine(timeout 0) -> kernel -> initramfs (mount + load drivers) ->
+  firmware -> limine(timeout 0) -> kernel -> kboot (mount + load drivers) ->
   FOUNDATION: knetd (network authority, ACTIVE — a CAGED sys-net brig, see
   dom0.md) + log drain + getty (the mouth)
   -> kushd (usher) -> kidulwm (the face) -> cue kplayd -> playing.
@@ -32,6 +32,32 @@ for a pen — it never mints one itself.
 
 bill correction: drop the knetd line from bill.kush's BODY list (knetd is
 foundation, not a kushd act) — same class of fix as the dropped kvisd line.
+
+## kboot — the usher's handoff (LOCKED 2026-10-03, Barticus present)
+
+kboot is the boot stage: firmware handoff -> kernel -> mount root + load
+drivers -> exec kushd. Its whole job is one word: kboot -> kbuggerOff. It
+boots, hands off, and is gone. A fresh usher every boot.
+
+The boot order IS the usher's handoff. mkinitcpio HOOKS, limine.conf, the
+drop-back flags — these are not a ticket; they are HANDOFF NOTES, written for
+the next usher (same shape as HANDOFF.md between relogs). The usher updates
+the kboot files; the thing just kboots. De-systemd-ize = hand back the jobs
+Linux already does, and write the handoff ourselves — in our handwriting, not
+systemd's unit-file handwriting.
+
+## The recovery path lives BELOW the thing it recovers (LOCKED 2026-10-03)
+
+One principle, three instances — the shape that makes the handoff survive a
+bad boot. A thing cannot pick its own rescue:
+
+  limine  recovers kushd+kernel  (snapshot rollback) — below the usher.
+  knetd   survives kushd         (network up first) — dom0.md.
+  remote  survives the vault     (seed proves, vault cold) — input-trust.md.
+
+This is why kushd does NOT do the bootloader job: the usher is the thing the
+bootloader recovers. The recovery path is the handoff itself, and it must
+never be corrupted by the boot it is there to rescue.
 
 ## Device bring-up (drivers + perms)
 

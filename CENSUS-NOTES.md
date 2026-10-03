@@ -8,6 +8,14 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 87 (bobdotrix 2026-10-03) — KBOOT + RECOVERY-PATH LAW LOCKED (power-states.md).
+#   kboot = the boot stage (firmware->kernel->mount/load->exec kushd), job = "kboot->kbuggerOff".
+#   Boot order IS the usher's handoff: mkinitcpio HOOKS/limine.conf = HANDOFF NOTES for the next
+#   usher, a fresh usher every boot. De-systemd-ize = hand back the jobs Linux already does.
+#   Recovery path lives BELOW the thing it recovers (limine recovers kushd; knetd survives kushd;
+#   remote survives the vault). kushd does NOT do the bootloader job. Snapper + limine-snapper-sync
+#   + btrfs tiers already live on the host (verified); the one systemd artifact left = snapper's timer.
+
 # VERDICT 86 (bobdotrix 2026-10-03) — INPUT TRUST LAW LOCKED: the seat admits input by proof, not presence.
 #   TV has no keyboard; the keyboard is the crypto-connected remote. Seeds live on the
 #   remote/mobile, NOT the vault (vault=cold rest, seed=live proof). Auth is a GATE
