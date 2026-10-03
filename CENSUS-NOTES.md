@@ -8,6 +8,17 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 85 (bobdotrix 2026-10-03) — SEAT MINTED: kidulwm + ksound run under kushd, zero systemd.
+#   kushd mintSession (root, pre-setuid): /run/user/<uid>, setgroups(audio video input
+#   seat render), XDG_RUNTIME_DIR+HOME; seatUid()=/etc/kushd/seat->1000 (no more nobody).
+#   seatd BODY act mints /run/seatd.sock; ksound class service->user. kidulwm runs via
+#   rig/kidulwm-seat.sh (WLR_* scaffolding incl WLR_LIBINPUT_NO_DEVICES=1 for no-evdev VM).
+#   RESULT: comm=kushd, seatd+kidulwm+ksound ALL up no crash-loop; kidulwm "backend
+#   started", DRM fd, output Virtual-1 1920x1080, 22 keybinds; ksound "daemon up socket
+#   /run/user/1000/ksound.sock". bootcheck "FAIL no keyboard" = expected (0 evdev, not a
+#   crash). REMAINING for media-plays: pipewire (not cued) + kplayd + media source.
+#   DEPLOY TRAP: virsh destroy never fsyncs — sync before destroy, or guestmount --rw.
+
 # VERDICT 84 (bobdotrix 2026-10-03) — kushd PID-1 cold reboot PROVEN; media blocked on seat+dev-node.
 #   grub init=/usr/local/bin/kushd + base/udev + MODULES=(virtio_net virtio_gpu) ->
 #   comm=kushd, zero systemd, SIGTERM-1 clean poweroff (domstate=shut off). virtio_gpu/
