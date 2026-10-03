@@ -44,12 +44,16 @@ allowed to misbehave unattended. Contained AND leashed.
 
 ## The trust core (what stays bare-kernel, network-free)
 
+The trust core is the CAPTAIN'S SAFE (starship.md): the armoured strongbox in
+the captain's quarters that holds the things neither crew, nor sea, nor sky may
+reach.
+
   kushd     the usher — management. No network.
   kvaultd   the secrets — cold, keyed by kidulKey (cold-storage.md).
   kidulKey  the silicon root of trust (crypto.md).
   kidulwm   the face — the eye above the stage (theatre.md KEYE).
 
-Nothing else. The trust core is the smallest thing that must be trusted to
+Nothing else. The safe is the smallest thing that must be trusted to
 touch the hardware; everything else — network, the face's clients, the
 tentacles, the beer garden, the brig — lives outside it, cued or caged.
 

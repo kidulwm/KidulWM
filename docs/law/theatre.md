@@ -3,6 +3,10 @@
 Locked 2026-10-01, Barticus present. Do not relitigate. Supersedes the tier
 names in usher.md (KSEAT is retired) and every earlier "body/tentacle" phrasing.
 
+NOTE (2026-10-03): the theatre is the TOP DECK of StarShipKidul. This law names
+the stage; starship.md names the ship that carries it (governance, the sea/sky
+boundaries, the trust-grade seating plan). Two maps, one vessel.
+
 KSD is a theatre. The seating and the colouring are not the show until they
 are together; the show is emergent, and it is legible only from above.
 

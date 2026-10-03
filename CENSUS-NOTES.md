@@ -8,6 +8,17 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 83 (bobdotrix 2026-10-03) — STARSHIPKIDUL FRAME LOCKED + dom0 = the captain's safe.
+#   The ship is the OUTER frame; the theatre is its TOP DECK. kushd = the joint
+#   (first mate / usher). Two boundaries: sea (untrusted local, pen+brig wall) and
+#   sky (WAN, knetd wall). Trust grades named: bridge (system), wardroom
+#   (service), deck/crew (user), quarters (restricted), brig (KVM arm). Three axes
+#   never blurred: class=walls, arm=mechanism, uid=identity. Eye-above law: Captain
+#   ABOARD (wheel) vs KEYE ABOVE (cord) — two powers, never merged. One name per
+#   thing (face=conductor, sails=the boot image). dom0 = the CAPTAIN'S SAFE (the
+#   trust core strongbox). New law docs/law/starship.md (LOCKED); theatre.md +
+#   dom0.md cross-referenced; KSD-INDEX + skill updated.
+
 # VERDICT 82 (bobdotrix 2026-10-03) — NAME LOCKED "the brig" + vault/brig split corrected.
 #   Barticus overruled "bubble" -> "the brig" (StarShipKidul's ship jail; staunch,
 #   authoritative). AND corrected the framing: the vault is NOT put in the cage.
