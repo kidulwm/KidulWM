@@ -8,6 +8,13 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 88 (bobdotrix 2026-10-03) — SILICON FLOOR LOCKED: zeroizing kboot de-foreigns SOFTWARE only.
+#   kboot+kushd+kidulwm = one tower, all ours, from firmware handoff up. What it does NOT remove:
+#   the silicon (CPU microcode, Intel ME/AMD PSP, UEFI firmware) — resident before our code, DMA to
+#   memory, whole session. No software evicts it; only owning the chip (RISC-V+FPGA north star) does.
+#   Skipper's law "NOTHING IS EVER 100% safe" = doctrine, not defeatism. Corrected dom0.md, power-states.md,
+#   kboot.md. Sounds parked at ~/Music/kidul-chimes/ (17 files) + ksound/assets/om-gen.py (tweakable generator).
+
 # VERDICT 87 (bobdotrix 2026-10-03) — KBOOT + RECOVERY-PATH LAW LOCKED (power-states.md).
 #   kboot = the boot stage (firmware->kernel->mount/load->exec kushd), job = "kboot->kbuggerOff".
 #   Boot order IS the usher's handoff: mkinitcpio HOOKS/limine.conf = HANDOFF NOTES for the next

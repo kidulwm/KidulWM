@@ -72,6 +72,22 @@ resident. The thing that goes in the brig is the NETWORK, not the secrets. The
 vault = data at rest, colder than Qubes; the brig = the network authority,
 leashed and cut-able. One word each, never shared.
 
+## The silicon floor — colder than Qubes, but not colder than the chip
+
+"Colder than Qubes" is a SOFTWARE claim, and it holds: the vault is cued not
+resident, the network is caged not trusted, the face is cued. But one layer
+is below all of it and is not ours: CPU microcode, the Intel ME / AMD PSP, and
+the UEFI firmware itself — loaded at reset before our code runs, resident in
+the silicon for the whole session, with DMA to memory. No software we write
+evicts them; only owning the chip (RISC-V + FPGA, kboot.md) does.
+
+This is why the skipper's law (starship.md) is doctrine, not defeatism:
+"NOTHING IS EVER 100% safe." We are colder than Qubes in every layer we can
+touch; the silicon is the one layer we cannot, and the north star is to own
+it too. Zeroizing kboot de-foreigns every software stage above the silicon;
+the silicon is the last manufacturer fault line, and it is a hardware docket,
+not a software one.
+
 ## The two arms of the seat grade (naming, LOCKED)
 
 The seat grade has two arms of isolation (theatre.md beer garden):

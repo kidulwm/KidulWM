@@ -59,6 +59,27 @@ This is why kushd does NOT do the bootloader job: the usher is the thing the
 bootloader recovers. The recovery path is the handoff itself, and it must
 never be corrupted by the boot it is there to rescue.
 
+## The fault lines — what kboot zeroization removes, and what it cannot
+
+Zeroizing kboot + kushd + kidulwm de-foreigns every SOFTWARE stage from the
+firmware handoff up: boot stub, init, daemons, face — all ours, one tower.
+Two things remain not-ours, and they are different kinds of foreign:
+
+  KERNEL   the last foreign SOFTWARE. Held only because it owns the drivers we
+           would otherwise write for a decade. The north-star docket (kboot.md:
+           RISC-V + FPGA puts even bring-up in our hands).
+
+  SILICON  CPU microcode, the Intel ME / AMD PSP, the UEFI firmware itself.
+           Loaded at reset — BEFORE our code runs — resident in the CPU and
+           chipset for the whole session, with DMA to memory. Zeroizing the
+           boot chain does NOT remove them; they sit below it, and no software
+           we write can evict them. Only owning the chip does.
+
+This is why the skipper's law (starship.md) is doctrine, not defeatism:
+"NOTHING IS EVER 100% safe." The manufacturer's silicon is the one fault line
+software cannot zeroize — it is the reason the captain's safe is in the cockpit
+with only the captain's keys, and the reason the north star is our own silicon.
+
 ## Device bring-up (drivers + perms)
 
 Drivers load at BOOT, before kushd seats anything — never a daemon's job, never
