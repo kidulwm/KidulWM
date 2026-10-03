@@ -6,7 +6,8 @@ machinery, no DM. "Sensible design is all that's needed."
 ## The boot graph (time-to-first-playable)
 
   firmware -> limine(timeout 0) -> kernel -> initramfs (mount + load drivers) ->
-  FOUNDATION: knetd (network authority, ACTIVE) + log drain + getty (the mouth)
+  FOUNDATION: knetd (network authority, ACTIVE — a CAGED sys-net bubble, see
+  dom0.md) + log drain + getty (the mouth)
   -> kushd (usher) -> kidulwm (the face) -> cue kplayd -> playing.
 
 Foundation-first BECAUSE the usher stands on it: kushd consumes knetd (to dish
@@ -14,6 +15,11 @@ out network pens for the beer garden / VMs / every machine class) when it seats
 each act. There is no "under or over" — knetd is neither a kushd child nor
 alongside it; it is the substrate the usher needs already up to do its job.
 knetd survives kushd (the recovery path) for the same reason.
+
+BUT knetd is CAGED, not a bare-kernel peer of the secrets: network does not
+live in the trust core (dom0.md). It is the sys-net bubble — boots before
+kushd, survives kushd, owns the pens, and is isolated from kvaultd/kidulKey by
+the same wall that keeps the beer garden out of the theatre.
 
 The vault is NOT a foundation process — it is COLD STORAGE: an encrypted file,
 unlocked on demand (cued), wiped from RAM on close (zeroize + no-swap + no-dump).
