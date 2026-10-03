@@ -8,6 +8,16 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 84 (bobdotrix 2026-10-03) — kushd PID-1 cold reboot PROVEN; media blocked on seat+dev-node.
+#   grub init=/usr/local/bin/kushd + base/udev + MODULES=(virtio_net virtio_gpu) ->
+#   comm=kushd, zero systemd, SIGTERM-1 clean poweroff (domstate=shut off). virtio_gpu/
+#   virtio_net load, eth0+lo present, bill seats 10 acts, respawn backoff works. TWO named
+#   gaps stop 'media plays': (1) kidulwm libseat "No backend was able to open a seat"
+#   (no logind under kushd -> no DRM session -> headless fallback -> die). Needs seatd or
+#   kushd-minted seat. (2) ksound "syscall NOENT" main.zig:35 (dev node absent, no udev
+#   coldplug). Box RESTORED to systemd (grub reverted, proof act removed, SSH alive).
+#   Next lane: seat provider for kidulwm under kushd, then ksound node bring-up.
+
 # VERDICT 83 (bobdotrix 2026-10-03) — STARSHIPKIDUL FRAME LOCKED + dom0 = the captain's safe.
 #   The ship is the OUTER frame; the theatre is its TOP DECK. kushd = the joint
 #   (first mate / usher). Two boundaries: sea (untrusted local, pen+brig wall) and
