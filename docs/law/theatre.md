@@ -44,7 +44,7 @@ by the usher. Two kinds, by lifecycle:
   BODY  — always-on, shared. ksound, knetd, the log drain, the getty. The
           organs everyone leans on. (knetd stands ALONE — its own locked stance;
           the network is the recovery path and the isolation substrate, never a
-          kushd child. It is CAGED — a bubble, not a bare-kernel peer of the
+          kushd child. It is CAGED — the brig, not a bare-kernel peer of the
           secrets; network does not live in the trust core. See dom0.md.)
   LIMBS — cued, single-purpose. kplayd, the slides. Seated on cue, dropped when
           the cue ends.
@@ -56,7 +56,7 @@ royals (the class-1 alarm, the show-stealing guest) may take the floor, but
 they are still IN the theatre and still under the KEYE's light — nothing gets a
 seat above the eye.
 
-BEER GARDEN — the untrusted. The riff raff, the bubbles (was "the VM types"),
+BEER GARDEN — the untrusted. The riff raff, the brig (was "the VM types"),
 the trojan horses. They go crazy outside, and their drinks land on their own table, never the
 velour. Three legs cut, by mechanism not vigil:
 

@@ -30,12 +30,17 @@ boots before kushd, sharing the trust core with kvaultd and kidulKey's
 material. Network is our largest parsed-input attack surface, seated inside
 dom0. A knetd compromise today is a dom0 compromise.
 
-Correction: knetd is the caged sys-net, NOT a bare-kernel peer of the secrets.
+Correction: knetd is the CAGED sys-net, NOT a bare-kernel peer of the secrets.
 It keeps its two hard-won properties —
   - it boots BEFORE kushd (the recovery path: network survives the usher), and
   - it owns the network pens (mints them for the beer garden, never kushd),
-— but it does so from INSIDE its own cage (a bubble), not from the trust core.
-A knetd compromise is a bubble compromise, never a dom0 compromise.
+— but it does so from INSIDE its own cage (the brig), not from the trust core.
+A knetd compromise is a brig compromise, never a dom0 compromise.
+
+The brig is where the usher holds the cut. "Make a mistake and I will cut you":
+knetd lives on the usher's leash — the one seat the usher can sever at any
+instant without warning, because the network is the thing that must never be
+allowed to misbehave unattended. Contained AND leashed.
 
 ## The trust core (what stays bare-kernel, network-free)
 
@@ -46,9 +51,9 @@ A knetd compromise is a bubble compromise, never a dom0 compromise.
 
 Nothing else. The trust core is the smallest thing that must be trusted to
 touch the hardware; everything else — network, the face's clients, the
-tentacles, the beer garden, the bubbles — lives outside it, cued or caged.
+tentacles, the beer garden, the brig — lives outside it, cued or caged.
 
-## Colder than Qubes
+## Colder than Qubes (the VAULT, not the cage)
 
 Qubes' vault is a resident KeePassX process inside a networkless VM — the
 secrets sit in RAM for the whole session. Our vault (cold-storage.md) refuses
@@ -56,24 +61,31 @@ the resident process entirely: encrypted filesystem, cued-on-demand,
 decrypt-on-read, zeroize on close, plaintext lifetime of seconds. No seat, no
 process, nothing resident in RAM when closed. Colder.
 
+DO NOT blur the two arms (2026-10-03 correction, Barticus): the vault is NOT
+put inside the cage. The vault is ALREADY the coldest storage — cued, not
+resident. The thing that goes in the brig is the NETWORK, not the secrets. The
+vault = data at rest, colder than Qubes; the brig = the network authority,
+leashed and cut-able. One word each, never shared.
+
 ## The two arms of the seat grade (naming, LOCKED)
 
 The seat grade has two arms of isolation (theatre.md beer garden):
 
-  pen     (kpen)     namespaces, fork/exec, cheap, shared kernel — the
-                     everyday untrusted seat (browser, email, apps).
-  bubble  (was VM'k) KVM, a whole guest, own kernel, heavy — foreign code,
-                     untrusted downloads (docket #13), a guest OS you don't
-                     trust.
+  pen   (kpen)   namespaces, fork/exec, cheap, shared kernel — the everyday
+                 untrusted seat (browser, email, apps).
+  brig  (was VM'k, briefly "bubble")   KVM, a whole guest, own kernel, heavy —
+                 foreign code, untrusted downloads (docket #13), a guest OS
+                 you don't trust — AND knetd, the network authority.
 
-The bubble is the heavier wall and the friendlier name: sealed, self-contained,
-transparent (see the untrusted thing without touching it), and disposable —
-"pop the bubble" IS the teardown (process-death is the kill). knetd's sys-net
-home is a bubble. Qubes' domU / AppVM; our bubble.
+The brig is the heavier wall and the stauncher name: the ship's jail below
+decks, where the untrusted thing is confined AND the usher holds the cut.
+StarShipKidul (§7.2) already sails — the Captain, the crew, the PAX, the wheel;
+the brig is where the untrusted thing is locked and can be severed at any
+instant if it misbehaves. Qubes' domU / AppVM; our brig.
 
 ## Status
 
-Principle LOCKED now. The MECHANISM (how knetd rides inside a bubble before
+Principle LOCKED now. The MECHANISM (how knetd rides inside the brig before
 kushd — VFIO passthrough vs a lean pre-kushd launcher vs cgroup) is a docket,
 not yet built. Until it lands, knetd runs bare-kernel but is DESIGNED as if it
-were caged: no access to the trust path, its own netns, its own typed contract.
+were brig'd: no access to the trust path, its own netns, its own typed contract.

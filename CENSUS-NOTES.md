@@ -8,6 +8,17 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 82 (bobdotrix 2026-10-03) — NAME LOCKED "the brig" + vault/brig split corrected.
+#   Barticus overruled "bubble" -> "the brig" (StarShipKidul's ship jail; staunch,
+#   authoritative). AND corrected the framing: the vault is NOT put in the cage.
+#   The vault is ALREADY the coldest storage (cued, not resident) — that IS the
+#   "colder than Qubes" claim. The thing in the brig is the NETWORK (knetd), on
+#   the usher's leash: "make a mistake and I will cut you." vault = data at rest;
+#   brig = network authority, cut-able. One word each, never shared. Propagated
+#   bubble -> brig everywhere (dom0.md rewritten, theatre.md, power-states.md,
+#   SYSTEM.md, KSD-INDEX, DOCKETS #4, skill SKILL.md + kushd-usher.md two-arms +
+#   slice 11c). Verdict 81's "bubble" lines are superseded.
+
 # VERDICT 81 (bobdotrix 2026-10-03) — DOM0 LAW LOCKED + "bubble" naming + docket #4 cold-reboot prep.
 #   Architecture decision with Barticus (the Qubes question). Two locks:
 #   1. DOM0 LAW (new docs/law/dom0.md, LOCKED): KSD IS dom0 — recognised, not
