@@ -15,8 +15,10 @@ kmedia + ksd-input-claim-law skills.
 #   (service), deck/crew (user), quarters (restricted), brig (KVM arm). Three axes
 #   never blurred: class=walls, arm=mechanism, uid=identity. Eye-above law: Captain
 #   ABOARD (wheel) vs KEYE ABOVE (cord) — two powers, never merged. One name per
-#   thing (face=conductor, sails=the boot image). dom0 = the CAPTAIN'S SAFE — NOT
-#   below decks, in the COCKPIT, security 24/7, ONLY the captain has the keys,
+#   thing (face=conductor, sails=the boot image). Theatre = the UPPER LEVEL, not
+#   the top deck (top deck is open to the weather, reveals storms ahead; the
+#   theatre is sheltered so px stay none the wiser). dom0 = the CAPTAIN'S SAFE —
+#   NOT below decks, in the COCKPIT, security 24/7, ONLY the captain has the keys,
 #   skipper dies before he hands them over. SKIPPER'S LAW: nothing is 100% safe;
 #   a good skipper gets you home unscathed through experience + know-how. px never
 #   know the real truth, they just enjoy the show.

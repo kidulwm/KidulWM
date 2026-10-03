@@ -1,14 +1,17 @@
 # LAW — StarShipKidul (the ship that carries the theatre) (LOCKED 2026-10-03, Barticus present)
 
-The grandest ship on the sea and in the sky has its own theatre on the top
-deck. This law names the OUTER frame that the theatre (theatre.md) has always
+The grandest ship on the sea and in the sky has its own theatre on the upper
+level. This law names the OUTER frame that the theatre (theatre.md) has always
 been the inner map of. It does not relitigate the theatre — it says what the
 theatre sits INSIDE.
 
 ## The frame — one vessel, two maps
 
-StarShipKidul is the ship. The theatre is the top deck of it. Not two
-competing metaphors, not a poem — one vessel, and the stage is a deck:
+StarShipKidul is the ship. The theatre is the upper level of it — NOT the top
+deck. The top deck is open to the weather, and it reveals the storms and
+troubles ahead; the theatre is sheltered below it, enclosed, so the px stay
+none the wiser while the weather does its worst. Not two competing metaphors,
+not a poem — one vessel, and the stage is a deck:
 
   SHIP (outer)      governance. Who holds the wheel, who is answerable, who
                     succeeds. §7.2: Captain, crew, PAX. The ship outlives the
