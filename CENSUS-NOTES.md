@@ -8,6 +8,34 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 81 (bobdotrix 2026-10-03) — DOM0 LAW LOCKED + "bubble" naming + docket #4 cold-reboot prep.
+#   Architecture decision with Barticus (the Qubes question). Two locks:
+#   1. DOM0 LAW (new docs/law/dom0.md, LOCKED): KSD IS dom0 — recognised, not
+#      built. The bare kernel + kushd + kidulwm + kidulKey/kvaultd is the Qubes
+#      dom0 (hardware/GUI/mgmt/trust), but type-0 (no hypervisor tax on our own
+#      code) instead of Xen's type-1. THE ONE RULE we'd been violating: network
+#      does NOT live in the trust core. knetd is the CAGED sys-net bubble, not a
+#      bare-kernel peer of kvaultd/kidulKey. Keeps both hard-won properties
+#      (boots before kushd = recovery; owns the pens) but a knetd compromise is
+#      now a bubble compromise, never a dom0 compromise. "Colder than Qubes":
+#      our vault is cued-not-resident (cold-storage.md), Qubes' is a resident
+#      KeePassX in a networkless VM — we refuse the resident process entirely.
+#      North star named: "Qubes that isn't ugly" (the face is the legible
+#      surface Qubes never built).
+#   2. NAMING: the VM'k cage arm is RENAMED "bubble" (kbubble where the k-prefix
+#      is wanted). pen = fence (namespaces); bubble = sealed room (KVM). "Pop
+#      the bubble" = process-death-is-the-kill. One word to veto; it propagates.
+#   Propagated: theatre.md (BODY note + beer-garden "bubbles"), power-states.md
+#   (boot graph + foundation), SYSTEM.md §2.1 (knetd dropped from TIER-1 BODY
+#   list, NOTE added; "knetd = foundation organ, CAGED not body"), KSD-INDEX,
+#   DOCKETS #4 (VM'k cage -> bubble), skill kidul-system-daemons (SKILL.md usher
+#   law + kushd-usher.md two-arms + slice 11c SHARPENED). Commits: KidulWM
+#   b7586d9 (dom0 law), kushd d008ebc (bill: drop knetd+kvaultd from BODY).
+#   MECHANISM of knetd-in-a-bubble (VFIO vs pre-kushd launcher vs cgroup) = a
+#   DOCKET, not built. Until then knetd runs bare-kernel but is DESIGNED caged.
+#   OPEN: the cold reboot (docket #4) was mid-flight when this decision arrived.
+#   Guest bill now BODY= kidulwm+ksound only; grub init= line still pending.
+
 # VERDICT 80 (bobdotrix 2026-10-02) — kushd PID-1 FLOOR + POWER VERBS PROVEN + GAMMA CONTROL.
 #   12h coherent session; three lanes landed:
 #   1. kushd = PID-1 (commit c976d02): mountEarly (proc/sysfs/devtmpfs/tmpfs/run
