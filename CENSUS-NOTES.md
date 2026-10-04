@@ -8,6 +8,40 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 94 (bobdotrix 2026-10-05) — COLD-REBOOT E2E PROVEN: THE TOWER BOOTS ZERO SYSTEMD.
+#   The full ladder ran for real, end to end, on a disposable COW clone (ksd-boot):
+#     grub -> kernel 7.1.11 -> init=/usr/local/bin/kboot (PID 1)
+#       -> knetd (foundation: DHCP lease 192.168.122.88, ping 3/3)
+#       -> kushd (usher: seated seatd + kidulwm + ksound) -> kidulwm (the face, rendered).
+#   PROOF (three independent): (1) GUI came up "in full glory" (kidulwm only runs if kboot
+#   forked kushd; nothing else in the boot chain can paint a desktop under init=kboot);
+#   (2) DHCP lease 52:54:00:0c:96:83 -> 192.168.122.88 (only knetd can lease under PID-1);
+#   (3) ping 192.168.122.88 3/3 0% loss. Zero systemd, zero display manager, zero getty.
+#   THE TWO REAL BLOCKERS AND HOW THEY FELL:
+#     - initramfs MODULES (verdict 91/93 said "blocked on serial 8250 / net / GPU"): it was
+#       ALREADY solved — virtio_net + virtio_gpu are baked into the initramfs (confirmed via
+#       lsinitcpio). serial 8250 is absent but NOT needed: observation rides on virtio-gpu
+#       (the face) + DHCP/ping, not serial. The old note was stale.
+#     - OBSERVATION LIMIT (no sshd, no serial under PID-1): solved by (a) grub cmdline
+#       console=ttyS0,115200 for serial capture, (b) DHCP lease + ping as network proof,
+#       (c) Barticus's eyes on the virtio screen for the face.
+#   GOTCHAS HIT AND FIXED EN ROUTE:
+#     - FIRST boot attempt hung at "pci 0000:00:01.0: BAR" @ 0.379s — a virtio-gpu PCI BAR
+#       stall in the STALE slice-12 overlay (had console=ttyS0 + init=kushd leftovers).
+#       NOT our code: same kernel/initramfs/video config as ksd-reset (which boots clean).
+#       Fixed by REBUILDING ksd-boot fresh: rm stale overlay -> qemu-img create -F qcow2 -b
+#       ksd-reset.qcow2 -> copy ksd-reset's XML (new uuid, new MAC 0c:96:83, ksd-boot_VARS.fd).
+#     - Fresh clone had NO UEFI boot entry ("No bootable option or device was found") because
+#       the new NVRAM was blank. Fixed by copying ksd-reset_VARS.fd -> ksd-boot_VARS.fd (same
+#       GPT UUIDs via COW backing, so the boot entry resolves verbatim).
+#   LESSON: a COW clone shares the BACKING's kernel/initramfs/binaries (they show up "already
+#   there" on the fresh clone) but the OVERLAY is where the UEFI NVRAM + grub cmdline live —
+#   refresh those explicitly. And guestfish WRITE mode crashes under nested virt; use
+#   qemu-nbd + mount to inject files into a disk instead.
+#   RUNG COMPLETE. Remaining on the ladder: (a) kboot logdrain + getty (the mouth), (b)
+#   machine-class branch (kmodd), (c) kplayd cued + media playing under PID-1 (the cued
+#   tentacles were in the bill but not cued this boot), (d) Secure Boot on real hardware.
+#
 # VERDICT 93 (bobdotrix 2026-10-04) — KBOOT FOUNDATION FORK LANDED; KNETD SURVIVES KUSHD.
 #   kboot slice 3 (commit 33a869e): kboot now forks BOTH knetd (foundation) AND kushd (usher)
 #   as its own children, supervising both via waitpid(-1) — respawn whichever dies (knetd
