@@ -8,6 +8,29 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 93 (bobdotrix 2026-10-04) — KBOOT FOUNDATION FORK LANDED; KNETD SURVIVES KUSHD.
+#   kboot slice 3 (commit 33a869e): kboot now forks BOTH knetd (foundation) AND kushd (usher)
+#   as its own children, supervising both via waitpid(-1) — respawn whichever dies (knetd
+#   immediate, kushd backoff). This makes the recovery law TRUE IN CODE, not just on paper:
+#   "knetd survives kushd" because knetd is kboot's child, NOT kushd's.
+#     - startFoundation() forks knetd FIRST (usher stands on it to mint pens)
+#     - generic execChild()+hardenChild() apply the 3 walls (ptrace drop/signal reset/fd close)
+#       to BOTH children identically
+#     - signals installed in BOTH modes; only PID 1 turns them into reboot
+#     - terminateChildren() clean teardown
+#   PROVEN on ksd-reset: tree kboot->knetd+kushd (both PPID=kboot). kill kushd -> knetd SURVIVED
+#   (never re-forked, pid 479038), kushd respawned (new pid 479354). kboot log:
+#     forked knetd pid=479038 / forked kushd pid=479039 / kushd died, respawn in 1000ms / forked
+#     kushd pid=479354.
+#   FIXED EN ROUTE: knetd/conntrack.zig _FORTIFY_SOURCE build break (swept into knetd 07e405d).
+#   SAFETY: verified enp1s0 already leased + no persisted MAC spoof BEFORE running knetd, so it
+#   ran passive (did NOT grab the SSH lane). Lesson: knetd owns interfaces — always verify the
+#   lease/spoof state before a live run or you strand your own SSH access.
+#   RUNG COMPLETE. Remaining on the ladder: (a) kboot foundation fork for logdrain + getty (the
+#   mouth), (b) machine-class branch (kmodd, slice 2 stub), (c) the full cold-reboot E2E (kboot
+#   -> knetd -> kushd -> kidulwm -> kplayd, zero systemd) — still blocked on initramfs MODULES
+#   (serial 8250 / net / GPU) per verdict 91.
+
 # VERDICT 92 (bobdotrix 2026-10-04) — IDENTITY + KWEB LAWS FROZEN (the crypto spine, end to end).
 #   Whole architecture day: boot ladder -> crypto -> network, one spine. FROZEN THIS SESSION:
 #     - identity.md (KidulWM 46a694c): the FOUR SCOPES + "HOLD THE BAR NOT THE PROTOCOL". websites=
