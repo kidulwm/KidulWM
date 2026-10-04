@@ -77,3 +77,19 @@ Signal/WhatsApp/Matrix all had to bolt it on after shipping.
   - No new ciphers. The same audited primitives (X25519, Ed25519, AES-GCM /
     ChaCha20-Poly1305, libsodium-class) as crypto.md. Hold the bar, reuse the
     wheel.
+
+## The rendezvous — run it, don't trust it (LOCKED 2026-10-04)
+
+An identity-addressed mesh needs a COORDINATOR: the signed map that turns a
+hash into a current endpoint (kweb.md §12). The temptation is a cloud service
+for it — but that is a "trust-me" choke point, the exact thing this architecture
+refuses. The rule: WE run the coordinator, on our own krouter, signed by our
+own kidulKey. Then it is verified by construction, never trusted by hope.
+
+  dont-trust-verify  a coordinator you cannot audit is a password with extra
+                     steps. Ours you can check, because the signature chain
+                     ends at the kidulKey in your pocket, not a vendor's CA.
+
+Identity rides on KEYS, never on addresses. The address is an invisible,
+untrusted locator; the key is the name. An attacker who sees an IP sees a
+spoofed locator and derives no identity from it.
