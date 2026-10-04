@@ -8,6 +8,27 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 92 (bobdotrix 2026-10-04) — IDENTITY + KWEB LAWS FROZEN (the crypto spine, end to end).
+#   Whole architecture day: boot ladder -> crypto -> network, one spine. FROZEN THIS SESSION:
+#     - identity.md (KidulWM 46a694c): the FOUR SCOPES + "HOLD THE BAR NOT THE PROTOCOL". websites=
+#       passkeys/FIDO2, bank/gov=OMEMO-class E2E+in-person verify+key transparency, mesh=OMEMO+
+#       kidulKey identity, root=cold kidulKey. One token, many keys (per-scope, no shared secret).
+#       Two-factor by architecture: TPM=device-bound, token=human-bound. + the rendezvous law:
+#       "run it, don't trust it" (coordinator on our krouter, kidulKey-signed, dont-trust-verify).
+#     - kweb.md §12-14 (knetd e3a757e): §12 hash-as-name (key=name, two signed maps static roster/
+#       dynamic endpoint, possession=auth). §13 NO LOGIN EVER (router admin password dissolves into
+#       identity-by-key + authority-by-role; already-signed keys need zero ceremony, new device =
+#       ONE possession ceremony; LOAD-BEARING CAVEAT kidulKey must stay COLD or auto-recognition
+#       becomes a CA an attacker mints adult keys from). §14 NO LOGS BY CONSTRUCTION (resolver needs
+#       only transient hash->endpoint RAM state, no logging code path EXISTS, immutable — "nothing to
+#       subpoena because nothing was collected"; privacy = architecture not policy).
+#     - Also: knetd/conntrack.zig fixed _FORTIFY_SOURCE build break (matches house pattern).
+#     - Also: identity map — "identity rides on KEYS never addresses" is the load-bearing line tying
+#       crypto.md (who) + identity.md (which key) + kweb.md (how to reach) into one spine.
+#   NOT YET DONE (next): kweb.md §12's two maps are SPEC — krouter's actual rendezvous (dynamic
+#   hash->endpoint) is unbuilt; kvaultd/kidulKey provisioning ceremony is unbuilt. These are the
+#   NEXT settings-tweaks, not new architecture.
+
 # VERDICT 91 (bobdotrix 2026-10-04) — KUSHD PID-1 FLOOR STRIPPED; PURE USHER UNDER KBOOT.
 #   The kboot fork correction (kboot = PID 1, kushd = child) made kushd's own PID-1 floor DEAD WEIGHT
 #   AND a live hazard: two binaries both carried "am I init?" logic. STRIP (kushd c5bce6e):
