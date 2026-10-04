@@ -16,11 +16,12 @@ the recovery path lives below the thing it recovers).
   firmware -> limine(timeout 0) -> kernel -> kboot ->
     [ mount root + load drivers ] ->
     [ FOUNDATION: knetd + log drain + getty (the mouth) ] ->
-    exec kushd (usher) -> kidulwm (face) -> cue kplayd -> playing
+    fork kushd (usher, kboot's child) -> kidulwm (face) -> cue kplayd -> playing
 
-kboot is the boot stage and NOTHING else. It does not seat acts (kushd's
-job), does not mint pens (knetd's job), does not gate secrets (there is no
-DM). It mounts, loads, starts foundation, execs, and dies.
+kboot is the boot stage and the PID-1 supervisor. It mounts, loads, starts
+foundation, forks kushd, and then STAYS as PID 1 to recover kushd if it dies.
+It does not seat acts (kushd's job), does not mint pens (knetd's job), does
+not gate secrets (there is no DM).
 
 ## Step order (the whole job, in order)
 
@@ -28,15 +29,30 @@ DM). It mounts, loads, starts foundation, execs, and dies.
   2. load drivers by machine class (below).
   3. start FOUNDATION, forked as children: knetd (network authority, a caged
      sys-net brig per dom0.md), the log drain, and getty on a tty (the mouth).
-  4. exec kushd. kushd becomes PID 1.
+  4. fork kushd. kushd becomes kboot's child (NOT PID 1); kboot stays PID 1
+     and supervises: reap orphans, respawn kushd if it dies, own the shutdown
+     signals (SIGTERM=poweroff, SIGINT=reboot).
 
-## The exec handoff — why exec, never fork
+## The handoff — fork, never exec (corrected 2026-10-04)
 
-kboot EXECs kushd so kushd IS PID 1. The foundation processes kboot forked
-in step 3 survive the exec and become kushd's inherited children; kushd
-tolerates them and never reaps them on cue. This is what "knetd survives
-kushd" means mechanically: knetd is not a kushd child, it is an inherited
-foundation process. The usher holds the cut on it, not the leash.
+kboot is PID 1 and STAYS PID 1. kushd is its forked CHILD, never an exec'd
+successor. This is the correction that makes the recovery law actually hold:
+
+  - If kboot exec'd kushd, kboot would be a pointless wrapper and "knetd
+    survives kushd" would be a lie: kushd-as-PID-1 dying reboots the kernel,
+    so knetd survives nothing useful.
+  - Forked, kushd is a replaceable child: kushd dies -> kboot reaps and
+    respawns it, knetd (kboot's child too) never blinks. The recovery path
+    lives below the thing it recovers (power-states.md), and here it is
+    literally true: kboot is below kushd and recovers it.
+
+kboot is the parent; kushd is its child. The usher holds the cut on the
+foundation, but kboot holds the leash on the usher itself.
+
+The PID-1 floor that kushd carried in its own early slices (mountEarly,
+shutdown signals, power verbs) MOVES to kboot — kboot is now the init, kushd
+is a pure usher. kushd's own mountEarly() remains idempotent (EBUSY no-op)
+and harmless, but the real floor lives here.
 
 ## Machine-class branches (one kboot, three branch points)
 
@@ -63,8 +79,8 @@ the fire escape, not the product.
 
 ## What kboot is NOT
 
-  - Not a daemon. It exits (via exec) the moment foundation is up.
-  - Not a kushd child. It is the parent; kushd is its exec'd successor.
+  - Not a daemon. It STAYS as PID 1 (supervising kushd) — it is the init.
+  - Not a kushd child. It is the parent; kushd is its forked child.
   - Not systemd. There is no unit graph, no target machinery, no eager boot.
     Foundation is a fixed, tiny list; kushd does the cueing after handoff.
   - Not the vault. The vault is cold storage (power-states.md); kboot never
