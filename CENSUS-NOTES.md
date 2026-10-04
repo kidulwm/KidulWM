@@ -8,6 +8,32 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 89 (bobdotrix 2026-10-04) — KCELL PROVEN (Debian-on-Arch as native slide) + TRUST LEDGER LOCKED.
+#   Two lanes landed today:
+#   1. KCELL = the "guest that isn't a guest": Debian bookworm runs as a native KidulWM slide via
+#      bwrap namespaces + Wayland/PipeWire socket passthrough, NO hypervisor. rootfs bound as "/"
+#      (--ro-bind /var/lib/kcells/debian /). uname INSIDE the cell reports the HOST kernel
+#      (7.2.8-1-cachyos) while /etc/os-release reads Debian — OS=file (cell's own), kernel=syscall
+#      (the ONE shared kernel). That is the pen/brig law in one screenshot: pen shares the kernel,
+#      so a pen can never hide it; that's why foreign CODE goes to brig (own kernel), foreign DISTRO
+#      stays in pen. Prisoner hardening landed (cap-drop ALL + unshare pid/ipc/uts/cgroup + clearenv
+#      + tmpfs /tmp + die-with-parent). Names locked: the plank (discard verb), micro-brig (lean
+#      foreign-code guest). Repo kcell, top commit 19884b9. OPEN (kcell HANDOFF): browser cell,
+#      Freenet cell, filtered network (netns+nftables TODO), cued-under-kushd.
+#   2. CRYPTO / TRUST LEDGER (full spec in the crypto skill): kidulKey = SIGNING ROOT not seed
+#      (derive=material-leaves-key FORBIDDEN; certify=signs public halves, only sigs leave). Private
+#      key NEVER hits any box. Two SEPARATE keypairs (never one copied), no private-key backup,
+#      revocation = strike a public key from the muster. OMEMO kept as async-E2E gold standard;
+#      kidulKey CERTIFIES each device's OMEMO identity key (fixes OMEMO's TOFU/fingerprint-bootstrap
+#      hole). Five open problems locked as the trust ledger, ranked: (1) THE BOX CAN LIE — SB OFF +
+#      TPM unused; turn SB on BEFORE building the three crypto faces; (2) what does the key approve
+#      (WYSIWYS display); (3) deniability vs non-repudiation split on one key; (4) revocation
+#      propagation (CRL/gossip); (5) store-now-decrypt-later (PQ horizon). SB reality on THIS box:
+#      Limine 12.9 has NO SB support (no key-enroll, no shim) — flipping SB on now = no boot; path =
+#      sbctl -> gen key -> enroll (human-present) -> sign kernel+limine+initramfs (or UKI) -> dry-run
+#      -> flip on; do KSD golden image (VM, reversible) FIRST, workbench after. LUKS verdict: KEEP —
+#      orthogonal to SB, is the at-rest law (cold-storage.md), does NOT risk Hermes access.
+
 # VERDICT 88 (bobdotrix 2026-10-03) — SILICON FLOOR LOCKED: zeroizing kboot de-foreigns SOFTWARE only.
 #   kboot+kushd+kidulwm = one tower, all ours, from firmware handoff up. What it does NOT remove:
 #   the silicon (CPU microcode, Intel ME/AMD PSP, UEFI firmware) — resident before our code, DMA to
