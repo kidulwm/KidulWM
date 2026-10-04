@@ -42,6 +42,38 @@ kmedia + ksd-input-claim-law skills.
 #   machine-class branch (kmodd), (c) kplayd cued + media playing under PID-1 (the cued
 #   tentacles were in the bill but not cued this boot), (d) Secure Boot on real hardware.
 #
+# VERDICT 95 (bobdotrix 2026-10-05) — THE MOUTH IS OPEN: SERIAL SHELL + HTOP ON THE FACE.
+#   kboot slice-3 "mouth" rung done in two commits: d3224ea (getty) + bba0319 (devpts).
+#     - GETTY: kboot now forks a THIRD child (the getty) alongside knetd+kushd. Instead of
+#       agetty (whose --autologin + --login-program feed the username to bash as argv[1],
+#       which bash reads as a script path -> EISDIR "Is a directory"), we do the getty dance
+#       INLINE: open /dev/ttyS0 (O_NOCTTY) -> setsid -> TIOCSCTTY -> dup2 0/1/2 -> exec
+#       /bin/bash with argv[0] "-bash" (login shell). No login/PAM: possession of the serial
+#       port IS access (possession-not-password). Supervised like knetd (immediate respawn).
+#       PROVEN: serial console gives [root@archlinux /]# with zero systemd/PAM/login.
+#     - DEV/PTS: devtmpfs does NOT create /dev/pts, so the old devpts mount() failed ENOENT
+#       (silently swallowed by _ =). Result: openpty() broke -> ghostty "OpenptyFailed" /
+#       "too many pty open", and 'ghostty -e htop' opened an EMPTY window. Fixed by mkdir
+#       /dev/pts before the devpts mount (also /dev/shm before tmpfs).
+#   THE HTOP TEST BARTICUS WANTED — htop ON THE DESKTOP (not serial text), on the face:
+#     ghostty 1.3.1 (the terminal concept, launch-kidul-terminal.sh) launched as a foreign
+#     Wayland client:  runuser -u kidul -- env WAYLAND_DISPLAY=wayland-1
+#     XDG_RUNTIME_DIR=/run/user/1000 GHOSTTY_RESOURCES_DIR=/usr/share/ghostty
+#     ghostty -e htop   -> kidulwm-control get_windows shows {window_id:1, title:"htop",
+#     mapped:true}; htop runs pid N (STAT Ss+, session leader) on a clean /dev/pts/0.
+#     EGL warns (ZINK vkCreateInstance fails, no GPU) but falls back to llvmpipe OpenGL 4.6 —
+#     renders under the pixman compositor. 8 procs total, no systemd, load 0.00.
+#   LESSONS:
+#     - devtmpfs gives you device nodes but NOT mountpoints; mkdir /dev/pts (and /dev/shm)
+#       BEFORE mounting them, or the mount silently no-ops and openpty breaks later.
+#     - agetty's autologin+login-program don't compose; a real mouth is ~10 lines of inline
+#       getty (open/setsid/TIOCSCTTY/dup2/exec), no PAM, no util-linux dependency.
+#     - ghostty runs on the SOFTWARE (pixman) path via llvmpipe; the MESA/ZINK errors are
+#       noise, not fatal.
+#     - kboot's third child is the mouth; it is the OBSERVATION rung that makes every later
+#       rung (kmodd, kplayd) debuggable without a second box.
+#   RUNG COMPLETE. The tower can now be watched from inside: serial shell + GUI terminal.
+#
 # VERDICT 93 (bobdotrix 2026-10-04) — KBOOT FOUNDATION FORK LANDED; KNETD SURVIVES KUSHD.
 #   kboot slice 3 (commit 33a869e): kboot now forks BOTH knetd (foundation) AND kushd (usher)
 #   as its own children, supervising both via waitpid(-1) — respawn whichever dies (knetd
