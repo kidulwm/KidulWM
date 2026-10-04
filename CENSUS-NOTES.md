@@ -8,6 +8,26 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 90 (bobdotrix 2026-10-04) — KUSHD NON-PID-1 FLOOR GATED + DOUBLE SHIFT PROVEN (media stack).
+#   1. BUG FOUND+FIXED: kushd's PID-1 floor ran UNCONDITIONALLY. A root non-PID-1 kushd (manual/rig
+#      run) called mountEarly (remounted tmpfs over live /run+/tmp) AND reboot(RB_POWER_OFF) on a
+#      plain SIGTERM — powering off the whole box. Discovered the hard way: `sudo -b kushd` got
+#      SIGTERM on session teardown and shut the VM down. Rig scripts only survived because they ran
+#      kushd UNPRIVILEGED (mountEarly silently EPERM-failed). FIX (def534d): gate on getpid()==1 —
+#      mountEarly + SIGPWR handler + reboot() only when actually PID-1; non-PID-1 SIGTERM/SIGINT now
+#      clean-exits the supervisor. Verified live on ksd-reset: root non-PID-1 SIGTERM -> "non-PID-1
+#      — clean exit, no reboot", VM stayed up (PID 1 = systemd).
+#   2. DOUBLE SHIFT PROVEN: bill now cues pipewire + wireplumber (verdict 85 gap). kushd as root
+#      non-PID-1 seated pipewire->wireplumber->kplayd as class=user on cue, in order. RESULT:
+#      wireplumber + kplayd alive under kushd. pipewire died fast (status=62720) — NOT a kushd bug,
+#      a socket collision with systemd's own pipewire (pid 452) already holding the socket on this
+#      dual-stack box. Disappears in the real cold-reboot (zero systemd). Cue socket is root-owned,
+#      so cues must be sent as root (or the socket perms widened).
+#   REMAINING for docket #4 close: the FULL cold-reboot E2E (grub init=, zero systemd) + a media
+#   source on the VM + verify playback. Trap: under kushd-as-PID-1 there is NO sshd and NO serial
+#   console (8250 is a module), so verification is virtio-screen + /tmp logs only, and revert needs
+#   a console/virsh. Deliberate, reversible — not done this session.
+
 # VERDICT 89 (bobdotrix 2026-10-04) — KCELL PROVEN (Debian-on-Arch as native slide) + TRUST LEDGER LOCKED.
 #   Two lanes landed today:
 #   1. KCELL = the "guest that isn't a guest": Debian bookworm runs as a native KidulWM slide via
