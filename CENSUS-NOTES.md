@@ -8,6 +8,22 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 91 (bobdotrix 2026-10-04) — KUSHD PID-1 FLOOR STRIPPED; PURE USHER UNDER KBOOT.
+#   The kboot fork correction (kboot = PID 1, kushd = child) made kushd's own PID-1 floor DEAD WEIGHT
+#   AND a live hazard: two binaries both carried "am I init?" logic. STRIP (kushd c5bce6e):
+#     - mountEarly() removed (kboot mounts alone; kushd never touches the VFS)
+#     - reboot() on signal removed (was SIGINT=reboot else poweroff — a plain SIGTERM to the usher
+#       could power off the host). This is the verdict-90 bug's final closure: the floor is GONE,
+#       not just gated.
+#     - is_pid1 flag + SIGPWR handler removed (init's signal, kboot's job)
+#     - shutdown() now ALWAYS: term seats -> sync -> clean-exit (c._exit(0)), no reboot path at all
+#   PROVEN on ksd-reset: kboot->kushd->seatd/kidulwm/ksound tree correct (kidulwm dies as expected,
+#   no GPU on this VM, kushd respawns it). SIGTERM kushd -> "usher clean-exit (no reboot — kboot owns
+#   the power verb)", VM stayed up (systemd PID 1, uptime unchanged). No stray seats.
+#   RUNG COMPLETE. Next rung: kboot foundation fork (knetd/logdrain/getty = SLICE 3 stub), then the
+#   full cold-reboot E2E. kboot slice-1 mount+fork+supervise+respawn+shutdown+hardening is DONE (kboot
+#   bd5e3c3, hardening 57d33f0 = ptrace drop proven CapBnd bit19 clear).
+
 # VERDICT 90 (bobdotrix 2026-10-04) — KUSHD NON-PID-1 FLOOR GATED + DOUBLE SHIFT PROVEN (media stack).
 #   1. BUG FOUND+FIXED: kushd's PID-1 floor ran UNCONDITIONALLY. A root non-PID-1 kushd (manual/rig
 #      run) called mountEarly (remounted tmpfs over live /run+/tmp) AND reboot(RB_POWER_OFF) on a
