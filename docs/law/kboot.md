@@ -86,10 +86,31 @@ the fire escape, not the product.
   - Not the vault. The vault is cold storage (power-states.md); kboot never
     touches kvaultd or the kidulKey.
 
+## The unseeable gatekeeper (hardening, LOCKED 2026-10-04)
+
+kboot is PID 1 — the no.1 gatekeeper. It is dormant (~100 lines, sleeps after
+handoff), and it must be UNREACHABLE by everything except what needs it. That
+"unseeable" property is not vibes; it is four concrete rules:
+
+  1. kboot drops CAP_SYS_PTRACE in the forked kushd, so the usher — and any
+     seat that escapes INTO the usher — can never read kboot's memory.
+  2. kboot ignores every signal EXCEPT an authenticated shutdown. A child
+     sending SIGTERM must NOT power off the box; shutdown comes from the
+     authenticated source (input-trust law), not from any child.
+  3. The ONLY thing that can change kboot is the kidulKey — a signed
+     golden-image update. There is no runtime mutation of kboot; its state is
+     fixed at boot and immutable until the key rewrites the image.
+  4. kboot closes inherited fds and resets signal handlers in the child before
+     exec (fork hygiene), so nothing leaks from kboot into kushd.
+
+This is the point of the fork over exec, stated as a security property: the
+immortal process is the smallest, sleepiest, hardest-to-reach thing in the
+tower, while the process that touches everything is disposable.
+
 ## Toolchain & home
 
 kboot is a boot stub, built with the house Zig (aig), static, no libc
-surprise. It lives alongside kushd (its exec target) and knetd (its first
+surprise. It lives alongside kushd (its forked child) and knetd (its first
 foundation child) in the boot ladder. The mkinitcpio HOOKS and limine.conf
 are HANDOFF NOTES (power-states.md) — kboot reads its handoff from the same
 shape every other stage uses.

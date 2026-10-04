@@ -59,6 +59,15 @@ This is why kushd does NOT do the bootloader job: the usher is the thing the
 bootloader recovers. The recovery path is the handoff itself, and it must
 never be corrupted by the boot it is there to rescue.
 
+CLARIFICATION (2026-10-04): knetd's place in foundation is NOT "so a remote
+can reach in." knetd boots first because the usher STANDS ON IT — kushd asks
+knetd for a network pen every time it seats an untrusted act, and never mints
+one itself. Remote reachability (knet, the sshd-replacement lane) is a
+CONSUMER of the network, not the reason the network daemon exists. The
+"knetd survives kushd" line above is the mechanism, not the motivation: the
+network staying up through a usher crash is a beneficial side-effect of knetd
+being foundation, not the cause of it.
+
 ## The fault lines — what kboot zeroization removes, and what it cannot
 
 Zeroizing kboot + kushd + kidulwm de-foreigns every SOFTWARE stage from the
