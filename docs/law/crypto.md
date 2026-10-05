@@ -101,11 +101,14 @@ crypto substrate (this file) pointed at the access problem.
                             not first-seen trust (no TOFU). The chip vouches
                             for the thing that dials.
 
-  dom0 says yay or nay      authorization lives in the usher (dom0), NOT in the
-                            key and NOT in the server. The key proves WHO
-                            (identity); dom0 decides WHETHER (access). A server
-                            never grants its own access — the cut lives one
-                            level up, always (the eye-above law).
+  no doorman, one skipper  there is no doorman and no counter that "decides".
+                            The KID (the skipper's key) says yay or nay by
+                            SIGNING the list; the list (kpax) lives in the
+                            safe (dom0) where nobody can tamper with it.
+                            Admission = "is your name on the signed list", not
+                            "did the doorman wave you through". A server never
+                            grants its own access — the cut lives one level up,
+                            always (the eye-above law).
 
   key on person             the kidulKey is held by the human for the INITIAL
                             connection only. After that, session keys take over
@@ -132,28 +135,31 @@ kidulKey IS the identity; there is a counter where that identity boards the
 ship. Both sit on the krypto machinery (the section above) — these are the
 NAMES for the human-facing halves.
 
-  KID    = the kidulKey-attested identity (WHO you are). The key on your person.
-           "The KID registers" — you present yourself, the silicon vouches for
-           you (attest, not authenticate). Never a password; you are the ID.
+  KID    = the skipper's key — the kidulKey. The ONLY thing aboard that can let
+           people on. It says yay or nay. It signs the list. Never a password;
+           the captain's key is the admission. There is NO doorman — a doorman
+           is a second authority to corrupt, and this ship has exactly one.
 
-  kpax   = the admission gate (WHERE dom0 says yay or nay). "Are you a kidul
-           passenger?" — the counter you board StarShipKidul through. Extends
-           the ship's own word PAX (starship.md §7.2: Captain, crew, PAX) — not
-           a new term, the ship's passenger gate made the admission point. Dom0
-           sits at this counter and decides whether.
+  kpax   = the passenger LIST (WHO boards). The roster (this file's household
+           roster) — the manifest on the door. Extends the ship's own word PAX
+           (starship.md §7.2: Captain, crew, PAX): not the gate, the LIST. The
+           KID signs it; the list lives where nobody can mess with it (dom0, the
+           captain's safe). Admission = "is your name on the list, as signed by
+           the KID" — not "did the doorman wave you through".
 
-  kiosk  = the OPEN kiosk (kiduldm --kiosk). NOT the kpax. No counter, no
-           admission, no ID: grab popcorn, seat yourself in the public/free
-           theatre. The foyer, not the show. The DM's no-login mode stays
-           exactly where it is — the two must never blur.
+  kiosk  = the OPEN kiosk (kiduldm --kiosk). NOT the kpax. No list, no KID, no
+           admission: grab popcorn, seat yourself in the public/free theatre.
+           The foyer, not the show. The DM's no-login mode stays exactly where
+           it is — the two must never blur.
 
-  krypto = the machinery (the section above) that makes admission HOLD: the
-           assembled crypto, attest-not-authenticate, dom0 yay/nay, key on
-           person, one key two doors.
+  krypto = the machinery (the section above) that makes the list HOLD: the
+           assembled crypto, attest-not-authenticate, key on person, one key
+           two doors.
 
-One sentence for Granny: "The KID registers at the kpax" — and she never
-remembers a password again, because it is her, boarding her ship, and the
-counter knows her.
+One sentence for Granny: "The skipper's KID signs the kpax" — the list on the
+door says she boards, nobody else can change it, and she never remembers a
+password again, because it is her, boarding her ship, and the list already
+knows her.
 
 STATUS (honest): the architecture is frozen here; the MECHANISM is not yet
 built. Bench access TODAY is a plain ed25519 key on disk
