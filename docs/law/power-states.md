@@ -156,6 +156,21 @@ already locked (line 117): knetd is ONE daemon, TWO stances, on TWO boxes.
                  connection is direct to the krouter and the NAS/servers, and
                  nothing else.
 
+  kweb transport (for later, LOCKED 2026-10-05) — the mobile edge rides TWO
+                 stacked layers, never confused:
+                   physical  BATMAN-adv (in-kernel L2 mesh; `bat0` is a virtual
+                             switch, protocol-agnostic — IPv4/IPv6/DHCP/mDNS
+                             work unmodified; mobility, heterogeneous links).
+                             Link layer = 802.11s MESH-POINT mode (IBSS/ad-hoc
+                             is deprecated). Path metric = BATMAN V (throughput).
+                   logical   KWEB / Reticulum (identity-addressed routing +
+                             encryption) — this is what identity.md already
+                             calls "our mesh". BATMAN-adv moves the frames;
+                             KWEB decides who may talk and encrypts it.
+                 "Add BATMAN & whatever else is useful for mobile networks" =
+                 the physical layer under the kweb; it is a LATER docket, not
+                 a v1 build, and only where the mesh actually lives.
+
   guest network  "just a cell" (cells.md): the guest network is NOT a second
                  network construct — it is a pen (the same wall we already
                  build), seated by the usher, with the roster's `guest` role
