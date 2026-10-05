@@ -138,23 +138,37 @@ already locked (line 117): knetd is ONE daemon, TWO stances, on TWO boxes.
                  whole "no overtime" guarantee — the TV never hands out IPs.
 
   router stance  the network box = the krouter. DHCP server, forwarding, the
-                 internet edge, the household roster (crypto.md) — AND the
-                 Reticulum mesh edge. This is the "tiny kidul router that
-                 plugs into the ISP router": OUR box at the ISP boundary, so
-                 the passwordless/granny-proof system leans on a router we
-                 own, not the ISP's. It runs knetd in router stance
-                 (kboot.md: foundation, not a kushd act).
+                 internet edge, the household roster (crypto.md) — and, for
+                 v1, a simple LAN firewall + the guest network (a cell — see
+                 cells.md). This is the "tiny kidul router that plugs into the
+                 ISP router": OUR box at the ISP boundary, so the
+                 passwordless/granny-proof system leans on a router we own,
+                 not the ISP's. It runs knetd in router stance (kboot.md:
+                 foundation, not a kushd act).
 
-  two edges      the krouter is one box with TWO edges: the WAN edge (to the
-                 ISP router) and the Reticulum mesh edge (the antenna on the
-                 roof, reticulum transporting). Same box, one daemon, two
-                 edges — not three networks, not a telco. We carry our own
-                 mesh on our own router; we are NOT a carrier for anyone.
+  two edges      the krouter is one box with TWO edges, but NOT both at once:
+                 v1 ships only the WAN edge (to the ISP router). The KWEB mesh
+                 edge (the antenna on the roof — our identity-addressed mesh,
+                 identity.md) is "put in place for later use": a placeholder,
+                 not a v1 duty. It activates only on machines that actually
+                 need it (the mobile devices that join the kweb) — and the TV
+                 never does, unless the kweb becomes the ONLY web. The TV's
+                 connection is direct to the krouter and the NAS/servers, and
+                 nothing else.
+
+  guest network  "just a cell" (cells.md): the guest network is NOT a second
+                 network construct — it is a pen (the same wall we already
+                 build), seated by the usher, with the roster's `guest` role
+                 and QoS owner-over-guest (the class + priority ladder). Crypto
+                 is the same across ALL machines — dom0, the kidulKey is the
+                 only key — so there is nothing for the guest network (or the
+                 kweb) to see. Permissions done right, nothing new added.
 
 The split is clean and already half-locked. What this freezes NEW is the
 no-overtime PIN (client stance must never grow server/forward/NAT code — any
-future DHCP-server, NAT, or routing work lands in router stance, not the TV)
-and the Reticulum mesh edge as an explicit duty of the krouter.
+future DHCP-server, NAT, or routing work lands in router stance, not the TV),
+the v1 scope (LAN firewall + guest cell + QoS; KWEB is a placeholder for later,
+only where needed, never the TV), and the guest-network-is-a-cell principle.
 
 ## The one primitive: ready-report
 

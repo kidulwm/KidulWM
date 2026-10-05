@@ -126,3 +126,14 @@ pipes, focus routing the AV, life routing the network.
                whole cell/guest.
   micro-brig = the lean foreign-code guest (stock kernel + minimal initramfs +
                one trusted binary, tens of MB).
+
+## The guest network is just a cell (LOCKED 2026-10-05)
+
+The krouter's "guest network" is NOT a second network construct. It is a pen —
+the SAME wall we already build — seated by the usher, carrying the roster's
+`guest` role (crypto.md) with QoS owner-over-guest (the class + priority
+ladder). Crypto is identical across ALL machines (dom0; the kidulKey is the
+only key), so a guest cell sees nothing the owner's cell sees no further into.
+"Permissions done right" — nothing new is added, we tweak the walls we have.
+Same principle holds for the kweb: a mobile device joining the mesh is another
+cell, not a new authority.
