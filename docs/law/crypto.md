@@ -87,6 +87,51 @@ what's a guest. No extra machinery — the taxonomy is the structure.
   integrity        a command isn't tampered in flight.
   key distribution keys flow remote -> device without a LAN eavesdropper.
 
+## krypto — the access scheme (one key, two doors) (LOCKED 2026-10-05)
+
+krypto is the NAME for the whole kidulKey access/rendezvous scheme — the "one
+key, two doors" spine that opens internal (bench VMs) and external (servers,
+webpage) alike. It is NOT a new cipher and NOT a new daemon; it is the existing
+crypto substrate (this file) pointed at the access problem.
+
+  attest, not authenticate  the kidulKey never "logs in" and never dials out.
+                            It stays cold and offline (never on a box). It
+                            ATTESTs/signs each device's SSH host+client keys, so
+                            "this VM is really my VM" is anchored in silicon,
+                            not first-seen trust (no TOFU). The chip vouches
+                            for the thing that dials.
+
+  dom0 says yay or nay      authorization lives in the usher (dom0), NOT in the
+                            key and NOT in the server. The key proves WHO
+                            (identity); dom0 decides WHETHER (access). A server
+                            never grants its own access — the cut lives one
+                            level up, always (the eye-above law).
+
+  key on person             the kidulKey is held by the human for the INITIAL
+                            connection only. After that, session keys take over
+                            (transient, ~500 bytes, discarded on close — the
+                            O(time) rule). Cued at connection-establishment,
+                            never resident.
+
+  one key, two doors        internal (bench VMs) and external (servers/webpage)
+                            are the SAME identity spine — what the key opens is
+                            decided by the signed roster (this file), not by
+                            which side of the wire you're on. Same rendezvous,
+                            both directions (identity.md: run the coordinator,
+                            don't trust it).
+
+  sshd by role              bench VMs + server/NAS run sshd (the NAS's is the
+                            BODY act). The TV NEVER runs a listening sshd — it
+                            dials out, no remote-admin surface. krypto does not
+                            change that; it is why it holds.
+
+STATUS (honest): the architecture is frozen here; the MECHANISM is not yet
+built. Bench access TODAY is a plain ed25519 key on disk
+(~/.ssh/id_ed25519_kidulwm); hardware-attested SSH + the resident-key client
+is a docket, not done. Until then we "keep it in mind" while working: use any
+key for the bench, but leave the seam shaped for krypto (attest, not
+authenticate; dom0 yay/nay; key on person) so it drops in without rework.
+
 ## Size — the honest number
 
   keys        ~128 bytes per identity (Ed25519 + X25519 keypair); a signed
