@@ -74,6 +74,42 @@ kmedia + ksd-input-claim-law skills.
 #       rung (kmodd, kplayd) debuggable without a second box.
 #   RUNG COMPLETE. The tower can now be watched from inside: serial shell + GUI terminal.
 #
+# VERDICT 96 (bobdotrix 2026-10-05) — KPLAYD SOFTWARE-PRESENT FALLBACK BUILT: MEDIA PLAYS ON A NO-GPU VM.
+#   The last "media plays" blocker (verdict 95 note) falls. kplayd now presents video pixels
+#   WITHOUT EGL/GLES2 zero-copy. On a no-virgl VM, Mesa llvmpipe makes Gl.init() return NON-NULL,
+#   so the old code flipped zero_copy_ok=true -> decode tried the dead VAAPI path -> no frames,
+#   presentBlack() forever, poll loop wedged. The software branch never fired because `gl != null`.
+#   THREE fixes in kmedia:
+#     1. EglShell.init() REJECTS software GL at the source: after eglMakeCurrent, query
+#        glGetString(GL_RENDERER) for softpipe/llvmpipe/swrast -> destroy surface/window, return
+#        error so gl==null. (commit 12dada1)
+#     2. kplayd_shell.render() calls presentSoftware() when gl==null: blit the decoded BGRA frame
+#        (letterboxed, nearest-neighbour) into the shm double-buffer, attach to main surface,
+#        damage, commit. (commit 12dada1)
+#     3. EglShell caches software_renderer process-globally: llvmpipe eglMakeCurrent SEGFAULTED
+#        (0x28) on a SECOND init (close+reopen in the same process); once software is seen, skip
+#        EGL entirely forever. (commit 7bc14de)
+#   PROVEN: detection fires ("[egl] software renderer 'llvmpipe...' rejecting GL"), gl==null,
+#   pos_us advances (was stuck 0), FRAMETRACE kplay climbs. This shm blit is ALSO the kscope
+#   TV-side seam ("paint pixels on cue") — the same present path a thin client needs.
+#   RUNG COMPLETE: plumbing + present both proven on the no-GPU VM, zero systemd.
+#
+# VERDICT 97 (bobdotrix 2026-10-05) — BOOT-HANG AFTER HARD DESTROY: ROOT CAUSE + START-FRESH REBUILD.
+#   After the kplayd deploy, "reboot the VM" went to `virsh reboot` — a NO-OP (kboot PID1 has no
+#   ACPI power-button handler). Reached for `virsh destroy` (hard power-cut on a running COW
+#   overlay) -> guest ext4 journal left dirty -> next boot hung. Serial showed it got PAST
+#   virtio-gpu (`[drm] Initialized virtio_gpu` + "Run /init" fired) to the SATA/cdrom probe —
+#   NOT last night's stale-overlay virtio-gpu BAR stall (0.379s). Same "cdrom: Uniform CD-ROM
+#   driver" line on the framebuffer, different mechanism — serial is the honest witness.
+#   RECOVERY = start-fresh rebuild (the overlay is disposable): cp -a backup -> qemu-img create
+#   -F qcow2 -b ksd-reset -> re-inject grub init=kboot line + current kushd/kplayd binaries +
+#   bill (the backing carries OLD copies of all three — a naive rebuild silently reverts session
+#   work) -> start. Recovered: ping OK + GUI face renders (clock 23:58, KSD logo, wifi icon) =
+#   kboot->knetd->kushd->kidulwm all up. sshd is NOT in the bill (manual convenience, dies on
+#   reboot) — "ssh refused after fresh boot" is NOT a regression.
+#   LESSON: never `virsh destroy` a running ksd-boot without a guest-side `sync`; the full
+#   start-fresh recipe is now in the kidul-system-daemons skill.
+#
 # VERDICT 93 (bobdotrix 2026-10-04) — KBOOT FOUNDATION FORK LANDED; KNETD SURVIVES KUSHD.
 #   kboot slice 3 (commit 33a869e): kboot now forks BOTH knetd (foundation) AND kushd (usher)
 #   as its own children, supervising both via waitpid(-1) — respawn whichever dies (knetd
