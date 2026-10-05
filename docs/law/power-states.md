@@ -121,6 +121,41 @@ static chown/chmod at boot (kushd early step) — not a daemon, not udev. Hotplu
 WoL is pre-OS (NIC firmware / BIOS / EFI). Our only roles: knetd sets the NIC
 wol flag; the A5 ladder branches on the wake reason (WoL vs key vs power button).
 
+## The krouter — the tiny router that plugs into the ISP router (LOCKED 2026-10-05)
+
+"Have we got our router design mixed with our system design" — resolved: we
+did NOT overload knetd, and the router is NOT the TV's job. The answer was
+already locked (line 117): knetd is ONE daemon, TWO stances, on TWO boxes.
+
+  client stance  the TV's knetd. REACHABILITY ONLY: DHCP client, wifi
+                 supplicant, MAC spoof, link state. It is the CAGED sys-net
+                 brig (dom0.md) and the network AUTHORITY (it mints the pens,
+                 kushd asks) — but it is a CLIENT, never a server. It has no
+                 DHCP-server code, no ip_forward, no NAT, no MASQUERADE, no
+                 route-add for anyone but itself. Verified by source grep on
+                 2026-10-05: dhcp.zig is a DISCOVER/OFFER/REQUEST/ACK state
+                 machine leasing an address FOR ITS OWN interface. That is the
+                 whole "no overtime" guarantee — the TV never hands out IPs.
+
+  router stance  the network box = the krouter. DHCP server, forwarding, the
+                 internet edge, the household roster (crypto.md) — AND the
+                 Reticulum mesh edge. This is the "tiny kidul router that
+                 plugs into the ISP router": OUR box at the ISP boundary, so
+                 the passwordless/granny-proof system leans on a router we
+                 own, not the ISP's. It runs knetd in router stance
+                 (kboot.md: foundation, not a kushd act).
+
+  two edges      the krouter is one box with TWO edges: the WAN edge (to the
+                 ISP router) and the Reticulum mesh edge (the antenna on the
+                 roof, reticulum transporting). Same box, one daemon, two
+                 edges — not three networks, not a telco. We carry our own
+                 mesh on our own router; we are NOT a carrier for anyone.
+
+The split is clean and already half-locked. What this freezes NEW is the
+no-overtime PIN (client stance must never grow server/forward/NAT code — any
+future DHCP-server, NAT, or routing work lands in router stance, not the TV)
+and the Reticulum mesh edge as an explicit duty of the krouter.
+
 ## The one primitive: ready-report
 
 "the act reports done" (SYSTEM.md §2.2) makes the ladder hold. Each rung
