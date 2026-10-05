@@ -125,6 +125,36 @@ crypto substrate (this file) pointed at the access problem.
                             dials out, no remote-admin surface. krypto does not
                             change that; it is why it holds.
 
+## KID + kpax — the admission gate, named (LOCKED 2026-10-05)
+
+The whole scheme has one granny sentence, and these are its two nouns. The
+kidulKey IS the identity; there is a counter where that identity boards the
+ship. Both sit on the krypto machinery (the section above) — these are the
+NAMES for the human-facing halves.
+
+  KID    = the kidulKey-attested identity (WHO you are). The key on your person.
+           "The KID registers" — you present yourself, the silicon vouches for
+           you (attest, not authenticate). Never a password; you are the ID.
+
+  kpax   = the admission gate (WHERE dom0 says yay or nay). "Are you a kidul
+           passenger?" — the counter you board StarShipKidul through. Extends
+           the ship's own word PAX (starship.md §7.2: Captain, crew, PAX) — not
+           a new term, the ship's passenger gate made the admission point. Dom0
+           sits at this counter and decides whether.
+
+  kiosk  = the OPEN kiosk (kiduldm --kiosk). NOT the kpax. No counter, no
+           admission, no ID: grab popcorn, seat yourself in the public/free
+           theatre. The foyer, not the show. The DM's no-login mode stays
+           exactly where it is — the two must never blur.
+
+  krypto = the machinery (the section above) that makes admission HOLD: the
+           assembled crypto, attest-not-authenticate, dom0 yay/nay, key on
+           person, one key two doors.
+
+One sentence for Granny: "The KID registers at the kpax" — and she never
+remembers a password again, because it is her, boarding her ship, and the
+counter knows her.
+
 STATUS (honest): the architecture is frozen here; the MECHANISM is not yet
 built. Bench access TODAY is a plain ed25519 key on disk
 (~/.ssh/id_ed25519_kidulwm); hardware-attested SSH + the resident-key client
