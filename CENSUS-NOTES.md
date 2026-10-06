@@ -168,6 +168,26 @@ kmedia + ksd-input-claim-law skills.
 #   PROOF CODE DURABLE: microbrig-proof/ self-contained (drive14.py paths -> /home/dad/dev/microbrig-proof/).
 #   Commit b4ae652 (signed B&B).
 
+# VERDICT 110 (bobdotrix 2026-10-06) — PEEK CHROME ONLY ON ROW ENDS + HOME (deployed, awaiting relog).
+#   Barticus flipped the under/over into a cleaner law: EVERY slide is full-bleed with ZERO chrome
+#   (no borders/corners/chamfers over a full page — "just a full screen display"). Widgets +
+#   notifications belong ONLY where "nobody is home" — the row ends (before_first / after_last) and
+#   the home slide (the landing/launcher). App + media slides render nothing over them.
+#   CHANGE: server.zig applyLayout peek visibility. Old law hid the peek ONLY on a fullscreen slide;
+#   new law SHOWS it only when empty_slot != .none (row end) OR the focused slide kind == .home.
+#   Notifications already live on the home slide (NotificationStore -> home CFC section), so nothing
+#   else floats over a slide. handleClick in peek.zig already gates on self.hidden, so the click
+#   router (walk-to-neighbor) dies on app slides with the render — no separate path to change.
+#   FINDING (deploy audit): the running compositor (PID 1753, 17:52) boots kidulwm=953d817, NOT
+#   b4ae652 — VERDICT 109's deploy shipped a binary stamped BEFORE the under/over commit (build ran
+#   at 953d817; b4ae652 committed after). Under/over never actually went live. This deploy ships
+#   under/over + the peek change together from the full tree (HEAD 417e8ad).
+#   VERIFY: ReleaseSafe clean; zig build test clean; isolated nested-smoke PASSED (boot + alacritty +
+#   quit, 1 output driven, 0 drops) — run under XDG_RUNTIME_DIR=/tmp/... because the host compositor
+#   owns wayland-1 + /run/user/1000/kidulwm-control.sock. Deployed mv-over swap -> /usr/local/bin/kidulwm
+#   (md5 72bd7b97, matches zig-out; .bak-953d817 kept). Running compositor UNTOUCHED — relog is
+#   Barticus's call. Commit 417e8ad (signed B&B).
+
 # VERDICT 108 (bobdotrix 2026-10-06) — 1:1 SLIDE PROVEN + THE UNDER/OVER FROZEN.
 #   drm-fill now sets a CUSTOM virtio-gpu mode (1673x1064, hand-built drm_mode_modeinfo via SETCRTC)
 #   instead of modes[0]. Guest "rendered 1673x1064 RED"; shim's final Scanout = 1673x1064 (7,120,288
