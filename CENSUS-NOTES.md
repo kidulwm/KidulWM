@@ -156,6 +156,18 @@ kmedia + ksd-input-claim-law skills.
 #   REMAINING POLISH: guest framebuffer 1280x800 vs slide 1673x1064 = misaligned top-left; fix = letterbox or
 #   set guest mode to slide size. Then: continuous frames + frame-callback pacing (the "timing is everything" law).
 
+# VERDICT 109 (bobdotrix 2026-10-06) — UNDER/OVER IMPLEMENTED + DEPLOYED (awaiting relog).
+#   style.zig: default_split + horizontal_split -> {left=0.0, focus=1.0, right=0.0}; layout.gap 8->0.
+#   Focus slide is now FULL 16:9 (1920x1080) == fullscreen (gap 0 removes the 8px inset that made it
+#   1904x1064). Peeks stop being shrink-columns; the Peek widget (logo/clock/EXIT dots) is ALREADY in
+#   overlay_tree and floats as glass ABOVE the full slide. Guest (drm-fill) + presenter (brig-present)
+#   -> 1920x1080; initramfs microbrig-kmodd.img rebuilt with the new drm-fill.
+#   VERIFY: ReleaseSafe build clean; nested-smoke PASSED (boot + client + quit, no crash). Deployed via
+#   mv-over swap (/usr/local/bin/kidulwm, .bak-b4ae652 kept). Running compositor UNTOUCHED — relog is
+#   Barticus's call. Post-relog E2E: drive14.py (guest 1920x1080) + brig-present -> full 16:9 slide 1:1.
+#   PROOF CODE DURABLE: microbrig-proof/ self-contained (drive14.py paths -> /home/dad/dev/microbrig-proof/).
+#   Commit b4ae652 (signed B&B).
+
 # VERDICT 108 (bobdotrix 2026-10-06) — 1:1 SLIDE PROVEN + THE UNDER/OVER FROZEN.
 #   drm-fill now sets a CUSTOM virtio-gpu mode (1673x1064, hand-built drm_mode_modeinfo via SETCRTC)
 #   instead of modes[0]. Guest "rendered 1673x1064 RED"; shim's final Scanout = 1673x1064 (7,120,288
