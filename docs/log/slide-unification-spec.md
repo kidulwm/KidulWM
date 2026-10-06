@@ -10,6 +10,33 @@ Every surface in the deck is ONE kind of thing: a full-bleed 16:9 slide with
 zero chrome over it (VERDICT 110 — widgets live only on the row ends + the
 far-left slide). Compositor-owned surfaces are ordinary slides, not exceptions.
 
+## Owner class (LOCKED 2026-10-06, Barticus)
+
+The face is a FLAT slideDeck. There is no "under/over" on the face — every
+slide is full-screen, nothing sits above or below a slide. The one thing that
+distinguishes slides is WHO OWNS THEM. Three owner classes:
+
+  host-owned   the face's own surfaces — home slide, media player slide,
+               overview. No arm; the compositor itself.
+  cell-owned   the pen (kcell) — foreign DISTRO + our code, fork/exec arm.
+  brig-owned   the KVM guest — foreign CODE, the second arm.
+
+Every app maps to exactly one owner class. Owner class is a SEATING fact: kushd
+decides who is seated and by which arm; kidulwm only CONSUMES it to tag a slide.
+It is NOT a boot fact (that's kboot/kmodd's separate machine-class: tv | brig).
+
+"Under/over" survives ONLY below the face, in video+audio — the playback
+present-path (scanout above the deck, the curtain, the audio clock). That is
+godcodemode.md + playback.md, not the slide model.
+
+Naming discipline (three "class" words, never blur):
+  machine class  kboot/kmodd — tv | brig (what this box IS, module selection).
+  seat class     kushd — system | service | user | restricted (the walls).
+  owner class    face — host-owned | cell-owned | brig-owned (who owns a slide).
+Always say the full phrase ("owner class"); bare "class" is the seat class.
+"CID" remains the AF_VSOCK context id (host CID=2, guest CID=3) — do NOT
+overload it with owner class.
+
 ## 1. Apps are slides (ghostty first)
 
 ghostty, the media player, and the former tray (home) slide all "act funny"

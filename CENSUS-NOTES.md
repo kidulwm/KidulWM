@@ -8,6 +8,23 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 113 (bobdotrix 2026-10-06) — OWNER CLASS LOCKED: THE FACE IS A FLAT SLIDEDECK, NO UNDER/OVER.
+#   Barticus's angle: under/over is retired from the FACE. Every slide is a full screen; nothing sits
+#   over or under a slide. The one distinguishing axis is OWNER CLASS (Barticus's word, locked): three —
+#     host-owned  the face's own surfaces (home/media-player/overview). No arm.
+#     cell-owned  the pen (kcell) — foreign DISTRO + our code, fork/exec arm.
+#     brig-owned  the KVM guest — foreign CODE, the second arm.
+#   Every app maps to exactly one. Owner class is a SEATING fact: kushd decides who's seated and by which
+#   arm; kidulwm only CONSUMES it to tag a slide. NOT a boot fact (kboot/kmodd's machine-class tv|brig is
+#   separate). Under/over survives ONLY below the face, in video+audio (scanout above the deck, the curtain,
+#   the audio clock) = godcodemode.md + playback.md.
+#   NAMING DISCIPLINE — three "class" words, never blurred: machine class (kboot: tv|brig), seat class
+#   (kushd: system|service|user|restricted = the walls), owner class (face: host/cell/brig). Say the full
+#   phrase. "CID" stays = AF_VSOCK context id (host CID=2, guest CID=3) — do NOT overload it.
+#   Written to slide-unification-spec.md (LOCKED section) + ksd-vocabulary-law skill. No code change.
+#   NOTE: this makes VERDICT 110's "under/over" naming historical; the peek-on-ends visibility still stands
+#   (widgets only on row ends + home slide) but is now just "full-bleed slides", not "under/over".
+
 # VERDICT 112 (bobdotrix 2026-10-06) — PEEK WIDGETS OVER APP SLIDES: ORDERING BUG, NOT A STALE BINARY.
 #   Barticus: "still seeing the widgets over the top of the slides" after the 417e8ad relog.
 #   Binary audit PROVED the deploy took: running compositor (PID 1783, up 19:31:15) md5 72bd7b97 ==
