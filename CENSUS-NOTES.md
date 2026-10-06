@@ -8,6 +8,26 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 112 (bobdotrix 2026-10-06) — PEEK WIDGETS OVER APP SLIDES: ORDERING BUG, NOT A STALE BINARY.
+#   Barticus: "still seeing the widgets over the top of the slides" after the 417e8ad relog.
+#   Binary audit PROVED the deploy took: running compositor (PID 1783, up 19:31:15) md5 72bd7b97 ==
+#   /usr/local/bin/kidulwm == zig-out, embedded rev 417e8ad (latest CODE commit; bf14713/bf3650d/4f0f3a5
+#   are census/spec docs). scene_dump PROVED the peek trees (logo/clock/signage) still enabled=true over
+#   the focused ghostty slide (window_id=1) on BOTH eDP-1 and DP-3.
+#   ROOT CAUSE (order-of-operations, not the layout law): peek.zig setHidden() short-circuits on
+#   `if (self.hidden == hidden) return`, but left_tree/right_tree are created LAZILY in updateOutput().
+#   applyLayout calls setHidden(true) BEFORE updateOutput() (server.zig:3412 then 3437). On a boot/relog
+#   straight onto an app slide: setHidden(true) flips hidden false->true and no-ops on null trees; then
+#   updateOutput() creates the trees ENABLED; next layout setHidden(true) early-returns. Net: hidden=true
+#   in the flag but the widgets render anyway.
+#   FIX (order-independent): updateOutput() now re-asserts `setEnabled(!self.hidden)` on left/right_tree
+#   right after creating them. Commit 1c81a02. ReleaseSafe clean; isolated nested-smoke PASSED; deployed
+#   mv-over swap (hash fff38f07 == zig-out). Running compositor UNTOUCHED — relog is Barticus's call.
+#   SEPARATE OPEN ITEM (NOT fixed here): the window chrome border ring (window.zig updateChrome(true,.all),
+#   chrome_enabled=true) still draws four 2px rects around every focused non-fullscreen slide. 417e8ad only
+#   touched peek visibility; "zero chrome over an app slide" is the slide-unification spec (bf3650d), SPEC
+#   ONLY, no code yet. After this peek fix, the border will still be visible until that unification pass.
+
 # VERDICT 98 (bobdotrix 2026-10-06) — MICRO-BRIG SLICE 1: THE ARM IS REAL. STOCK KERNEL + MINIMAL INITRAMFS BOOTS UNDER KVM.
 #   The brig (KVM arm, cells.md) got its first empirical proof on the HOST (has /dev/kvm,
 #   nested=Y): a stock kernel + a mkinitcpio `base`-only initramfs booted under qemu -enable-kvm
