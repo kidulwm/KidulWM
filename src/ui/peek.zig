@@ -151,6 +151,12 @@ pub const Peek = struct {
         if (self.right_tree == null) {
             self.right_tree = self.overlay_tree.createSceneTree() catch null;
         }
+        // Re-assert the hide flag on freshly-created trees: setHidden() short-circuits
+        // when the flag is unchanged, so a setHidden(true) that ran before the trees
+        // existed never disables them after updateOutput creates them (boot/relog
+        // straight onto an app slide). Creation honours the current state here.
+        if (self.left_tree) |t| t.node.setEnabled(!self.hidden);
+        if (self.right_tree) |t| t.node.setEnabled(!self.hidden);
         self.renderSignage(.left);
         self.renderSignage(.right);
         self.refreshClock();
