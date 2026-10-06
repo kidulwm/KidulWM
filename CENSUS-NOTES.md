@@ -188,6 +188,24 @@ kmedia + ksd-input-claim-law skills.
 #   (md5 72bd7b97, matches zig-out; .bak-953d817 kept). Running compositor UNTOUCHED — relog is
 #   Barticus's call. Commit 417e8ad (signed B&B).
 
+# VERDICT 111 (bobdotrix 2026-10-06) — SLIDE-UNIFICATION SPEC NOTED + BRIG LIVE + SOCKET INCIDENT.
+#   (1) Barticus's rethink frozen as docs/log/slide-unification-spec.md (NO code — spec only): every
+#       surface is a full-bleed slide — ghostty/media-player/home all "just a slide in the deck"; media
+#       stays OPEN parked LEFT and a playing movie/TV fades back to it on stop/quit (user-only open/close);
+#       songs get a compact control panel at the top of the media slide; "home/landing" is renamed the
+#       far-left slide (no landing/home page — left/right row ends are one thing). GREAT RESET core.
+#   (2) BRIG IS LIVE: drive14.py PASSED — kboot PID-1 -> knetd v0.4 up -> drm-fill rendered 1920x1080 RED,
+#       brig-shim captured 8294400 bytes (1920x1080x4) to /tmp/brig-frame.rgba. Guest renders the correct
+#       16:9 slide size (under/over micro-brig.md §21 PROVEN in the brig). It plays a SOLID RED slide, NOT
+#       media yet — actual media is still kmedia/kplayd on the host; the brig is the slide-producer proof.
+#   (3) SOCKET INCIDENT (mine): the first nested-smoke run was NOT isolated (inherited the host's
+#       KIDULWM_WAYLAND_DISPLAY=wayland-1 + XDG_RUNTIME_DIR=/run/user/1000), so the script's `rm -f` deleted
+#       the RUNNING compositor's /run/user/1000/wayland-1 + kidulwm-control.sock. Host compositor (PID 1753)
+#       still runs and serves existing clients, but NEW clients + IPC fail until relog; brig-present could
+#       not present to the face for this reason. RELOG (Barticus's call) restores the sockets AND activates
+#       the 417e8ad deploy (peek-on-ends + under/over). LESSON baked into devskills: always isolate the smoke
+#       run. Spec + lesson committed; this entry is the durable record.
+
 # VERDICT 108 (bobdotrix 2026-10-06) — 1:1 SLIDE PROVEN + THE UNDER/OVER FROZEN.
 #   drm-fill now sets a CUSTOM virtio-gpu mode (1673x1064, hand-built drm_mode_modeinfo via SETCRTC)
 #   instead of modes[0]. Guest "rendered 1673x1064 RED"; shim's final Scanout = 1673x1064 (7,120,288
