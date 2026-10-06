@@ -209,7 +209,7 @@ pub fn default() Style {
 /// Layout geometry tokens.  These are used by both the IPC state machine and the
 /// layout engine so gap/split values stay consistent across the compositor.
 pub const layout = struct {
-    pub const gap: u32 = 8;
+    pub const gap: u32 = 0;
     pub const peek: f32 = 0.08;
 
     pub const SplitPreset = struct {
@@ -218,11 +218,12 @@ pub const layout = struct {
         right_peek: f32,
     };
 
-    /// Default three-column split (8% peek / 84% focus / 8% peek).
-    pub const default_split: SplitPreset = .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 };
+    /// Under/over split (VERDICT 108): full-width focus, no peek columns.
+    /// Peeks are host chrome drawn in the overlay_tree, not shrink-columns.
+    pub const default_split: SplitPreset = .{ .left_peek = 0.0, .focus = 1.0, .right_peek = 0.0 };
 
-    /// Three-column horizontal arrangement (8% peek / 84% / 8% peek).
-    pub const horizontal_split: SplitPreset = .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 };
+    /// Full-focus horizontal arrangement (under/over, VERDICT 108).
+    pub const horizontal_split: SplitPreset = .{ .left_peek = 0.0, .focus = 1.0, .right_peek = 0.0 };
 
     /// Vertical top/bottom arrangements.
     pub const vertical_top_split: SplitPreset = .{ .left_peek = 0.0, .focus = 0.5, .right_peek = 0.5 };
