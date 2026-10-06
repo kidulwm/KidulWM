@@ -8,6 +8,167 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 98 (bobdotrix 2026-10-06) — MICRO-BRIG SLICE 1: THE ARM IS REAL. STOCK KERNEL + MINIMAL INITRAMFS BOOTS UNDER KVM.
+#   The brig (KVM arm, cells.md) got its first empirical proof on the HOST (has /dev/kvm,
+#   nested=Y): a stock kernel + a mkinitcpio `base`-only initramfs booted under qemu -enable-kvm
+#   to a LIVE busybox shell. kernel = /usr/lib/modules/7.2.8-1-cachyos/vmlinuz (17.2MB) +
+#   initramfs (HOOKS=(base), MODULES=()) = 7.5MB => ~25MB total, inside "tens of MB".
+#   PROOF: boot -> "Failed to mount '' on real root" -> emergency shell -> "[rootfs ~]#"; then
+#   uname -a EXECUTED over a PTY-driven serial -> "Linux cachyos 7.2.8-1-cachyos ... x86_64 GNU/Linux".
+#   GOTCHAS HIT + FIXED (recipe + pitfalls now in docs/design/micro-brig.md §9):
+#     - qemu64 DEFAULT CPU LACKS AVX: CachyOS glibc/busybox is -march=x86-64-v3 -> init hit vpxor
+#       (AVX) -> SIGILL -> "Attempted to kill init! exitcode=0x00000004" panic. FIX: -cpu host.
+#       (For a REAL brig, decide -cpu host vs a defined model — host exposes the full CPU.)
+#     - -nodefaults STRIPS the serial port -> console=ttyS0 had no ttyS0 -> silent empty boot.
+#       FIX: drop -nodefaults; -nographic alone wires serial to stdio.
+#     - mkinitcpio writes the img root-owned 600 -> qemu-as-user "Permission denied". FIX: chown.
+#     - busybox from mkinitcpio base is DYNAMICALLY linked (interpreter /lib64/ld-linux...), so a
+#       hand-crafted cpio is a trap; MUST use the base hook (it copies glibc+ld into the img).
+#     - piped stdin never reaches the emergency shell (needs a controlling tty); drive via PTY
+#       (pty.fork). "sh: can't access tty; job control turned off" is normal, not a fault.
+#   LESSON: the emergency shell is mkinitcpio's no-root path — a READY-MADE minimal prompt, but the
+#   REAL micro-brig init is the SAME ladder as the host: kboot (PID-1) -> knetd + kushd (subordinate
+#   usher). NOT kushd-as-init — kboot.md owns PID-1; the usher is always a killable child, never init.
+#   knetd in the guest base gives the subordinate usher a network, so the two ushers talk (cells.md
+#   superior-usher). Slice 1 proved the KVM boot + live userspace; slice 1b swaps busybox for
+#   kboot->knetd+kushd.
+#   RUNG COMPLETE (slice 1). Next: slice 1b — boot kboot (PID-1) -> knetd + kushd in the initramfs.
+
+# VERDICT 99 (bobdotrix 2026-10-06) — MICRO-BRIG SLICE 1b: THE TRUSTED LADDER RUNS IN THE GUEST (kboot PID-1 -> knetd + kushd + getty).
+#   The SAME boot ladder as the host boots inside a KVM guest. kboot as initramfs /init
+#   (rdinit=/usr/local/bin/kboot) becomes PID-1, mounts (proc/sys/dev/devpts/shm/run/tmp),
+#   forks knetd + kushd + getty. PROOF: /proc/1/comm = "kboot"; ps shows /usr/local/bin/knetd
+#   ("knetd v0.4 up (event-driven)" = the foundation actually started) + /usr/local/bin/kushd
+#   + -bash (getty, "-bash-5.3#") all running under PID 1.
+#   Build: cp kboot+kushd -> /usr/local/bin (knetd already there), mkinitcpio HOOKS=(base)
+#   BINARIES=(/usr/local/bin/kboot /usr/local/bin/kushd /usr/local/bin/knetd /bin/bash),
+#   boot rdinit=/usr/local/bin/kboot. initramfs 14MB (+kernel 17MB = ~31MB, still "tens of MB").
+#   PITFALL: kboot fopen's /tmp/kboot.log BEFORE mountEarly mounts tmpfs over /tmp, so in a bare
+#   initramfs (no /tmp dir yet) fopen SILENTLY fails and kboot logs nothing — the "forked knetd
+#   pid=X" lines never land. On the host (real root) /tmp exists so the log works. The ladder is
+#   proven via /proc/1/comm + ps instead. FOLLOW-UP (kboot slice, not now): mkdir /tmp or fopen
+#   after mountEarly so the log survives an initramfs boot — needed for slice 3+ debugging.
+#   RUNG COMPLETE (slice 1b). Next: slice 2 — AV bridge over virtio-vsock + virtio-gpu scanout.
+
+# VERDICT 100 (bobdotrix 2026-10-06) — KMODD PROVEN: THE BRIG LOADS ITS OWN MODULES (vsock + virtio_net LIVE).
+#   Built kmodd (new kboot-sibling exe in kboot/): the machine-class module loader, kboot step 2.
+#   kboot now forkKmodd()s (fork + waitpid) between mountEarly and startFoundation; kmodd reads the
+#   class (kclass=brig via /proc/cmdline, or /etc/kboot/class, default tv), decompresses + loads that
+#   class's modules, then EXITS (one-shot, not a body act — kboot does not respawn it).
+#   PROOF (guest: -device vhost-vsock-pci,guest-cid=3 -device virtio-net-pci, append kclass=brig):
+#   /proc/modules shows all six Live, dependency-ordered —
+#     vsock 77824 (2 users) -> vmw_vsock_virtio_transport_common 61440 -> vmw_vsock_virtio_transport 20480
+#     failover 16384 -> net_failover 24576 -> virtio_net 122880
+#   MECHANISM (own-the-primitive; no kmod, no kernel-config dependency):
+#     - mkinitcpio stores modules COMPRESSED (.ko.zst), so kmodd zstd-decompresses in USERSAPCE (links
+#       libzstd) and init_module(2)'s the ELF bytes.
+#     - PITFALL: finit_module does NOT decompress here despite CONFIG_MODULE_DECOMPRESS=y — it returns
+#       ENOEXEC (errno 8) on .ko.zst. So kmodd decompresses itself rather than lean on the kernel.
+#     - PITFALL: init_module does NOT auto-load deps (ENOENT errno 2 on a missing provider symbol) — load
+#       in TOPOLOGICAL order. virtio_net -> net_failover -> failover; vsock <- _common <- _transport.
+#     - Zig 0.16: linkSystemLibrary is on Module (kmodd_mod.linkSystemLibrary("zstd", .{})), NOT Compile.
+#   virtio-gpu DEFERRED: its drm dep chain (drm_kms_helper/ttm etc.) is a later kmodd slice. vsock
+#   (control plane) + virtio_net (network plane) unblock slice 2.
+#   RUNG COMPLETE (kmodd). Next: the AV bridge handshake itself (host CID 2 <-> guest CID 3) + virtio-gpu scanout.
+
+# VERDICT 101 (bobdotrix 2026-10-06) — BRIG SLICE 2: THE VSOCK WIRE IS LIVE (guest CID 3 <-> host CID 2, bidirectional).
+#   With kmodd loading vsock in the guest, the AV bridge control plane is PROVEN end-to-end: a static
+#   vsock-test client in the guest connected to CID 2 (the host), sent "ping-from-brig"; the host's
+#   AF_VSOCK server received it and echoed "pong-from-host" back.
+#   PROOF: "HOST ACCEPT from (3, ...)" = guest CID 3 reached host CID 2; "HOST GOT: ping-from-brig"
+#   (guest->host) + "BRIG GOT: pong-from-host" (host->guest). Both directions carry bytes.
+#   PITFALL (vsock, will recur in the real AV bridge): close-reset RACE — a server that send()s then
+#   immediately close()s races the FIN against the data; the client reads EOF/partial. FIX: flush (sleep)
+#   before close on the sender side, or shutdown(SHUT_WR) and let the peer drive the close.
+#   Next rung: virtio-gpu scanout (pixels over the wire) — still needs its drm dep chain (later kmodd
+#   slice); then the guest client renders as a host kidulwm slide.
+
+# VERDICT 102 (bobdotrix 2026-10-06) — BRIG SLICE 2 SCANOUT: VIRTIO-GPU LIVE, GUEST HAS ITS OWN DRM DEVICE.
+#   kmodd's brig class extended with the virtio-gpu chain. The drm core + kms/shmem helpers are BUILT-IN
+#   on this kernel, so the ENTIRE loadable chain is just two modules: virtio_dma_buf -> virtio-gpu
+#   (modprobe --show-depends order — much shorter than the feared drm_kms_helper/ttm chain). Booting with
+#   -device virtio-gpu-pci gives the guest a real DRM device.
+#   PROOF: /proc/modules shows virtio_gpu 114688 (virtio_dma_buf 12288, 1 user); /dev/dri/card0 (226,0)
+#   + /dev/dri/renderD128 (226,128) present — the guest can render via its own virtio GPU.
+#   Note: virtio_dma_buf is the SEAM — it is the dma-buf export path from the guest's virtio-gpu (the
+#   no-host-/dev/dri pixel bridge cells.md names). The guest is now a COMPLETE foreign-code cell:
+#   own GPU (virtio-gpu) + network (virtio-net) + control (vsock).
+#   RUNG COMPLETE (scanout modules). Next: the actual scanout share — guest renders a surface, host
+#   kidulwm shows it as a slide (the AV bridge payload).
+
+# VERDICT 103 (bobdotrix 2026-10-06) — BRIG SLICE 2 SCANOUT SHARE PROVEN: GUEST PIXELS CROSS THE WIRE.
+#   A raw-DRM guest program (drm-fill, no libdrm) modesets virtio-gpu's virtual connector and scans out a
+#   solid red framebuffer. qemu boots with -vga none -device virtio-gpu-pci -display vnc + a unix monitor;
+#   screendump captures the host-side scanout. RESULT: 1280x800 all-red, center pixel (255,0,0), 400/400
+#   samples red — the guest's framebuffer is visible on the host. The AV bridge's PIXEL plane is proven
+#   end-to-end: guest renders via its own virtio GPU, pixels cross, host sees them.
+#   Pitfalls (raw DRM modeset, modern _ptr UAPI):
+#     - connection-status enum (drm_connector_status) is NOT in the installed UAPI header — use numeric 1.
+#     - GETCONNECTOR is two-phase: pass 2 MUST allocate props_ptr + prop_values_ptr too, or the ioctl fails.
+#     - virtio-gpu's connector is type 15 (VIRTUAL), connection=1, default mode 1280x800 (26 modes).
+#   Next: route the virtio-gpu scanout to a dma-buf kidulwm imports as a slide (the virtio_dma_buf seam),
+#   instead of qemu's VNC window — the real "foreign code paints the face" integration.
+
+# VERDICT 104 (bobdotrix 2026-10-06) — SHOW TIME: FOREIGN CODE PAINTS THE FACE.
+#   First end-to-end VISIBLE render. The brig booted with -display gtk (qemu's GTK window is a native
+#   kidulwm client); drm-fill modeset + filled virtio-gpu's framebuffer red; the window landed on the
+#   kidulwm face as its own space inside the slide. Barticus confirmed: RED, in its own space, in the slide.
+#   This is RUNG A (stepping stone): pixels go guest virtio-gpu -> qemu's GTK surface -> kidulwm.
+#   RUNG B (production) is the dma-buf seam: import the guest's virtio-gpu framebuffer directly as a slide
+#   texture (virtio_dma_buf / udmabuf), no qemu surface in between.
+#   Note: screendump of the full GTK window sampled (0,0,255) at the centre — the red 1280x800 framebuffer
+#   is a sub-region of the window; Barticus's eyes are the authoritative red confirmation.
+
+# VERDICT 105 (bobdotrix 2026-10-06) — RUNG B SEAM: DBUS HANDOFF UNBLOCKED + MAPPED.
+#   Leg 1 (blob+udmabuf, true zero-copy) is BLOCKED: qemu 11 ships the `blob=` flag but NOT the udmabuf
+#   backend ("need rutabaga or udmabuf for blob resources"; no udmabuf device option / build link).
+#   Leg 2 (qemu -display dbus) is the seam, UNBLOCKED + fully mapped:
+#     qemu exports org.qemu.Display1 with /org/qemu/Display1/Console_0 (org.qemu.Display1.Console):
+#       RegisterListener(h)  — take a unix-fd handle; qemu pushes the scanout (dma-buf fd via SCM_RIGHTS)
+#       Width=1280 / Height=800 properties — the guest's virtio-gpu mode, already reported live.
+#   This is the RIGHT architecture: own software virtio-gpu (2D), no host /dev/dri in the cell, pixels cross
+#   via the dma-buf fd. virgl/rutabaga would put the host GPU INSIDE the cell (against cells.md).
+#   Next: build the brig shim — a GDBus/sd-bus client that RegisterListener()s a socket and reads the
+#   scanout dma-buf fd, then maps it as a kidulwm slide texture.
+
+# VERDICT 106 (bobdotrix 2026-10-06) — BRIG SHIM WORKS: GUEST FRAMEBUFFER DELIVERED VIA DBUS P2P.
+#   brig-shim.c (GDBus) receives the guest's virtio-gpu framebuffer from qemu's -display dbus over a p2p
+#   D-Bus connection. RegisterListener(h) hands qemu one socketpair end; qemu is the D-Bus SERVER
+#   (AUTHENTICATION_SERVER), the shim is the CLIENT (AUTHENTICATION_CLIENT, guid=NULL — client receives the
+#   guid) and exports org.qemu.Display1.Listener at /org/qemu/Display1/Listener. qemu CALLS Scanout() on it.
+#   RESULT: "Scanout 1280x800 stride=5120 pixman_fmt=0x20028888 (X8R8G8B8) bytes=4096000" — full framebuffer.
+#   Delivery is the RAW-BYTES Scanout fallback, NOT ScanoutDMABUF: virtio-gpu 2D keeps the framebuffer
+#   guest-local (shmem), so qemu's dbus display copies it to a pixman surface. ScanoutDMABUF needs blob+udmabuf
+#   (blocked: qemu lacks udmabuf) or virgl (host GPU inside the cell — against cells.md).
+#   Pitfalls: qemu = D-Bus SERVER, shim = CLIENT (guid=NULL + AUTHENTICATION_CLIENT). Listener methods (9):
+#   Scanout(u,u,u,u,ay), Update(i,i,i,i,u,u,ay), ScanoutDMABUF(h,u,u,u,u,t,b), UpdateDMABUF(i,i,i,i),
+#   Disable(), MouseSet(i,i,i), CursorDefine(i,i,i,i,ay), ScanoutMap(h,u,u,u,u,u), UpdateMap(i,i,i,i).
+#   Next: import the framebuffer into kidulwm as a slide (wl_shm for raw bytes; the 4MB copy is the pacing risk).
+
+# VERDICT 107 (bobdotrix 2026-10-06) — THE SEAM IS PROVEN: GUEST PIXELS ON THE FACE.
+#   Full chain: guest drm-fill (red) → qemu -display dbus Scanout (raw X8R8G8B8) → brig-shim (p2p Listener)
+#   → /tmp/brig-frame.rgba (verified 100% red, 1280x800x4) → brig-present (wl_shm client) → kidulwm slide.
+#   Screenshot census: red=509124 (was blue=509124 with the fallback, then red when the shim's bytes flowed).
+#   KEY FACTS: pixman X8R8G8B8 == wl_shm XRGB8888 byte-for-byte (ZERO conversion). Little-endian XRGB8888:
+#   red=0x00FF0000, blue=0x000000FF (NOT 0xFF000000 — that's black; X is the HIGH byte). kidulwm slide =
+#   1673x1064 logical (HiDPI 3840x4320 physical). xdg-shell: empty commit → roundtrip (ack configure) →
+#   attach buffer; committing a buffer pre-configure is protocol error 3 "never been configured".
+#   REMAINING POLISH: guest framebuffer 1280x800 vs slide 1673x1064 = misaligned top-left; fix = letterbox or
+#   set guest mode to slide size. Then: continuous frames + frame-callback pacing (the "timing is everything" law).
+
+# VERDICT 108 (bobdotrix 2026-10-06) — 1:1 SLIDE PROVEN + THE UNDER/OVER FROZEN.
+#   drm-fill now sets a CUSTOM virtio-gpu mode (1673x1064, hand-built drm_mode_modeinfo via SETCRTC)
+#   instead of modes[0]. Guest "rendered 1673x1064 RED"; shim's final Scanout = 1673x1064 (7,120,288
+#   bytes); presenter letterbox became a no-op (guest == slide) -> FULL RED SLIDE, no bars, no
+#   misalignment. USER: "full red slide".
+#   BUILD PITFALLS: (1) #include <drm.h> needs -I/usr/include/libdrm (not on the default path);
+#   (2) sudo mkinitcpio emits a root-owned 600 image -> chmod 644 before qemu (user) can read it.
+#   DESIGN FREEZE (Barticus): deck slide and fullscreen share ONE shape, 16:9 (1920x1080 logical =
+#   BOTH outputs: Kogan scale 2, Predator scale 1). The peeks are HOST notifications, not guest
+#   content -> they float as glass OVERLAYS ABOVE the 16:9 slide, not beside it (which reduced the
+#   slide to 1673x1064). Guest renders 16:9 forever; fullscreen = show/hide the chrome layer.
+#   "the wayland remote desktop we only dreamed of at the start." (micro-brig.md §21).
+
 # VERDICT 94 (bobdotrix 2026-10-05) — COLD-REBOOT E2E PROVEN: THE TOWER BOOTS ZERO SYSTEMD.
 #   The full ladder ran for real, end to end, on a disposable COW clone (ksd-boot):
 #     grub -> kernel 7.1.11 -> init=/usr/local/bin/kboot (PID 1)
