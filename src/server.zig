@@ -3396,18 +3396,20 @@ pub const Server = struct {
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
             // PEEK (TASKCARD-3): permanent per-output edge peeks. Signage
-            // follows the deck state. VISIBILITY LAW: the whole peek set
-            // (widgets + signage) hides ONLY while the FOCUSED slide is
-            // fullscreen — fullscreen apps own the edges. A fullscreen
-            // slide walked off-focus is a standard slide, so the peek
-            // must stay visible (it is where that slide now lives).
+            // follows the deck state. UNDER/OVER VISIBILITY LAW (VERDICT
+            // 108/109 + Barticus 2026-10-06): every slide is full-bleed, so
+            // the peek set (logo/clock/EXIT signs) is host chrome that lives
+            // ONLY on the row ends ("nobody home" — before_first/after_last)
+            // and the home slide (the landing/launcher). App + media slides
+            // are full-screen content — zero chrome over them.
             {
                 const bs: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
                 const n_slides = output.deck.slides.items.len;
-                const focused_fullscreen = output.deck.empty_slot == .none and
+                const on_end = output.deck.empty_slot != .none;
+                const on_landing = output.deck.empty_slot == .none and
                     output.deck.focused_index < n_slides and
-                    output.deck.slides.items[output.deck.focused_index].fullscreen;
-                output.peek.setHidden(focused_fullscreen);
+                    output.deck.slides.items[output.deck.focused_index].kind == .home;
+                output.peek.setHidden(!(on_end or on_landing));
                 const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
                     (output.deck.empty_slot == .after_last and n_slides > 0);
                 const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < n_slides) or
