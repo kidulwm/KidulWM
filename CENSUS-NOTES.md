@@ -8,6 +8,19 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 
+# VERDICT 114 (bobdotrix 2026-10-12) — PEEK VISIBILITY LAW (2026-10-07): PER-OUTPUT, "IF SLIDE = REMOVE PEEKS".
+#   Barticus (2026-10-07, recorded after the credit cut): each screen owns its own peek — fullscreen on
+#   one stage never blanks the widgets on another. VISIBILITY LAW: "if slide = remove peeks" — hide ONLY
+#   while a content slide (app / media) is focused. Empty deck (boot), the row ends ("nobody home"), and
+#   the home slide (landing/launcher) all SHOW peeks from the FIRST frame — no delay.
+#   CODE (189bdd2): server.zig updateOutput() predicate rewritten. The old law (VERDICT 108/109 + 110
+#   naming) showed peeks only on row ends + home slide and hid them over app/media; the new law inverts it
+#   to a single `content_slide` test (focused slide kind != .home), so hide = content-slide-focused and
+#   show = everything else. No interface change. ReleaseSafe clean (zig 0.16.0). Deployed mv-over swap;
+#   relog is Barticus's call (running compositor PID untouched). .bak kept.
+#   NOTE: window-chrome border ring (window.zig updateChrome, VERDICT 112's separate item) is still unfixed
+#   — "zero chrome over an app slide" remains the slide-unification spec (bf3650d), SPEC ONLY.
+
 # VERDICT 113 (bobdotrix 2026-10-06) — OWNER CLASS LOCKED: THE FACE IS A FLAT SLIDEDECK, NO UNDER/OVER.
 #   Barticus's angle: under/over is retired from the FACE. Every slide is a full screen; nothing sits
 #   over or under a slide. The one distinguishing axis is OWNER CLASS (Barticus's word, locked): three —
