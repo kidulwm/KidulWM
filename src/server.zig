@@ -3490,7 +3490,10 @@ pub const Server = struct {
                     window.setSurfaceOffsetForFocus();
                     window.applyContainment();
                     focused_slide_window = window;
-                    if (slide.fullscreen) {
+                    // CHROME LAW (slide-unification-spec.md): zero chrome on a
+                    // full-bleed slide (single slide fills the output), border
+                    // chrome when slides share the output (split / peeks).
+                    if (output.deck.focusedSlideIsFullBleed()) {
                         window.clearChrome();
                     } else {
                         window.updateChrome(true, .all);
@@ -3558,7 +3561,9 @@ pub const Server = struct {
                         }
                         window.setSurfaceOffsetForFocus();
                         window.applyContainment();
-                        if (slide.fullscreen) {
+                        // CHROME LAW (slide-unification-spec.md): zero chrome on
+                        // a full-bleed slide, border chrome when slides share.
+                        if (self.deck.focusedSlideIsFullBleed()) {
                             window.clearChrome();
                         } else {
                             window.updateChrome(true, .all);

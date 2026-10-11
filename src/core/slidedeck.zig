@@ -604,6 +604,21 @@ pub const SlideDeck = struct {
         return result.inset(self.gap);
     }
 
+    /// TRUE when the focused slide fills the whole output (single-slide full
+    /// screen — no split, no gap) and should render chrome-free. This is the
+    /// GEOMETRY test, NOT the `fullscreen` hotkey flag: a focus=1.0 default
+    /// split is full-bleed and chrome-free even without the flag set (the
+    /// under/over change, verdict 109); a split (2+ slides visible) or a gap
+    /// inset means the slide shares the output and chrome returns.
+    /// Chrome law (slide-unification-spec.md): zero chrome on a full-bleed
+    /// slide, border chrome on slides that share the output.
+    pub fn focusedSlideIsFullBleed(self: *SlideDeck) bool {
+        if (self.empty_slot != .none) return false;
+        if (self.focused_index >= self.slides.items.len) return false;
+        const t = self.targetForSlide(self.focused_index);
+        return t.width >= self.width and t.height >= self.height;
+    }
+
     fn horizontalTarget(self: *SlideDeck, delta: isize) Rect {
         const w: f32 = @floatFromInt(self.width);
         const focus_w: i32 = @intFromFloat(w * self.split.focus);
@@ -665,6 +680,37 @@ test "horizontal slide targets fill the output" {
     const left = deck.targetForSlide(1);
     try std.testing.expectEqual(@as(i32, -932), left.x); // -1000 + 60 + 8
     try std.testing.expectEqual(@as(u32, 984), left.width); // 1000 - 2*8
+}
+
+test "focusedSlideIsFullBleed: full screen vs split" {
+    const allocator = std.testing.allocator;
+    var deck = SlideDeck.init(allocator);
+    defer deck.deinit();
+
+    // Full-bleed default (under/over, verdict 109): focus=1.0, gap=0.
+    deck.sync(1920, 1080, 0, .{ .left_peek = 0.0, .focus = 1.0, .right_peek = 0.0 }, .horizontal);
+    deck.addWindow(1);
+    try std.testing.expect(deck.focusedSlideIsFullBleed());
+
+    // A second slide appears; still focus=1.0 -> the focused slide is still
+    // full-bleed (neighbours sit off-screen).
+    deck.addWindow(2);
+    try std.testing.expect(deck.focusedSlideIsFullBleed());
+
+    // Split (2 slides share the output): focus drops below 1.0 -> not full-bleed.
+    deck.sync(1920, 1080, 0, .{ .left_peek = 0.06, .focus = 0.88, .right_peek = 0.06 }, .horizontal);
+    try std.testing.expect(!deck.focusedSlideIsFullBleed());
+
+    // Empty deck -> false (no focused slide).
+    var empty = SlideDeck.init(allocator);
+    defer empty.deinit();
+    empty.sync(1920, 1080, 0, .{ .left_peek = 0.0, .focus = 1.0, .right_peek = 0.0 }, .horizontal);
+    try std.testing.expect(!empty.focusedSlideIsFullBleed());
+
+    // Focus on a virtual end slot -> false.
+    empty.addWindow(9);
+    empty.focusNext(); // empty_slot = .after_last
+    try std.testing.expect(!empty.focusedSlideIsFullBleed());
 }
 
 test "insert at focused slide" {

@@ -8,11 +8,41 @@ kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 #
-# (relog handoff 2026-10-12, bobdotrix): VERDICT 114 peek-visibility law is DEPLOYED and STAGED
-#   (/usr/local/bin/kidulwm == zig-out, hash dea5fd84, embedded rev 98a7541). The RUNNING compositor
-#   (pid 619618) is still 83a48d7 until Barticus relogs. After relog: verify pid embeds 98a7541
-#   (strings -a /proc/<pid>/exe | grep -xE '[0-9a-f]{7}'), then eyeball peeks — per-output, "if slide
-#   = remove peeks". Top open docket = #4 BUILD kushd (Phase 1).
+# (relog handoff 2026-10-12 RESOLVED, bobdotrix): Barticus relogged. VERDICT 115 closes it — full
+#   red slide 1:1 + peek law verified per-output. See verdict 115 below.
+#
+# VERDICT 115 (bobdotrix 2026-10-12) — POST-RELOG E2E PASSED: FULL 16:9 SLIDE 1:1 + PEEK LAW VERIFIED.
+#   Barticus relogged; running compositor (pid 643410) embeds 98a7541 = verdict 114 peek-visibility
+#   law is LIVE. Post-relog E2E (docket #4 close thread) ran clean:
+#     drive14.py -> guest rendered 1920x1080 RED (drm-fill custom SETCRTC mode), brig-shim captured
+#     the full 8294400 bytes (1920x1080x4) to /tmp/brig-frame.rgba.
+#     brig-present -> "letterboxed 1920x1080 into 1920x1080 at +0+0" = ZERO letterbox, gap 0,
+#     focus 1.0 -> the guest slide is FULL 16:9 1:1 (no bars, no misalignment). USER: "full red screen".
+#   PEEK LAW VERIFIED per-output (scene_dump): brig slide (window_id=2) fullscreen on output 1; the
+#   peek trees on output 1 (at 23,986 / 1807,20) are enabled=FALSE (removed over the content slide);
+#   the peek trees on output 2 (at 23,2066 / 1807,1100) are enabled=TRUE (shown where nobody's home).
+#   Exactly verdict 114 "if slide = remove peeks". Docket #4's AWAITING-RELOG thread CLOSED.
+#   NOTE (then-open, now FIXED by verdict 116): the window chrome border ring drew 2px rects around
+#   the full-bleed brig slide — "zero chrome over an app slide" (bf3650d) was SPEC ONLY.
+
+# VERDICT 116 (bobdotrix 2026-10-12) — CHROME BORDER ON FULL-BLEED FIXED: GEOMETRY GATE, NOT THE FLAG.
+#   Barticus (2026-10-12, after "full red screen"): full screen = ZERO chrome; 2+ slides sharing the
+#   output = border on each slide; full -> smaller transition = border back SAME FRAME.
+#   ROOT CAUSE: chrome was gated on the `slide.fullscreen` hotkey FLAG. Under the under/over change
+#   (focus=1.0, gap=0) a slide is full-bleed WITHOUT the flag set, so the 2px border ring kept drawing
+#   over a full-bleed slide (seen live over the brig's red slide, verdict 115).
+#   FIX: SlideDeck.focusedSlideIsFullBleed() — GEOMETRY test (focused slide's target width/height >=
+#   output box). Both chrome decision sites (server.zig per-output loop + headless fallback) call it:
+#   TRUE -> clearChrome, FALSE -> updateChrome(true, .all). Empty deck + virtual end slots -> FALSE.
+#   Unit test "focusedSlideIsFullBleed: full screen vs split" (full-bleed / split / empty / end-slot).
+#   Law frozen: docs/law/chrome.md §2-§4 (full-bleed = no border; split = border each; geometry not
+#   flag). Slide-unification-spec.md §5 (was SPEC ONLY, now BUILT).
+#   VERIFY: zig build + zig build test + ReleaseSafe all clean; isolated nested-smoke PASSED
+#   (scratch XDG_RUNTIME_DIR, per verdict 111). Deployed mv-over swap -> /usr/local/bin/kidulwm ==
+#   zig-out (e5216914...), .bak-14e2497 kept. Running compositor UNTOUCHED — relog is Barticus's call.
+#   Fallback if the relog shows a problem: sudo mv /usr/local/bin/kidulwm.bak-14e2497 /usr/local/bin/kidulwm
+#   + relog again. Expected after relog: full-screen slide = no border ring; split two slides = thin
+#   border on each; shrinking a full slide re-adds the border immediately.
 
 # VERDICT 114 (bobdotrix 2026-10-12) — PEEK VISIBILITY LAW (2026-10-07): PER-OUTPUT, "IF SLIDE = REMOVE PEEKS".
 #   Barticus (2026-10-07, recorded after the credit cut): each screen owns its own peek — fullscreen on

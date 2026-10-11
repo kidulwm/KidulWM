@@ -84,3 +84,17 @@ brig's slide producer: a foreign-code cell that renders one surface at the
 slide size and the host presents it 1:1. When it stops, focus fades back to
 the still-open media player slide — exactly §2 above. One slide shape for
 apps, compositor surfaces, AND foreign-code cells.
+
+## §5 Chrome border — BUILT (2026-10-12, verdict 115)
+
+"Zero chrome over an app slide" was SPEC ONLY (bf3650d); it is now built.
+Barticus (2026-10-12) sharpened it into a geometry rule:
+
+  full screen (one slide fills the whole output) -> zero chrome
+  2+ slides on screen (split / peeks)              -> border on each slide
+  full -> smaller transition                        -> border back same frame
+
+Implemented as `SlideDeck.focusedSlideIsFullBleed()` — a GEOMETRY test
+(focused slide's target >= output box), not the `fullscreen` hotkey flag.
+Both chrome decision sites (server.zig per-output loop + headless fallback)
+call it. Law frozen in docs/law/chrome.md §2-§4.
