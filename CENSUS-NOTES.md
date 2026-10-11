@@ -7,6 +7,12 @@ is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
+#
+# (relog handoff 2026-10-12, bobdotrix): VERDICT 114 peek-visibility law is DEPLOYED and STAGED
+#   (/usr/local/bin/kidulwm == zig-out, hash dea5fd84, embedded rev 98a7541). The RUNNING compositor
+#   (pid 619618) is still 83a48d7 until Barticus relogs. After relog: verify pid embeds 98a7541
+#   (strings -a /proc/<pid>/exe | grep -xE '[0-9a-f]{7}'), then eyeball peeks — per-output, "if slide
+#   = remove peeks". Top open docket = #4 BUILD kushd (Phase 1).
 
 # VERDICT 114 (bobdotrix 2026-10-12) — PEEK VISIBILITY LAW (2026-10-07): PER-OUTPUT, "IF SLIDE = REMOVE PEEKS".
 #   Barticus (2026-10-07, recorded after the credit cut): each screen owns its own peek — fullscreen on
@@ -16,8 +22,12 @@ kmedia + ksd-input-claim-law skills.
 #   CODE (189bdd2): server.zig updateOutput() predicate rewritten. The old law (VERDICT 108/109 + 110
 #   naming) showed peeks only on row ends + home slide and hid them over app/media; the new law inverts it
 #   to a single `content_slide` test (focused slide kind != .home), so hide = content-slide-focused and
-#   show = everything else. No interface change. ReleaseSafe clean (zig 0.16.0). Deployed mv-over swap;
-#   relog is Barticus's call (running compositor PID untouched). .bak kept.
+#   show = everything else. No interface change. ReleaseSafe clean (zig 0.16.0).
+#   DEPLOY (CORRECTED 2026-10-12 relog audit): the first mv-over swap (07:37) shipped a STALE build —
+#   embedded rev 83a48d7, built 07:35, predating 189bdd2 (committed 07:36:52). Binary audit caught it
+#   (running pid == deployed hash f74c23e9, but embedded rev 83a48d7 != HEAD 98a7541). Rebuilt at HEAD,
+#   re-deployed: /usr/local/bin/kidulwm == zig-out, hash dea5fd84, embedded rev 98a7541. .bak kept.
+#   relog is Barticus's call (running compositor PID 619618 is STILL 83a48d7 until relog).
 #   NOTE: window-chrome border ring (window.zig updateChrome, VERDICT 112's separate item) is still unfixed
 #   — "zero chrome over an app slide" remains the slide-unification spec (bf3650d), SPEC ONLY.
 
