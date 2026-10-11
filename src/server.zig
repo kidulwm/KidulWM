@@ -3396,20 +3396,20 @@ pub const Server = struct {
             output.deck.sync(width, height, self.state.gap, self.deck_split, self.deck_orientation);
 
             // PEEK (TASKCARD-3): permanent per-output edge peeks. Signage
-            // follows the deck state. UNDER/OVER VISIBILITY LAW (VERDICT
-            // 108/109 + Barticus 2026-10-06): every slide is full-bleed, so
-            // the peek set (logo/clock/EXIT signs) is host chrome that lives
-            // ONLY on the row ends ("nobody home" — before_first/after_last)
-            // and the home slide (the landing/launcher). App + media slides
-            // are full-screen content — zero chrome over them.
+            // follows THIS output's deck only — each screen owns its own
+            // peek, so fullscreen on one stage never blanks the widgets on
+            // another (Barticus 2026-10-07). VISIBILITY LAW: "if slide =
+            // remove peeks" — hide ONLY while a content slide (app / media)
+            // is focused. No slide (empty deck at boot), the row ends
+            // ("nobody home"), and the home slide (the landing/launcher) all
+            // SHOW peeks from the first frame — no delay.
             {
                 const bs: u32 = @intFromFloat(@max(1.0, wlr_output.scale));
                 const n_slides = output.deck.slides.items.len;
-                const on_end = output.deck.empty_slot != .none;
-                const on_landing = output.deck.empty_slot == .none and
+                const content_slide = output.deck.empty_slot == .none and
                     output.deck.focused_index < n_slides and
-                    output.deck.slides.items[output.deck.focused_index].kind == .home;
-                output.peek.setHidden(!(on_end or on_landing));
+                    output.deck.slides.items[output.deck.focused_index].kind != .home;
+                output.peek.setHidden(content_slide);
                 const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
                     (output.deck.empty_slot == .after_last and n_slides > 0);
                 const has_right = (output.deck.empty_slot == .none and output.deck.focused_index + 1 < n_slides) or
