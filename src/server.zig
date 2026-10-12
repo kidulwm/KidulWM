@@ -3192,10 +3192,38 @@ pub const Server = struct {
             }
         }
         std.log.info("KidulWM: screens {s}", .{if (off) "OFF" else "ON"});
+        // Waking (off -> on): park the cursor on the primary ("no1") screen.
+        // The Kogan powers up seconds behind the laptop panel; a cursor left
+        // on it resurfaces invisible on a still-black monitor and any stray
+        // click/keystroke lands blind. No primary declared -> cursor stays.
+        if (!off) self.warpCursorToPrimary();
     }
 
     pub fn screensOffToggle(self: *Server) void {
         self.screensOffSet(!self.screens_off);
+    }
+
+    /// Park the cursor on the "no1" screen — the output flagged primary in
+    /// outputs.toml. Mirrors the boot-park idiom: warp to the logical box
+    /// centre and adopt it as the cursor mirror (no relative deltas, per the
+    /// single-cursor-truth law). No primary declared -> no-op.
+    fn warpCursorToPrimary(self: *Server) void {
+        var it = self.outputs.iterator(.forward);
+        while (it.next()) |output| {
+            const name = std.mem.span(output.wlr_output.name);
+            const p = self.output_arrangement.find(name) orelse continue;
+            if (!p.primary) continue;
+            var box: wlr.Box = undefined;
+            self.output_layout.getBox(output.wlr_output, &box);
+            const cx = @as(f64, @floatFromInt(box.x)) + @as(f64, @floatFromInt(box.width)) / 2.0;
+            const cy = @as(f64, @floatFromInt(box.y)) + @as(f64, @floatFromInt(box.height)) / 2.0;
+            _ = self.cursor.warp(null, cx, cy);
+            self.cursor_x = cx;
+            self.cursor_y = cy;
+            std.log.info("KidulWM: wake cursor parked on primary {s} at {d:.0},{d:.0}", .{ name, cx, cy });
+            return;
+        }
+        std.log.debug("KidulWM: no primary output declared; wake cursor left in place", .{});
     }
 
     /// smartLock: stamp input activity. Called from every input handler

@@ -29,6 +29,9 @@ pub const Placement = struct {
     x: i32,
     y: i32,
     scale: ?f32 = null,
+    /// "no1" screen: the home/primary output. smartLock parks the cursor
+    /// here on wake so it never resurfaces on a slow-to-power monitor.
+    primary: bool = false,
 };
 
 /// Validation result for a would-be outputs.toml load.
@@ -155,6 +158,7 @@ fn parseInto(allocator: std.mem.Allocator, layout: *OutputLayout, content: []con
         var x: ?i32 = null;
         var y: ?i32 = null;
         var scale: ?f32 = null;
+        var primary = false;
         var fields = std.mem.tokenizeAny(u8, value[1 .. value.len - 1], ",");
         while (fields.next()) |field| {
             const f_eq = std.mem.indexOfScalar(u8, field, '=') orelse continue;
@@ -163,6 +167,11 @@ fn parseInto(allocator: std.mem.Allocator, layout: *OutputLayout, content: []con
             if (std.mem.eql(u8, f_key, "scale")) {
                 // Fractional override (e.g. 1.7) — NOT an int; parse float.
                 scale = std.fmt.parseFloat(f32, f_val) catch continue;
+                continue;
+            }
+            if (std.mem.eql(u8, f_key, "primary")) {
+                primary = std.mem.eql(u8, f_val, "true") or std.mem.eql(u8, f_val, "1") or
+                    std.mem.eql(u8, f_val, "yes") or std.mem.eql(u8, f_val, "on");
                 continue;
             }
             const num = std.fmt.parseInt(i32, f_val, 10) catch continue;
@@ -175,6 +184,7 @@ fn parseInto(allocator: std.mem.Allocator, layout: *OutputLayout, content: []con
             .x = x.?,
             .y = y.?,
             .scale = scale,
+            .primary = primary,
         };
         layout.count += 1;
         std.log.info("KidulWM: output arrangement {s} -> {d},{d}", .{ name, x.?, y.? });
