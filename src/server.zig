@@ -2005,6 +2005,12 @@ pub const Server = struct {
     pub fn mediaSlideToggle(self: *Server) void {
         const deck = self.spawnDeck();
         if (deck.findKind(.media_player) != null) {
+            // fullscreen.md: closing the card = QUIT. Exit fullscreen FIRST
+            // (fade out + teardown, sound dies) — the same guard mediaSlideClose
+            // and handleAction use. Without it, ESC on a fullscreen video removed
+            // the card but left the curtain + kplay surface holding the stage
+            // (black screen, deck buried, verdict 121).
+            if (self.video_fullscreen) self.videoFullscreenExit();
             // Close in THIS deck (the cursor's stage), not currentDeck — a
             // toggle must be symmetric with where it opened.
             if (self.outputForDeck(deck)) |output| {

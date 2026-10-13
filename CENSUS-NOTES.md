@@ -11,6 +11,25 @@ kmedia + ksd-input-claim-law skills.
 # (relog handoff 2026-10-12 RESOLVED, bobdotrix): Barticus relogged. VERDICT 115 closes it — full
 #   red slide 1:1 + peek law verified per-output. See verdict 115 below.
 #
+# VERDICT 121 (bobdotrix 2026-10-13) — ESC ON A FULLSCREEN VIDEO NO LONGER ORPHANS THE STAGE.
+#   Bug (Barticus live, "the videos wont quit or esc"): on a fullscreen movie, ESC removed the
+#   media card from the deck but the video STILL owned the output — black curtain held, deck buried,
+#   only escape was opening another instance + playing a song on the other screen to churn the stage
+#   free. Confirmed in session.log: "media player slide closed" with NO "fullscreen exit" after it,
+#   and "scanout candidate — disabling overlay_tree (fullscreen video)" repeating (video_fullscreen
+#   stayed true, phase stayed .idle).
+#   ROOT CAUSE: mediaSlideToggle's close branch (ESC -> mediaSlideKey -> mediaSlideToggle) removed
+#   the card (mediaSlideCloseOn + removeCompositorSlide) but never called videoFullscreenExit().
+#   Every OTHER close door already guards: mediaSlideClose (line 2053), handleAction close_focused,
+#   kplayStop (128bc9a), focusNext/focusPrev/overview. mediaSlideToggle was the last door without it
+#   — a latent gap since the fullscreen-mode rewrite (596f80b, 2026-09-22), surfaced now that the
+#   STOP door (verdict 120) no longer masks it.
+#   FIX: mediaSlideToggle now exits fullscreen first when video_fullscreen (same guard as its
+#   siblings). Symmetric with close_focused, which also exits-then-closes.
+#   BUILD: zig build + zig build test + ReleaseSafe clean. Deployed mv-over swap -> /usr/local/bin/
+#   kidulwm == zig-out (sha ae66c272). Running compositor UNTOUCHED — relog + eye-test = Barticus's call.
+#   Fallback: sudo mv /usr/local/bin/kidulwm.bak-5905a101 /usr/local/bin/kidulwm + relog.
+#
 # VERDICT 120 (bobdotrix 2026-10-13) — STOP ON A FULLSCREEN MOVIE NO LONGER HOLDS THE STAGE.
 #   Bug (Barticus live): STOP on a fullscreen movie killed sound+video but the media player STILL
 #   owned the stage — the black curtain held the output, deck buried, card never returned.
