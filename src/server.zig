@@ -1985,8 +1985,14 @@ pub const Server = struct {
         } else |_| {}
     }
 
-    /// Stop via kplay.sock 'close' + clear the now-playing mirror.
+    /// Stop via kplay.sock 'close' + clear the now-playing mirror. If the video
+    /// is fullscreen, exit fullscreen FIRST (fade out + teardown, sound dies)
+    /// — STOP is a quit, so the stage must be yielded, not held by the curtain.
     pub fn kplayStop(self: *Server) void {
+        if (self.video_fullscreen) {
+            self.videoFullscreenExit();
+            return;
+        }
         self.kplayCloseAny();
         self.media_player.clearNowPlaying();
     }
