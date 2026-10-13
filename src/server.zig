@@ -2634,7 +2634,17 @@ pub const Server = struct {
 
         switch (sym) {
             xkb.Keysym.Escape => {
-                self.mediaSlideToggle();
+                // BACK through app (back-home.md): walk UP one level, hard
+                // stop at the root. Never closes the slide — that is QUIT
+                // (XF86HomePage / Mod4+Q close_focused).
+                if (self.video_fullscreen) {
+                    // fullscreen -> card (RETIRE, card persists — fullscreen.md §3).
+                    self.videoFullscreenExit();
+                } else if (widget.subcategory_open) {
+                    widget.closeSubcategory();
+                    dirty = true;
+                }
+                // else: top level — hard stop, nothing to back out of.
                 return true;
             },
             xkb.Keysym.Left => {

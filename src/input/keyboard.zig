@@ -149,6 +149,12 @@ const KeyboardDevice = struct {
         if (!mod4_active and !ctrl_active and isBlindSafeKeysym(sym)) {
             if (handleBlindSafeKeysym(server, sym)) return;
         }
+        // Remote HOME (back-home.md): the SW button below the crosspad sends
+        // the standard XF86HomePage keysym — the remote's "back to home", the
+        // same verb as Mod4+Q close_focused. Unmodified, like the volume keys.
+        if (!mod4_active and !ctrl_active and sym == xkb.Keysym.XF86HomePage) {
+            if (handleAction(server, .close_focused)) return;
+        }
         if (mod4_active or ctrl_active) {
             // The media PLAYER is a real deck slide now (TASKCARD-3):
             // Ctrl+Q falls through to close_focused like any slide.
