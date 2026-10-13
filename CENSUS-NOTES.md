@@ -6,6 +6,30 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 kmedia + ksd-input-claim-law skills.
 
+# VERDICT 126 (bobdotrix 2026-10-14) — MEGA ROACH C1 PRECONDITION: SURVIVOR MODEL PROVEN.
+#   The slide-process.md law (docket #24) says "reconcile the two model copies to ONE".
+#   Census SHARPENED that: they are NOT two copies of one model — they are two DIVERGENT
+#   models. The WM's media.zig builds a FLAT LibraryEntry {title, artist, path} by shelling
+#   `find -L "*.mkv" | sort | head -1024` at boot (scanCategory/prewarmThread); kmedia's
+#   Scanner walks dirs natively and builds the RICH MediaItem model (series/collection/movie,
+#   seasons, episodes, norm, art resolution, MusicLibrary). The law already names the
+#   survivor: kmedia's Scanner.Library. So C1 = make the WM consume kmedia's Scanner and
+#   DELETE its find-shell copy — a real migration, not a copy-paste.
+#   DONE THIS SESSION: committed the frozen law + companions in BOTH repos (KidulWM 99d571c,
+#   kmedia 16c81e6, signed B&B), then built test_model.zig — a HEADLESS model proof
+#   (zig build modeltest) asserting Scanner+WatchState produce the correct series/collection/
+#   movie/music model from a synthetic /tmp tree: 5 movie items (2 flat + 1 folder + 1 series
+#   + 1 collection), Bluey season/episode parse (S1=2, S2=1), Planet Earth collection,
+#   normaliseTitle ("Oppenheimer.2023..." -> "oppenheimer"), MusicLibrary (album + flat track),
+#   WatchState resume (bluey/1 watched -> nextUnwatched resumes at ep2). ALL PASS.
+#   FINDING (pre-existing, NOT C1 scope): normaliseTitle strips at the LAST dot, so a folder
+#   named "Planet.Earth" normalises to "planet" (it reads "Earth" as an extension). Folders
+#   with dots in the name lose their tail. Logged, not fixed — flag if it shows in a real scan.
+#   NEXT (C1 proper): swap the WM's scanCategory to consume kmedia Scanner.Library/MusicLibrary,
+#   delete the find-shell + g_* globals + LibraryEntry, thread the rich model into MediaWidget.
+#   GATE still: kushd built+installed NOT running — C3 (seating) needs it live. C1/C2 don't.
+
+
 # (relog handoff 2026-09-21 resolved: hub WORKED — TV on Intel DP-3. See verdict 53.)
 #
 # (relog handoff 2026-10-12 RESOLVED, bobdotrix): Barticus relogged. VERDICT 115 closes it — full
