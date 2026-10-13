@@ -11,7 +11,55 @@ kmedia + ksd-input-claim-law skills.
 # (relog handoff 2026-10-12 RESOLVED, bobdotrix): Barticus relogged. VERDICT 115 closes it — full
 #   red slide 1:1 + peek law verified per-output. See verdict 115 below.
 #
-# VERDICT 121 (bobdotrix 2026-10-13) — ESC ON A FULLSCREEN VIDEO NO LONGER ORPHANS THE STAGE.
+# VERDICT 125 (bobdotrix 2026-10-13) — MEDIA SLIDE SELF-FRAME KILLED ON FULL-BLEED (the "ghost").
+#   Barticus eye-tested verdict 122, saw "a border around the edges, not a full slide" on the media
+#   card. Root cause (mapped): media.zig renderCard's as_slide path drew its OWN frame — a rounded
+#   corner clip with transparent-outside (alpha-0 corners) + a 1px ring at the buffer edge — and
+#   NEVER consulted focusedSlideIsFullBleed(). window.zig updateChrome gates on full-bleed; the
+#   media card was carved out of that (chrome.md "what stays") so it drew its frame forever.
+#   THE REAL GHOST: the corners weren't painted, they were alpha-0 HOLES revealing the wallpaper +
+#   background-color layers beneath the card. Same pattern as the browser — any rounded-clip +
+#   transparent-outside surface shows the layer under it at its corners. Not one ghost layer, a
+#   porous-corner pattern.
+#   FIX (build + test green, not deployed): chrome.md amended (media slide self-frame obeys the
+#   full-bleed test, carve-out dies). renderCard gains full_bleed param; frame = as_slide && !full_bleed.
+#   mediaSlideRefresh computes full_bleed from the media slide's OWN target rect (>= deck w/h) and
+#   threads it through media_slide.renderToBuffer. Full-bleed = square, opaque, edge-to-edge, no ring.
+#   Also found: card mat painted at 0.91 alpha (black-glass-halo, INTENTIONAL translucency) — not a
+#   bug; if a full-card wallpaper wash is part of the ghost, 0.91 is the lever, but it's DESIGN.
+#   DEFERRED to Barticus: keep 0.91 or go 1.0. Docket 22 implemented; docket 23 (dead Style.gap) open.
+#
+# VERDICT 124 (bobdotrix 2026-10-13) — "ESC STILL QUITS" WAS A STALE BINARY, NOT THE FIX.
+#   Barticus relogged and Esc STILL closed the media slide (subcategory test too). Diagnosis:
+#   running pid 419029 -> /usr/local/bin/kidulwm == sha ae66c272 (verdict 121's binary, deployed
+#   11:51, which still calls mediaSlideToggle on Esc). The BACK/QUIT fix (5be1ae9) was committed
+#   and pushed but NEVER built ReleaseSafe NOR deployed — verdict 122's "NOT EYE-TESTED" was the
+#   tell, and this is stale-binary-detection variant "built but never installed". Contradiction
+#   check CLEAN: the only mediaSlideToggle callers are mediaSlideFocusOrSpawn (Mod4+m spawn) and
+#   the music-dismiss path (line 2791) — neither is Esc. No code fights the BACK/QUIT axis.
+#   FIX: zig build -Doptimize=ReleaseSafe (7.14MB, rev 5be1ae9) -> rename-swap to /usr/local/bin/
+#   kidulwm == sha 203122ba. Running pid still holds old inode (deleted) — live at next relog.
+#   Esc-as-back is keyboard-testable AFTER relog: open media card, open subcategory, Esc collapses
+#   it instead of closing the slide.
+#
+# VERDICT 122 (bobdotrix 2026-10-13) — BACK (Esc) AND QUIT (XF86HomePage) ARE TWO AXES, FROZEN.
+#   Design (Barticus present): the remote has two left-of-crosspad buttons — NW = back-through-app,
+#   SW = back-to-home. They must NEVER collapse into one key. Frozen in docs/law/back-home.md.
+#   VERBS: BACK = walk UP one level in the current app (hard stop at root, no wrap, no fall-through).
+#   QUIT/HOME = close the focused slide and reveal the deck (destructive). text-edit keys
+#   (BackSpace/Delete/Home/End) stay a SEPARATE axis, scoped to text fields only — the `Home` keysym
+#   (0xff50) is caret-to-line-start and must never be rebound to the home button.
+#   KEYS: BACK = Escape (HID 0x29, the NW button). QUIT = XF86HomePage (0x1008ff18, the SW button,
+#   the standard TV "home" key), same verb as Mod4+Q/Ctrl+Q close_focused (keyboard chord stays).
+#   CODE: server.zig mediaSlideKey Escape no longer calls mediaSlideToggle (quit); it walks the ladder
+#   (video_fullscreen -> videoFullscreenExit RETIRE; subcategory_open -> closeSubcategory; else hard
+#   stop). keyboard.zig handleKey adds unmodified XF86HomePage -> close_focused, placed with the other
+#   blind-safe/unmodified keys before the Mod4/Ctrl match.
+#   BUILD: zig build + zig build test clean. Committed 5be1ae9, signed B&B (good sig), pushed origin main.
+#   NOT EYE-TESTED: running compositor untouched. XF86HomePage has no physical sender yet (remote is the
+#   north star) — relog + eye-test is Barticus's call. Esc-as-back is keyboard-testable NOW (open media
+#   card, open a subcategory, Esc should collapse it not close the slide).
+#
 #   Bug (Barticus live, "the videos wont quit or esc"): on a fullscreen movie, ESC removed the
 #   media card from the deck but the video STILL owned the output — black curtain held, deck buried,
 #   only escape was opening another instance + playing a song on the other screen to churn the stage

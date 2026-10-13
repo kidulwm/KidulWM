@@ -29,6 +29,16 @@ The KEYE is not a seat. SEAT now means one thing only: a px's place. The eye
 is the eye. KEYE keeps the K-prefix (ksound, knetd, kush, kplay, kidul, KEYE)
 and retires the KSEAT collision where "seat" did two jobs.
 
+KBRAIN — the decipherer. The eye sees; seeing alone decides nothing. kbrain is
+the brain that DECIPHERS what KEYE sees: the aggregate becomes understanding,
+and understanding becomes the next command. Not a seat, like the eye — it sits
+above the stage. THE BRAIN (Bob's private original: the growing file system +
+its klinks, Tier 1) is the whole; kbrain is the curated, shipped decipherer —
+retrieval + rules, the deterministic BobBrain (SYSTEM.md §7.2), the face of the
+north star (local-brain.md): it stops being a face on someone else's API and
+becomes the face of our own weights. Two-up at the top: KEYE gathers, kbrain
+deciphers; the eye sees, the brain understands.
+
 USHER — kushd. The seating plan and the bouncer. Not a thing — the thing that
 organises things. Seats every px in its correct seat, and carries the klink
 graph (the cup-holder map: what every seat is, what it connects to, what it
