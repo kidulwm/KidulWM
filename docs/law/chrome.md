@@ -2,6 +2,7 @@
 
 LOCKED 2026-09-28. AMENDED 2026-09-28 (border restored as scene-rect stroke).
 AMENDED 2026-10-12 (full-bleed = no border; the geometry test, not the flag).
+AMENDED 2026-10-13 (media slide self-frame obeys full-bleed; no carve-out).
 
 ## The sentence
 
@@ -66,5 +67,13 @@ FALSE. Unit test: "focusedSlideIsFullBleed: full screen vs split".
 ## What stays
 
 - Gaps between slides (the deck's own separation).
-- Compositor-owned slides (peeks, media slide, overview cards) keep their own
-  geometry — this law is about WINDOW chrome, not compositor slide art.
+- Compositor-owned slides (peeks, overview cards) keep their own geometry —
+  this law is about WINDOW chrome, not compositor slide art.
+- AMENDED 2026-10-13 (Barticus, "media is just a slide"): the media slide is
+  NOT exempt. Its self-drawn card frame (media.zig renderCard as_slide path —
+  the rounded corner clip + the 1px border ring) must obey the SAME geometry
+  test as window chrome: full-bleed = no frame, split = frame. The media card
+  was the last thing "thinking it runs the place" — it drew its own border
+  unconditionally because the old carve-out let it. That carve-out dies for
+  the media slide. Peeks and overview cards remain compositor art and are
+  unaffected.

@@ -1586,12 +1586,16 @@ pub const MediaWidget = struct {
         self.art_cache.clearRetainingCapacity();
     }
 
-    pub fn renderCard(self: *MediaWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32, out_click: ?*CardClick) void {
+    pub fn renderCard(self: *MediaWidget, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: style.Style, scale: f32, out_click: ?*CardClick, full_bleed: bool) void {
         const as_slide = (out_click == null);
+        // CHROME LAW (amended 2026-10-13): a full-bleed media slide is "just a
+        // slide" — no rounded corner clip, no self-drawn border ring. The frame
+        // returns only when the slide shares the output (split / gap inset).
+        const frame = as_slide and !full_bleed;
         const scale_f: f64 = @as(f64, scale);
         const corner_r = @as(f64, style_.corner_depth) * scale_f;
 
-        if (as_slide) {
+        if (frame) {
             // Transparent outside the corner path.
             c.cairo_set_operator(cr, c.CAIRO_OPERATOR_SOURCE);
             c.cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
@@ -2116,8 +2120,9 @@ pub const MediaWidget = struct {
         // is the only chrome, and it's either centered or gone.)
 
         // Slide chrome LAST: pop the corner clip, then the 2px focused ring
-        // at the buffer edge (same tokens as window chrome).
-        if (as_slide) {
+        // at the buffer edge (same tokens as window chrome). Skipped entirely
+        // on a full-bleed slide (frame == false) — no clip, no ring.
+        if (frame) {
             c.cairo_restore(cr);
             const bw = @as(f64, style_.border_width) * scale_f;
             const half = bw * 0.5;

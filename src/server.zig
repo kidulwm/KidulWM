@@ -2110,6 +2110,12 @@ pub const Server = struct {
         const pos_x: i32 = target.x + box.x;
         const pos_y: i32 = target.y + box.y;
         if (buf_w <= 0 or buf_h <= 0) return;
+        // CHROME LAW (amended 2026-10-13): full-bleed = the media slide's own
+        // rect fills the output (same geometry test as window chrome), so it
+        // renders edge-to-edge with no self-drawn frame. Split/gap inset = the
+        // frame returns. Uses the media slide's own target, NOT the focused
+        // slide (the media card may render as a peek while unfocused).
+        const full_bleed = target.width >= deck.width and target.height >= deck.height;
         // CARD REPAINT GUARD (verdict 17, 2026-09-12): applyLayout fires on
         // every layout event (window commit, focus change, etc.) while the
         // slide is open. renderToBuffer allocates a 33 MB ARGB32 cairo surface
@@ -2135,7 +2141,7 @@ pub const Server = struct {
         output.media_slide.card_last_h = buf_h;
         output.media_slide.card_last_gen = widget.state_generation;
         output.media_slide.card_dirty = false;
-        const buffer = media_slide_mod.renderToBuffer(widget, self.theme, buf_w, buf_h, scale) orelse return;
+        const buffer = media_slide_mod.renderToBuffer(widget, self.theme, buf_w, buf_h, scale, full_bleed) orelse return;
         if (output.media_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
             wlr.Buffer.drop(buffer);

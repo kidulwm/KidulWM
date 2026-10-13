@@ -59,6 +59,7 @@ pub fn renderToBuffer(
     width: i32,
     height: i32,
     scale: u32,
+    full_bleed: bool,
 ) ?*wlr.Buffer {
     const w_d: f64 = @floatFromInt(width * @as(i32, @intCast(scale)));
     const h_d: f64 = @floatFromInt(height * @as(i32, @intCast(scale)));
@@ -73,7 +74,7 @@ pub fn renderToBuffer(
         return null;
     };
     defer cairo.cairo_destroy(cr);
-    widget.renderCard(cr, w_d, h_d, style_, @floatFromInt(scale), null);
+    widget.renderCard(cr, w_d, h_d, style_, @floatFromInt(scale), null, full_bleed);
     cairo.cairo_surface_flush(surface);
     const data = cairo.cairo_image_surface_get_data(surface) orelse {
         cairo.cairo_surface_destroy(surface);
