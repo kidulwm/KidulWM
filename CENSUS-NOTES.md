@@ -11,6 +11,21 @@ kmedia + ksd-input-claim-law skills.
 # (relog handoff 2026-10-12 RESOLVED, bobdotrix): Barticus relogged. VERDICT 115 closes it — full
 #   red slide 1:1 + peek law verified per-output. See verdict 115 below.
 #
+# VERDICT 120 (bobdotrix 2026-10-13) — STOP ON A FULLSCREEN MOVIE NO LONGER HOLDS THE STAGE.
+#   Bug (Barticus live): STOP on a fullscreen movie killed sound+video but the media player STILL
+#   owned the stage — the black curtain held the output, deck buried, card never returned.
+#   ROOT CAUSE: kplayStop (server.zig) closed kplayd + cleared now-playing but never called
+#   videoFullscreenExit(). The EXIT choreography (video 1->0 -> teardown -> curtain 1->0 -> deck
+#   back in, fullscreen.md) never ran, so video_fullscreen stayed true and the curtain stayed at
+#   opacity 1. mediaSlideClose and handleAction already guard with videoFullscreenExit() first —
+#   kplayStop was the one door that didn't. STOP is routed XF86AudioStop (blind-safe, both screen
+#   states) -> handleBlindSafeKeysym -> kplayStop.
+#   FIX (128bc9a): kplayStop exits fullscreen first when video_fullscreen, then closes+clears for
+#   the non-fullscreen (music) path. videoTeardown inside the exit path already closes kplayd +
+#   clears now-playing, so no double-clear.
+#   BUILD: zig build + zig build test clean. Deploy + eye-test OWED (needs relog — Barticus's call).
+#   Pushed to codeberg (98a7541..128bc9a).
+#
 # VERDICT 119 (bobdotrix 2026-10-12) — WAKE PARKS CURSOR ON THE "NO1" SCREEN (KOGAN SLOW-WAKE KILL).
 #   Bug: smartLock blank -> wake left the cursor where it was. On the Kogan (DP-3), which powers up
 #   seconds behind the laptop panel, it resurfaces invisible on a still-black screen and the next
