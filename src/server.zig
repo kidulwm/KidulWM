@@ -1956,6 +1956,36 @@ pub const Server = struct {
         }
     }
 
+    /// kplay.sock 'open_live <url> <key>' — start LIVE playback. The URL is
+    /// the channel's stream, key is the stable channel id (watch-state key).
+    /// This is the ONLY door that engages kplayd's live handling (reconnect,
+    /// watchdog, PTS-discontinuity recovery); `open` must never be used for
+    /// TV. Logged for the harness evidence line.
+    pub fn kplayOpenLive(self: *Server, url: []const u8, key: []const u8) void {
+        if (url.len == 0) return;
+        var oit = self.outputs.iterator(.forward);
+        while (oit.next()) |o| {
+            if (o.video_kplay_client) |*kc| {
+                kc.openLive(url, key) catch |err| {
+                    std.log.warn("[kplay] open_live failed via slide client: {s}", .{@errorName(err)});
+                };
+                std.log.info("[kplay] open_live sent (slide client): {s} ({s})", .{ url, key });
+                return;
+            }
+        }
+        if (kplay_client_mod.KplayClient.connect(self.allocator)) |kc0| {
+            var kc = kc0;
+            defer kc.destroy();
+            std.log.info("[kplay] open_live sent: {s} ({s})", .{ url, key });
+            kc.openLive(url, key) catch |err| {
+                std.log.warn("[kplay] open_live reply err: {s}", .{@errorName(err)});
+                return;
+            };
+        } else |err| {
+            std.log.warn("[kplay] connect failed (kplayd down?): {s}", .{@errorName(err)});
+        }
+    }
+
     /// Toggle pause via kplay.sock. One player one truth = kplay.sock status;
     /// v1 flips the mirrored cached state optimistically (Granny law).
     pub fn kplayTogglePause(self: *Server) void {
@@ -2797,14 +2827,24 @@ pub const Server = struct {
                             self.mediaSlideToggle();
                             return true;
                         }
-                        // Movies / TV: kplayd open + FULLSCREEN MODE — the
-                        // card stays put and a curtain fade hands the output
-                        // to the video (fullscreen.md).
-                        const path = widget.selectedResultPath();
-                        if (path.len > 0) {
-                            self.kplayCloseAny();
-                            self.kplayOpen(path);
-                            self.videoFullscreenEnter(out);
+                        // TV: LIVE open via open_live <url> <id> — engages
+                        // kplayd's reconnect/watchdog/discontinuity recovery.
+                        // Movies: kplayd open (file). Both enter FULLSCREEN
+                        // MODE — the card stays put and a curtain fade hands
+                        // the output to the video (fullscreen.md).
+                        if (widget.category == .tv) {
+                            if (widget.selectedLiveChannel()) |lc| {
+                                self.kplayCloseAny();
+                                self.kplayOpenLive(lc.url, lc.id);
+                                self.videoFullscreenEnter(out);
+                            }
+                        } else {
+                            const path = widget.selectedResultPath();
+                            if (path.len > 0) {
+                                self.kplayCloseAny();
+                                self.kplayOpen(path);
+                                self.videoFullscreenEnter(out);
+                            }
                         }
                     },
                     .slider => {},

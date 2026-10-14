@@ -103,6 +103,17 @@ pub const KplayClient = struct {
         try self.verb(line);
     }
 
+    /// open_live <url> <key> — start LIVE playback. The key is the stable
+    /// channel id (TvChannels.idSlice), the watch-state key — never a path.
+    /// kplayd routes this to Player.openLive (reconnect/watchdog/live ring
+    /// cap), which the plain `open` verb deliberately skips. TV must use
+    /// this door or a PTS discontinuity freezes the clock with no recovery.
+    pub fn openLive(self: *KplayClient, url: []const u8, key: []const u8) Error!void {
+        var buf: [4096]u8 = undefined;
+        const line = std.fmt.bufPrint(&buf, "open_live {s} {s}\n", .{ url, key }) catch return error.OutOfMemory;
+        try self.verb(line);
+    }
+
     /// parent <handle> — import the slide's exported toplevel handle and
     /// parent kplayd's video surface to it (xdg-foreign v2).
     pub fn parent(self: *KplayClient, handle: []const u8) Error!void {

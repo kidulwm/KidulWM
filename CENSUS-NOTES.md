@@ -37,6 +37,33 @@ is retired — those verdicts live in git history and their laws survive in the
 #   logo path directly (resolveArtPath finds nothing for http stream URLs). Built ReleaseSafe, installed
 #   /usr/local/bin/kidulwm (backup .bak-20261014). ACTIVATES ON RELOG — verify channel logos post-relog.
 
+# VERDICT 131 (bobdotrix 2026-10-14) — TV FANART STILL BLANK AFTER RELOG+REBOOT: PREWARM POISONED g_no_art.
+#   c5e110e taught requestThumb the logo branch, but the BOOT PREWARM still called resolveArtPath(entry.path)
+#   directly on the http stream URL -> null -> put every TV URL into g_no_art. requestThumb's fast path
+#   (g_no_art.contains(entry_key)) then bailed BEFORE the logo branch, so no logo ever queued — movies worked
+#   because their path IS a local file that resolves. FIX (KidulWM ac937bc, signed B&B): one entryArtPath()
+#   helper owns logo-vs-chain resolution; BOTH the prewarm and requestThumb call it — the two can't diverge
+#   again. Built ReleaseSafe c132bf71, installed /usr/local/bin/kidulwm (backup .bak-20261014-fanart-pre),
+#   zig build + zig build test clean. ACTIVATES ON RELOG — verify channel logos now render.
+#   LIPSYNC (separate, Barticus live): ABC + a couple channels lipsync WAY out; 7/9/SBS spot-on. This is the
+#   "lesser-quality broadcast" class — feeds whose own A/V interleave is offset. Needs a per-channel A/V
+#   offset allowance, NOT a player-clock change (a player bug would hit every channel). See DOCKET below.
+
+# VERDICT 132 (bobdotrix 2026-10-14) — LIVE TV OPENS AS FILE (url=file): open_live IS DEAD CODE IN THE COMPOSITOR.
+#   AVOFF probe (kmedia Timing.avoff, KMEDIA_TIMING=1) measured lipsync per channel: 7 ~0ms, SBS +25ms
+#   (oscillating ±10ms = the "stuttery" cadence jitter), 9 ~±30ms, ABC -1000ms constant (feed A/V skew =
+#   lipsync disease #1), Ten (10/10 Drama) and Indonesian = AUPTS jumps of -30s/-15s + STARVE vq=0 (PTS
+#   discontinuity = disease #2, frozen). The tell: EVERY OPEN line said url=file, even live channels. Root
+#   cause: kplayd has open_live + Player.openLive (reconnect/watchdog/discontinuity recovery/live ring cap)
+#   fully built, but the compositor's kplay_client.zig had NO openLive method and server.zig routed music+movies
+#   +TV all through kplayOpen(path) -> is_live=false for every channel, so live handling never engaged. Clean
+#   feeds mask it; feeds with discontinuities freeze with nothing to rescue them. FIX (KidulWM, this commit):
+#   kplay_client.openLive(url,key) + server.kplayOpenLive(url,key) + .result handler branches TV->open_live
+#   <url> <id> (id = stable channel id, the watch-state key). Built ReleaseSafe 0854b01e, installed
+#   /usr/local/bin/kidulwm (backup .bak-20261014-live-routing-pre). ACTIVATES ON RELOG — verify Ten/Indonesian
+#   recover instead of freezing (url=live in timing log), 7/9/SBS unaffected. DEFERRED: PTS-discontinuity
+#   REBASING if reconnect doesn't catch a live discontinuity; ABC av-offset (disease #1) is a separate card.
+
 # VERDICT 129 (bobdotrix 2026-10-14) — KMEDIA ASYNC OPEN: POLL LOOP NEVER BLOCKS ON OPEN (STRUCTURAL FIX).
 #   Verdict 128 bounded the 403-key wedge with a 20s deadline, but Barticus's point stood: the open
 #   still ran ON the single-threaded poll loop, so a hung open stalled every verb for up to 20s.
