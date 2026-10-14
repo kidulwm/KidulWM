@@ -1,5 +1,18 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 
+# PENDING HANDOFF (bobdotrix 2026-10-14) — TV logo fanArt + sizing + ABC consolidation + button text.
+#   LOGOS (~/.local/share/kmedia/logos/, in-house dirty, NOT git): channel-9.png = transparent blue
+#   "9"+dots mark (main Nine only, others untouched); abc-entertains.png = pink wordmark; abc-family.png
+#   = white "ABC FAMILY" mark (was solid grey box). All transparent RGBA.
+#   SIZING (target ABC-TV smallest -> ABC-Kids largest): 7 = 0.560 (was 0.729), 10 = 0.487 (was 0.170).
+#   10-drama (0.201) + 10-comedy (0.175) STILL SMALL — wide single-line wordmarks AND mislabelled
+#   (their streams are 10bold/10peach). Deferred: needs Barticus call on proper 10-Bold/10-Peach logos.
+#   M3U: removed stale "ABC Me" from au.m3u + tv.m3u (ABC Me renamed ABC Family Jun 2025; its abc-me.m3u8
+#   now = ABC Entertains). ABC streams were ALREADY correct (Family=abc-tv-plus, Entertains=abc-me).
+#   CODE (src/ui/media.zig, committed + signed B&B): media pill/subcategory button text font_size_s(13)
+#   -> font_size_l(22). Built ReleaseSafe, installed /usr/local/bin/kidulwm (backup .bak-20261014-234909),
+#   zig build + zig build test clean. ACTIVATES ON RELOG.
+#   VERIFY POST-RELOG: ABC Family/Entertains transparent, 7/10 sized right, pill text bigger.
 # PENDING HANDOFF (bobdotrix 2026-10-14, close-of-session) — FULL BACKUP SCENARIO DONE.
 #   Road-backup clone COMPLETE + VERIFIED (raw dd nvme0n1 -> nvme1n1; GPT GUID
 #   90604B7B-8EA5-4D9D-B803-A88A5BAC5509 and LUKS UUID 248d082f-47a1-4fa5-a7be-331f70ce0b5b
