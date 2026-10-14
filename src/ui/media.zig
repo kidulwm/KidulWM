@@ -408,6 +408,19 @@ fn compareLibraryEntryTitle(_: void, a: LibraryEntry, b: LibraryEntry) bool {
     return std.mem.lessThan(u8, lower_a, lower_b);
 }
 
+/// Resolve the canonical LOCAL art path for a library entry. TV channels
+/// carry an explicit local logo (tvg-logo) that resolveArtPath cannot find —
+/// their path is an http stream URL, not a file. Everything else resolves
+/// through the on-disk art chain. Returns null when nothing local exists
+/// (placeholder). Caller owns the returned slice.
+/// One helper, TWO callers (prewarm + requestThumb): the logo path must be
+/// identical in both or the boot prewarm poisons g_no_art for TV URLs and
+/// the render thread bails before it ever reaches the logo branch.
+fn entryArtPath(alloc: std.mem.Allocator, entry: LibraryEntry, is_music: bool, is_pic: bool) ?[:0]u8 {
+    if (entry.logo) |logo| return alloc.dupeZ(u8, logo) catch null;
+    return kimg.resolveArtPath(alloc, entry.path, is_music, is_pic);
+}
+
 fn categoryLabel(cat: MediaCategory) [:0]const u8 {
     return switch (cat) {
         .movies => "Movies",
@@ -485,7 +498,7 @@ pub fn prewarmThread() void {
     var noart_n: u32 = 0;
     for (cats) |cat| {
         for (cat.entries) |entry| {
-            const art_path = kimg.resolveArtPath(std.heap.page_allocator, entry.path, cat.is_music, cat.is_pic) orelse {
+            const art_path = entryArtPath(std.heap.page_allocator, entry, cat.is_music, cat.is_pic) orelse {
                 g_no_art.put(std.hash.Crc32.hash(entry.path), {}) catch {};
                 noart_n += 1;
                 continue;
@@ -819,13 +832,10 @@ pub const MediaWidget = struct {
         if (g_no_art.contains(entry_key)) return null;
         // TV channels carry an explicit local logo (tvg-logo): use it directly.
         // The stream URL is http, so resolveArtPath finds no local art for it.
-        const art_path = if (entry.logo) |logo|
-            g_alloc.dupeZ(u8, logo) catch return null
-        else
-            kimg.resolveArtPath(g_alloc, entry.path, is_music, is_picture) orelse {
-                g_no_art.put(entry_key, {}) catch {};
-                return null;
-            };
+        const art_path = entryArtPath(g_alloc, entry, is_music, is_picture) orelse {
+            g_no_art.put(entry_key, {}) catch {};
+            return null;
+        };
         std.log.info("kimg trace: resolved '{s}' -> {s}", .{ entry.title, art_path });
         const key = kimg.thumbKey(art_path);
         if (g_surfaces.contains(key)) {
