@@ -64,6 +64,22 @@ is retired — those verdicts live in git history and their laws survive in the
 #   recover instead of freezing (url=live in timing log), 7/9/SBS unaffected. DEFERRED: PTS-discontinuity
 #   REBASING if reconnect doesn't catch a live discontinuity; ABC av-offset (disease #1) is a separate card.
 
+# VERDICT 133 (bobdotrix 2026-10-14) — TV FANART "WAY TOO BIG": LOGOS RENDERED WITH COVER-FIT, NOT CONTAIN.
+#   Barticus eye-test after relog: channel logos render, but ALL of them read oversized for the cards.
+#   (His "7/9/SBS look good" notes were the CHANNELS PLAYING, not the art — the art is oversized on every
+#   card.) Root cause: renderTileArt used a COVER fit (@max scale) for every surface, correct for 2:3 poster
+#   art but wrong for logos — a wide banner (10=600x300, abc-tv=1024x576, jogja=391x57, 7flix=1000x485) scaled
+#   up until its SHORT side filled the 2:3 card, cropping the sides and blowing the mark up huge. FIX
+#   (KidulWM f8a3a69, signed B&B): logos (entry.logo != null) now CONTAIN-fit (@min scale) with a 15% inset
+#   pad — whole mark visible, letterboxed, never cropped. Poster art (logo==null) keeps cover. Built
+#   ReleaseSafe 38a0101c, installed /usr/local/bin/kidulwm (backup .bak-20261014-fanart-fit-pre),
+#   zig build + zig build test clean. ACTIVATES ON RELOG — verify logos sit inside the card, whole mark.
+#   Tuning knob if too small = the 0.15 pad in renderTileArt (media.zig).
+#   PLAYBACK (separate, already-diagnosed, NOT this commit): ABC out-of-sync = lipsync disease #1 (feed A/V
+#   skew, needs per-channel av-offset allowance); 10 "stuttery" + jogja "play & stuttery/stop" = disease #2
+#   (PTS discontinuity — open_live routing landed in verdict 132 but PTS REBASING still deferred); sky news
+#   blackscreen = feed has NO video stream (session-31 curation, parked).
+
 # VERDICT 129 (bobdotrix 2026-10-14) — KMEDIA ASYNC OPEN: POLL LOOP NEVER BLOCKS ON OPEN (STRUCTURAL FIX).
 #   Verdict 128 bounded the 403-key wedge with a 20s deadline, but Barticus's point stood: the open
 #   still ran ON the single-threaded poll loop, so a hung open stalled every verb for up to 20s.
