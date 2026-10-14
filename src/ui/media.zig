@@ -1575,9 +1575,18 @@ pub const MediaWidget = struct {
             const sw: f64 = @floatFromInt(c.cairo_image_surface_get_width(s));
             const sh: f64 = @floatFromInt(c.cairo_image_surface_get_height(s));
             if (sw > 0 and sh > 0) {
-                const sx = w / sw;
-                const sy = h / sh;
-                const scale_factor = @max(sx, sy);
+                // TV channel logos are mixed-aspect banners/squares/portraits.
+                // CONTAIN-fit them (whole logo visible, letterboxed, inset pad)
+                // so a wide banner doesn't blow up to fill the 2:3 card and crop
+                // its sides. Poster art (movies/shows, logo==null) is already
+                // 2:3 and keeps the COVER fit.
+                const is_logo = entry.logo != null;
+                const pad: f64 = if (is_logo) @min(w, h) * 0.15 else 0.0;
+                const aw = w - 2.0 * pad;
+                const ah = h - 2.0 * pad;
+                const sx = aw / sw;
+                const sy = ah / sh;
+                const scale_factor = if (is_logo) @min(sx, sy) else @max(sx, sy);
                 const dx = x + (w - sw * scale_factor) * 0.5;
                 const dy = y + (h - sh * scale_factor) * 0.5;
                 c.cairo_save(cr);
