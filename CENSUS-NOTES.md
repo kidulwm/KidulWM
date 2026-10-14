@@ -1,10 +1,69 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 
+# PENDING HANDOFF (bobdotrix 2026-10-14, close-of-session) — FULL BACKUP SCENARIO DONE.
+#   Road-backup clone COMPLETE + VERIFIED (raw dd nvme0n1 -> nvme1n1; GPT GUID
+#   90604B7B-8EA5-4D9D-B803-A88A5BAC5509 and LUKS UUID 248d082f-47a1-4fa5-a7be-331f70ce0b5b
+#   target == source). REMOVE nvme1n1 before next reboot (identical UUIDs).
+#   Also DONE: Codeberg push (27 commits), Apocalypse archive + VMs verified intact,
+#   Tier-3 sweep (17 bundles + sda mirror + state). Change-log stamped.
+#   Arion USB enclosure SUSPECT-DEAD (zero LUN). Mullvad fixed (Chief Camel, lockdown ON).
+#   OPEN: knetd 5GHz band-steer — coded + deployed but DORMANT (scan() returns on first
+#   2.4GHz dump, never sweeps 5GHz — see knetd skill pitfall + docket). krouter NEXT:
+#   FPGA + fibre; WiFi7 = MediaTek mt7996 / Qualcomm ath12k (AP mode), SFP+ 10G server<->router.
+
 Read THIS FILE first in any reset session. It is the live state of the Great
 Reset (SYSTEM.md is the arbiter; this file is the running ledger). Update it
 after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
-kmedia + ksd-input-claim-law skills.
+# kmedia + ksd-input-claim-law skills.
+
+# VERDICT 128 (bobdotrix 2026-10-14) — KMEDIA BLACK SCREEN: LIVE-OPEN WEDGE BOUNDED (403-KEY LOOP).
+#   Barticus live: "TV + movies black screen". ROOT CAUSE: kplayd (pid 1743) wedged inside
+#   avformat_open_input on the Seven live channel — its AES key URL returned 403 (feed-side
+#   rotating/stale hdnts token), and FFmpeg's HLS demuxer looped forever re-trying the key.
+#   rw_timeout (5s) never tripped because the 403 reads FAIL FAST (they return, they don't block);
+#   ioInterruptCb could not abort it because it was wired only AFTER open returned (old
+#   Player.zig:511). The single-threaded poll loop was stuck, so kplayd stopped servicing the
+#   socket -> every play verb timed out -> no video ever committed -> black screen.
+#   FIX (kmedia f08ea00, signed B&B, deployed + proven): pre-allocate the AVFormatContext and wire
+#   ioInterruptCb BEFORE avformat_open_input (avio_open2 inherits interrupt_callback from the
+#   pre-allocated ctx), plus a 20s wall-clock open deadline (IO_OPEN_TIMEOUT_US) checked in
+#   ioInterruptCb — a broken feed now aborts the open in <=20s with "err OpenFailed" instead of
+#   wedging. Same gap fixed in reconnectLive (pre-allocate + wire + arm). Mullvad RULED OUT
+#   (CloudFront Policy is time-only, egress AU Brisbane).
+#   PROOF: (1) deployed /usr/local/bin/kplayd sha d4ff6244 == running pid exe == zig-out;
+#   (2) drip-feed repro (bytes forever, rw_timeout silent) -> open aborted at EXACTLY 20.0s
+#   "err OpenFailed", post-open status responsive (playing=0 live=0); (3) normal Seven open OK
+#   (5.3s playing=1). Seven recovered on its own (fresh token) — this fix is the guard for the
+#   NEXT 403 loop. Rollback: /usr/local/bin/kplayd.bak-c5c24e05 (pre-fix).
+
+# VERDICT 127 (bobdotrix 2026-10-14) — DOCKET #7 NOTIFY-BRIDGE: SEAM SHARPENED + FORMALLY DEFERRED.
+#   The "one live systemd remnant" is dormant, and its fix is gated on kushd-live.
+#   SHARPENING (what the bridge actually IS): a RECEIVER. It implements
+#   org.freedesktop.Notifications on the session bus (scripts/notify-bridge.py,
+#   dbus-python + GLib) and forwards every Notify -> `kidulwm-control
+#   notification_test` -> NotificationStore (home slide CFC feed). It does NOT
+#   emit kidulwm's own notifications — kidulwm's surfaces (weather/media/etc.)
+#   write the store directly via self.notificationAdd. So the seam is
+#   one-directional: external app -> bus -> bridge -> IPC -> face.
+#   THE "sd-bus" SEAM IS THE DEAD ZIG SCAFFOLD, not the live path:
+#   src/notify-bridge/main.zig does @cInclude("systemd/sd-bus.h") and its main()
+#   never even opens a bus (loads config, returns) — it is NOT in build.zig and
+#   NOT compiled. The Python bridge uses dbus-python, no libsystemd. So SYSTEM.md
+#   §2.4's "sd-bus" name = the scaffold, and it is a false start, not a dependency.
+#   HOST STATE: bridge NOT installed, NOT running — no
+#   /usr/local/bin/kidulwm-notify-bridge, no systemd user unit, no process.
+#   The systemd user unit file exists only in-tree (config/systemd/user/).
+#   I2/I7 VIOLATION is precise: the unit makes systemd the lifecycle owner of a
+#   tentacle (I2 one-usher) and hardcodes uid 1000 + wayland-1 (I1). The fix =
+#   kushd cues the bridge as a cued tentacle. GATED: kushd built+installed
+#   (686c39d) but NOT running (docket #4/#24 GATE) — cannot route through a
+#   usher that is not up, and proving it needs kushd live in a VM first.
+#   RESOLUTION: FORMALLY DEFERRED. Un-block condition = kushd live as PID-1 (or
+#   a VM proof). When it lands: kushd owns the bridge lifecycle with session-bus
+#   + runtime env inherited from the usher (I1). DO NOT finish the Zig scaffold
+#   on libsystemd (contradicts I7) — either keep the Python interim kushd-owned,
+#   or build a native bridge on pure Zig D-Bus wire (no sd-bus). Docket #7 done.
 
 # VERDICT 126 (bobdotrix 2026-10-14) — MEGA ROACH C1 PRECONDITION: SURVIVOR MODEL PROVEN.
 #   The slide-process.md law (docket #24) says "reconcile the two model copies to ONE".
