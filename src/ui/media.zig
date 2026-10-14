@@ -43,6 +43,7 @@ const LibraryEntry = struct {
     title: [:0]u8,
     artist: [:0]u8,
     path: [:0]u8,
+    logo: ?[:0]u8 = null,
 };
 
 // ── TV pill = live ONLY (ui.md amendment 2026-09-06) ─────────────────────
@@ -95,7 +96,12 @@ fn loadTvChannels() []const LibraryEntry {
         const title = g_alloc.dupeZ(u8, ch.nameSlice()) catch continue;
         const group = g_alloc.dupeZ(u8, ch.groupSlice()) catch continue;
         const url = g_alloc.dupeZ(u8, ch.urlSlice()) catch continue;
-        g_tv_live[g_tv_live_count] = .{ .title = title, .artist = group, .path = url };
+        const logo_slice = ch.logoSlice();
+        const logo: ?[:0]u8 = if (logo_slice.len > 0)
+            (g_alloc.dupeZ(u8, logo_slice) catch null)
+        else
+            null;
+        g_tv_live[g_tv_live_count] = .{ .title = title, .artist = group, .path = url, .logo = logo };
         const id = ch.idSlice();
         @memcpy(g_tv_ids[g_tv_live_count][0..id.len], id);
         g_tv_ids[g_tv_live_count][id.len] = 0;
@@ -811,10 +817,15 @@ pub const MediaWidget = struct {
         // Fast path: memoized "no art" — zero syscalls, zero allocs.
         const entry_key = std.hash.Crc32.hash(entry.path);
         if (g_no_art.contains(entry_key)) return null;
-        const art_path = kimg.resolveArtPath(g_alloc, entry.path, is_music, is_picture) orelse {
-            g_no_art.put(entry_key, {}) catch {};
-            return null;
-        };
+        // TV channels carry an explicit local logo (tvg-logo): use it directly.
+        // The stream URL is http, so resolveArtPath finds no local art for it.
+        const art_path = if (entry.logo) |logo|
+            g_alloc.dupeZ(u8, logo) catch return null
+        else
+            kimg.resolveArtPath(g_alloc, entry.path, is_music, is_picture) orelse {
+                g_no_art.put(entry_key, {}) catch {};
+                return null;
+            };
         std.log.info("kimg trace: resolved '{s}' -> {s}", .{ entry.title, art_path });
         const key = kimg.thumbKey(art_path);
         if (g_surfaces.contains(key)) {
