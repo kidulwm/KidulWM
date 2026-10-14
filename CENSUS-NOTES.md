@@ -5,8 +5,8 @@
 #   "9"+dots mark (main Nine only, others untouched); abc-entertains.png = pink wordmark; abc-family.png
 #   = white "ABC FAMILY" mark (was solid grey box). All transparent RGBA.
 #   SIZING (target ABC-TV smallest -> ABC-Kids largest): 7 = 0.560 (was 0.729), 10 = 0.487 (was 0.170).
-#   10-drama (0.201) + 10-comedy (0.175) STILL SMALL — wide single-line wordmarks AND mislabelled
-#   (their streams are 10bold/10peach). Deferred: needs Barticus call on proper 10-Bold/10-Peach logos.
+#   10 Drama/10 Comedy were mislabelled (streams are 10bold/10peach) -> renamed 10 Bold/10 Peach with
+#   correct iptv-org logos (10-bold.png red, 10-peach.png purple; render ~0.25, wide circle+wordmark).
 #   M3U: removed stale "ABC Me" from au.m3u + tv.m3u (ABC Me renamed ABC Family Jun 2025; its abc-me.m3u8
 #   now = ABC Entertains). ABC streams were ALREADY correct (Family=abc-tv-plus, Entertains=abc-me).
 #   CODE (src/ui/media.zig, committed + signed B&B): media pill/subcategory button text font_size_s(13)
