@@ -3,7 +3,8 @@
 # PENDING HANDOFF (bobdotrix 2026-10-14, close-of-session) — FULL BACKUP SCENARIO DONE.
 #   Road-backup clone COMPLETE + VERIFIED (raw dd nvme0n1 -> nvme1n1; GPT GUID
 #   90604B7B-8EA5-4D9D-B803-A88A5BAC5509 and LUKS UUID 248d082f-47a1-4fa5-a7be-331f70ce0b5b
-#   target == source). REMOVE nvme1n1 before next reboot (identical UUIDs).
+#   target == source). RESOLVED 2026-10-14: clone removed. nvme1n1 now = 1TB miniPC TV drive
+#   (old Proxmox install to be wiped; future kboot test bunny).
 #   Also DONE: Codeberg push (27 commits), Apocalypse archive + VMs verified intact,
 #   Tier-3 sweep (17 bundles + sda mirror + state). Change-log stamped.
 #   Arion USB enclosure SUSPECT-DEAD (zero LUN). Mullvad fixed (Chief Camel, lockdown ON).
