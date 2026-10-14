@@ -17,6 +17,22 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 # kmedia + ksd-input-claim-law skills.
 
+# VERDICT 129 (bobdotrix 2026-10-14) — KMEDIA ASYNC OPEN: POLL LOOP NEVER BLOCKS ON OPEN (STRUCTURAL FIX).
+#   Verdict 128 bounded the 403-key wedge with a 20s deadline, but Barticus's point stood: the open
+#   still ran ON the single-threaded poll loop, so a hung open stalled every verb for up to 20s.
+#   "Streaming should use everything it can get to stay smooth" — and the loop must never block.
+#   FIX (kmedia 58c90c1, signed B&B, deployed + proven): openPath/openLive spawn a worker (PendingOpen)
+#   that runs openInternal off the loop; the loop finalizes on the next tick (install player +
+#   ensureShell + best-effort reply — the compositor is fire-and-forget). closePlayer cancels an
+#   in-flight open via stop_flag -> ioInterruptCb abort (bounded join; full close() if it completed
+#   just before). openInternal now wires the interrupt callback + 20s deadline for BOTH live AND file
+#   (was live-only), so file opens and cancellation are bounded too. The loop stays single-threaded
+#   ON PURPOSE (one-usher doctrine: serialized lifecycle = no player-state races; multithreading the
+#   loop would reintroduce them). LAW frozen: docs/design/async-open.md.
+#   PROOF: drip-feed open in flight -> status from 3 separate connections answered in 0ms; open
+#   aborted at 20.0s "err OpenFailed"; normal Seven open deferred ok at 5.6s (playing=1); close-in-
+#   flight returned ok in 5ms. Deployed /usr/local/bin/kplayd sha 5139d4fe; rollback .bak-d4ff6244.
+
 # VERDICT 128 (bobdotrix 2026-10-14) — KMEDIA BLACK SCREEN: LIVE-OPEN WEDGE BOUNDED (403-KEY LOOP).
 #   Barticus live: "TV + movies black screen". ROOT CAUSE: kplayd (pid 1743) wedged inside
 #   avformat_open_input on the Seven live channel — its AES key URL returned 403 (feed-side
