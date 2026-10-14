@@ -17,6 +17,25 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 # kmedia + ksd-input-claim-law skills.
 
+# VERDICT 130 (bobdotrix 2026-10-14) — TV LIVE CHANNELS FOR THE ROAD: SEVEN AKAMAI + ABC GEO-BLOCK + FANART.
+#   SEVEN main channel mid-migration to Akamai (npc-live-sevennetwork.akamaized.net): Sydney AND Brisbane
+#   403 their AES keys; only Toowoomba (7livecloud) works. 7two/7mate/7flix unaffected (all still 7livecloud).
+#   Swapped shipped /usr/share/kidul/tv/au.m3u Sydney/NSW -> QLD feeds (Seven->Toowoomba, 7two/7mate/7flix->
+#   Brisbane, Nine->channel-9-qld, ABC->abc-qld); backup au.m3u.bak-20261014. Added "Seven Mackay" (seven-mky)
+#   to household tv.m3u. mjh.nz has NO Wide Bay/Hervey Bay feed (Seven regions: syd/mel/ade/per/bri/twb/mky/
+#   tsv/cns). Note: TvChannels dedups by DISPLAY NAME only (tvg-id ignored) — a name mismatch shows BOTH.
+#   ABC "outside Australia" = mjh.nz c.mjh.nz resolver GEOTESTS the client IP: residential AU (Aussie
+#   Broadband) -> DIRECT ABC master (Akamai hdntl tokens, works); datacenter (Mullvad/Host Universal) ->
+#   broken proxy path (relative 1080p.m3u8 -> 404). FIX: kplayd now launches via `mullvad-exclude` (systemd
+#   ExecStart) so live TV uses the residential IP. PROVEN end-to-end: open -> ok, playing=1 title=abc-qld,
+#   direct Akamai stream + VA-API active. Split-tunnel is PID-based (whole kplayd = effectively live TV only,
+#   movies/music are local); systemd re-runs mullvad-exclude on every respawn so exclusion follows the PID.
+#   VPN: lockdown ON + autoconnect ON for the Hervey Bay trip.
+#   FANART (KidulWM c5e110e, signed B&B): TV cards render channel logos (tvg-logo) instead of the deterministic
+#   gradient. LibraryEntry gains `logo`; loadTvChannels populates it from tvg-logo; requestThumb uses the local
+#   logo path directly (resolveArtPath finds nothing for http stream URLs). Built ReleaseSafe, installed
+#   /usr/local/bin/kidulwm (backup .bak-20261014). ACTIVATES ON RELOG — verify channel logos post-relog.
+
 # VERDICT 129 (bobdotrix 2026-10-14) — KMEDIA ASYNC OPEN: POLL LOOP NEVER BLOCKS ON OPEN (STRUCTURAL FIX).
 #   Verdict 128 bounded the 403-key wedge with a 20s deadline, but Barticus's point stood: the open
 #   still ran ON the single-threaded poll loop, so a hung open stalled every verb for up to 20s.
