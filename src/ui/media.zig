@@ -1762,7 +1762,7 @@ pub const MediaWidget = struct {
         c.cairo_stroke(cr);
 
         // Segment labels + uniform hit rects.
-        const pill_font = @as(f64, style_.font_size_s) * scale_f;
+        const pill_font = @as(f64, style_.font_size_l) * scale_f;
         c.cairo_set_font_size(cr, pill_font);
         for (0..PILL_COUNT) |i| {
             const cat = mediaCategoryFromIndex(i);
@@ -1820,7 +1820,7 @@ pub const MediaWidget = struct {
             c.cairo_set_line_width(cr, 1.5);
             c.cairo_stroke(cr);
 
-            const sub_font = @as(f64, style_.font_size_s) * scale_f;
+            const sub_font = @as(f64, style_.font_size_l) * scale_f;
             c.cairo_set_font_size(cr, sub_font);
             for (sub_names, 0..) |name, si| {
                 const seg_x = sub_track_x + @as(f64, @floatFromInt(si)) * pb_seg_w;
