@@ -11,17 +11,25 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (relog 2026-10-14)
+## Current attack (relog 2026-10-19)
 
-  MEGA ROACH (docket #24): extract the media brain out of the WM. The media
-  player is the one compositor-owned app — its scan/library/art/watch-state
-  lives in kidulwm/src/ui/media.zig instead of a separate client process.
-  LAW LOCKED: docs/law/slide-process.md ("APP owns CONTENT, WM owns WINDOW,
-  SLIDE is a PLACEMENT"). Naming: GLOSSARY.md (KEYE/kbrain/content). Cards
-  C1-C5 live in slide-process.md — reconcile the two model copies to ONE, make
-  kmedia a Wayland client, seat via kushd, hand play to kplayd, delete both
-  dead copies. Prove in VM (ksd-reset pixman) before host. GATE: kushd is
-  built+installed but NOT running — C3 needs it live.
+  BOOT STATE (docket #8): boot-to-TV as a STANDARD SETTING, not a hardcoded
+  behaviour. CLARIFICATION LOCKED 2026-10-19 (verbatim in docket): "NOT
+  static-boot-to-TV. Boot-to-TV is a STANDARD SETTING we turn ON for our own
+  TVs — flexible, never a hardcoded boot behaviour. The boot TARGET is a
+  configurable autostart entry (TV / PC / remember-last / ANY app), so a
+  hotel can autostart into its own menu and Granny lands on her channel."
+  Done = cold boot restores last-known state; settings exposes a boot-target
+  entry (TV / PC / remember-last / any autostart app). Klinks: kidulwm boot
+  path (KIDULWM_BOOT_MEDIA gate, server.zig ~3800), kushd A5 boot ladder,
+  settings surface, autostart/boot-target config.
+
+  Also warm from last session (kmedia lane): the A/V drift wind-up fix is
+  DEPLOYED (/usr/local/bin/kplayd sha fbf7b926) but UNVERIFIED by a real
+  movie — next movie play is the check (should hold ~±6ms, not ramp).
+  Source still uncommitted: Player.zig + Timing.zig + build.zig +
+  test_driftprobe.zig. New sound.md law line added (cork freezes the clock =
+  a contract; see ksound/docs/law/sound.md "The cork freezes the clock").
 
 ## Trip wires / commands / secrets
 
