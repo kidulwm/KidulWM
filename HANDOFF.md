@@ -22,6 +22,12 @@ sessions with session_search). Live state lives in the ledger, not here.
       real /mnt/sda_backup/Jelly library (127 = 119 movie / 8 series / 0
       collection). Drop-in for media.zig's find-based model.
     - boot-state law LOCKED + committed, KidulWM 3e3051e (docket #8).
+  boot-state SETTING SLICE DONE (this session, docket #8): boot.toml +
+    boot_config.zig (target = pc|tv|remember-last|<app-id>) + `kidulwm-control
+    set-boot-target`; env KIDULWM_BOOT_MEDIA=1 kept as a deprecated shim until
+    the TV golden ships its own boot.toml. Committed 4117226, pushed, DEPLOYED
+    (/usr/local/bin/kidulwm + kidulwm-control, mv-over, sha-verified, .bak kept)
+    — takes effect on relog. remember-last resolver + kushd seating = post-#24.
   NEXT SESSION KICKS OFF at slice 1: retire prewarmThread/scanCategory/execFind
   + g_movies/g_music/g_tv globals in src/ui/media.zig; build Scanner.Library
   lazily on media-card open (NOT at boot). VM-first (ksd-reset, pixman), small
