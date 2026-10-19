@@ -13,23 +13,24 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current attack (relog 2026-10-19)
 
-  BOOT STATE (docket #8): boot-to-TV as a STANDARD SETTING, not a hardcoded
-  behaviour. CLARIFICATION LOCKED 2026-10-19 (verbatim in docket): "NOT
-  static-boot-to-TV. Boot-to-TV is a STANDARD SETTING we turn ON for our own
-  TVs — flexible, never a hardcoded boot behaviour. The boot TARGET is a
-  configurable autostart entry (TV / PC / remember-last / ANY app), so a
-  hotel can autostart into its own menu and Granny lands on her channel."
-  Done = cold boot restores last-known state; settings exposes a boot-target
-  entry (TV / PC / remember-last / any autostart app). Klinks: kidulwm boot
-  path (KIDULWM_BOOT_MEDIA gate, server.zig ~3800), kushd A5 boot ladder,
-  settings surface, autostart/boot-target config.
+  MEGA ROACH C1 (docket #24) — the media model swap. C1 PREP DONE + committed:
+    - refresh law (library-model) + lazy-art law (art-chain) LOCKED, kmedia
+      92acd54. Four triggers (additions=inotify / removals=lazy-miss / manual=
+      rescan-button / purchase=inject-on-delivery), no timer, no boot scan; art
+      resolved only on request.
+    - scanreal real-drive proof GREEN, kmedia 5636e96: Scanner produces the
+      real /mnt/sda_backup/Jelly library (127 = 119 movie / 8 series / 0
+      collection). Drop-in for media.zig's find-based model.
+    - boot-state law LOCKED + committed, KidulWM 3e3051e (docket #8).
+  NEXT SESSION KICKS OFF at slice 1: retire prewarmThread/scanCategory/execFind
+  + g_movies/g_music/g_tv globals in src/ui/media.zig; build Scanner.Library
+  lazily on media-card open (NOT at boot). VM-first (ksd-reset, pixman), small
+  incremental commits. FOUND: kmedia App.zig writes library.cache but never
+  loads it — cache-load path is unbuilt C1 work.
 
-  Also warm from last session (kmedia lane): the A/V drift wind-up fix is
-  DEPLOYED (/usr/local/bin/kplayd sha fbf7b926) but UNVERIFIED by a real
-  movie — next movie play is the check (should hold ~±6ms, not ramp).
-  Source still uncommitted: Player.zig + Timing.zig + build.zig +
-  test_driftprobe.zig. New sound.md law line added (cork freezes the clock =
-  a contract; see ksound/docs/law/sound.md "The cork freezes the clock").
+  kmedia lane: A/V drift wind-up fix is COMMITTED (cf21d2f) + DEPLOYED
+  (/usr/local/bin/kplayd sha fbf7b926), UNVERIFIED by a real movie — next
+  movie play is the check (should hold ~±6ms, not ramp).
 
 ## Trip wires / commands / secrets
 

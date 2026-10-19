@@ -31,6 +31,22 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 # kmedia + ksd-input-claim-law skills.
 
+# VERDICT 134 (bobdotrix 2026-10-19) — MEGA ROACH C1 PREP DONE: REFRESH+LAZY-ART LAWS LOCKED, REAL-DRIVE SCAN PROVEN (EXTENDS 126).
+#   Laws LOCKED (Barticus gsi, kmedia 92acd54): library-model "Refresh — lazy, never a timer"
+#   (four triggers: additions=inotify / removals=lazy-miss / manual=rescan-button / purchase=
+#   inject-on-delivery; NEVER boot, NEVER timer) + art-chain "Art resolution — lazy, not prewarm"
+#   (art resolved only on request). Kills the WM's find-based boot scan + ArtPipeline prewarm.
+#   Real-drive proof GREEN (kmedia 5636e96, harness `zig build scanreal`): Scanner produces the
+#   real /mnt/sda_backup/Jelly library — 127 items = 119 movie / 8 series / 0 collection,
+#   sections correct (movies=3 tv_series=3 kids_movies=116 kids_shows=5), music 11. Extends
+#   verdict 126 (synthetic modeltest) to the REAL tree: Scanner is a drop-in for media.zig's
+#   scanCategory/execFind + g_movies/g_music/g_tv globals.
+#   FOUND: kmedia App.zig WRITES library.cache but never LOADS it (re-scans on init) — the
+#   "scan once, deltas after" load path is UNBUILT C1 work.
+#   NEXT ATTACK (fresh session): slice 1 — retire prewarmThread/scanCategory/execFind + globals
+#   in src/ui/media.zig, build Scanner.Library lazily on media-card open. VM-first (ksd-reset),
+#   small incremental commits. boot-state law also LOCKED+committed (KidulWM 3e3051e, docket #8).
+
 # VERDICT 130 (bobdotrix 2026-10-14) — TV LIVE CHANNELS FOR THE ROAD: SEVEN AKAMAI + ABC GEO-BLOCK + FANART.
 #   SEVEN main channel mid-migration to Akamai (npc-live-sevennetwork.akamaized.net): Sydney AND Brisbane
 #   403 their AES keys; only Toowoomba (7livecloud) works. 7two/7mate/7flix unaffected (all still 7livecloud).
