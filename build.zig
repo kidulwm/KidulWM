@@ -258,6 +258,16 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    const boot_config_tests = b.addTest(.{
+        .name = "boot-config-test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/core/boot_config.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
     const test_step = b.step("test", "Run layout tests");
     test_step.dependOn(&layout_tests.step);
+    test_step.dependOn(&boot_config_tests.step);
 }

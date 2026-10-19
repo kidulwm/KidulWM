@@ -51,6 +51,14 @@ pub fn main(init: std.process.Init.Minimal) !void {
         try setGaugeFlag(allocator, "temp_threshold_f", value);
         return;
     }
+    if (std.mem.eql(u8, cmd, "set-boot-target")) {
+        const value = it.next() orelse {
+            std.log.err("set-boot-target requires pc|tv|remember-last|<app-id>", .{});
+            return error.MissingArgument;
+        };
+        try setBootTarget(allocator, value);
+        return;
+    }
 
     const runtime = std.process.Environ.getPosix(init.environ, "XDG_RUNTIME_DIR") orelse "/run/user/1000";
     const socket_path = try std.fs.path.join(allocator, &.{ runtime, "kidulwm-control.sock" });
@@ -256,6 +264,72 @@ fn setGaugeFlag(allocator: std.mem.Allocator, key: []const u8, raw_value: []cons
     defer _ = linux.close(fd_i);
     _ = linux.write(fd_i, out.items.ptr, out.items.len);
     std.log.info("gauges.toml: {s} = {s}", .{ key, value });
+}
+
+/// Write (or update) the boot target in ~/.config/kidulwm/boot.toml.
+/// Accepts pc | tv | remember-last | any app-id. The [boot] header is
+/// written on create, exactly like the gauge setter.
+fn setBootTarget(allocator: std.mem.Allocator, raw_value: []const u8) !void {
+    const home = std.c.getenv("HOME") orelse return error.NoHome;
+    const dir_path = try std.fs.path.join(allocator, &.{ std.mem.span(home), ".config", "kidulwm" });
+    defer allocator.free(dir_path);
+    const file_path = try std.fs.path.join(allocator, &.{ dir_path, "boot.toml" });
+    defer allocator.free(file_path);
+
+    var lines = std.ArrayList([]const u8).empty;
+    defer {
+        for (lines.items) |l| allocator.free(l);
+        lines.deinit(allocator);
+    }
+    var replaced = false;
+    if (readFileAlloc(allocator, file_path)) |content| {
+        defer allocator.free(content);
+        var it2 = std.mem.splitScalar(u8, content, '\n');
+        while (it2.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t\r");
+            const is_target = trimmed.len > 6 and
+                std.mem.startsWith(u8, trimmed, "target") and
+                (trimmed[6] == ' ' or trimmed[6] == '=' or trimmed[6] == '\t');
+            if (is_target and !replaced) {
+                const nl = try std.fmt.allocPrint(allocator, "target = {s}", .{raw_value});
+                try lines.append(allocator, nl);
+                replaced = true;
+            } else {
+                try lines.append(allocator, try allocator.dupe(u8, line));
+            }
+        }
+    } else |_| {}
+    if (!replaced) {
+        const nl = try std.fmt.allocPrint(allocator, "target = {s}", .{raw_value});
+        try lines.append(allocator, nl);
+    }
+
+    const dir_z = try allocator.dupeZ(u8, dir_path);
+    defer allocator.free(dir_z);
+    _ = linux.mkdir(dir_z, 0o755);
+
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(allocator);
+    const has_header = blk: {
+        for (lines.items) |l| {
+            if (std.mem.startsWith(u8, std.mem.trim(u8, l, " \t"), "[boot]")) break :blk true;
+        }
+        break :blk false;
+    };
+    if (!has_header) try out.appendSlice(allocator, "[boot]\n");
+    for (lines.items) |l| {
+        if (l.len == 0) continue;
+        try out.appendSlice(allocator, l);
+        try out.append(allocator, '\n');
+    }
+
+    const path_z = try allocator.dupeZ(u8, file_path);
+    defer allocator.free(path_z);
+    const fd_i: i32 = @intCast(linux.open(path_z, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644));
+    if (fd_i < 0) return error.WriteFailed;
+    defer _ = linux.close(fd_i);
+    _ = linux.write(fd_i, out.items.ptr, out.items.len);
+    std.log.info("boot.toml: target = {s}", .{raw_value});
 }
 
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {

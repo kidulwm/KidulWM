@@ -15,6 +15,7 @@ const theme_mod = @import("core/theme.zig");
 const Theme = theme_mod.Theme;
 const slidedeck = @import("core/slidedeck.zig");
 const output_layout_config = @import("core/output_layout_config.zig");
+const boot_config = @import("core/boot_config.zig");
 const animation = @import("core/animation.zig");
 const render_image = @import("render/image.zig");
 const DataBuffer = @import("render/buffer.zig").DataBuffer;
@@ -431,6 +432,10 @@ pub const Server = struct {
     /// A5 boot ladder latch: the media PLAYER slide is spawned once, on the
     /// first output to land.
     boot_player_spawned: bool = false,
+    /// Boot-target setting (boot-state.md LOCKED 2026-10-19): WHICH app the
+    /// system seats as PRIMARY on cold boot. Read from boot.toml; `tv` maps
+    /// to the in-process media player ladder below; the rest are post-#24.
+    boot: boot_config.BootConfig,
     /// FULLSCREEN-IS-A-MODE (fullscreen.md): true while a video plays
     /// fullscreen over its card. The card stays a normal focused slide; the
     /// deck does NOT move; kplayd's surface is pinned edge-to-edge over this
@@ -869,6 +874,7 @@ pub const Server = struct {
             .output_layout = output_layout,
             .scene_output_layout = scene_output_layout,
             .output_arrangement = output_layout_config.load(allocator),
+            .boot = boot_config.load(allocator),
             .xdg_shell = xdg_shell,
             .layer_shell = layer_shell,
             .output_manager = output_manager,
@@ -3904,10 +3910,14 @@ pub const Server = struct {
         // BOOT LADDER (A5): the first output to land spawns the media
         // PLAYER appliance as a normal compositor-owned app slide — first
         // frame, first focus. No home slide exists at keyless boot.
-        // HOST GATE (Barticus 2026-09-17): on this host the player is a
-        // Mod4+m slide like any other; boot-open is TV-profile behaviour.
-        // Gate via env: KIDULWM_BOOT_MEDIA=1 restores the TV boot ladder.
-        const boot_media = blk: {
+        // BOOT TARGET (boot-state.md LOCKED 2026-10-19): the ladder is gated
+        // by the boot-target SETTING (boot.toml), not a hardcoded env bool.
+        // target=tv spawns the media PLAYER appliance (the A5 ladder);
+        // pc/remember-last/<app-id> are the post-#24 far side and leave
+        // keyless boot empty. KIDULWM_BOOT_MEDIA=1 is a DEPRECATED transition
+        // shim: the TV golden image still sets it until its boot.toml ships
+        // (then the shim is deleted).
+        const boot_media = self.boot.target == .tv or blk: {
             const val = std.c.getenv("KIDULWM_BOOT_MEDIA") orelse break :blk false;
             break :blk std.mem.eql(u8, std.mem.span(val), "1");
         };

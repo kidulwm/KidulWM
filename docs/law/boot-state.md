@@ -35,6 +35,13 @@ The current boot knob is a static env bool (KIDULWM_BOOT_MEDIA, server.zig
 ~3800) — exactly the hardcoded behaviour this law retires. The general setting
 replaces it.
 
+Shipped 2026-10-19 (bobdotrix): the setting is now LIVE — src/core/boot_config.zig
+(boot.toml, target = pc | tv | remember-last | <app-id>) + a
+`kidulwm-control set-boot-target` setter. `tv` maps to the existing in-process
+media ladder; the env bool is retained only as a DEPRECATED transition shim
+until the TV golden image ships its own boot.toml (then the shim is deleted).
+remember-last / <app-id> resolution remains the post-#24 far side.
+
 ## The split (system vs app, at boot)
 
   SYSTEM (kushd + kidulwm) owns the TARGET:
