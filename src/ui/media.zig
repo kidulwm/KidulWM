@@ -302,62 +302,83 @@ fn artWorkerMain() void {
     }
 }
 
-fn titleFromName(name: []const u8) ![:0]u8 {
-    const stem = std.fs.path.stem(name);
-    const title = try g_alloc.dupeZ(u8, stem);
-    for (title) |*ch| {
-        if (ch.* == '_' or ch.* == '-' or ch.* == '.') ch.* = ' ';
-    }
-    return title;
-}
-
-fn fileExtensionIndex(name: []const u8, category: MediaCategory) bool {
-    var buf: [32]u8 = undefined;
-    const ext = std.fs.path.extension(name);
-    const ext_l = std.ascii.lowerString(&buf, ext);
-    return switch (category) {
-        .music => std.mem.eql(u8, ext_l, ".mp3") or
-                  std.mem.eql(u8, ext_l, ".flac") or
-                  std.mem.eql(u8, ext_l, ".m4a") or
-                  std.mem.eql(u8, ext_l, ".ogg") or
-                  std.mem.eql(u8, ext_l, ".opus") or
-                  std.mem.eql(u8, ext_l, ".wav"),
-        .movies => std.mem.eql(u8, ext_l, ".mp4") or
-                   std.mem.eql(u8, ext_l, ".mkv") or
-                   std.mem.eql(u8, ext_l, ".avi") or
-                   std.mem.eql(u8, ext_l, ".mov") or
-                   std.mem.eql(u8, ext_l, ".webm"),
-        .tv => std.mem.eql(u8, ext_l, ".mp4") or
-               std.mem.eql(u8, ext_l, ".mkv") or
-               std.mem.eql(u8, ext_l, ".avi") or
-               std.mem.eql(u8, ext_l, ".mov") or
-               std.mem.eql(u8, ext_l, ".webm") or
-               std.mem.eql(u8, ext_l, ".m3u") or
-               std.mem.eql(u8, ext_l, ".m3u8"),
+/// Build the movie library by scanning every owned root with kmedia's
+/// Scanner (native dir walk, series/collection/movie detection) and
+/// flattening the rich model into the flat per-file list the wall renders
+/// today. One LibraryEntry per video file — the faithful bridge to the
+/// structured wall (C2). Lazy, on first media-card open, never at boot.
+fn buildMovies(entries: []LibraryEntry) usize {
+    var lib = kmedia_lib.Scanner.Library{ .alloc = g_alloc };
+    defer lib.deinit();
+    var scanner = kmedia_lib.Scanner.Scanner.init(g_alloc);
+    // MOVIES wall holds everything owned — Shows/ + Kids Shows/ folded in.
+    const roots = &[_][]const u8{
+        "/home/kidul/Movies",               "/home/kidul/Videos",
+        "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies",
+        "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies",
+        "/mnt/sda_backup/Jelly/Kids Shows",  "/mnt/sda_backup/Jelly/Shows",
+        "/usr/share/kidul/media/video",
     };
+    for (roots) |root| {
+        scanner.scanRootAs(&lib, root, kmedia_lib.Scanner.MediaSection.movies) catch {};
+    }
+    var count: usize = 0;
+    outer: for (lib.items.items) |*item| {
+        for (item.videos.items) |*v| {
+            if (count >= entries.len) break :outer;
+            const title = g_alloc.dupeZ(u8, v.title) catch continue;
+            const artist = g_alloc.dupeZ(u8, "") catch {
+                g_alloc.free(title);
+                continue;
+            };
+            const path = g_alloc.dupeZ(u8, v.path) catch {
+                g_alloc.free(title);
+                g_alloc.free(artist);
+                continue;
+            };
+            entries[count] = .{ .title = title, .artist = artist, .path = path };
+            count += 1;
+        }
+    }
+    std.log.info("KidulWM media scan Movies: {d} entries (Scanner)", .{count});
+    std.mem.sort(LibraryEntry, entries[0..count], {}, compareLibraryEntryTitle);
+    return count;
 }
 
-fn execFind(command: [*:0]const u8, entries: []LibraryEntry) usize {
-    const fp = unistd.popen(command, "r") orelse return 0;
-    defer _ = unistd.pclose(fp);
-    var count: usize = 0;
-    var line_buf: [4096:0]u8 = std.mem.zeroes([4096:0]u8);
-    while (unistd.fgets(&line_buf, line_buf.len, fp) != null) {
-        if (count >= entries.len) break;
-        const slice = std.mem.sliceTo(&line_buf, 0);
-        if (slice.len == 0) continue;
-        var end = slice.len;
-        while (end > 0 and (slice[end - 1] == '\n' or slice[end - 1] == '\r')) end -= 1;
-        if (end == 0) continue;
-        const path = slice[0..end];
-        const name = std.fs.path.basename(path);
-        const title = titleFromName(name) catch continue;
-        const path_owned = g_alloc.dupeZ(u8, path) catch continue;
-        const artist = g_alloc.dupeZ(u8, "") catch continue;
-        entries[count] = .{ .title = title, .artist = artist, .path = path_owned };
-        count += 1;
-        @memset(&line_buf, 0);
+/// Music: scan every owned Music root with Scanner.scanMusic (album/artist
+/// folder = one item, flat file = own card) and flatten to one LibraryEntry
+/// per track — the current per-file wall behaviour, now native-walked.
+fn buildMusic(entries: []LibraryEntry) usize {
+    var mlib = kmedia_lib.Scanner.Scanner.MusicLibrary{ .alloc = g_alloc };
+    defer mlib.deinit();
+    var scanner = kmedia_lib.Scanner.Scanner.init(g_alloc);
+    const roots = &[_][]const u8{
+        "/home/kidul/Music", "/mnt/hostmedia/music",
+        "/mnt/sda_backup/Jelly/Music", "/usr/share/kidul/media/music",
+    };
+    for (roots) |root| {
+        scanner.scanMusic(&mlib, root) catch {};
     }
+    var count: usize = 0;
+    outer: for (mlib.items.items) |*item| {
+        for (item.tracks.items) |*t| {
+            if (count >= entries.len) break :outer;
+            const title = g_alloc.dupeZ(u8, t.title) catch continue;
+            const artist = g_alloc.dupeZ(u8, "") catch {
+                g_alloc.free(title);
+                continue;
+            };
+            const path = g_alloc.dupeZ(u8, t.path) catch {
+                g_alloc.free(title);
+                g_alloc.free(artist);
+                continue;
+            };
+            entries[count] = .{ .title = title, .artist = artist, .path = path };
+            count += 1;
+        }
+    }
+    std.log.info("KidulWM media scan Music: {d} entries (Scanner)", .{count});
+    std.mem.sort(LibraryEntry, entries[0..count], {}, compareLibraryEntryTitle);
     return count;
 }
 
@@ -372,33 +393,11 @@ fn scanCategory(category: MediaCategory, entries: []LibraryEntry) usize {
         std.log.info("KidulWM media scan TV: {d} live channels (stored scan REMOVED — live-only)", .{n});
         return n;
     }
-    const roots = switch (category) {
-        .music => &[_][]const u8{ "/home/kidul/Music", "/mnt/hostmedia/music", "/mnt/sda_backup/Jelly/Music", "/usr/share/kidul/media/music" },
-        // MOVIES wall holds everything owned — Shows/ + Kids Shows/ folded
-        // in (a show is a many-part movie; ui.md pill-semantics amendment).
-        .movies => &[_][]const u8{ "/home/kidul/Movies", "/home/kidul/Videos", "/mnt/hostmedia/jelly/Kids Movies", "/mnt/hostmedia/jelly/Movies", "/mnt/sda_backup/Jelly/Kids Movies", "/mnt/sda_backup/Jelly/Movies", "/mnt/sda_backup/Jelly/Kids Shows", "/mnt/sda_backup/Jelly/Shows", "/usr/share/kidul/media/video" },
+    return switch (category) {
+        .music => buildMusic(entries),
+        .movies => buildMovies(entries),
         .tv => unreachable,
     };
-    const exts = switch (category) {
-        .music => &[_][]const u8{ ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav" },
-        .movies => &[_][]const u8{ ".mp4", ".mkv", ".avi", ".mov", ".webm" },
-        .tv => unreachable,
-    };
-
-    var count: usize = 0;
-    for (roots) |root| {
-        for (exts) |ext| {
-            var cmd_buf: [1024:0]u8 = std.mem.zeroes([1024:0]u8);
-            // -L follows symlinks so /mnt/sda_backup/Jelly and /usr/share/kidul/media symlinks are traversed
-            const cmd = std.fmt.bufPrintZ(&cmd_buf, "find -L \"{s}\" -type f -iname '*{s}' 2>/dev/null | sort -f | head -n 1024", .{ root, ext }) catch continue;
-            count += execFind(cmd, entries[count..]);
-            if (count >= entries.len) break;
-        }
-        if (count >= entries.len) break;
-    }
-    std.log.info("KidulWM media scan {s}: {d} entries", .{ categoryLabel(category), count });
-    std.mem.sort(LibraryEntry, entries[0..count], {}, compareLibraryEntryTitle);
-    return count;
 }
 fn compareLibraryEntryTitle(_: void, a: LibraryEntry, b: LibraryEntry) bool {
     var la: [512]u8 = undefined;
@@ -439,134 +438,10 @@ var g_tv: [max_library_entries]LibraryEntry = undefined;
 var g_tv_count: usize = 0;
 var g_tv_ready = false;
 
-/// Boot-time pre-warm: scan every category and resolve art paths on a
-/// background thread so the render thread never blocks on first open.
-///
-/// SAFETY: g_* atomics are the ONLY cross-thread state. The prewarm writes
-/// through intermediate locals, then publishes with a release-store of the
-/// ready flag. The render thread sees either (ready=false) and falls through
-/// to the lazy scan as before, or (ready=true, entries fully written).
-/// No torn reads, no mutexes on the hot path.
-pub fn prewarmThread() void {
-    std.log.info("kmedia: prewarm started", .{});
-
-    // Scan into local arrays first, then publish with release semantics.
-    // The g_*_count/ready atomics are the ONLY things the render thread
-    // ever reads from another thread's writes.
-    var music_tmp: [max_library_entries]LibraryEntry = undefined;
-    const music_n = scanCategory(.music, &music_tmp);
-    @memcpy(&g_music, &music_tmp);
-    g_music_count = music_n;
-    // Release-store: everything above is visible before the flag goes true.
-    @atomicStore(bool, &g_music_ready, true, .release);
-
-    var movies_tmp: [max_library_entries]LibraryEntry = undefined;
-    const movies_n = scanCategory(.movies, &movies_tmp);
-    @memcpy(&g_movies, &movies_tmp);
-    g_movies_count = movies_n;
-    @atomicStore(bool, &g_movies_ready, true, .release);
-
-    var tv_tmp: [max_library_entries]LibraryEntry = undefined;
-    const tv_n = scanCategory(.tv, &tv_tmp);
-    @memcpy(&g_tv, &tv_tmp);
-    g_tv_count = tv_n;
-    @atomicStore(bool, &g_tv_ready, true, .release);
-
-    std.log.info("kmedia: prewarm scan done: music={d} movies={d} tv={d}", .{ music_n, movies_n, tv_n });
-
-    // Pre-decode thumbs from the on-disk cache into the GLOBAL surface map.
-    // Any tile with a cached 256px PNG on disk gets its surface NOW, on the
-    // prewarm thread, so the first render hits RAM, not SSHFS. Tiles with no
-    // disk cache get queued for the art worker (which decodes from the
-    // network and writes to disk for next boot).
-    if (!g_maps_ready) {
-        g_surfaces = std.AutoHashMap(u32, ?*c.cairo_surface_t).init(g_alloc);
-        g_no_art = std.AutoHashMap(u32, void).init(g_alloc);
-        g_path_by_key = std.AutoHashMap(u32, [:0]u8).init(g_alloc);
-        g_in_flight = std.AutoHashMap(u32, void).init(g_alloc);
-        g_maps_ready = true;
-    }
-
-    const cats = [_]struct { entries: []const LibraryEntry, is_music: bool, is_pic: bool }{
-        .{ .entries = g_music[0..g_music_count], .is_music = true, .is_pic = false },
-        .{ .entries = g_movies[0..g_movies_count], .is_music = false, .is_pic = false },
-        .{ .entries = g_tv[0..g_tv_count], .is_music = false, .is_pic = false },
-    };
-
-    var cached_n: u32 = 0;
-    var queued_n: u32 = 0;
-    var noart_n: u32 = 0;
-    for (cats) |cat| {
-        for (cat.entries) |entry| {
-            const art_path = entryArtPath(std.heap.page_allocator, entry, cat.is_music, cat.is_pic) orelse {
-                g_no_art.put(std.hash.Crc32.hash(entry.path), {}) catch {};
-                noart_n += 1;
-                continue;
-            };
-            const key = kimg.thumbKey(art_path);
-            if (g_surfaces.contains(key)) {
-                std.heap.page_allocator.free(art_path);
-                continue;
-            }
-            // Store resolved path for the widget's dwell lookups.
-            if (!g_path_by_key.contains(key)) {
-                g_path_by_key.put(key, art_path) catch {
-                    std.heap.page_allocator.free(art_path);
-                    continue;
-                };
-            }
-            // Try the disk cache first — but ONLY if the source art still
-            // exists on the host. One access() per file, warm dentry cache.
-            // If the source is gone, the thumb is stale — evict and re-queue.
-            if (kimg.thumbCachePath(std.heap.page_allocator, art_path)) |cache_path| {
-                if (kimg.fileExists(cache_path)) {
-                    if (kimg.fileExists(art_path)) {
-                        const surf = c.cairo_image_surface_create_from_png(cache_path.ptr);
-                        if (surf != null and c.cairo_surface_status(surf) == c.CAIRO_STATUS_SUCCESS) {
-                            g_surfaces.put(key, surf) catch {};
-                            cached_n += 1;
-                            std.heap.page_allocator.free(cache_path);
-                            continue;
-                        }
-                        if (surf != null) c.cairo_surface_destroy(surf);
-                    } else {
-                        // Source gone — evict the stale thumb.
-                        _ = unistd.unlink(cache_path.ptr);
-                        std.log.info("kimg trace: evicted stale thumb {s}", .{cache_path});
-                    }
-                }
-                std.heap.page_allocator.free(cache_path);
-            }
-            // Not on disk — queue for the art worker.
-            const owned_art = g_alloc.dupeZ(u8, art_path) catch continue;
-            const owned_cache = kimg.thumbCachePath(g_alloc, art_path) orelse {
-                g_alloc.free(owned_art);
-                continue;
-            };
-            if (!g_in_flight.contains(key)) {
-                g_in_flight.put(key, {}) catch {};
-                lockArtMutex(&g_art_mutex);
-                art_req_queue.append(g_alloc, .{ .key = key, .kind = .thumb, .art_path = owned_art, .cache_path = owned_cache }) catch {};
-                g_art_mutex.unlock();
-                queued_n += 1;
-            } else {
-                g_alloc.free(owned_art);
-                g_alloc.free(owned_cache);
-            }
-            std.heap.page_allocator.free(art_path);
-        }
-    }
-    std.log.info("kmedia: prewarm cache={d} queued={d} noart={d}", .{ cached_n, queued_n, noart_n });
-    pokeArtWorker();
-}
-
-/// Spawn the prewarm on a background thread. Called from Server.init.
-/// Thread completes quickly, self-contained, no shared state to race.
-pub fn spawnPrewarm() void {
-    _ = std.Thread.spawn(.{}, prewarmThread, .{}) catch |err| {
-        std.log.warn("kmedia: prewarm spawn failed: {}", .{err});
-    };
-}
+/// The boot-time pre-warm is DELETED (MEGA ROACH C1, lazy-refresh law):
+/// media is scanned lazily on first media-card open via getLibrary(), and
+/// art is resolved on request by requestThumb() — never at boot, never on
+/// a timer. See kmedia/docs/law/library-model.md + art-chain.md.
 
 fn getLibrary(category: MediaCategory) []const LibraryEntry {
     switch (category) {

@@ -995,10 +995,8 @@ pub const Server = struct {
         server.input_manager = try server.allocator.create(InputManager);
         InputManager.init(server.input_manager, server);
 
-        // Boot-time media library pre-warm: scans all categories and
-        // warms dentry caches on a background thread, so the first
-        // media slide open hits warm data, not SSHFS cold reads.
-        media_mod.spawnPrewarm();
+        // Media library is now LAZY (MEGA ROACH C1): scanned on first
+        // media-card open, never at boot. No prewarm thread here.
 
         server.new_output = wl.Listener(*wlr.Output).init(handleNewOutput);
         server.new_output.link.init();
