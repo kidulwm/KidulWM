@@ -31,6 +31,22 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 # kmedia + ksd-input-claim-law skills.
 
+# VERDICT 136 (bobdotrix 2026-10-20) — MEGA ROACH C2 PHASE 1 DONE: MEDIA CARD SPAWNS KMEDIA CLIENT (APP SLIDE), COMPOSITOR media_player SLIDE BYPASSED.
+#   Barticus ruling: "media.zig has no place" — WM's in-process media scene tree is to be retired (gsi).
+#   media_card_toggle (keybind + IPC verb) now routes to Server.mediaCardToggle(): kill-then-spawn
+#   /usr/local/bin/kmedia (house satellite singleton, ksignals precedent). kmedia's toplevel auto-seats
+#   as an .app slide via handleNewXdgToplevel; the compositor no longer builds the media_player scene
+#   tree on toggle. Commit 1ee6089 (server.zig + keyboard.zig). Verified on ksd-reset: toggle spawns one
+#   com.kidulwm.kmedia window (mapped, pixman fallback graceful), second toggle respawns the singleton,
+#   ZERO "media player slide open" logs. media.zig + fullscreen-video machinery stay wired but
+#   unreachable — they retire in phase 3.
+#   KNOWN GAPS (NOT host-ready yet): (1) kill-then-spawn rescans the library every toggle — needs
+#   focus-or-spawn + kmedia cache-load (verdict 134 gap); (2) playback still rides the WM's fullscreen-
+#   video path (media_play verb -> kplayd -> curtain), not the kmedia client's EGL surface — that is
+#   phase 2 (xdg-foreign export in kmedia). Spec: kmedia docs/design/c2-client-ify.md.
+#   NEXT: phase 1.1 (focus-or-spawn + cache-load), phase 2 (xdg-foreign + video-in-client), phase 3
+#   (delete media.zig + media_slide.zig + fullscreen-video machinery).
+
 # VERDICT 135 (bobdotrix 2026-10-20) — MEGA ROACH C1 SLICE 1 DONE: FIND-SHELL SCAN -> SCANNER (LAZY), BOOT PREWARM RETIRED.
 #   media.zig no longer shells `find -L *.mkv` at boot (execFind/scanCategory popen path gone) and no
 #   longer pre-decodes art thumbs on a prewarm thread (prewarmThread/spawnPrewarm + server.zig call gone).
