@@ -3230,6 +3230,17 @@ pub const Server = struct {
         self.requestLayout();
     }
 
+    /// Honor a client's xdg set_fullscreen request (C2 phase 2 — kmedia asks
+    /// to go fullscreen on playback). Fullscreen is a SIZE: the slide fills
+    /// the whole output, chrome law derives zero-chrome from full-bleed.
+    pub fn windowSetFullscreen(self: *Server, window: *Window, on: bool) void {
+        const deck = self.deckForWindow(window);
+        if (deck.setFullscreenByWindow(window.id, on)) {
+            std.log.info("KidulWM: client fullscreen -> {s} (window {d})", .{ if (on) "FULL" else "windowed", window.id });
+            self.requestLayout();
+        }
+    }
+
     /// Mod4+O: jump keyboard focus to the other stage, and (leader law) pull
     /// the cursor along with it.
     pub fn focusOutputNext(self: *Server) void {

@@ -82,6 +82,7 @@ pub const Window = struct {
     commit: wl.Listener(*wlr.Surface),
     set_title: wl.Listener(void),
     set_app_id: wl.Listener(void),
+    request_fullscreen: wl.Listener(void),
 
     pub fn create(server: *Server, toplevel: *wlr.XdgToplevel) !*Window {
         const window = try server.allocator.create(Window);
@@ -119,6 +120,7 @@ pub const Window = struct {
             .commit = wl.Listener(*wlr.Surface).init(handleCommit),
             .set_title = wl.Listener(void).init(handleSetTitle),
             .set_app_id = wl.Listener(void).init(handleSetAppId),
+            .request_fullscreen = wl.Listener(void).init(handleSetFullscreen),
         };
 
         window.map.link.init();
@@ -128,6 +130,7 @@ pub const Window = struct {
         window.commit.link.init();
         window.set_title.link.init();
         window.set_app_id.link.init();
+        window.request_fullscreen.link.init();
         window.link.init();
 
         toplevel.base.surface.events.map.add(&window.map);
@@ -144,6 +147,7 @@ pub const Window = struct {
         toplevel.base.surface.events.commit.add(&window.commit);
         toplevel.events.set_title.add(&window.set_title);
         toplevel.events.set_app_id.add(&window.set_app_id);
+        toplevel.events.request_fullscreen.add(&window.request_fullscreen);
 
         // Capture initial title/app_id if already provided.
         window.captureTitle();
@@ -180,6 +184,11 @@ pub const Window = struct {
         // kplayd sets app_id after toplevel creation — re-classify here so
         // its video surface never becomes a deck slide (focus/chrome/peek).
         window.server.classifyKplay(window);
+    }
+
+    fn handleSetFullscreen(listener: *wl.Listener(void)) void {
+        const window: *Window = @fieldParentPtr("request_fullscreen", listener);
+        window.server.windowSetFullscreen(window, window.toplevel.requested.fullscreen);
     }
 
     fn refreshPeekLabel(window: *Window) void {

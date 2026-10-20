@@ -418,6 +418,21 @@ pub const SlideDeck = struct {
         return slide.fullscreen;
     }
 
+    /// Set (not toggle) the fullscreen flag on the slide for `window_id`.
+    /// Client-driven path (xdg set_fullscreen request — kmedia on playback).
+    /// Returns true when the flag actually changed.
+    pub fn setFullscreenByWindow(self: *SlideDeck, window_id: u32, on: bool) bool {
+        for (self.slides.items) |*slide| {
+            if (slide.window_id == window_id) {
+                if (slide.parked) return false;
+                if (slide.fullscreen == on) return false;
+                slide.fullscreen = on;
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Recency position of a slide among unparked slides (0 = top-left).
     /// The walk starts at the focused slide if unparked, else the nearest
     /// unparked slide to its right, then left — the raw focused_index may
