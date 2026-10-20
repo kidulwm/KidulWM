@@ -318,9 +318,9 @@ const KeyboardDevice = struct {
                 return true;
             },
             .media_card_toggle => {
-                // REDIRECT (TASKCARD-3): focus-or-spawn the media player
-                // slide (a real deck slide).
-                server.mediaSlideFocusOrSpawn();
+                // C2 Phase 1: spawn the kmedia CLIENT (app slide); the
+                // compositor-rendered media slide is retired.
+                server.mediaCardToggle();
                 return true;
             },
             .signals_card_toggle => {

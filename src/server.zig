@@ -667,9 +667,9 @@ pub const Server = struct {
                 return self.setStageKadence(p.output, p.width, p.height, p.refresh_mhz, p.scale);
             },
             .media_card_toggle => {
-                // REDIRECT (TASKCARD-3): focus the media player slide if
-                // this row has one, else spawn it — a real deck slide.
-                self.mediaSlideFocusOrSpawn();
+                // C2 Phase 1: the media card is the kmedia CLIENT (app slide),
+                // spawned kill-then-spawn; it auto-seats via handleNewXdgToplevel.
+                self.mediaCardToggle();
                 return .{ .ok = true };
             },
             .media_play => |p| {
@@ -2084,6 +2084,18 @@ pub const Server = struct {
             return;
         }
         self.mediaSlideToggle();
+    }
+
+    /// C2 Phase 1: the media card is now the kmedia CLIENT (an .app slide),
+    /// not a compositor-rendered scene tree. Toggle = kill-then-spawn (house
+    /// satellite singleton law, ksignals precedent); the client's toplevel
+    /// auto-seats as an .app slide via handleNewXdgToplevel. media.zig + the
+    /// fullscreen-video machinery stay wired but unreachable from the toggle
+    /// — they retire in Phase 3. TODO: focus-or-spawn (not kill+rescan) and
+    /// kmedia cache-load (verdict 134) so a toggle doesn't rescan the library.
+    pub fn mediaCardToggle(self: *Server) void {
+        _ = c_std.system("pkill -9 kmedia 2>/dev/null; sleep 0.2");
+        self.spawnCommand("/usr/local/bin/kmedia");
     }
 
     /// Destroy the media player slide: stock removeWindow path; focus
