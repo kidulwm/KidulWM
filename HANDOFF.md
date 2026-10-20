@@ -11,7 +11,7 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (relog 2026-10-19)
+## Current attack (2026-10-20)
 
   MEGA ROACH C1 (docket #24) — the media model swap. C1 PREP DONE + committed:
     - refresh law (library-model) + lazy-art law (art-chain) LOCKED, kmedia
@@ -22,17 +22,20 @@ sessions with session_search). Live state lives in the ledger, not here.
       real /mnt/sda_backup/Jelly library (127 = 119 movie / 8 series / 0
       collection). Drop-in for media.zig's find-based model.
     - boot-state law LOCKED + committed, KidulWM 3e3051e (docket #8).
-  boot-state SETTING SLICE DONE (this session, docket #8): boot.toml +
-    boot_config.zig (target = pc|tv|remember-last|<app-id>) + `kidulwm-control
-    set-boot-target`; env KIDULWM_BOOT_MEDIA=1 kept as a deprecated shim until
-    the TV golden ships its own boot.toml. Committed 4117226, pushed, DEPLOYED
-    (/usr/local/bin/kidulwm + kidulwm-control, mv-over, sha-verified, .bak kept)
-    — takes effect on relog. remember-last resolver + kushd seating = post-#24.
-  NEXT SESSION KICKS OFF at slice 1: retire prewarmThread/scanCategory/execFind
-  + g_movies/g_music/g_tv globals in src/ui/media.zig; build Scanner.Library
-  lazily on media-card open (NOT at boot). VM-first (ksd-reset, pixman), small
-  incremental commits. FOUND: kmedia App.zig writes library.cache but never
-  loads it — cache-load path is unbuilt C1 work.
+  C1 SLICE 1 DONE (this session, verdict 135): find-shell scan + boot prewarm
+    retired. media.zig builds the library lazily on first media-card open via
+    kmedia Scanner (scanRootAs/scanMusic), flattened into the same per-file
+    LibraryEntry the wall renders (flat bridge). execFind/scanCategory(popen)/
+    prewarmThread/spawnPrewarm + server.zig spawnPrewarm call all deleted.
+    PARITY PROVEN: movies 516 = find 516, music 27 = 27 (scanreal flatten).
+    Commits KidulWM 0b67e5a + kmedia 4ab8e2d. DEPLOYED to ksd-reset (sha
+    9e2a990d, .bak-c1slice1) — smoke green (TV scan in-process, no panic).
+    NOT retired yet: g_movies/g_music/g_tv globals + LibraryEntry — they die
+    with C2 (kmedia becomes the client; WM stops owning media presentation).
+  NEXT: C2 client-ify — make kmedia a standalone Wayland client (foreign
+    surface, xdg-toplevel), no compositor scene tree, no render-to-buffer.
+    No kushd gate (that is C3). Host relog first to eyeball slice 1 (media
+    wall = all 516 movies / 27 music, identical look, now from Scanner).
 
   kmedia lane: A/V drift wind-up fix is COMMITTED (cf21d2f) + DEPLOYED
   (/usr/local/bin/kplayd sha fbf7b926), UNVERIFIED by a real movie — next

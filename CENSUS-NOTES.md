@@ -31,6 +31,21 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 # kmedia + ksd-input-claim-law skills.
 
+# VERDICT 135 (bobdotrix 2026-10-20) — MEGA ROACH C1 SLICE 1 DONE: FIND-SHELL SCAN -> SCANNER (LAZY), BOOT PREWARM RETIRED.
+#   media.zig no longer shells `find -L *.mkv` at boot (execFind/scanCategory popen path gone) and no
+#   longer pre-decodes art thumbs on a prewarm thread (prewarmThread/spawnPrewarm + server.zig call gone).
+#   getLibrary() now builds the library LAZILY on first media-card open via kmedia Scanner (scanRootAs for
+#   movies, scanMusic for music), flattening the rich model into the SAME per-file LibraryEntry list the wall
+#   renders today (the flat bridge; the structured wall = C2). Commits: KidulWM 0b67e5a, kmedia 4ab8e2d
+#   (scanreal now reports the flattened count). build+test green; ReleaseSafe built + DEPLOYED to ksd-reset
+#   (/usr/local/bin/kidulwm sha 9e2a990d, .bak-c1slice1 kept); smoke: media slide renders, TV scan 0 channels
+#   (kmedia_lib in-process), no panic.
+#   PARITY PROVEN (scanreal, host real tree): flattened movies 516 = old find 516, music 27 = 27. No files
+#   lost in the swap. NOT retired yet: g_movies/g_music/g_tv globals + LibraryEntry (the flat bridge) — they
+#   survive as the derived view until C2 deletes the WM's media presentation (kmedia becomes the client).
+#   EYEBALL OWED: host relog — media wall should show all 516 movies / 27 music, identical look, now from
+#   Scanner. NEXT: C2 client-ify (kmedia standalone Wayland client; no kushd gate — that is C3).
+
 # VERDICT 134 (bobdotrix 2026-10-19) — MEGA ROACH C1 PREP DONE: REFRESH+LAZY-ART LAWS LOCKED, REAL-DRIVE SCAN PROVEN (EXTENDS 126).
 #   Laws LOCKED (Barticus gsi, kmedia 92acd54): library-model "Refresh — lazy, never a timer"
 #   (four triggers: additions=inotify / removals=lazy-miss / manual=rescan-button / purchase=
