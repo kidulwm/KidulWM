@@ -31,16 +31,18 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 # kmedia + ksd-input-claim-law skills.
 
-# VERDICT 138 (bobdotrix 2026-10-20) — C2 PHASE 1.1 + PHASE 2 STEP 1 DONE: FOCUS-OR-SPAWN + KMEDIA XDG-FOREIGN EXPORTER.
+# VERDICT 138 (bobdotrix 2026-10-20) — C2 PHASE 1.1 DONE: FOCUS-OR-SPAWN. (Phase 2 step 1 exporter REVERTED — correction.)
 #   Phase 1.1 (KidulWM 7727f31): mediaCardToggle() is now focus-or-spawn — if a com.kidulwm.kmedia
 #   client slide already exists on the spawn row, focus it (wall state survives); else spawn. Kills the
 #   rescan-per-toggle pain. Verified on ksd-reset: toggle twice -> same kmedia pid, one window.
-#   Phase 2 step 1 (kmedia f52b49b): Wayland.zig binds zxdg_exporter_v2, exports its toplevel after
-#   commit, captures the handle async (exportedHandle). kplayd's importer can now parent its video
-#   surface to kmedia (not the WM's internal host surface). Verified on ksd-reset: "kmedia: toplevel
-#   exported, handle=ecb7a06e...". build.zig root_mod now compiles xdg-foreign-v2-protocol.c.
-#   NEXT: phase 2 step 2 (kmedia Player sends 'parent <handle>' over kplay.sock on playback start),
-#   phase 3 (delete media.zig + media_slide.zig + fullscreen-video machinery + WM internal_client
+#   CORRECTION (recon, 2026-10-20): kmedia's client is SELF-CONTAINED — App uses Player.zig (embedded
+#   ffmpeg, in-process decode + pulse + EGL present on its own toplevel), NOT a kplayd handoff. kplayd
+#   (kplayd_main/kplayd_shell) is the WM's playback engine over kplay.sock. So the xdg-foreign exporter
+#   (f52b49b) was a detour and was REVERTED (2d33df2) — no cross-process parenting needed.
+#   Phase 2 (corrected): kmedia requests fullscreen (xdg set_fullscreen) + enforces zero-chrome on
+#   playback; the WM honors it (fullscreens the kmedia slide). No kplayd, no 'parent' wire.
+#   NEXT: phase 2 (kmedia fullscreen request + zero-chrome on playback; verify EGL video on host GPU),
+#   phase 3 (delete media.zig + media_slide.zig + fullscreen-video machinery + kplayd + WM internal_client
 #   host-surface exporter). Cache-load (verdict 134) still open, now low priority.
 
 # VERDICT 136 (bobdotrix 2026-10-20) — MEGA ROACH C2 PHASE 1 DONE: MEDIA CARD SPAWNS KMEDIA CLIENT (APP SLIDE), COMPOSITOR media_player SLIDE BYPASSED.
