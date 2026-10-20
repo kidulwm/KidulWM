@@ -2086,15 +2086,24 @@ pub const Server = struct {
         self.mediaSlideToggle();
     }
 
-    /// C2 Phase 1: the media card is now the kmedia CLIENT (an .app slide),
-    /// not a compositor-rendered scene tree. Toggle = kill-then-spawn (house
-    /// satellite singleton law, ksignals precedent); the client's toplevel
-    /// auto-seats as an .app slide via handleNewXdgToplevel. media.zig + the
-    /// fullscreen-video machinery stay wired but unreachable from the toggle
-    /// — they retire in Phase 3. TODO: focus-or-spawn (not kill+rescan) and
-    /// kmedia cache-load (verdict 134) so a toggle doesn't rescan the library.
+    /// C2 Phase 1.1: the media card is the kmedia CLIENT (an .app slide).
+    /// Focus-or-spawn: if a kmedia client slide already exists on the spawn
+    /// row, focus it (wall state survives, no rescan); else spawn the client —
+    /// its toplevel auto-seats as an .app slide via handleNewXdgToplevel.
+    /// media.zig + the fullscreen-video machinery stay wired but unreachable
+    /// from the toggle — they retire in phase 3.
     pub fn mediaCardToggle(self: *Server) void {
-        _ = c_std.system("pkill -9 kmedia 2>/dev/null; sleep 0.2");
+        const deck = self.spawnDeck();
+        for (deck.slides.items, 0..) |slide, idx| {
+            if (self.windowById(slide.window_id)) |window| {
+                if (std.mem.eql(u8, window.app_id.asSlice(), "com.kidulwm.kmedia")) {
+                    deck.focusWindowByIndex(idx);
+                    self.clearFocus();
+                    self.requestLayout();
+                    return;
+                }
+            }
+        }
         self.spawnCommand("/usr/local/bin/kmedia");
     }
 
