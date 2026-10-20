@@ -31,6 +31,19 @@ after every verdict. The old MEDIA CENSUS (embedded-player hunt, verdicts 1-28)
 is retired — those verdicts live in git history and their laws survive in the
 # kmedia + ksd-input-claim-law skills.
 
+# VERDICT 139 (bobdotrix 2026-10-20) — C2 PHASE 2 DONE (BUILT + SMOKE-TESTED): KMEDIA REQUESTS FULLSCREEN, WM HONORS IT. NEEDS HOST EYEBALL.
+#   kmedia de69f47: Wayland.zig syncs toplevel fullscreen to player_active — set_fullscreen on playback
+#   start, unset on stop. No kplayd, no cross-process parenting: the video is kmedia's own in-process
+#   render, and fullscreen is kmedia's toplevel going edge-to-edge.
+#   KidulWM 3fd1aa4: window.zig wires xdg request_fullscreen -> server.windowSetFullscreen ->
+#   deck.setFullscreenByWindow(window.id). Fullscreen is a SIZE (slide fills output); chrome law derives
+#   zero-chrome from full-bleed geometry (focusedSlideIsFullBleed).
+#   Verified on ksd-reset: both build green; WM boots clean (bootcheck OK) with the new listener; kmedia
+#   seats clean (Phase 1 regression); no spurious fullscreen request on launch (wall mode).
+#   NOT verified (needs HOST): play a movie -> kmedia requests fullscreen -> slide fills output -> zero
+#   chrome; EGL video on host GPU (VM is pixman/shm, no GL). NEXT: host eyeball, then Phase 3 (delete
+#   media.zig + media_slide.zig + fullscreen-video machinery + kplayd + WM internal_client host-surface).
+
 # VERDICT 138 (bobdotrix 2026-10-20) — C2 PHASE 1.1 DONE: FOCUS-OR-SPAWN. (Phase 2 step 1 exporter REVERTED — correction.)
 #   Phase 1.1 (KidulWM 7727f31): mediaCardToggle() is now focus-or-spawn — if a com.kidulwm.kmedia
 #   client slide already exists on the spawn row, focus it (wall state survives); else spawn. Kills the
