@@ -281,6 +281,23 @@ const KeyboardDevice = struct {
     }
 
     fn handleAction(server: *Server, action: @import("../config/keybinds.zig").Action) bool {
+        // fullscreen.md LAW (2026-10-24): fullscreen-video is a MODE, not a deck
+        // position. Any action that moves, opens, or closes the deck must retire
+        // the playing video FIRST (fade out + teardown + curtain lift), or the
+        // opaque curtain is left up with the card gone / focus moved and Escape
+        // has no surface left to reach — "videos won't quit, nothing actionable".
+        // One unguarded door is the whole bug (close_focused was it; spawn /
+        // overview / signals were the same class, latent). focus_next/focus_prev
+        // already guard inside focusNext()/focusPrev(); volume, screen-off, and
+        // animation are NOT deck-mutating and stay put while the video plays.
+        switch (action) {
+            .spawn, .close_focused, .overview_toggle, .signals_card_toggle,
+            .tray_toggle, .tray_activate, .focus_output_next,
+            .move_to_output_next, .park_toggle => {
+                if (server.video_fullscreen) server.videoFullscreenExit();
+            },
+            else => {},
+        }
         switch (action) {
             .spawn => |cmd| {
                 // EPHEMERAL LAW: a spawn while the home slide holds this row
