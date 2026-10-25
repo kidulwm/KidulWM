@@ -1,5 +1,17 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 
+# PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
+#   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
+#   stale _deploy_quitfix fork (forked origin/main Oct 19 — BEFORE C2 ph1 Oct 20 + MEGA ROACH sweep).
+#   WRONG LAYER: media player = kmedia CLIENT (Wall.zig + Expansion.zig); media.zig is BYPASSED/
+#   retiring (slide-process.md C5). The media.zig seasons work duplicates kmedia/src/Expansion.zig.
+#   FIX: quitfix 3354163 cherry-picked onto main (c73c2a2). Wrong-layer work ARCHIVED (never merged,
+#   never deleted): tags archive/seasons-in-mediazig-2026-10-25 (=4725c7a) + archive/roach-c2-sweep-
+#   2026-10-25 (=8b88d6e). FORBIDDEN-LAYER block added to top of slide-process.md. media.zig FROZEN
+#   on main until kmedia client Wall filters by category.
+#   GATING: pure KSD blocked on kushd (miniPC ~1wk out). Player FROZEN this week — pivot to kfiles +
+#   browser. Full brain+repos+profile copy onto miniPC BEFORE any host conversion.
+
 # PENDING HANDOFF (bobdotrix 2026-10-14) — TV logo fanArt + sizing + ABC consolidation + button text.
 #   LOGOS (~/.local/share/kmedia/logos/, in-house dirty, NOT git): channel-9.png = transparent blue
 #   "9"+dots mark (main Nine only, others untouched); abc-entertains.png = pink wordmark; abc-family.png

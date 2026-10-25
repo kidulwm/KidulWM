@@ -10,6 +10,30 @@ Companion: GLOSSARY.md (the words), theatre.md (the tier stack), starship.md
 kmedia owns the media model). This law names the PROCESS boundary those four
 laws imply but never drew.
 
+---
+
+## ⛔ FORBIDDEN LAYER — read before ANY media work (added 2026-10-25 after the fork incident)
+
+The media player is a STANDALONE APP (the kmedia client: kmedia/src/Wall.zig +
+Expansion.zig), seated by kushd. There is NO embedded player.
+
+- NEVER build media FEATURES into kidulwm/src/ui/media.zig or media_slide.zig.
+  That is the embedded layer C2 bypassed and C5 deletes. Work there is
+  wrong-layer and discarded. (Incident: seasons/grouping/CFC/digit-jump built
+  into embedded media.zig on the `_deploy_quitfix` fork — archived at tag
+  `archive/seasons-in-mediazig-2026-10-25`, never merged.)
+- All media CONTENT work (wall, seasons, categories, art, watch-state) goes into
+  the kmedia repo. The WM's media card only spawns /usr/local/bin/kmedia; it
+  does not render media.
+- BRANCH DISCIPLINE: feature work lands on `main`. Never build onto a stale fork
+  of origin/main. media.zig on `main` is FROZEN (bypassed) only until the kmedia
+  client's Wall filters by category; it then gets swept per C5.
+- GATING: pure KSD (kmedia seated, media.zig gone) is blocked on kushd, proven on
+  the miniPC. Do not convert the host until a full copy of the brain + repos +
+  profile is verified on the miniPC.
+
+---
+
 ## The sentence
 
 An APP is a PROCESS that paints a full-screen SURFACE. The WM owns the WINDOW
