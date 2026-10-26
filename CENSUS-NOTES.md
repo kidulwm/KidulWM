@@ -22,7 +22,12 @@
 #   stage list trades the centre: on a slot the pill sits at h/2 with a dim preview list below; in
 #   the list the pill retreats dormant to the top and the focused row centres. Fixes the pill-vs-list
 #   focus ambiguity (3-level distinction). Harness pixel-verified (pill centre 540 on-slot; top 86 +
-#   list centre 540 in-list). Reopen Mod4+n. NEXT docket: browser #29 (flesh out with Barticus).
+#   list centre 540 in-list). Reopen Mod4+n. UNIFIED PILL TRACK (commit 0949a08, deploy d8b6f9b8):
+#   top chrome is now ONE connected stadium track (THE PILL aesthetic — separators + sliding gold-ring
+#   highlight). Focus always centred; [SETTINGS] FIXED right; ancestors VARIABLE-WIDTH (fit label) push
+#   [DRIVES] left; deep path hard-stops [DRIVES] at the left edge and fades the MIDDLE crumbs, holding
+#   the HOME FOLDER (basename home_root) as the trail's floor. Harness pixel+vision verified. NEXT
+#   docket: browser #29 (flesh out with Barticus).
 
 # PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
 #   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
