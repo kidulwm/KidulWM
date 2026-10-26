@@ -28,6 +28,13 @@
 #   [DRIVES] left; deep path hard-stops [DRIVES] at the left edge and fades the MIDDLE crumbs, holding
 #   the HOME FOLDER (basename home_root) as the trail's floor. Harness pixel+vision verified. NEXT
 #   docket: browser #29 (flesh out with Barticus).
+#   3-BUTTON PILL REVERT (commit d89cbf5, deploy c3503612): Barticus pivot — the unified crumb track
+#   welded a nav-rail onto a breadcrumb trail & broke the hard-stop (focus wandered into crumb segs).
+#   Back to THREE fixed buttons (media-player PILL): [DRIVES]|[HOME]|[SETTINGS], focused centred, the
+#   others flank. HOME labelled with the user's name (user_label, KIDUL_USER env) — the 'only user'
+#   made visible. Crumbs moved OUT of the bar to the TOP-LEFT VOID (read-only "you are here",
+#   left-truncated, never a nav target). Movement DRIVES<->HOME<->SETTINGS, hard-stops both ends.
+#   Harness pixel+vision verified. NEXT docket: browser #29 (flesh out with Barticus).
 
 # PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
 #   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
