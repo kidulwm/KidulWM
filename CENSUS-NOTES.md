@@ -36,6 +36,15 @@
 #   left-truncated, never a nav target). Movement DRIVES<->HOME<->SETTINGS, hard-stops both ends.
 #   Harness pixel+vision verified. NEXT docket: browser #29 (flesh out with Barticus).
 
+# SESSION WRAP (bobdotrix 2026-10-26, 11hr) — KFILES TOP-BAR REFINEMENTS (PLANNED, not built).
+#   Barticus verdict on the 3-button bar: (1) pillsBar displays almost right but lacks the COLOURS
+#   + a 1px border around the WHOLE bar (read as ONE stadium, focused gold-ringed, others dim);
+#   (2) crumbs are NOT GOOD at the top-left — they merge into the LEFT panel with the details as a
+#   vertical "tray" (crumb buttons + date/type/size rows, auto-centring); crumbs become NAV targets
+#   (tap ancestor = jump) — that is the movement the bar was missing; (3) marquee blanks for a beat
+#   between loops — speed it up + a fixed gap between name-end and name-repeat (daughter's idea,
+#   cinematic always-moving). Logged as dockets #34/#35/#36 (fire 'next'). Fresh session ready.
+
 # PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
 #   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
 #   stale _deploy_quitfix fork (forked origin/main Oct 19 — BEFORE C2 ph1 Oct 20 + MEGA ROACH sweep).
