@@ -51,6 +51,11 @@
 #   "Settings" on those pills), browser -> "Browser", media landing -> its own title; the ENTIRE space
 #   above the pillBar is usable; classy-and-clean shared text style + cinematic goddess/movie corner
 #   art (kidul twist). Logged as docket #37.
+# LANDING LAW LOCKED (bobdotrix 2026-10-26): the three apps' cohesive look & feel frozen as
+#   docs/law/landing.md (signed B&B). Media title = "Library" (Barticus). Corner art = Batik (not
+#   goddess) in the user's border colour; title CENTRED; small purple&blue KidulWorks sig above the
+#   focused pill (walks the eye title->sig->pill). Extends kidul-filler-zones + kfiles-top-nav;
+#   grounds styles CFC. Q.A/B/C all ruled.
 
 # PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
 #   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
