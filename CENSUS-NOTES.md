@@ -44,6 +44,13 @@
 #   (tap ancestor = jump) — that is the movement the bar was missing; (3) marquee blanks for a beat
 #   between loops — speed it up + a fixed gap between name-end and name-repeat (daughter's idea,
 #   cinematic always-moving). Logged as dockets #34/#35/#36 (fire 'next'). Fresh session ready.
+#   CORRECTIONS + LANDING + TITLE (same session, later): (a) crumbs are DISPLAY-ONLY, NEVER navable
+#   (kill the "tap ancestor = jump" idea). (b) LANDING LAW: when a top pill is CFC'd, ZERO crumbs show
+#   — that clean landing (pills centred + user files centred below) is the GOAL look, Barticus loves it.
+#   (c) the top filler is a KISS TITLE, never an app id: kfiles -> "Folders & Files" (+ "Drives" /
+#   "Settings" on those pills), browser -> "Browser", media landing -> its own title; the ENTIRE space
+#   above the pillBar is usable; classy-and-clean shared text style + cinematic goddess/movie corner
+#   art (kidul twist). Logged as docket #37.
 
 # PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
 #   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
