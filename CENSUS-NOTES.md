@@ -17,7 +17,12 @@
 #   collapsed "end crumb" + NEEDS FILLER identity slot at the SETTINGS hard-stop (kidul-filler-zones
 #   law). Settings LEFT/RIGHT opener cycle nested one level down, preserved. Harness pixel-verified
 #   (DRIVES/SETTINGS centre 960, filler ~1469). Deployed sha 198d3a6b (.bak = c6fed8c2, reopen
-#   Mod4+n). NEXT docket: browser #29 (flesh out with Barticus).
+#   Mod4+n). FULL CFC refinement (commit 57af09a, deploy 17abd13f): the focused slot now drops to
+#   the VERTICAL centre (h/2), not the top — pill bar CENTERED or ABSENT (kmedia slide law #1). The
+#   stage list trades the centre: on a slot the pill sits at h/2 with a dim preview list below; in
+#   the list the pill retreats dormant to the top and the focused row centres. Fixes the pill-vs-list
+#   focus ambiguity (3-level distinction). Harness pixel-verified (pill centre 540 on-slot; top 86 +
+#   list centre 540 in-list). Reopen Mod4+n. NEXT docket: browser #29 (flesh out with Barticus).
 
 # PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
 #   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
