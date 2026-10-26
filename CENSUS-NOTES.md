@@ -1,5 +1,24 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 
+# PENDING HANDOFF (bobdotrix 2026-10-25) — KFILES PLACECARD CENTRING DONE + TOP-CHROME SPEC FROZEN.
+#   CENTRING (done + deployed): three sections now TRUE EQUAL THIRDS of the full width, NOT the padded
+#   inner area. Poster details (date/type/size) CENTRED in the left third (w/6); placecard image
+#   centred in the right third (5w/6); CFC list dead-centre (w/2). Before: details left-ALIGNED at
+#   x+8 ("way off centre to the left"), card ~25px left of centre. Harness pixel-verified: card 1599
+#   vs 1600, details 324 vs 320. Deployed /usr/local/bin/kfiles (sha 6df3bcbd…, .bak kept). Commit
+#   0344949 (signed B&B) in /home/dad/dev/kfiles. Barticus verdict: "very nice".
+#   RESPAWN TRAP (documented in kfiles skill): after a deploy, `pkill kfiles` + raw `launch-kfiles.sh`
+#   does NOT seat the slide (toplevel maps but off-focus; TV keeps showing home slide). Barticus
+#   reopens via Mod4+n (Files keybind -> homeSlideLaunch). Never hand-respawn.
+#   DONE 2026-10-26 (signed B&B): G/H/I BUILT + DEPLOYED (bee9b84+c01de02+c0a7888), then the
+#   TOP-NAV "focus = centre stage" redesign (commit 8471b42, deploy 198d3a6b). The focused top
+#   slot (crumbs/[DRIVES]/[SETTINGS]) owns the centre + the stage (true CFC); before-elements left,
+#   after-elements right; no Enter-to-open/Esc-to-close views — Esc returns to files, never quits;
+#   collapsed "end crumb" + NEEDS FILLER identity slot at the SETTINGS hard-stop (kidul-filler-zones
+#   law). Settings LEFT/RIGHT opener cycle nested one level down, preserved. Harness pixel-verified
+#   (DRIVES/SETTINGS centre 960, filler ~1469). Deployed sha 198d3a6b (.bak = c6fed8c2, reopen
+#   Mod4+n). NEXT docket: browser #29 (flesh out with Barticus).
+
 # PENDING HANDOFF (bobdotrix 2026-10-25) — EMBEDDED-PLAYER FORK INCIDENT + RECONCILE (LOCKED).
 #   PROB: seasons/grouping/CFC/digit-jump/Collections built into embedded src/ui/media.zig on the
 #   stale _deploy_quitfix fork (forked origin/main Oct 19 — BEFORE C2 ph1 Oct 20 + MEGA ROACH sweep).
