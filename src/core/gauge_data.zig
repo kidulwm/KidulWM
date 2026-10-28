@@ -75,10 +75,7 @@ fn readRamUsage() !RamInfo {
 const DiskInfo = struct { used: f64, total: f64 };
 
 fn readDiskUsage(path: []const u8) !DiskInfo {
-    const c = @cImport({
-        @cDefine("_FORTIFY_SOURCE", "0");
-        @cInclude("sys/statvfs.h");
-    });
+    const c = @import("c");
     var buf: c.struct_statvfs = undefined;
     if (c.statvfs(path.ptr, &buf) != 0) return .{ .used = 0, .total = 1 };
     const total = @as(f64, @floatFromInt(buf.f_blocks)) * @as(f64, @floatFromInt(buf.f_frsize));

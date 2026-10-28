@@ -45,7 +45,7 @@ fn readFirst(allocator: std.mem.Allocator, user_path: []const u8, sys_path: []co
 }
 
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const path_z = try allocator.dupeZ(u8, path);
+    const path_z = try allocator.dupeSentinel(u8, path, 0);
     defer allocator.free(path_z);
     const linux = std.os.linux;
     const file_fd = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);

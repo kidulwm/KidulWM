@@ -165,7 +165,7 @@ pub fn renderToBuffer(
     // Fixed-size line buffers keep the whole render allocation-free.
     const max_notif_lines = 3;
     var notif_bufs: [max_notif_lines][NotificationStore.entry_len * 2 + 4]u8 = undefined;
-    var notif_lens: [max_notif_lines]usize = .{0} ** max_notif_lines;
+    var notif_lens: [max_notif_lines]usize = @splat(0);
     var notif_count: usize = 0;
     if (store) |st| {
         const live = st.items();

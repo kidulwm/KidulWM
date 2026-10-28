@@ -4,15 +4,7 @@ const c = @import("dm").c;
 const style = @import("../core/style.zig");
 const kmedia_lib = @import("kmedia");
 
-const unistd = @cImport({
-    @cDefine("_FORTIFY_SOURCE", "0");
-    @cInclude("unistd.h");
-    @cInclude("stdlib.h");
-    @cInclude("string.h");
-    @cInclude("fcntl.h");
-    @cInclude("time.h");
-    @cInclude("stdio.h");
-});
+const unistd = @import("c");
 
 const c_posix = std.posix;
 const c_linux = std.os.linux;
@@ -93,12 +85,12 @@ fn loadTvChannels() []const LibraryEntry {
     g_tv_live_count = 0;
     for (g_tv_channels.channels.items) |*ch| {
         if (g_tv_live_count >= g_tv_live.len) break;
-        const title = g_alloc.dupeZ(u8, ch.nameSlice()) catch continue;
-        const group = g_alloc.dupeZ(u8, ch.groupSlice()) catch continue;
-        const url = g_alloc.dupeZ(u8, ch.urlSlice()) catch continue;
+        const title = g_alloc.dupeSentinel(u8, ch.nameSlice(), 0) catch continue;
+        const group = g_alloc.dupeSentinel(u8, ch.groupSlice(), 0) catch continue;
+        const url = g_alloc.dupeSentinel(u8, ch.urlSlice(), 0) catch continue;
         const logo_slice = ch.logoSlice();
         const logo: ?[:0]u8 = if (logo_slice.len > 0)
-            (g_alloc.dupeZ(u8, logo_slice) catch null)
+            (g_alloc.dupeSentinel(u8, logo_slice, 0) catch null)
         else
             null;
         g_tv_live[g_tv_live_count] = .{ .title = title, .artist = group, .path = url, .logo = logo };
@@ -326,12 +318,12 @@ fn buildMovies(entries: []LibraryEntry) usize {
     outer: for (lib.items.items) |*item| {
         for (item.videos.items) |*v| {
             if (count >= entries.len) break :outer;
-            const title = g_alloc.dupeZ(u8, v.title) catch continue;
-            const artist = g_alloc.dupeZ(u8, "") catch {
+            const title = g_alloc.dupeSentinel(u8, v.title, 0) catch continue;
+            const artist = g_alloc.dupeSentinel(u8, "", 0) catch {
                 g_alloc.free(title);
                 continue;
             };
-            const path = g_alloc.dupeZ(u8, v.path) catch {
+            const path = g_alloc.dupeSentinel(u8, v.path, 0) catch {
                 g_alloc.free(title);
                 g_alloc.free(artist);
                 continue;
@@ -363,12 +355,12 @@ fn buildMusic(entries: []LibraryEntry) usize {
     outer: for (mlib.items.items) |*item| {
         for (item.tracks.items) |*t| {
             if (count >= entries.len) break :outer;
-            const title = g_alloc.dupeZ(u8, t.title) catch continue;
-            const artist = g_alloc.dupeZ(u8, "") catch {
+            const title = g_alloc.dupeSentinel(u8, t.title, 0) catch continue;
+            const artist = g_alloc.dupeSentinel(u8, "", 0) catch {
                 g_alloc.free(title);
                 continue;
             };
-            const path = g_alloc.dupeZ(u8, t.path) catch {
+            const path = g_alloc.dupeSentinel(u8, t.path, 0) catch {
                 g_alloc.free(title);
                 g_alloc.free(artist);
                 continue;
@@ -416,7 +408,7 @@ fn compareLibraryEntryTitle(_: void, a: LibraryEntry, b: LibraryEntry) bool {
 /// identical in both or the boot prewarm poisons g_no_art for TV URLs and
 /// the render thread bails before it ever reaches the logo branch.
 fn entryArtPath(alloc: std.mem.Allocator, entry: LibraryEntry, is_music: bool, is_pic: bool) ?[:0]u8 {
-    if (entry.logo) |logo| return alloc.dupeZ(u8, logo) catch null;
+    if (entry.logo) |logo| return alloc.dupeSentinel(u8, logo, 0) catch null;
     return kimg.resolveArtPath(alloc, entry.path, is_music, is_pic);
 }
 
@@ -719,7 +711,7 @@ pub const MediaWidget = struct {
         }
         // Remember the resolved path for the dwell hi-res request.
         if (!g_path_by_key.contains(key)) {
-            const dup = g_alloc.dupeZ(u8, art_path) catch art_path;
+            const dup = g_alloc.dupeSentinel(u8, art_path, 0) catch art_path;
             g_path_by_key.put(key, dup) catch {};
             if (dup.ptr != art_path.ptr) g_alloc.free(art_path);
         } else {
@@ -732,7 +724,7 @@ pub const MediaWidget = struct {
             // keeps its placeholder this frame — next render retries.
             if (g_in_flight.count() >= MAX_ART_IN_FLIGHT) return key;
             const cached = kimg.thumbCachePath(g_alloc, g_path_by_key.get(key).?) orelse return key;
-            const owned_art = g_alloc.dupeZ(u8, g_path_by_key.get(key).?) catch {
+            const owned_art = g_alloc.dupeSentinel(u8, g_path_by_key.get(key).?, 0) catch {
                 g_alloc.free(cached);
                 return key;
             };
@@ -774,8 +766,8 @@ pub const MediaWidget = struct {
         const art_path = g_path_by_key.get(k) orelse return;
         const flight_key = k ^ 0x8000_0000;
         if (g_in_flight.contains(flight_key)) return;
-        const owned = g_alloc.dupeZ(u8, art_path) catch return;
-        const cached = g_alloc.dupeZ(u8, "") catch {
+        const owned = g_alloc.dupeSentinel(u8, art_path, 0) catch return;
+        const cached = g_alloc.dupeSentinel(u8, "", 0) catch {
             g_alloc.free(owned);
             return;
         };

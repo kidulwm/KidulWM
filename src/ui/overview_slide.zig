@@ -19,13 +19,13 @@ pub const OverviewSlide = struct {
     tiles: [16]overview_card.Tile = undefined,
     tile_count: usize = 0,
     /// Saved parents for reparented slide trees, parallel to tiles.
-    saved_parents: [16]?*wlr.SceneTree = .{ null } ** 16,
+    saved_parents: [16]?*wlr.SceneTree = @splat(null),
     /// Saved positions for restoring on close.
-    saved_x: [16]i32 = .{ 0 } ** 16,
-    saved_y: [16]i32 = .{ 0 } ** 16,
-    saved_w: [16]i32 = .{ 0 } ** 16,
-    saved_h: [16]i32 = .{ 0 } ** 16,
-    saved_enabled: [16]bool = .{ false } ** 16,
+    saved_x: [16]i32 = @splat(0),
+    saved_y: [16]i32 = @splat(0),
+    saved_w: [16]i32 = @splat(0),
+    saved_h: [16]i32 = @splat(0),
+    saved_enabled: [16]bool = @splat(false),
 
     pub fn isOpen(self: *const OverviewSlide) bool {
         return self.tree != null;

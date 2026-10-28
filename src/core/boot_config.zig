@@ -34,7 +34,7 @@ pub const BootConfig = struct {
     target: Target = .pc,
     /// The app-id payload when target == .app_id. Fixed buffer — no
     /// allocation, no lifetime coupling to the parsed file text.
-    app_id: [64]u8 = [_]u8{0} ** 64,
+    app_id: [64]u8 = @splat(0),
     app_id_len: usize = 0,
 };
 
@@ -66,7 +66,7 @@ fn readFirst(allocator: std.mem.Allocator, user_path: []const u8, sys_path: []co
 }
 
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const path_z = try allocator.dupeZ(u8, path);
+    const path_z = try allocator.dupeSentinel(u8, path, 0);
     defer allocator.free(path_z);
     const linux = std.os.linux;
     const file_fd = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);

@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 const c = @import("dm").c;
-const c_std = @cImport({
-    @cDefine("_FORTIFY_SOURCE", "0");
-    @cInclude("stdio.h");
-    @cInclude("stdlib.h");
-    @cInclude("string.h");
-    @cInclude("dirent.h");
-    @cInclude("time.h");
-});
+const c_std = @import("c");
 const style = @import("../core/style.zig");
 const theme_mod = @import("../core/theme.zig");
 
@@ -128,7 +121,7 @@ pub const NetworkWidget = struct {
 
             var path_buf: [256:0]u8 = undefined;
             @memset(&path_buf, 0);
-            const path = std.fmt.bufPrintZ(&path_buf, "/sys/class/net/{s}/operstate", .{name}) catch continue;
+            const path = std.fmt.bufPrintSentinel(&path_buf, "/sys/class/net/{s}/operstate", .{name}, 0) catch continue;
             const f = c_std.fopen(path, "r");
             if (f == null) continue;
             defer _ = c_std.fclose(f);
@@ -170,7 +163,7 @@ pub const NetworkWidget = struct {
 
         var max_path: [256:0]u8 = undefined;
         @memset(&max_path, 0);
-        const max_path_z = std.fmt.bufPrintZ(&max_path, "/sys/class/backlight/{s}/max_brightness", .{controller}) catch return;
+        const max_path_z = std.fmt.bufPrintSentinel(&max_path, "/sys/class/backlight/{s}/max_brightness", .{controller}, 0) catch return;
         const max = readIntFile(max_path_z);
         if (max <= 0) {
             self.status.brightness = 1.0;
@@ -179,7 +172,7 @@ pub const NetworkWidget = struct {
 
         var cur_path: [256:0]u8 = undefined;
         @memset(&cur_path, 0);
-        const cur_path_z = std.fmt.bufPrintZ(&cur_path, "/sys/class/backlight/{s}/brightness", .{controller}) catch return;
+        const cur_path_z = std.fmt.bufPrintSentinel(&cur_path, "/sys/class/backlight/{s}/brightness", .{controller}, 0) catch return;
         const current = readIntFile(cur_path_z);
 
         self.status.brightness = if (max > 0) std.math.clamp(@as(f64, @floatFromInt(current)) / @as(f64, @floatFromInt(max)), 0.0, 1.0) else 1.0;
@@ -241,20 +234,20 @@ pub const NetworkWidget = struct {
         for (names) |name| {
             var present_path: [256:0]u8 = undefined;
             @memset(&present_path, 0);
-            const present_z = std.fmt.bufPrintZ(&present_path, "/sys/class/power_supply/{s}/present", .{name}) catch continue;
+            const present_z = std.fmt.bufPrintSentinel(&present_path, "/sys/class/power_supply/{s}/present", .{name}, 0) catch continue;
             if (readIntFile(present_z) != 1) continue;
 
             self.status.battery_present = true;
 
             var cap_path: [256:0]u8 = undefined;
             @memset(&cap_path, 0);
-            const cap_z = std.fmt.bufPrintZ(&cap_path, "/sys/class/power_supply/{s}/capacity", .{name}) catch continue;
+            const cap_z = std.fmt.bufPrintSentinel(&cap_path, "/sys/class/power_supply/{s}/capacity", .{name}, 0) catch continue;
             const cap = readIntFile(cap_z);
             self.status.battery_level = @as(f64, @floatFromInt(std.math.clamp(cap, 0, 100))) / 100.0;
 
             var status_path: [256:0]u8 = undefined;
             @memset(&status_path, 0);
-            const status_z = std.fmt.bufPrintZ(&status_path, "/sys/class/power_supply/{s}/status", .{name}) catch continue;
+            const status_z = std.fmt.bufPrintSentinel(&status_path, "/sys/class/power_supply/{s}/status", .{name}, 0) catch continue;
             var status_buf: [32:0]u8 = undefined;
             @memset(&status_buf, 0);
             const sf = c_std.fopen(status_z, "r");
@@ -598,7 +591,7 @@ pub const NetworkWidget = struct {
 
         var max_path: [256:0]u8 = undefined;
         @memset(&max_path, 0);
-        const max_path_z = std.fmt.bufPrintZ(&max_path, "/sys/class/backlight/{s}/max_brightness", .{controller}) catch return;
+        const max_path_z = std.fmt.bufPrintSentinel(&max_path, "/sys/class/backlight/{s}/max_brightness", .{controller}, 0) catch return;
         const max = readIntFile(max_path_z);
         if (max <= 0) {
             std.log.info("KidulWM: backlight {s} max_brightness unreadable", .{controller});
@@ -607,7 +600,7 @@ pub const NetworkWidget = struct {
 
         var cur_path: [256:0]u8 = undefined;
         @memset(&cur_path, 0);
-        const cur_path_z = std.fmt.bufPrintZ(&cur_path, "/sys/class/backlight/{s}/brightness", .{controller}) catch return;
+        const cur_path_z = std.fmt.bufPrintSentinel(&cur_path, "/sys/class/backlight/{s}/brightness", .{controller}, 0) catch return;
         const current = readIntFile(cur_path_z);
 
         const step: i64 = @max(1, @divFloor(max, 20));
@@ -621,7 +614,7 @@ pub const NetworkWidget = struct {
         defer _ = c_std.fclose(f);
         var write_buf: [32:0]u8 = undefined;
         @memset(&write_buf, 0);
-        const write_str = std.fmt.bufPrintZ(&write_buf, "{d}", .{new_val}) catch return;
+        const write_str = std.fmt.bufPrintSentinel(&write_buf, "{d}", .{new_val}, 0) catch return;
         _ = c_std.fputs(write_str, f);
         std.log.info("KidulWM: brightness adjusted to {d}/{d}", .{ new_val, max });
     }

@@ -1,27 +1,27 @@
 .{
     .name = .kidulwm,
     .version = "0.1.0",
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .wayland = .{
-            .url = "https://codeberg.org/ifreund/zig-wayland/archive/refs/heads/main.tar.gz",
-            .hash = "wayland-0.7.0-dev-lQa1kjT8AQDBstL61Gy3WCMtGwVaMN1p6w5wGfdDvP15",
+            .url = "git+https://codeberg.org/ifreund/zig-wayland?ref=v0.7.0#fc7672f661874aa2015fc19a87ebabce787cf1c7",
+            .hash = "wayland-0.7.0-lQa1kuP8AQD5dW7_o-VKLVD_QbqXe7Zob78r2su7Pyex",
         },
         .wlroots = .{
-            .url = "https://codeberg.org/ifreund/zig-wlroots/archive/v0.20.1.tar.gz",
-            .hash = "wlroots-0.20.1-jmOlcqNVBAB3uB5oqBTzpRlwu-FmMyyZMVAWCe5kmcSt",
+            .url = "git+https://codeberg.org/ifreund/zig-wlroots#cd0d62bcd20d4ed4f35d5320bf040bb4e35b7da3",
+            .hash = "wlroots-0.20.2-dev-jmOlcgdwBADuxKW_PFUfSPjBaZ34a1fNuBqF8gb2nz6O",
         },
         .pixman = .{
-            .url = "https://codeberg.org/ifreund/zig-pixman/archive/v0.3.0.tar.gz",
-            .hash = "pixman-0.3.0-LClMnz2VAAAs7QSCGwLimV5VUYx0JFnX5xWU6HwtMuDX",
+            .url = "git+https://codeberg.org/ifreund/zig-pixman?ref=v0.4.0#3500c5584aa9a6d2d208110969ad9e3616b1e67c",
+            .hash = "pixman-0.4.0-LClMn_eWAAAa2zACATDpPwjuI5fWlO5cBp_F_M33hnNZ",
         },
         .xkbcommon = .{
-            .url = "https://codeberg.org/ifreund/zig-xkbcommon/archive/v0.4.0.tar.gz",
-            .hash = "xkbcommon-0.4.0-VDqIe0i2AgDRsok2GpMFYJ8SVhQS10_PI2M_CnHXsJJZ",
+            .url = "git+https://codeberg.org/ifreund/zig-xkbcommon?ref=v0.5.0#c7fb1ec527cf428cb023661f4608b6fe7fe7392c",
+            .hash = "xkbcommon-0.5.0-VDqIe8y3AgDU-cGL02xZplwABH3WbpTimrrgbgTgD_3g",
         },
         .toml = .{
-            .url = "https://github.com/sam701/zig-toml/archive/refs/heads/zig-0.16.tar.gz",
-            .hash = "toml-0.3.0-bV14BRmKAQAWR0FT0KUKFwVJTImaFhWjSe6HfSMtNZOH",
+            .url = "git+https://github.com/sam701/zig-toml?ref=zig-0.17#4a13e49ce7d19ac2df8b87962d9f23c0f5dd5bdd",
+            .hash = "toml-0.3.0-bV14BRmkAQDSILPPyXc31aAXPtJa1Uh8Frug3i6InAUc",
         },
     },
     .paths = .{

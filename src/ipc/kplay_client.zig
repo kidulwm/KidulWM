@@ -40,7 +40,7 @@ pub const KplayClient = struct {
         if (fd < 0) return error.SocketFailed;
         errdefer _ = linux.close(fd);
 
-        var addr: linux.sockaddr.un = .{ .family = linux.AF.UNIX, .path = [_]u8{0} ** 108 };
+        var addr: linux.sockaddr.un = .{ .family = linux.AF.UNIX, .path = @splat(0) };
         if (path.len >= addr.path.len) return error.NoRuntimeDir;
         @memcpy(addr.path[0..path.len], path);
         // Phase 0 (I5): NON-BLOCKING connect. kplayd's openPath runs demux +

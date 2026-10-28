@@ -70,7 +70,7 @@ fn socketAddr(path: [:0]const u8) !std.posix.sockaddr.un {
 }
 
 pub fn create(allocator: std.mem.Allocator, options: Options) !Server {
-    const socket_path_z = try allocator.dupeZ(u8, options.socket_path);
+    const socket_path_z = try allocator.dupeSentinel(u8, options.socket_path, 0);
     errdefer allocator.free(socket_path_z);
 
     _ = linux.unlink(socket_path_z);

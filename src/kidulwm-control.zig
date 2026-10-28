@@ -237,7 +237,7 @@ fn setGaugeFlag(allocator: std.mem.Allocator, key: []const u8, raw_value: []cons
     }
 
     // Ensure config dir exists.
-    const dir_z = try allocator.dupeZ(u8, dir_path);
+    const dir_z = try allocator.dupeSentinel(u8, dir_path, 0);
     defer allocator.free(dir_z);
     _ = linux.mkdir(dir_z, 0o755);
 
@@ -257,7 +257,7 @@ fn setGaugeFlag(allocator: std.mem.Allocator, key: []const u8, raw_value: []cons
         try out.append(allocator, '\n');
     }
 
-    const path_z = try allocator.dupeZ(u8, file_path);
+    const path_z = try allocator.dupeSentinel(u8, file_path, 0);
     defer allocator.free(path_z);
     const fd_i: i32 = @intCast(linux.open(path_z, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644));
     if (fd_i < 0) return error.WriteFailed;
@@ -304,7 +304,7 @@ fn setBootTarget(allocator: std.mem.Allocator, raw_value: []const u8) !void {
         try lines.append(allocator, nl);
     }
 
-    const dir_z = try allocator.dupeZ(u8, dir_path);
+    const dir_z = try allocator.dupeSentinel(u8, dir_path, 0);
     defer allocator.free(dir_z);
     _ = linux.mkdir(dir_z, 0o755);
 
@@ -323,7 +323,7 @@ fn setBootTarget(allocator: std.mem.Allocator, raw_value: []const u8) !void {
         try out.append(allocator, '\n');
     }
 
-    const path_z = try allocator.dupeZ(u8, file_path);
+    const path_z = try allocator.dupeSentinel(u8, file_path, 0);
     defer allocator.free(path_z);
     const fd_i: i32 = @intCast(linux.open(path_z, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, 0o644));
     if (fd_i < 0) return error.WriteFailed;
@@ -333,7 +333,7 @@ fn setBootTarget(allocator: std.mem.Allocator, raw_value: []const u8) !void {
 }
 
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const path_z = try allocator.dupeZ(u8, path);
+    const path_z = try allocator.dupeSentinel(u8, path, 0);
     defer allocator.free(path_z);
     const file_fd = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);
     if (@as(isize, @bitCast(file_fd)) < 0) return error.FileNotFound;

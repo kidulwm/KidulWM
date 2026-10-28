@@ -707,13 +707,13 @@ pub const Peek = struct {
 
         var hour_buf: [4:0]u8 = undefined;
         @memset(&hour_buf, 0);
-        const hour_str = std.fmt.bufPrintZ(&hour_buf, "{s}{d}", .{ if (hour < 10) "0" else "", hour }) catch "00";
+        const hour_str = std.fmt.bufPrintSentinel(&hour_buf, "{s}{d}", .{ if (hour < 10) "0" else "", hour }, 0) catch "00";
         var minute_buf: [4:0]u8 = undefined;
         @memset(&minute_buf, 0);
-        const minute_str = std.fmt.bufPrintZ(&minute_buf, "{s}{d}", .{ if (minute < 10) "0" else "", minute }) catch "00";
+        const minute_str = std.fmt.bufPrintSentinel(&minute_buf, "{s}{d}", .{ if (minute < 10) "0" else "", minute }, 0) catch "00";
         var combined_buf: [16:0]u8 = undefined;
         @memset(&combined_buf, 0);
-        const num_str = std.fmt.bufPrintZ(&combined_buf, "{s}:{s}", .{ hour_str, minute_str }) catch "00:00";
+        const num_str = std.fmt.bufPrintSentinel(&combined_buf, "{s}:{s}", .{ hour_str, minute_str }, 0) catch "00:00";
 
         const big_font_size: f64 = @as(f64, tstyle.font_size_m) * 1.9 * scale;
 
@@ -747,7 +747,7 @@ pub const Peek = struct {
         const day = @as(i32, @intCast(tm.tm_mday));
         var day_buf: [32:0]u8 = undefined;
         @memset(&day_buf, 0);
-        const day_str = std.fmt.bufPrintZ(&day_buf, "{d}{s}", .{ day, ordinalSuffix(day) }) catch "1st";
+        const day_str = std.fmt.bufPrintSentinel(&day_buf, "{d}{s}", .{ day, ordinalSuffix(day) }, 0) catch "1st";
 
         var date_font_size: f64 = @as(f64, tstyle.font_size_s) * 1.3 * scale;
         var line_gap = date_font_size * 1.25;
@@ -848,7 +848,7 @@ pub const Widgets = struct {
         const mem_slice = @as([*]u8, @ptrCast(mem))[0..png.len];
         @memcpy(mem_slice, png);
         var path_buf: [64]u8 = undefined;
-        const path = std.fmt.bufPrintZ(&path_buf, "/proc/self/fd/{d}", .{fd}) catch return;
+        const path = std.fmt.bufPrintSentinel(&path_buf, "/proc/self/fd/{d}", .{fd}, 0) catch return;
         const surf = c.cairo_image_surface_create_from_png(path.ptr);
         if (surf == null) return;
         if (c.cairo_surface_status(surf) != c.CAIRO_STATUS_SUCCESS) {
@@ -948,7 +948,7 @@ fn formatClock(buf: *[8]u8) [:0]const u8 {
     const local_secs: u64 = @intCast(@max(0, @as(i64, ts.sec) + off));
     const lh = (local_secs % 86400) / 3600;
     const lm = (local_secs % 3600) / 60;
-    return std.fmt.bufPrintZ(buf, "{d:0>2}:{d:0>2}", .{ lh, lm }) catch "--:--";
+    return std.fmt.bufPrintSentinel(buf, "{d:0>2}:{d:0>2}", .{ lh, lm }, 0) catch "--:--";
 }
 
 extern "c" fn localtime_r(timep: *const i64, result: *Tm) ?*Tm;
@@ -1068,7 +1068,7 @@ fn paintExitDotsSkin(cr: *c.cairo_t, w: f64, h: f64, s: f64, side: Side, slide_c
 fn measureSlideCount(cr: *c.cairo_t, h: f64, count: u32) f64 {
     if (count == 0) return 0;
     var buf: [8]u8 = undefined;
-    const text = std.fmt.bufPrintZ(&buf, "{d}", .{count}) catch return 0;
+    const text = std.fmt.bufPrintSentinel(&buf, "{d}", .{count}, 0) catch return 0;
     c.cairo_save(cr);
     c.cairo_set_font_size(cr, h * num_font_scale);
     var ext: c.cairo_text_extents_t = undefined;
@@ -1088,7 +1088,7 @@ fn measureCharSpace(cr: *c.cairo_t, h: f64) f64 {
 
 fn drawSlideCount(cr: *c.cairo_t, h: f64, count: u32, tx: f64) void {
     var buf: [8]u8 = undefined;
-    const text = std.fmt.bufPrintZ(&buf, "{d}", .{count}) catch return;
+    const text = std.fmt.bufPrintSentinel(&buf, "{d}", .{count}, 0) catch return;
     c.cairo_save(cr);
     c.cairo_set_font_size(cr, h * num_font_scale);
     var ext: c.cairo_text_extents_t = undefined;

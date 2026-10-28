@@ -107,9 +107,9 @@ fn extractEmbedded(alloc: std.mem.Allocator, media_path: []const u8) ?[:0]u8 {
     const tmp = std.fmt.allocPrintSentinel(alloc, "/tmp/kidul-art-{x}.png", .{key}, 0) catch return null;
     if (fileExists(tmp)) return tmp;
     var cmd_buf: [4608:0]u8 = undefined;
-    const cmd = std.fmt.bufPrintZ(&cmd_buf,
+    const cmd = std.fmt.bufPrintSentinel(&cmd_buf,
         "ffmpeg -y -loglevel error -i \"{s}\" -an -vcodec png -frames:v 1 \"{s}\" 2>/dev/null",
-        .{ media_path, tmp }) catch return null;
+        .{ media_path, tmp }, 0) catch return null;
     const rc = system(cmd.ptr);
     if (rc != 0 or !fileExists(tmp)) {
         alloc.free(tmp);
@@ -223,7 +223,7 @@ pub fn resolveArtPath(
     if (is_picture) {
         // The file is its own art.
         if (fileExists(media_path)) {
-            return alloc.dupeZ(u8, media_path) catch null;
+            return alloc.dupeSentinel(u8, media_path, 0) catch null;
         }
         return null;
     }
@@ -408,7 +408,7 @@ pub fn processRequest(alloc: std.mem.Allocator, req: Request) Result {
                     // shared Io, no thread-safety footguns.
                     if (std.fs.path.dirname(req.cache_path)) |d| {
                         var cmd_buf: [4224:0]u8 = undefined;
-                        if (std.fmt.bufPrintZ(&cmd_buf, "mkdir -p \"{s}\"", .{d})) |cmd| {
+                        if (std.fmt.bufPrintSentinel(&cmd_buf, "mkdir -p \"{s}\"", .{d}, 0)) |cmd| {
                             _ = system(cmd.ptr);
                         } else |_| {}
                     }

@@ -23,7 +23,7 @@ pub const Image = struct {
     /// Returns a Cairo surface-backed wrapper. The pixel slice is valid until
     /// `deinit` is called; it is suitable for copying into a `wlr.Buffer`.
     pub fn loadPng(path: []const u8) !Owned {
-        const path_z = try std.heap.page_allocator.dupeZ(u8, path);
+        const path_z = try std.heap.page_allocator.dupeSentinel(u8, path, 0);
         defer std.heap.page_allocator.free(path_z);
         const source = c.cairo_image_surface_create_from_png(path_z.ptr);
         if (source == null) return error.OutOfMemory;

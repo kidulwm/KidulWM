@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
-const c_std = @cImport({
-    @cInclude("stdio.h");
-    @cInclude("stdlib.h");
-    @cInclude("time.h");
-});
+const c_std = @import("c");
 const c = @import("dm").c;
 const style = @import("../core/style.zig");
 const gauge_data = @import("../core/gauge_data.zig");

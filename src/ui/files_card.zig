@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
 const c = @import("dm").c;
-const c_std = @cImport({
-    @cDefine("_FORTIFY_SOURCE", "0");
-    @cInclude("stdio.h");
-    @cInclude("dirent.h");
-    @cInclude("sys/stat.h");
-    @cInclude("time.h");
-});
+const c_std = @import("c");
 const style = @import("../core/style.zig");
 
 pub const FilesCard = struct {
@@ -46,7 +40,7 @@ pub const FilesWidget = struct {
     state_generation: usize = 0,
     focus: FocusArea = .files,
     selected_drive: usize = 0,
-    search_buf: [32]u8 = [_]u8{0} ** 32,
+    search_buf: [32]u8 = @splat(0),
     search_len: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) FilesWidget {
@@ -407,7 +401,7 @@ pub const FilesWidget = struct {
     pub fn loadDirectory(self: *FilesWidget, path: []const u8) !void {
         self.clearEntries();
         var path_z: [1024]u8 = undefined;
-        const nt = std.fmt.bufPrintZ(&path_z, "{s}", .{path}) catch return;
+        const nt = std.fmt.bufPrintSentinel(&path_z, "{s}", .{path}, 0) catch return;
         const dir = c_std.opendir(nt.ptr) orelse return;
         defer _ = c_std.closedir(dir);
         while (true) {
@@ -653,7 +647,7 @@ pub const FilesWidget = struct {
     }
     fn readPreviewText(self: *FilesWidget, path: []const u8, max_bytes: usize) !?[]u8 {
         var path_z: [1024]u8 = undefined;
-        const nt = std.fmt.bufPrintZ(&path_z, "{s}", .{path}) catch return null;
+        const nt = std.fmt.bufPrintSentinel(&path_z, "{s}", .{path}, 0) catch return null;
         const file = c_std.fopen(nt.ptr, "r") orelse return null;
         defer _ = c_std.fclose(file);
         var buf = std.ArrayList(u8).empty;
@@ -791,7 +785,7 @@ fn formatSize(size: u64) []const u8 {
 
 fn isDir(path: []const u8) bool {
     var path_z: [1024]u8 = undefined;
-    const nt = std.fmt.bufPrintZ(&path_z, "{s}", .{path}) catch return false;
+    const nt = std.fmt.bufPrintSentinel(&path_z, "{s}", .{path}, 0) catch return false;
     var stat_buf: c_std.struct_stat = undefined;
     if (c_std.stat(nt.ptr, &stat_buf) != 0) return false;
     return (stat_buf.st_mode & c_std.S_IFMT) == c_std.S_IFDIR;
@@ -843,7 +837,7 @@ fn chamferedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, ch: f64) void {
 fn textExtents(cr: *c.cairo_t, text: []const u8) c.cairo_text_extents_t {
     var ext: c.cairo_text_extents_t = undefined;
     var buf: [1024]u8 = undefined;
-    const nt = std.fmt.bufPrintZ(&buf, "{s}", .{text}) catch blk: {
+    const nt = std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch blk: {
         const len = @min(text.len, buf.len - 1);
         @memcpy(buf[0..len], text[0..len]);
         buf[len] = 0;
@@ -855,7 +849,7 @@ fn textExtents(cr: *c.cairo_t, text: []const u8) c.cairo_text_extents_t {
 
 fn showTextZ(cr: *c.cairo_t, text: []const u8) void {
     var buf: [1024]u8 = undefined;
-    const nt = std.fmt.bufPrintZ(&buf, "{s}", .{text}) catch blk: {
+    const nt = std.fmt.bufPrintSentinel(&buf, "{s}", .{text}, 0) catch blk: {
         const len = @min(text.len, buf.len - 1);
         @memcpy(buf[0..len], text[0..len]);
         buf[len] = 0;

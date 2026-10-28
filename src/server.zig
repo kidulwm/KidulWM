@@ -56,15 +56,17 @@ const kplay_client_mod = @import("ipc/kplay_client.zig");
 const media_mod = @import("ui/media.zig");
 const peek_mod = @import("ui/peek.zig");
 const keybinds = @import("config/keybinds.zig");
-const c = @cImport({
-    @cInclude("stdio.h");
-});
-const c_std = @cImport({
-    @cInclude("stdlib.h");
-});
+const c = @import("c");
+const c_std = @import("c");
 
 extern fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern fn unsetenv(name: [*:0]const u8) c_int;
+
+// wlroots 0.20.2 moved wlr_pixman_renderer_create out of wlr_renderer.h into
+// wlr/render/pixman.h; zig-wlroots 0.20.2-dev dropped the `Renderer.createPixman`
+// wrapper. The symbol still exists in libwlroots, so re-declare it locally to
+// preserve the WLR_RENDERER=pixman software-rendering fallback.
+extern fn wlr_pixman_renderer_create() ?*wlr.Renderer;
 
 fn applyTitleBarEnvironment(show_title_bars: bool) void {
     if (show_title_bars) {
@@ -89,7 +91,7 @@ pub const KeyRingEntry = struct {
     sym: u32 = 0,
     mod4: bool = false,
     ctrl: bool = false,
-    action: [24]u8 = [_]u8{0} ** 24,
+    action: [24]u8 = @splat(0),
     action_len: u8 = 0,
 
     pub fn setAction(self: *KeyRingEntry, name: []const u8) void {
@@ -472,7 +474,7 @@ pub const Server = struct {
 
     /// Last N pressed key events for the bobPI/debug probe. Lock-free enough:
     /// written on the main thread only, read by the IPC thread via memcpy.
-    key_ring: [32]KeyRingEntry = [_]KeyRingEntry{.{}} ** 32,
+    key_ring: [32]KeyRingEntry = @splat(.{}),
     key_ring_pos: usize = 0,
     key_events_seen: u64 = 0,
 
@@ -814,7 +816,7 @@ pub const Server = struct {
         errdefer output_layout.destroy();
 
         const renderer = if (force_pixman)
-            try wlr.Renderer.createPixman()
+            wlr_pixman_renderer_create() orelse return error.RendererCreateFailed
         else
             try wlr.Renderer.autocreate(backend);
         try renderer.initServer(wl_server);
@@ -3418,11 +3420,11 @@ pub const Server = struct {
     fn volumeApply(self: *Server) void {
         var pctbuf: [16]u8 = undefined;
         const pct: u32 = @intFromFloat(self.master_volume * 100.0);
-        const pct_s = std.fmt.bufPrintZ(&pctbuf, "{d}%", .{pct}) catch return;
+        const pct_s = std.fmt.bufPrintSentinel(&pctbuf, "{d}%", .{pct}, 0) catch return;
         var mutebuf: [8]u8 = undefined;
-        const mute_s = std.fmt.bufPrintZ(&mutebuf, "{d}", .{@intFromBool(self.master_muted)}) catch return;
+        const mute_s = std.fmt.bufPrintSentinel(&mutebuf, "{d}", .{@intFromBool(self.master_muted)}, 0) catch return;
         var cmdbuf: [128]u8 = undefined;
-        const cmd = std.fmt.bufPrintZ(&cmdbuf, "pactl set-sink-volume @DEFAULT_SINK@ {s} ; pactl set-sink-mute @DEFAULT_SINK@ {s}", .{ pct_s, mute_s }) catch return;
+        const cmd = std.fmt.bufPrintSentinel(&cmdbuf, "pactl set-sink-volume @DEFAULT_SINK@ {s} ; pactl set-sink-mute @DEFAULT_SINK@ {s}", .{ pct_s, mute_s }, 0) catch return;
         _ = c_std.system(cmd.ptr);
         std.log.info("KidulWM: master volume {d}%{s}", .{ pct, if (self.master_muted) " MUTED" else "" });
     }
@@ -4381,7 +4383,7 @@ pub const Server = struct {
         var argc: usize = 0;
         while (it.next()) |arg| {
             if (argc >= argv.len - 1) break;
-            const z = child_allocator.dupeZ(u8, arg) catch break;
+            const z = child_allocator.dupeSentinel(u8, arg, 0) catch break;
             argv[argc] = z.ptr;
             argc += 1;
         }

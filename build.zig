@@ -6,14 +6,43 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // ── C translation (replaces @cImport, removed in Zig 0.17) ────────────
+    // The per-file @cImport blocks were consolidated into two shared
+    // translation units: libc (src/c.h) and cairo (src/dm/c.h). `c_mod` is
+    // imported under the name "c" by every module that used a libc @cImport;
+    // `dm_c_mod` wraps src/dm/c.zig and is imported under the name "dm".
+    const c_translate = b.addTranslateC(.{
+        .root_source_file = b.path("src/c.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const c_mod = c_translate.createModule();
+
+    const dm_c_translate = b.addTranslateC(.{
+        .root_source_file = b.path("src/dm/c.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    dm_c_translate.linkSystemLibrary("cairo", .{});
+    const dm_c_translate_mod = dm_c_translate.createModule();
+
+    const dm_c_mod = b.createModule(.{
+        .root_source_file = b.path("src/dm/c.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    dm_c_mod.addImport("c", dm_c_translate_mod);
+    dm_c_mod.linkSystemLibrary("cairo", .{});
+
     // ── compile-time provenance stamps ─────────────────────────────────
     // KidulWM statically includes kmedia as source modules (../kmedia/src)
     // — a kmedia change is INVISIBLE at runtime until KidulWM is rebuilt
     // and redeployed. Stamp both HEADs into the binary so session.log can
     // always prove which player code is actually running (2026-09-09: the
     // census hunt lost a morning to "deployed" probes that weren't).
-    const kidulwm_rev = b.run(&.{ "git", "-C", b.pathFromRoot("."), "rev-parse", "--short", "HEAD" });
-    const kmedia_rev = b.run(&.{ "git", "-C", b.pathFromRoot("../kmedia"), "rev-parse", "--short", "HEAD" });
+    const kidulwm_rev = b.run(&.{ "git", "-C", b.root.toString(b.allocator) catch @panic("OOM"), "rev-parse", "--short", "HEAD" });
+    const kmedia_rev = b.run(&.{ "git", "-C", b.root.joinString(b.allocator, "../kmedia") catch @panic("OOM"), "rev-parse", "--short", "HEAD" });
     const stamp = b.addOptions();
     stamp.addOption([]const u8, "kidulwm_rev", std.mem.trim(u8, kidulwm_rev, " \n\r"));
     stamp.addOption([]const u8, "kmedia_rev", std.mem.trim(u8, kmedia_rev, " \n\r"));
@@ -74,32 +103,73 @@ pub fn build(b: *std.Build) void {
     // targets all deleted.
 
     // ── libkmedia dependency / module ──────────────────────────────────────
+    // Mirrors ../kmedia/build.zig (kmedia is statically included as source).
+    const c_kmedia_tc = b.addTranslateC(.{
+        .root_source_file = b.path("../kmedia/src/c.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    c_kmedia_tc.addSystemIncludePath(b.path("../kmedia/protocol"));
+    const c_kmedia_bindings = c_kmedia_tc.createModule();
+
     const c_kmedia_mod = b.createModule(.{
         .root_source_file = b.path("../kmedia/src/c.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .imports = &.{
+            .{ .name = "c_bindings", .module = c_kmedia_bindings },
+        },
     });
     c_kmedia_mod.linkSystemLibrary("cairo", .{});
     c_kmedia_mod.linkSystemLibrary("wayland-client", .{});
     c_kmedia_mod.linkSystemLibrary("wayland-cursor", .{});
+    c_kmedia_mod.linkSystemLibrary("wayland-egl", .{});
+    c_kmedia_mod.linkSystemLibrary("EGL", .{});
+    c_kmedia_mod.linkSystemLibrary("GLESv2", .{});
     c_kmedia_mod.linkSystemLibrary("xkbcommon", .{});
     c_kmedia_mod.addSystemIncludePath(b.path("../kmedia/protocol"));
+
+    const av_kmedia_tc = b.addTranslateC(.{
+        .root_source_file = b.path("../kmedia/src/av.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const av_kmedia_bindings = av_kmedia_tc.createModule();
 
     const av_mod = b.createModule(.{
         .root_source_file = b.path("../kmedia/src/av.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .imports = &.{
+            .{ .name = "av_bindings", .module = av_kmedia_bindings },
+        },
     });
     av_mod.linkSystemLibrary("avformat", .{});
     av_mod.linkSystemLibrary("avcodec", .{});
     av_mod.linkSystemLibrary("avutil", .{});
     av_mod.linkSystemLibrary("swscale", .{});
     av_mod.linkSystemLibrary("swresample", .{});
+    av_mod.linkSystemLibrary("va", .{});
+    av_mod.linkSystemLibrary("va-drm", .{});
     av_mod.linkSystemLibrary("pulse", .{});
     av_mod.linkSystemLibrary("pulse-simple", .{});
     av_mod.linkSystemLibrary("pthread", .{});
+
+    const c_std_kmedia_tc = b.addTranslateC(.{
+        .root_source_file = b.path("../kmedia/src/c_std.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const c_std_kmedia_mod = c_std_kmedia_tc.createModule();
+
+    const c_import_kmedia_tc = b.addTranslateC(.{
+        .root_source_file = b.path("../kmedia/src/c_import.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const c_import_kmedia_mod = c_import_kmedia_tc.createModule();
 
     const libkmedia_mod = b.createModule(.{
         .root_source_file = b.path("../kmedia/src/libkmedia.zig"),
@@ -109,6 +179,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "c", .module = c_kmedia_mod },
             .{ .name = "av", .module = av_mod },
+            .{ .name = "c_std", .module = c_std_kmedia_mod },
+            .{ .name = "c_import", .module = c_import_kmedia_mod },
         },
     });
     libkmedia_mod.linkSystemLibrary("cairo", .{});
@@ -121,6 +193,10 @@ pub fn build(b: *std.Build) void {
     libkmedia_mod.linkSystemLibrary("pulse", .{});
     libkmedia_mod.linkSystemLibrary("pulse-simple", .{});
     libkmedia_mod.linkSystemLibrary("pthread", .{});
+    libkmedia_mod.addCSourceFile(.{
+        .file = b.path("../kmedia/src/img_shim.c"),
+        .flags = &.{ "-std=c99", "-O2" },
+    });
 
     const root_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -136,7 +212,8 @@ pub fn build(b: *std.Build) void {
     root_mod.addImport("toml", toml);
     root_mod.addImport("kmedia", libkmedia_mod);
     root_mod.addOptions("build_stamp", stamp);
-    root_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
+    root_mod.addImport("c", c_mod);
+    root_mod.addImport("dm", dm_c_mod);
 
     root_mod.linkSystemLibrary("wayland-server", .{});
     root_mod.linkSystemLibrary("wlroots-0.20", .{});
@@ -177,6 +254,7 @@ pub fn build(b: *std.Build) void {
     dm_mod.linkSystemLibrary("png16", .{});
     dm_mod.linkSystemLibrary("drm", .{});
     dm_mod.linkSystemLibrary("seat", .{});
+    dm_mod.addImport("dm", dm_c_mod);
 
     const dm_exe = b.addExecutable(.{ .name = "kiduldm", .root_module = dm_mod });
     b.installArtifact(dm_exe);
@@ -206,7 +284,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    gauge_test_mod.addImport("dm", b.createModule(.{ .root_source_file = b.path("src/dm/c.zig") }));
+    gauge_test_mod.addImport("dm", dm_c_mod);
+    gauge_test_mod.addImport("c", c_mod);
     gauge_test_mod.addImport("core", b.createModule(.{ .root_source_file = b.path("src/core/style.zig") }));
     gauge_test_mod.linkSystemLibrary("cairo", .{});
     const gauge_test_exe = b.addExecutable(.{ .name = "gauge-test", .root_module = gauge_test_mod });
@@ -219,7 +298,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
     const run_step = b.step("run", "Run KidulWM");
     run_step.dependOn(&run_cmd.step);
 
@@ -229,6 +308,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    files_mod.addImport("c", c_mod);
     const files_exe = b.addExecutable(.{ .name = "kidul-files", .root_module = files_mod });
     b.installArtifact(files_exe);
 

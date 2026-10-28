@@ -1,7 +1,12 @@
 // stb_image shim: compiles the implementation once, exports a thin decode
 // surface to Zig. Decode happens on the widget's art worker thread, never
 // the render thread. Output is always RGBA (4 channels).
+//
+// STB_IMAGE_STATIC keeps these stbi_* symbols file-local: kmedia's
+// img_shim.c (pulled in via libkmedia) compiles the same stb_image header
+// into the same binary, and without this the two copies collide at link time.
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
 #define STBI_ONLY_GIF

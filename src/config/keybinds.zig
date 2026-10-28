@@ -144,7 +144,7 @@ pub const Keybinds = struct {
             list.deinit(allocator);
         }
 
-        const path_z = allocator.dupeZ(u8, path) catch |err| {
+        const path_z = allocator.dupeSentinel(u8, path, 0) catch |err| {
             std.log.warn("KidulWM: failed to allocate path ({}); using built-in keybinds", .{err});
             return .{ .allocator = allocator, .binds = list, .fallback = true };
         };

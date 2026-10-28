@@ -109,7 +109,7 @@ extern fn kmedia_stream_connect(loop: *PwLoop, events: *const PwStreamEvents, er
 // Shared state (written by the PW thread, read by render threads)
 // ---------------------------------------------------------------------------
 
-var band_slots: [2][BAND_COUNT]f32 = .{ .{0} ** BAND_COUNT, .{0} ** BAND_COUNT };
+var band_slots: [2][BAND_COUNT]f32 = .{ @splat(0), @splat(0) };
 var band_active: std.atomic.Value(u32) = std.atomic.Value(u32).init(0);
 var rms_slot: std.atomic.Value(u32) = std.atomic.Value(u32).init(0); // f32 bits
 var running: std.atomic.Value(bool) = std.atomic.Value(bool).init(false);
@@ -148,7 +148,7 @@ fn ksoundAskAudioLive() bool {
     var path_buf: [128]u8 = undefined;
     const path = ksoundSocketPath(&path_buf) orelse return false;
 
-    var addr: std.os.linux.sockaddr.un = .{ .family = std.os.linux.AF.UNIX, .path = [_]u8{0} ** 108 };
+    var addr: std.os.linux.sockaddr.un = .{ .family = std.os.linux.AF.UNIX, .path = @splat(0) };
     if (path.len > addr.path.len - 1) return false;
     @memcpy(addr.path[0..path.len], path);
 
@@ -279,7 +279,7 @@ fn fft(re: *[FFT_SIZE]f32, im: *[FFT_SIZE]f32) void {
 // Band mapping — 7 log-ish bands (~40 Hz .. ~12 kHz at 44.1k / FFT 2048)
 // ---------------------------------------------------------------------------
 
-var smooth: [BAND_COUNT]f32 = .{0} ** BAND_COUNT;
+var smooth: [BAND_COUNT]f32 = @splat(0);
 
 const band_edges = [BAND_COUNT + 1]usize{ 4, 7, 13, 25, 50, 100, 201, 402 };
 
@@ -365,7 +365,7 @@ fn nowUsMono() i64 {
 
 fn publishSilence() void {
     const idx = band_active.load(.acquire);
-    band_slots[1 - idx] = .{0} ** BAND_COUNT;
+    band_slots[1 - idx] = @splat(0);
     band_active.store(1 - idx, .release);
     rms_slot.store(@bitCast(@as(f32, 0.0)), .release);
     // NOTE: smooth[] is owned by analyzeFrame (capture thread) — resetting it

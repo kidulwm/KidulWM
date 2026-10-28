@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
-const c_std = @cImport({
-    @cDefine("_FORTIFY_SOURCE", "0");
-    @cInclude("stdio.h");
-    @cInclude("stdlib.h");
-    @cInclude("time.h");
-    @cInclude("sys/statvfs.h");
-});
+const c_std = @import("c");
 const c = @import("dm").c;
 const style = @import("../core/style.zig");
 
@@ -97,9 +91,9 @@ pub const DrivesWidget = struct {
 };
 
 pub const DriveInfo = struct {
-    path: [128]u8 = .{0} ** 128,
+    path: [128]u8 = @splat(0),
     path_len: usize = 0,
-    name: [64]u8 = .{0} ** 64,
+    name: [64]u8 = @splat(0),
     name_len: usize = 0,
     hidden: bool = false,
 };
@@ -114,7 +108,7 @@ pub fn discoverDrives(out: []DriveInfo) usize {
     const file = c_std.fopen("/proc/self/mounts", "r");
     if (file != null) {
         defer _ = c_std.fclose(file.?);
-        var line_buf: [1024]u8 = .{0} ** 1024;
+        var line_buf: [1024]u8 = @splat(0);
         while (c_std.fgets(&line_buf, line_buf.len, file.?) != null) {
             const line_len = std.mem.indexOfScalar(u8, &line_buf, 0) orelse line_buf.len;
             var end = line_len;
@@ -138,7 +132,7 @@ pub fn discoverDrives(out: []DriveInfo) usize {
     const parts = c_std.fopen("/proc/partitions", "r");
     if (parts != null) {
         defer _ = c_std.fclose(parts.?);
-        var part_buf: [512]u8 = .{0} ** 512;
+        var part_buf: [512]u8 = @splat(0);
         var line_no: usize = 0;
         while (c_std.fgets(&part_buf, part_buf.len, parts.?) != null) {
             line_no += 1;

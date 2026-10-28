@@ -6,9 +6,7 @@ const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
 const Server = @import("../server.zig").Server;
 
-const c_std = @cImport({
-    @cInclude("stdlib.h");
-});
+const c_std = @import("c");
 
 const KeyboardDevice = struct {
     manager: *KeyboardManager,

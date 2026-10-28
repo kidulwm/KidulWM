@@ -156,7 +156,7 @@ pub const Theme = struct {
     }
 
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const path_z = try allocator.dupeZ(u8, path);
+    const path_z = try allocator.dupeSentinel(u8, path, 0);
     defer allocator.free(path_z);
     const linux = std.os.linux;
     const file_fd = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);
@@ -195,7 +195,7 @@ fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     }
 
     fn fileExists(path: []const u8) bool {
-        const path_z = std.heap.c_allocator.dupeZ(u8, path) catch return false;
+        const path_z = std.heap.c_allocator.dupeSentinel(u8, path, 0) catch return false;
         defer std.heap.c_allocator.free(path_z);
         const linux = std.os.linux;
         const fd = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);

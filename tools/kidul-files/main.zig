@@ -4,20 +4,7 @@ const std = @import("std");
 // Kidul Files TUI — first-cut Zig file manager.
 // Arrow-key navigation, drive pills, friendly path labels, sudo-gated root.
 
-const c = @cImport({
-    @cDefine("_FORTIFY_SOURCE", "0");
-    @cInclude("stdio.h");
-    @cInclude("stdlib.h");
-    @cInclude("string.h");
-    @cInclude("dirent.h");
-    @cInclude("sys/stat.h");
-    @cInclude("sys/ioctl.h");
-    @cInclude("termios.h");
-    @cInclude("unistd.h");
-    @cInclude("fcntl.h");
-    @cInclude("signal.h");
-    @cInclude("sys/wait.h");
-});
+const c = @import("c");
 
 const Drive = struct {
     name: []const u8,

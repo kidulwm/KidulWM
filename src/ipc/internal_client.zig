@@ -34,10 +34,7 @@ const ffi_client = struct {
     pub extern fn wl_display_flush_clients(display: *server_wl.Server) void;
 };
 
-const c = @cImport({
-    @cInclude("sys/socket.h");
-    @cInclude("unistd.h");
-});
+const c = @import("c");
 
 pub const Error = error{
     SocketpairFailed,
