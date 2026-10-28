@@ -99,3 +99,6 @@ the kfiles-native back-out), so the two are never confused.
   the keep-both branch are build + harness detail.
 - Exact pill placement (bottom of the frozen card vs the bottom hard-stop zone) —
   build detail; the two-verb three-surface law is fixed.
+- Pill colour is placeholder/show-only for now: the green/red are too bright for
+  the screen — bright green/red are the REMOTE's hardware colours, not screen
+  chrome — tone them down (Barticus 2026-10-28, "irrelevant for now").
