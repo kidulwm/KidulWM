@@ -119,6 +119,7 @@ kidulwm-control set-temp-threshold <F>    # hide temp gauges below this (default
 
 ## Verified on
 
-- Host: CachyOS x86_64, Linux 7.1.8-1-cachyos
-- Zig 0.16.0 (CachyOS package; aig fork stands at /home/dad/dev/aig)
+- Host: CachyOS x86_64, Linux 7.2.8-1-cachyos
+- Zig 0.17.0 (/usr/local/bin/zig -> /home/dad/dev/tools/zig-0.17.0, official
+  interim; aig fork 0.17.1 stands at /home/dad/dev/aig, branch aig-0.17.0)
 - libvirt / qemu from pacman
