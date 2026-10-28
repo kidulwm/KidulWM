@@ -1,6 +1,10 @@
 # LAW — the Landing (files/browser/media converge on one look & feel)
 
 LOCKED 2026-10-26, Barticus present. Q.A resolved: the media title is "Library".
+AMENDED 2026-10-26 (later): the space above the bar is EMPTY "awaiting design"
+for now — the KISS title + Batik corners + KidulWorks sig (props 2/3/4/6) are a
+LATER pass, not the current landing. Current clean landing = pill bar CFC'd +
+content centred + ZERO crumbs + empty space above.
 
 Lane: cross-app (kfiles, kidul-browser, kmedia).
 Related: styles (CFC law, THE PILL, corner language, whispy icons, Granny test),
