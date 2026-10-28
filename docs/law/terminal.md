@@ -1,4 +1,4 @@
-# LAW — the terminal (kterm, the "smooth operator"): fork ghostty, strip the GTK, own the screen
+# LAW — the terminal (khostty, the "smooth operator"): fork ghostty, strip the GTK, own the screen
 
 PROPOSED 2026-10-28, Barticus present. Renderer default below is bobdotrix's call
 (Barticus: "replace the GTK4 with cairo or Pixman, whatever you think is best").
@@ -62,7 +62,7 @@ committed over wl_shm has no GPU frame-timing surface.
 
 ## The law (properties)
 
-1. ONE TERMINAL (Card 1.5). kterm replaces ghostty as the single terminal
+1. ONE TERMINAL (Card 1.5). khostty replaces ghostty as the single terminal
    concept everywhere on the face; ghostty is uninstalled, not kept as a
    fallback. No app_id special-casing (already stripped, docket #11) returns.
 2. NO GTK, NO GL, NO LIBADWAITA. The terminal is a native Wayland satellite:
@@ -74,8 +74,10 @@ committed over wl_shm has no GPU frame-timing surface.
    never a .conf. Config is our own, minimal, and read once at launch.
 5. <100MB RESIDENT target (from ~330MB), measured on REAL i915 TV hardware —
    never the no-GPU llvmpipe VM, whose numbers lie in both directions.
-6. BEHAVIOUR-NAMED. It is "the terminal" / "the mouth". Barticus maps the name;
-   "kterm" is the working code id until he does.
+6. NAMED khostty (LOCKED 2026-10-28). It is "the terminal" / "the mouth" to
+   Granny, who will never see it. "kterm" was rejected as crowded — a live
+   2026 C emulation library and two Kindle terminals already use it. khostty
+   carries the house k and flags the ghostty lineage honestly.
 7. FORK, NOT REWRITE. We keep ghostty's VT core (MIT) and write only the
    frontend + software renderer. We do not re-implement the vt parser, kitty
    graphics, or OSC — that is the point of the fork.
@@ -87,10 +89,16 @@ committed over wl_shm has no GPU frame-timing surface.
        delegated.)
 - Q.B  presentation = wl_shm. No dmabuf, no GL, no GPU frame-timing. (kills the
        flicker by construction.)
-- Q.C  the fork is a NEW in-house repo (kterm), ghostty kept only as an upstream
+- Q.C  the fork is a NEW in-house repo (khostty), ghostty kept only as an upstream
        reference in dev/reference/. We do not push a 367K-line mirror to Codeberg.
 - Q.D  config is OURS and minimal (font, size, colours from theme) — not a
        ghostty.conf passthrough. (Card 1.5 "never a ghostty.conf".)
+- Q.E  khostty adopts the AIG fork discipline (see the aig repo): a PINNED
+       ghostty base (never a moving branch), every strip a file in patches/
+       SERIES applied idempotently (nothing edited in place), our Wayland
+       surface + cairo renderer + a/ namespace in-repo, upstream pulled only
+       deliberately. Fork what MOVES or must DIVERGE; BORROW the dormant
+       bedrock (cairo/pixman/fontconfig stay un-forked).
 
 ## Reversals
 
