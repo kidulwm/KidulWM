@@ -1,5 +1,33 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-10-29) — KHOSTTY M2c DONE + INSTALLED + KEYBOUND (relog pending).
+#   M2c landed (commit 820809b, signed B&B, both builds green): cairo renderer is now REAL — Buffer(T)
+#   retains synced cell data, Target holds the apprt cairo surface over wl_shm, Texture holds the glyph
+#   atlas, RenderPass.step draws bg_color/cell_bg/cell_text via cairo_paint/rectangle+fill/mask_surface.
+#   kidul apprt wires a REAL core Surface + renderer thread; seeds "hello" via Surface.printString().
+#   VERIFIED LIVE (bobdotrix): ReleaseSafe binary installed to /usr/local/bin/khostty (126MB); ran 5s
+#   against live wayland-1 with NO crash, log showed runtime=.kidul + renderer.generic.Renderer(renderer.Cairo)
+#   + io_exec started /bin/sh. (Headless weston blocks screenshot capture, so pixels = Barticus's eyes.)
+#   KEYBIND: ~/.config/kidulwm/keybinds.conf Mod4+y -> spawn /usr/local/bin/khostty (kcell VACATED mod4+y).
+#   KEY FINDING: keybinds.conf is parsed ONCE at startup (Keybinds.load()); .reload (Mod4+r) = requestQuit
+#   ONLY, does NOT re-read the file. A keybind CHANGE needs a full WM restart (relog) to take effect.
+#   NOT DONE (M2d): termio/PTY keyboard input, double-buffered wl_shm, binary rename (still says "ghostty"),
+#   Mod4+Return/open_slide -> /usr/local/bin/launch-kidul-terminal.sh is MISSING (pre-existing breakage).
+#
+# SESSION WRAP-UP (bobdotrix 2026-10-29) — DOCKET #50 AIG 0.17.0 MIGRATION COMPLETE ("next >>> gsi").
+#   The three remaining items are done. House now builds + runs on Zig 0.17.0.
+#   1) PUSH: 14 migration repos -> Codeberg (12 existing remotes + kweather/kvaultd created private,
+#      default main, via API). aig-0.17.0 branch pushed (b66e8f0cd1, NOT merged to main). All ahead=0.
+#   2) TOOLCHAIN SWAP: /usr/local/bin/zig -> symlink /home/dad/dev/tools/zig-0.17.0/zig (official
+#      0.17.0 interim, sha 7c61539a…). Pacman /usr/bin/zig (0.16.0) UNTOUCHED. Revert = rm
+#      /usr/local/bin/zig. All 14 repos build clean under 0.17.0 (verified, exit 0 each).
+#   3) VM-PROVE KidulWM: cb643e7 ReleaseSafe built under 0.17.0 (8.3MB), deployed to ksd-reset
+#      /usr/local/bin/kidulwm. Boots clean (NRestarts=0), Virtual-1 1920x1080, bootcheck OK,
+#      IPC get_layout/get_windows OK, deck renders (sha 777c008a… matched). The wallpaper
+#      "CairoError" warning is PRE-EXISTING (42x since Sep-19) — not a migration regression.
+#   FOLLOW-ON (separate track, NOT #50): aig 0.17.1 -> daily toolchain (VM-prove KidulWM under aig,
+#   drop-in verify all repos, merge aig-0.17.0 -> main). Interim = official 0.17.0 until then.
+#
 # SESSION WRAP-UP (bobdotrix 2026-10-27) — KFILES FACE COMPLETE (Barticus gsi: "very good").
 #   Six signed B&B commits (69b6396..66a6acb) on codeberg, all DEPLOYED to /usr/local/bin/kfiles.
 #   SHIPPED: full-screen image viewer + "Open In…" picker (#40); the left-panel depth gauge (dir
