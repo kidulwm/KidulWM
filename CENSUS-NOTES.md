@@ -1,4 +1,155 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
+#
+# SESSION WRAP-UP (bobdotrix 2026-10-27) — KFILES FACE COMPLETE (Barticus gsi: "very good").
+#   Six signed B&B commits (69b6396..66a6acb) on codeberg, all DEPLOYED to /usr/local/bin/kfiles.
+#   SHIPPED: full-screen image viewer + "Open In…" picker (#40); the left-panel depth gauge (dir
+#   name + shrinking ancestor-dot rail, rail halfway to the text); details split around the right
+#   card (date above, type+size below, folder icon carries item count); ONE 36px text size across
+#   the whole face; title-case "Drives/Kidul/Settings" pill bar that dims at the top; border-colour
+#   secondary text so the CFC'd list name is the only full-white text.
+#   BUGS KILLED: Esc-quits-app; empty-folder ghost back (DOWN hard-stops); 0-byte sizes/dates
+#   (stat on a non-null-terminated path).
+#   NEXT (candy, Barticus): #41 key auto-repeat + smooth scroll; #36 marquee; #42 tools opening.
+#   Reopen Mod4+n to eyeball the live face.
+#
+
+
+# PENDING HANDOFF (bobdotrix 2026-10-27) — KFILES FULL-SCREEN VIEWER + OPEN IN (docket #40, DONE + DEPLOYED).
+#   Barticus relogged mid-kfiles-design-proof and could not READ the /tmp/kfiles-*.png proof cards (the
+#   right-third placecard is too small at lounge distance). Built BOTH asks in kfiles (no WM change):
+#   (1) "View" verb in the drawer (image files) -> full-screen contain-fit viewer, filename pinned top,
+#       Esc/Enter/Left/BackSpace dismiss back to the list. The slide's OWN surface renders the image
+#       edge-to-edge (3x the old card), no xdg set_fullscreen, no KidulWM wiring.
+#   (2) "Open In…" verb -> one-off submenu of the file kind's candidate programs (from the settings
+#       opener map; e.g. image: xdg-open/viewer/feh/qimgv/gwenview). Enter launches the pick, Left/Esc
+#       back to the verb list. Does NOT change the persisted opener.
+#   (3) FIX (latent bug): Wayland.zig closed the WHOLE app on any Esc press — contradicted the "Esc never
+#       quits" top-nav law and would have broken the viewer. Esc now only navigates back.
+#   Harness pixel+vision verified: kfiles-viewer.png = photo.jpg contain-fit blue (centre 107,143,197,
+#       corners dark bg), kfiles-openin.png = 5 candidate rows (xdg-open highlighted). Commit 9f1a96f
+#   (signed B&B), pushed codeberg main. Deployed /usr/local/bin/kfiles sha f7511679… == build
+#   (.bak-20261027-pre-openin kept). kfiles NOT running (relog) — reopen via Mod4+n (Files), NEVER
+#   hand-respawn.
+#   FOLLOW-UP (same session, Barticus gsi): the dotrix-field instr proof -> refined to the LEFT-PANEL
+#   "DEPTH GAUGE" — current directory name on a large lit gold dot, ancestors as shrinking (dimming)
+#   dots above; NO children, NO ancestor text, NO dot-field ("both too much — the centre panel already
+#   lists the folder's contents"). Implemented in Renderer.zig (drawCrumbStack -> drawDepthGauge),
+#   harness pixel-verified (3 ancestor dots y~382/408/434 + lit dot y~460 + "src"). Commit 3fa3114
+#   (signed B&B) pushed codeberg. Deployed /usr/local/bin/kfiles sha a7364803… (.bak-20261027-pre-gauge
+#   kept). Details block (date/type/size) KEPT — the gauge replaces only the crumb stack. Reopen Mod4+n.
+#   FOLLOW-UP 2 (same session, Barticus gsi): LAYOUT SPLIT + two bug fixes.
+#   Left = depth gauge ONLY: name centred H+V, dots a locked shrinking rail at far-left 27px (no details).
+#   Details moved to the RIGHT: date ABOVE the card (fixed, muted), type+size BELOW (files EXT+size,
+#   folders "Folder"+on-disk size). Folder icon now carries the ITEM COUNT inside (72px, couch-legible).
+#   BUG FIXES: (1) empty-folder ghost back — DOWN past the last entry hit a phantom .preview focus where
+#   RIGHT was dead and LEFT only snapped back to .files; DOWN now hard-stops at the bottom. (2) 0-byte
+#   sizes/dates — loadDirectory stat'd a non-null-terminated path (std.fs.path.join) so st_size/mtime
+#   came back 0; now null-terminated first (isDir/thumbFor already were). Commit c0c587f (signed B&B),
+#   pushed codeberg. Deployed sha 219b8081… (.bak-20261027-pre-layout kept). Reopen Mod4+n.
+#   FOLLOW-UP 3 (same session, Barticus gsi): TWEAK PASS. Unified text size 36px EVERYWHERE (gauge
+#   name, right-side date/type/size, folder-icon count, pill labels). Pill bar title-case
+#   "Drives/Kidul/Settings" (user label title-cased too) + SEMI-TRANSPARENT when at the top (fill
+#   34/255, ring 0.30, focused label 0.55) — only the CFC'd mainstage element reads 100%. Gauge dots
+#   bigger; dot rail now sits HALFWAY between the screen edge and the text's left edge (no longer
+#   pinned 27px). Right details: size stacked under the type, bigger fixed gap above/below the card.
+#   Commit a78425d (signed B&B), pushed codeberg. Deployed sha 0eaea557… (.bak-20261027-pre-unify
+#   kept). Reopen Mod4+n.
+#   FOLLOW-UP 4 (same session, Barticus gsi): FINISH PASS. Gauge name + right date/type/size ALL in the
+#   border colour (#6a6354) — the CFC'd list name is the only full-white text. More air between type &
+#   size (line_h 1.5). Unified last stragglers to 36px (settings detail_size 30→36; viewer name 30→36).
+#   NOTE: all main-view text was already 36px — the apparent pill-bar size diff is DESCENDERS (photo.jpg
+#   has p/j/g, ~37px tall; "Kidul"/"Drives" have none, ~28px) at the same font size. Commit 66a6acb
+#   (signed B&B), pushed codeberg. Deployed sha a940f84b… (.bak-20261027-pre-mute kept). Reopen Mod4+n.
+#   FOLLOW-UP 5 (same session, Barticus gsi "go for it"): #41 SCROLL INPUT wired. Mouse wheel
+#   (pointerAxisDiscrete -> App.scrollWheel: files/drives/settings/drawer/submenu; positive = down)
+#   + hold-to-repeat Up/Down (keyDown tracks the hold; run loop ticks App.tickScroll each frame —
+#   280ms dwell, then 80->30ms accelerating interval). Immediate step still flows through handleKey,
+#   so edge behaviour holds (Up@top -> home, Down@bottom hard-stop). Harness SCROLL TEST PASS (n=14).
+#   Commit 31732e7 (signed B&B), pushed codeberg. Deployed sha d7abb559… (.bak-20261027-pre-scroll
+#   kept). LIVE-CHECK for Barticus: wheel direction (+=down) + repeat feel; flip the sign in
+#   pointerAxisDiscrete/scrollWheel if it scrolls backwards. Reopen Mod4+n.
+#   LOCKED (Barticus gsi "goldilocks"): speed "just so damn nice" — 280ms dwell + 80->30ms accel
+#   FROZEN, no retune. Wheel direction correct (no sign flip). Fade-in = anti-flicker: moveSelection
+#   resets the settle clock every step, so fast scroll never re-fades the preview (zero flicker) —
+#   it fades in only once the selection stops. Nothing further to do on #41.
+#   FOLLOW-UP 6 (same session — the real bug Barticus found): scroll went jerky after changing
+#   folders. Root cause: thumbFor decoded the FULL-RES image synchronously (stb_image, no downscale)
+#   + a full-width R<->B swap INSIDE the frame loop, so every new image step blocked a frame (home
+#   has few images -> felt fine; a photo folder hitches). FIX: the placecard now shows the glyph
+#   while scrolling and only decodes once the selection settles (no scroll key held + >=120ms dwell).
+#   New widget.scrolling flag (set by keyDown/keyUp/tickScroll) + THUMB_SETTLE_US=120ms cover hold +
+#   wheel + rapid tap. Scroll is glyph-only -> silky; image still fades in on stop. Harness
+#   DEFER GATE PASS + SCROLL TEST PASS. Commit e1d1367 (signed B&B), pushed codeberg. Deployed sha
+#   e60c6c62… (.bak-20261027-pre-decodefix kept). Reopen Mod4+n. Residual (docket #43): stopping on a
+#   HUGE photo still decodes full-res once — downscale + disk cache to come.
+#   FOLLOW-UP 7 (same session, docket #36 marquee): the marquee drew a SINGLE copy that scrolled
+#   fully off-screen, leaving a ~1.7s dead panel (the gap-minus-side-inset tail of the loop) before
+#   snapping back. FIX: draw a SECOND copy offset by one loop period so the scroll is seamless —
+#   copy 2 enters from the right as copy 1 exits left, fixed MARQUEE_GAP between them, no blank
+#   frame ever. Speed 40 -> 50 px/s (120 RACED — Barticus "calmly moving, not racing"). Harness
+#   marquee-continuity test (400 samples / 40s window, pixel-checks the soft-white name is always
+#   present) PASSES. Commit 3559961 (signed B&B), pushed codeberg. Deployed sha 5a0b93b1…
+#   (.bak-20261027-pre-marquee kept). Reopen Mod4+n. Speed (50) is live-tunable if it feels off.
+#   NETWORK NOTE: Mullvad tunnel DNS (10.64.0.1) intermittently fails to resolve codeberg.org ONLY
+#   (github/google fine, egress healthy); push rescued via DoH + temp /etc/hosts pin (removed after).
+#   FOLLOW-UP 8 (docket #44, 2026-10-27): "Open IS the viewer". 'View' verb renamed 'Open' — for an
+#   image it opens the in-app full-screen viewer; non-image falls back to the external opener; folder
+#   still navigates in. The old external xdg-open path now lives ONLY in "Open In…". Viewer is
+#   NAVIGABLE: Up/Down prev/next image (wrap, skip folders), Left/BackSpace/Esc/Enter back to the list
+#   (Left = the kfiles-native back-out per Barticus — Esc "feels like something else"). PLAY: Space (or
+#   the Play verb) starts a slow slideshow — next image every 60s (play_interval_sec, default 60s,
+#   explicit never auto), stop via Space/back. Run-loop tickPlay advances it (reuses the marquee/scroll
+#   keep-alive). Harness NAV+PLAY PASS (n=3: step/wrap/interval/stop). Commit 9795ca3 (signed B&B),
+#   sha 801708fa…, pushed codeberg, deployed /usr/local/bin/kfiles. Reopen Mod4+n. REMAINING: SETTINGS
+#   "Play interval" row + persistence + per-panel burn-time cap (interval max < panel burn time —
+#   25yr-product law, Barticus) -> docket #45 Smart Tools. #45 is the NEXT pondering item.
+#
+#   FOLLOW-UP 9 (docket #47, 2026-10-28): TOOLS DRAWER = HALF-SPLIT. The drawer no longer takes
+#   over the centre — the focused file's art holds the LEFT half (contain-fit), the tools sit CFC'd
+#   at 3w/4 in the RIGHT half (36px, same as the rest), replacing gauge+placecard+list while open.
+#   Harness + PIL pixel-verified (tools centroid 1438.8 vs 1440; file 481.7 vs 480). Commit f17b3ff
+#   (signed B&B), sha fb2a9e46, deployed /usr/local/bin/kfiles (.bak-20261028-pre-drawersplit kept).
+#   Reopen Mod4+n. Laws committed to KidulWM (codeberg): docs/law/move-copy.md (the LIFT) +
+#   docs/law/open-flow.md (RIGHT flows, LEFT backs out, Enter acts). NEXT: #45 Smart Tools (per-type
+#   table LOCKED) then #46 move/copy lift.
+#
+#   FOLLOW-UP 10 (same session, dockets #44/#47 fix): VIEWER RESTORED in the open flow. RIGHT now
+#   flows: image -> full-screen viewer -> (RIGHT again) -> tools; non-image -> drawer directly;
+#   Enter (main stage) -> tools (geek shortcut). Viewer takes render+input priority only while the
+#   drawer is CLOSED (viewer_open && !drawer_open). Drawer = borderless (pure black), file title
+#   moved ABOVE the art on the left, "Options" labels the tool list. Commit 6ff5c19 (signed B&B),
+#   sha 39bd53fe, deployed /usr/local/bin/kfiles (.bak-20261028-pre-openflow kept). Reopen Mod4+n.
+#
+#   FOLLOW-UP 11 (docket #45, 2026-10-28): SMART TOOLS view+play SHIPPED. (1) In-app TEXT VIEWER —
+#   txt/md/log/code open IN the viewer now (openViewer reads the file up-front, renderViewer branches
+#   to renderTextViewer: monospace 28px, character-wrapped, top-aligned below the filename, Up/Down
+#   scrolls, Enter/Esc/Left/BackSpace closes). (2) VIDEO/AUDIO primary drawer verb is now "Play"
+#   (kmedia), not "Open" — image keeps Open+Play (slideshow). (3) Guest (Granny) sees ONLY Open/Play,
+#   no "Open In…"/CRUD — docs/law/grannyize.md (the "Grannyize + hidden GeekFeatures" credo) frozen
+#   commit a3eca28, pushed to codeberg. Commit f518de6 (signed B&B), sha 254a6427, deployed
+#   /usr/local/bin/kfiles (.bak-20261028-pre-smarttools kept). Harness: TEXT VIEWER + DRAWER VERBS
+#   PASS. Install/edit stay placeholders -> #48 (kernel/brigs "Smart File System"). Reopen Mod4+n.
+#   NEXT: #46 move/copy — the LIFT.
+#
+#   FOLLOW-UP 13 (docket #45 follow-up, 2026-10-28, visual polish): CLEAN FILE GLYPHS. Barticus: the
+#   non-image type glyphs were "really ugly line drawing" — "just text in a clean border is fine".
+#   drawFileGlyph no longer draws the folded-corner file icon + tiny ext; it now draws a clean rounded
+#   plate (1.4:1, gold border 0.45, muted fill 0.08) with the uppercase extension centred inside (36px
+#   Fantasque, text_color 0.9) — ZIP/PDF/FLAC/... fileIconPath DELETED. Video keeps the poster plate
+#   (play triangle); folders keep the icon + count. Harness renderState index 5/12 + filedrawer;
+#   PIL-verified: "ZIP"/"PDF" centroid x=1600.0 (card centre 5w/6), plate 395x277 centred. Commit
+#   cb53ccc (signed B&B), sha 6c7665da, deployed /usr/local/bin/kfiles. Reopen Mod4+n.
+#
+#   FOLLOW-UP 12 (docket #45 follow-up, 2026-10-28, the KLINKS): "play in kfiles = play in kmedia".
+#   Barticus's seamless-play direction. The #45 "Play -> kmedia" wiring was WRONG — it launched the
+#   kmedia WALL client, which ignores the path. Fixed: kfiles "Play" now routes through the WM's
+#   media_play door (`kidulwm-control media_play <path>`) -> kplayCloseAny + kplay.sock 'open' ->
+#   kplayd. Music (.mp3/.flac/.ogg/.opus/.m4a/.aac/.wav) = headless background (kfiles stays); video
+#   = fullscreen; NEVER the kmedia wall. FROZEN: KidulWM docs/law/play-handoff.md (commit 61ba03a).
+#   kfiles commit 8afe797, sha 41be942e, deployed /usr/local/bin/kfiles. GAP: video fullscreen from
+#   kfiles (media slide closed) needs deck-level fullscreen (docket #49) — media_play fullscreens
+#   only while the media slide is open. Music works NOW; Barticus to reload Mod4+n and try Play on a
+#   tune.
 
 # PENDING HANDOFF (bobdotrix 2026-10-25) — KFILES PLACECARD CENTRING DONE + TOP-CHROME SPEC FROZEN.
 #   CENTRING (done + deployed): three sections now TRUE EQUAL THIRDS of the full width, NOT the padded
