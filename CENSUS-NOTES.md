@@ -12,9 +12,12 @@
 #   - cursor BORDER fixed: chamfered-octagon OUTLINE (char visible); the .off carve was a
 #     src_over no-op (rendered solid), now .src erases; the 45-degree chamfer was t/sqrt(2) thin
 #     (corners looked missing), now uniform t via inner_chamfer = chamfer - t*(2-sqrt2).
-#   - renamed app_id com.kidulwm.ktty, title/memfd/docs; keybind Mod4+y -> /usr/local/bin/ktty;
-#     OLD /usr/local/bin/khostty binary REMOVED. ktty name is clear (kitty=Kovid's GPU term,
-#     kty=K8s dashboard, KiTTY=Windows PuTTY fork).
+#   - renamed app_id com.kidulwm.ktty, title/memfd/docs; keybind Mod4+Return (primary, natural
+#     "tty on Return") + Mod4+y (secondary) -> /usr/local/bin/ktty; OLD /usr/local/bin/khostty
+#     binary REMOVED. ktty name is clear (kitty=Kovid's GPU term, kty=K8s dashboard,
+#     KiTTY=Windows PuTTY fork). NOTE: keybind changes need Mod4+r (reload = requestQuit ->
+#     full WM restart) to take effect — the running WM still held the old Mod4+y->khostty
+#     binding in memory, which is why a new terminal wouldn't open mid-session.
 #   NEXT (M2f, top of docket #18): NO SCROLL INPUT YET — the kidul apprt binds wl_keyboard but
 #     NOT wl_pointer. Core scrollCallback is fully written; needs a wl_pointer listener feeding
 #     axis/axis_discrete -> scrollCallback. Then the fade-away border SCROLLBAR (right edge,
