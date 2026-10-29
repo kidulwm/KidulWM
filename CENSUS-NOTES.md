@@ -1,5 +1,29 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-10-29) — KTTY M2e CORE DONE + RENAME ("we finally have a
+#   system that doesn't flicker"). khostty -> ktty (Barticus). Commits fa29e3e (cursor border),
+#   980e310 (rename + M2e), e78dfd5 (kawung art), 553d5cf (BUILD.md). All signed B&B, both
+#   builds green, installed /usr/local/bin/ktty. The terminal is COMFORTABLE now:
+#   - type-FLICKER KILLED: tear-free present (back/present wl_shm buffers + wl_surface.frame
+#     pacing + Cairo swap_mutex) — the one thing that had to die before "home".
+#   - key auto-REPEAT (30/s, 500ms) + server-repeat dedup; ctrl utf8 (ctrl+o='o'+ctrl not 0x0f);
+#     cursor heartbeat FADE (out 1.2s/rest 1s/in 1.2s, floor 0.15); house defaults 20pt,
+#     bg #141414@96%, fg #c8c8c8, padding x14/y20.
+#   - cursor BORDER fixed: chamfered-octagon OUTLINE (char visible); the .off carve was a
+#     src_over no-op (rendered solid), now .src erases; the 45-degree chamfer was t/sqrt(2) thin
+#     (corners looked missing), now uniform t via inner_chamfer = chamfer - t*(2-sqrt2).
+#   - renamed app_id com.kidulwm.ktty, title/memfd/docs; keybind Mod4+y -> /usr/local/bin/ktty;
+#     OLD /usr/local/bin/khostty binary REMOVED. ktty name is clear (kitty=Kovid's GPU term,
+#     kty=K8s dashboard, KiTTY=Windows PuTTY fork).
+#   NEXT (M2f, top of docket #18): NO SCROLL INPUT YET — the kidul apprt binds wl_keyboard but
+#     NOT wl_pointer. Core scrollCallback is fully written; needs a wl_pointer listener feeding
+#     axis/axis_discrete -> scrollCallback. Then the fade-away border SCROLLBAR (right edge,
+#     dot-peek, visible only near cursor or while auto-scrolling; reuse house drawSlider) and
+#     horizontal scroll speed matching vertical. Recon done: kidulwm input/pointer.zig
+#     handleAxis already forwards axis/axis_discrete/source/frame via seat.pointerNotifyAxis.
+#   The running terminals are STILL the old binary until Barticus respawns (Mod4+y). Golden
+#   image: drop ghostty when we return to it (Barticus).
+#
 # SESSION WRAP-UP (bobdotrix 2026-10-29) — KHOSTTY M2d INPUT LIVE (Barticus: "gsi indeed indeed").
 #   keyboard -> termio is wired and LIVE-VERIFIED by Barticus: typing works, fish talks back,
 #   lsblk prints, nano opens a treat. Commit b999be2 (signed B&B). New kidul/Key.zig translates
