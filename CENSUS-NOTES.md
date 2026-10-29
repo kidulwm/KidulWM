@@ -1,5 +1,19 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-10-29) — KHOSTTY M2d INPUT LIVE (Barticus: "gsi indeed indeed").
+#   keyboard -> termio is wired and LIVE-VERIFIED by Barticus: typing works, fish talks back,
+#   lsblk prints, nano opens a treat. Commit b999be2 (signed B&B). New kidul/Key.zig translates
+#   xkbcommon -> input.KeyEvent (evdev scan+8 -> input.Key via input.keycodes; mods via
+#   xkb_state_mod_name_is_active Shift/Control/Mod1/Mod4/Lock/Mod2; utf8 via get_utf8; unshifted
+#   codepoint from level-0 keysym). Window does xkb_state_update_key per press/release + tracks
+#   left/right modifier sides + forwards key/focus via callbacks; Surface keyCallback/focusCallback
+#   -> core encoder -> PTY. The "hello" seed is gone (shell prompt is the real content). Fish is the
+#   login shell, so khostty spawns fish by default.
+#   KNOWN (M2e): (1) text FLICKERS AS YOU TYPE — wl_shm buffer swap not yet mutex-guarded/double-buffered
+#   against a concurrent renderer draw (must die before khostty is "home"); (2) no key repeat (no
+#   repeat_info timer); (3) no paste/clipboard/mouse/selection. Then CFC chrome + KSD tokens + buffer
+#   margins + two-line fish prompt (fish_prompt in ~/.config/fish), then <100MB on REAL i915.
+#
 # SESSION WRAP-UP (bobdotrix 2026-10-29) — KHOSTTY M2c DONE + INSTALLED + KEYBOUND (relog pending).
 #   M2c landed (commit 820809b, signed B&B, both builds green): cairo renderer is now REAL — Buffer(T)
 #   retains synced cell data, Target holds the apprt cairo surface over wl_shm, Texture holds the glyph
