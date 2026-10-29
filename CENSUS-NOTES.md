@@ -1,5 +1,23 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-10-29) — KTTY M2f SCROLL INPUT WIRED (commit b65d894, signed B&B).
+#   wl_pointer -> core scrollCallback is LIVE. Window.zig binds wl_pointer alongside wl_keyboard,
+#   accumulates axis (precise) + axis_discrete (wheel notches) per wl_pointer.frame, prefers
+#   discrete for wheel devices, forwards one scrollCallback per gesture. Surface.scrollCallback +
+#   App wiring complete. Build green (-Dapp-runtime=kidul -Drenderer=cairo -Doptimize=ReleaseSafe),
+#   installed /usr/local/bin/ktty 22:37:33.
+#   OPEN (needs Barticus's eyes): wheel UP/DOWN direction is UNVERIFIED. kfiles and kidul-browser
+#   disagree on axis_discrete sign (kfiles passes it through, browser negates it); libinput's
+#   discrete value is the INVERSE sign of the continuous delta, so first scroll may feel backwards.
+#   If inverted: flip ONE sign in pointerFrame (or pointerAxisDiscrete) in apprt/kidul/Window.zig.
+#   NOT DONE: fade-away border SCROLLBAR (right edge, dot-peek, near-cursor/auto-scroll
+#   visibility; reuse house drawSlider), horizontal scroll speed parity, CFC chrome + KSD tokens +
+#   buffer margins + two-line fish prompt, <100MB resident on REAL i915.
+#   KEYBIND RELOG: Mod4+Return + Mod4+y -> /usr/local/bin/ktty are IN keybinds.conf, but the
+#   running WM still holds the old in-memory binding. keybinds.conf is parsed ONCE at startup
+#   (Keybinds.load); .reload (Mod4+r) = requestQuit ONLY, does NOT re-read the file. A full relog
+#   is REQUIRED to activate the new terminal keys. Running terminals are the OLD binary until respawn.
+#
 # SESSION WRAP-UP (bobdotrix 2026-10-29) — KTTY M2e CORE DONE + RENAME ("we finally have a
 #   system that doesn't flicker"). khostty -> ktty (Barticus). Commits fa29e3e (cursor border),
 #   980e310 (rename + M2e), e78dfd5 (kawung art), 553d5cf (BUILD.md). All signed B&B, both
