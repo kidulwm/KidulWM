@@ -1,5 +1,27 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-10-30) — KTTY M2g SCROLLBAR DOT COMPLETE (grab & drag, speed,
+#   activation, resize-race fix, horizontal parity). Commits 5ab81c4 + 756da59, signed B&B.
+#   The "non-scrollbar scrollbar" is DONE: right-edge Bob's Dot that fades, reveals on hover,
+#   and grabs+drags to seek 1:1. Barticus live-verified "it works beautifully" + "gsi".
+#   - GRAB & DRAG: wl_pointer motion/button/enter/leave wired Window -> Surface. Hover the right
+#     edge reveals the dot; left-press starts a drag that seeks 1:1 onto the dot's travel track
+#     (full track = full scrollback, exact); release resumes the fade. New core method
+#     Surface.scrollToRow(row) — absolute seek, bypasses wheel accumulation.
+#   - ACTIVATION BAND 72px (~2x): dot reveals+grabs "when the cursor is almost there", not
+#     pixel-precise. Safe: dot only exists with scrollback, and every TUI needing its right edge
+#     (vim/htop/less) runs alt-screen = no scrollback = no dot = no interference.
+#   - SCROLL SPEED: mouse-scroll-multiplier 3/1 -> 5 discrete / 2 precision (house default in
+#     kidul App.run). HORIZONTAL now mirrors vertical (756da59): same multiplier + cell-size
+#     accumulation, so a horizontal tick = as many columns as a vertical tick = rows.
+#   - FIX (resize race): resize() now holds device.swap_mutex across freeBuffers+allocateBuffers+
+#     swapTargetLocked — kills the intermittent pixman segfault (renderer mid-draw into a freed
+#     surface). This was the "cutting out" Barticus saw.
+#   - NEW SKILL `bobs-dot` (house lit-crumb primitive + scrollbar interaction). styles points at it.
+#   DEPLOYED /usr/local/bin/ktty (ReleaseSafe, build green). NEEDS A FULL RELOG for the running
+#   terminals to pick up the new binary. REMAINING (M2g tail): CFC chrome + KSD tokens + buffer
+#   margins + two-line fish prompt, <100MB resident on REAL i915, mouse/selection/paste/clipboard.
+#
 # SESSION WRAP-UP (bobdotrix 2026-10-29) — KTTY M2f SCROLL INPUT WIRED (commit b65d894, signed B&B).
 #   wl_pointer -> core scrollCallback is LIVE. Window.zig binds wl_pointer alongside wl_keyboard,
 #   accumulates axis (precise) + axis_discrete (wheel notches) per wl_pointer.frame, prefers
