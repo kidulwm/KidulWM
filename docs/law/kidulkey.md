@@ -27,6 +27,32 @@ This is identity.md's device-bound / human-bound split, one level up, with the
 root above both. The root signs the WHO; the box keys prove the BOX; the
 personal key proves the PERSON. Three tiers, never blurred.
 
+## The owner / master key + space-allocation hierarchy (OPEN — ponder, not locked)
+
+Pondered 2026-11-01 (Barticus), NOT yet locked. Extends the three tiers with a
+per-machine OWNER authority and a space/quota grant path. The think, before the
+freeze.
+
+  ROOT      (unchanged) the global trust anchor: mints all keys, signs the
+            roster. The "master key" Barticus names is ONE OF the two ROOT keys
+            — the 1-of-2 (two-key rule), held by the boss.
+  OWNER     the "boss of the machine": the key that OVERRIDES all others on its
+            home box. Grants drive space to users (Dad's yay/nay when a kid
+            asks for more space). Its override is scoped to the machine, not
+            the roster.
+  SYSTEM    (unchanged) the box proves itself; daily signing.
+  PERSONAL  (unchanged) the person.
+  FRIENDLY  a kidul user with their own drive/key/remote. Needs NO approval to
+            be present — nothing from them persists (ephemeral). Needs OWNER
+            approval to be ALLOCATED drive space. Presence is free; footprint
+            is the owner's call.
+
+The hierarchy answer so far: presence is free, footprint (space) is gated by
+the owner's key, and the owner's key overrides all others on its machine. The
+open question is the grant record's shape — a signed quota per friendly, minted
+by the owner (the PERSONAL-tier "policy record" pattern, extended to a space
+quota) — to ponder before freezing.
+
 ## What the kidulKey SIGNS — by tier
 
   ROOT        the roster / kpax ({ attested-key -> role }), and each
@@ -98,6 +124,22 @@ the whole point: the kidulKey is the thing that makes any screen yours.
 A stolen box or disk yields only ciphertext + public keys + salts — worthless
 without the silicon. Every private key lives in silicon it never leaves; every
 secret at rest is wrapped by a key that lives in silicon.
+
+## Clone-resistance (the honest limit — hardware fact)
+
+Software clone (copy bytes off the wire or host): IMPOSSIBLE by design — the
+private key is born on-die and never exported; no command emits it, and flash
+at rest holds only ciphertext (device-unique-encrypted) plus the public half.
+
+Physical clone (open the chip and extract): the nRF52840's CC310 RAISES the bar
+to a chip-level lab attack (decapping, glitching, microprobing) but does NOT
+close it. True non-extractability is the SE050's job (tamper-responsive silicon
+that destroys the key on probe) — production. So: prototype = clone-proof short
+of a lab; production = clone-proof, full stop.
+
+Design backstop: a clone is worthless while its public half is not in the
+roster. Strike a compromised key (one line) and the clone dies everywhere at
+once.
 
 ## WYSIWYS — what does the key approve (revised)
 
