@@ -354,6 +354,13 @@ pub const Server = struct {
     shm: *wlr.Shm,
     subcompositor: *wlr.Subcompositor,
     data_device_manager: *wlr.DataDeviceManager,
+    /// ext-data-control-v1: lets klipd (a surface-less daemon) observe AND own
+    /// the seat's clipboard/primary selection — the "single authority" seam
+    /// (docs/law/klipboard.md). Supersedes the deprecated zwlr data-control.
+    ext_data_control_manager: *wlr.ExtDataControlManagerV1,
+    /// wp_primary_selection_v1: the PRIMARY (middle-click) protocol for foreign
+    /// Wayland apps — klipd owns .primary the same way it owns .standard.
+    primary_selection_manager: *wlr.PrimarySelectionDeviceManagerV1,
     viewporter: *wlr.Viewporter,
     screencopy_manager: *wlr.ScreencopyManagerV1,
     fractional_scale_manager: *wlr.FractionalScaleManagerV1,
@@ -846,6 +853,12 @@ pub const Server = struct {
         const shm = try wlr.Shm.createWithRenderer(wl_server, 1, renderer);
         const subcompositor = try wlr.Subcompositor.create(wl_server);
         const data_device_manager = try wlr.DataDeviceManager.create(wl_server);
+        // klipboard authority seam (klipboard.md): expose ext-data-control-v1
+        // (version 1) so klipd can observe/own the selection without a surface,
+        // and wp_primary_selection_v1 so foreign apps get the PRIMARY gem. The
+        // deprecated zwlr_data_control_manager_v1 is deliberately NOT created.
+        const ext_data_control_manager = try wlr.ExtDataControlManagerV1.create(wl_server, 1);
+        const primary_selection_manager = try wlr.PrimarySelectionDeviceManagerV1.create(wl_server);
         const viewporter = try wlr.Viewporter.create(wl_server);
         const screencopy_manager = try wlr.ScreencopyManagerV1.create(wl_server);
         const fractional_scale_manager = try wlr.FractionalScaleManagerV1.create(wl_server, 1);
@@ -883,6 +896,8 @@ pub const Server = struct {
             .shm = shm,
             .subcompositor = subcompositor,
             .data_device_manager = data_device_manager,
+            .ext_data_control_manager = ext_data_control_manager,
+            .primary_selection_manager = primary_selection_manager,
             .viewporter = viewporter,
             .screencopy_manager = screencopy_manager,
             .fractional_scale_manager = fractional_scale_manager,

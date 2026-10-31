@@ -220,10 +220,17 @@ never collides with line framing.
                = primary, middle-click pastes via middle-click-action =
                primary-paste — both ride the .selection enum, mapped to the
                "primary" slot) -> v0.3 wlr-data-control ownership (foreign
-               Wayland-app interop, the "single authority" role; ext-data-
-               control-v1 or zwlr_data_control_manager_v1, whichever our
-               wlroots 0.20 compositor exposes) -> last: VM bridge, at-rest
-               key, muster binding.
+               Wayland-app interop, the "single authority" role) -> last: VM
+               bridge, at-rest key, muster binding.
+
+  protocol (LOCKED 2026-10-31, bobdotrix): ext-data-control-v1, NOT the
+               deprecated zwlr_data_control_manager_v1. wlroots 0.20 ships BOTH
+               headers, but zwlr is marked legacy-and-to-be-dropped; the modern
+               seam is ext_data_control_manager_v1 (unstable). The compositor
+               (KidulWM) now advertises `ext_data_control_manager_v1 v1` +
+               `zwp_primary_selection_device_manager_v1 v1` (server.zig), and
+               deliberately does NOT create zwlr_data_control_manager_v1. klipd
+               is the ext-data-control CLIENT that owns the selection.
 
   repo         /home/dad/dev/klipd, Zig 0.17.0 (house toolchain), build.zig +
                src/main.zig mirroring kplayd_main.zig (SEQPACKET + poll loop).
