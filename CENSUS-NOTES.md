@@ -1,5 +1,22 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-10-31) — DOCKET #53 KIDULKEY: SPEC FROZEN AS LAW + HARDWARE SOURCED.
+#   Cue "next" -> docket #53 KIDULKEY (the signing root). Step 1 (freeze spec as law) DONE:
+#   docs/law/kidulkey.md v2 LOCKED (Barticus "lock & load" GSI), commit fd3d74a pushed to Codeberg,
+#   signed B&B. kidulKey is a KEY FAMILY in three tiers, not one dongle:
+#     ROOT    cold, keyring, ceremonies only (signs roster + mints subordinates).
+#     SYSTEM  resident, slots into its HOME box (router/TV/server/gamingPC), one per box.
+#     PERSONAL fingerprint, built INTO the keyboard/remote (gates banking/personal-touch taps).
+#   Resolves crypto trust-ledger 2/3/4: WYSIWYS = trusted screen + finger (personal) / ceremony
+#   (root); deniability = root signs WHO never WHAT; revocation = refresh-on-associate. Personal
+#   shell: dual-computer keyboard (input BLE lean / bulk WiFi switched app-SoC), HD = just an
+#   encrypted networked drive (NOT the vault), screen disposable. pair-for-life + tidy-up/zeroize.
+#   HARDWARE (sourcing only, NOT ordered): nRF52840 (in hand) = prototype kidulKey + BLE; production
+#   kidulKey = NXP EdgeLock SE050 (EAL6+, HW Ed25519/Twisted-Edwards) + nRF52840 transport. Input =
+#   ESP32-C6 (RISC-V, BLE5+WiFi6+Thread; Barticus has ESP32s for keyboard tests). Fast half =
+#   SpacemiT K1 RISC-V SoM (Banana Pi BPI-CM6 / Milk-V Jupiter NX; WiFi6 + M.2 PCIe x2) or pragmatic
+#   RK3566. Don't chase WiFi7 yet. NEXT = step 2: NCS/Zephyr toolchain (multi-GB).
+#
 # SESSION WRAP-UP (bobdotrix 2026-10-30) — KTTY M2g SCROLLBAR DOT COMPLETE (grab & drag, speed,
 #   activation, resize-race fix, horizontal parity). Commits 5ab81c4 + 756da59, signed B&B.
 #   The "non-scrollbar scrollbar" is DONE: right-edge Bob's Dot that fades, reveals on hover,
