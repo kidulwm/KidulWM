@@ -143,6 +143,16 @@ it, or that slot is an unpermissioned hole.
        transport proves brig), a pen process is tagged by /proc/<pid>/cgroup +
        namespaces, a host process is everything else. app_id + owner-class
        together = the principal.
+- Q.I  RETENTION = RAM-ONLY, REPLACE-ON-KLIP, GONE ON LOGOUT (Barticus,
+       2026-10-31). The klipboard is transient working memory, NOT a store: no
+       vault, no disk, no clipboard-HISTORY manager by default. Each copy
+       replaces the slot (single-item semantics — how a real clipboard works);
+       PRIMARY is "the last highlight", even more ephemeral. klipd is a
+       kushd-cued user-session daemon, so session end = process death = data
+       gone. (Freed, not actively scrubbed — an explicit zero-on-clear +
+       no-swap hardening step is a later option, not needed for the app-policy
+       model.) A clipboard HISTORY is a separate, opt-in, vault-gated feature
+       if we ever build one — never the default.
 
 ## Reversals
 
