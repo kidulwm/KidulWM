@@ -375,6 +375,11 @@ pub const Server = struct {
     cursor_y: f64,
 
     ipc_server: ipc.control.Server,
+    /// klip.sock client fd — the compositor's relay line to klipd (v0.4):
+    /// forwards `seat-set <slot> <app_id>` so klipd can tag a foreign copy with
+    /// its real app_id. -1 = not connected (klipd is kushd-cued, starts after
+    /// us; reconnects lazily on the next relay).
+    klip_fd: linux.fd_t = -1,
     /// Guards the wlroots scene graph against cross-thread mutation.
     /// (Phase 0 retires the IPC thread, so this is now uncontended on the
     /// main loop — kept as a no-op guard pending a dedicated removal card.)
@@ -4086,13 +4091,66 @@ pub const Server = struct {
         self.requestLayout();
     }
 
+    /// Resolve the copying app's app_id from the focused surface (v0.4): the
+    /// client that just set a selection is ~always the focused window.
+    /// zig-wlroots doesn't expose wlr_data_source.resource, so the source's
+    /// client isn't reachable from the event — the focused surface is the route.
+    fn focusedAppId(self: *Server) []const u8 {
+        const surface = self.seat.keyboard_state.focused_surface orelse return "";
+        var it = self.windows.iterator(.forward);
+        while (it.next()) |window| {
+            if (window.toplevel.base.surface == surface) return window.app_id.asSlice();
+        }
+        return "";
+    }
+
+    /// Relay `seat-set <slot> <app_id>` to klipd over klip.sock (fire-and-forget).
+    /// Lazily connects; on a write failure (klipd restarted -> stale fd) drops
+    /// and retries once so the identity for the triggering copy is not lost.
+    fn relaySeatSet(self: *Server, slot: []const u8, app_id: []const u8) void {
+        if (app_id.len == 0) return;
+        var attempt: u8 = 0;
+        while (attempt < 2) : (attempt += 1) {
+            if (self.klip_fd < 0) {
+                var pbuf: [256]u8 = undefined;
+                const path = blk: {
+                    if (std.c.getenv("XDG_RUNTIME_DIR")) |d|
+                        break :blk std.fmt.bufPrint(&pbuf, "{s}/klip.sock", .{std.mem.span(d)}) catch return;
+                    break :blk std.fmt.bufPrint(&pbuf, "/run/user/{d}/klip.sock", .{linux.getuid()}) catch return;
+                };
+                const fd: linux.fd_t = @intCast(linux.socket(linux.AF.UNIX, linux.SOCK.SEQPACKET | linux.SOCK.CLOEXEC | linux.SOCK.NONBLOCK, 0));
+                if (fd < 0) return;
+                var addr: linux.sockaddr.un = .{ .family = linux.AF.UNIX, .path = @splat(0) };
+                if (path.len >= addr.path.len) {
+                    _ = linux.close(fd);
+                    return;
+                }
+                @memcpy(addr.path[0..path.len], path);
+                if (linux.connect(fd, @ptrCast(&addr), @sizeOf(linux.sockaddr.un)) != 0) {
+                    _ = linux.close(fd);
+                    return; // klipd not up yet — retry on the next relay
+                }
+                self.klip_fd = fd;
+            }
+            var line: [512]u8 = undefined;
+            const msg = std.fmt.bufPrint(&line, "seat-set {s} {s}\n", .{ slot, app_id }) catch return;
+            const n = linux.write(self.klip_fd, msg.ptr, msg.len);
+            if (@as(isize, @bitCast(n)) > 0) return; // delivered
+            // Stale fd (klipd restarted): drop and reconnect on the retry.
+            _ = linux.close(self.klip_fd);
+            self.klip_fd = -1;
+        }
+    }
+
     fn handleRequestSetSelection(listener: *wl.Listener(*wlr.Seat.event.RequestSetSelection), event: *wlr.Seat.event.RequestSetSelection) void {
         const self: *Server = @fieldParentPtr("request_set_selection", listener);
+        self.relaySeatSet("standard", self.focusedAppId());
         wlr.Seat.setSelection(self.seat, event.source, event.serial);
     }
 
     fn handleRequestSetPrimarySelection(listener: *wl.Listener(*wlr.Seat.event.RequestSetPrimarySelection), event: *wlr.Seat.event.RequestSetPrimarySelection) void {
         const self: *Server = @fieldParentPtr("request_set_primary_selection", listener);
+        self.relaySeatSet("primary", self.focusedAppId());
         wlr.Seat.setPrimarySelection(self.seat, event.source, event.serial);
     }
 
