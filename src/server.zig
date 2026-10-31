@@ -511,6 +511,12 @@ pub const Server = struct {
     new_xdg_toplevel: wl.Listener(*wlr.XdgToplevel),
     new_layer_surface: wl.Listener(*wlr.LayerSurfaceV1),
     output_layout_change: wl.Listener(*wlr.OutputLayout),
+    /// Clipboard authority seam (klipboard.md): honor a client's selection
+    /// request (standard wl_data_device AND ext-data-control both arrive here)
+    /// by calling wlr_seat_set_selection — without this the standard clipboard
+    /// and klipd's data-control ownership both no-op.
+    request_set_selection: wl.Listener(*wlr.Seat.event.RequestSetSelection),
+    request_set_primary_selection: wl.Listener(*wlr.Seat.event.RequestSetPrimarySelection),
 
     background: struct {
         node: ?*wlr.SceneNode,
@@ -938,6 +944,8 @@ pub const Server = struct {
             .new_xdg_toplevel = undefined,
             .new_layer_surface = undefined,
             .output_layout_change = undefined,
+            .request_set_selection = undefined,
+            .request_set_primary_selection = undefined,
             .background = .{
                 .node = null,
                 .rect = null,
@@ -1038,6 +1046,14 @@ pub const Server = struct {
         server.output_layout_change = wl.Listener(*wlr.OutputLayout).init(handleOutputLayoutChange);
         server.output_layout_change.link.init();
         output_layout.events.change.add(&server.output_layout_change);
+
+        server.request_set_selection = wl.Listener(*wlr.Seat.event.RequestSetSelection).init(handleRequestSetSelection);
+        server.request_set_selection.link.init();
+        seat.events.request_set_selection.add(&server.request_set_selection);
+
+        server.request_set_primary_selection = wl.Listener(*wlr.Seat.event.RequestSetPrimarySelection).init(handleRequestSetPrimarySelection);
+        server.request_set_primary_selection.link.init();
+        seat.events.request_set_primary_selection.add(&server.request_set_primary_selection);
 
         server.layout_pipe = blk: {
             var fds: [2]c_int = undefined;
@@ -4068,6 +4084,16 @@ pub const Server = struct {
 
         self.applyLayout();
         self.requestLayout();
+    }
+
+    fn handleRequestSetSelection(listener: *wl.Listener(*wlr.Seat.event.RequestSetSelection), event: *wlr.Seat.event.RequestSetSelection) void {
+        const self: *Server = @fieldParentPtr("request_set_selection", listener);
+        wlr.Seat.setSelection(self.seat, event.source, event.serial);
+    }
+
+    fn handleRequestSetPrimarySelection(listener: *wl.Listener(*wlr.Seat.event.RequestSetPrimarySelection), event: *wlr.Seat.event.RequestSetPrimarySelection) void {
+        const self: *Server = @fieldParentPtr("request_set_primary_selection", listener);
+        wlr.Seat.setPrimarySelection(self.seat, event.source, event.serial);
     }
 
     /// Re-place every output from the declared arrangement (outputs.toml).
