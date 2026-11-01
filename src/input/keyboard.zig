@@ -14,6 +14,12 @@ const c_std = @import("c");
 /// UNTRUSTED. Consulted only when a "harmful" bind (a Mod4/Ctrl action or the
 /// XF86HomePage close verb) is attempted, so plain typing never pays the read.
 fn seatTrusted() bool {
+    // Bench override: the dev bench (systemd, no kushd gate) sets
+    // KIDULWM_INPUT_GATE=off to bypass the gate. The real boot never sets it —
+    // it relies on the verdict kushd publishes. See kushd input-trust-gate.md.
+    if (std.c.getenv("KIDULWM_INPUT_GATE")) |v| {
+        if (std.mem.eql(u8, std.mem.span(v), "off")) return true;
+    }
     const path_z: [:0]const u8 = "/run/kushd/input-trust";
     const fd_raw = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);
     if (@as(isize, @bitCast(fd_raw)) < 0) return false;
