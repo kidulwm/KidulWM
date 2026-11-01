@@ -33,6 +33,37 @@ X3DH / double-ratchet layer. All cued tentacles, all connection-time:
 All three are cued at connection-establishment — inbound (a peer / device
 connects) or outbound (just before dial). None is in the boot order.
 
+## Who makes & moves the OMEMO keys (LOCKED 2026-11-01, Barticus present)
+
+Four roles, never blurred. The ratchet runs on the TV — not the key, not the
+router, not the vault:
+
+  kidulKey (ROOT)  CERTIFIES the OMEMO identity key — signs its public half
+                   ("this IK belongs to a muster member"). Never generates it,
+                   never runs the ratchet: the root signs the WHO (identity,
+                   non-repudiable), never the WHAT (the ephemeral DH = deniable).
+
+  TV (the box)     GENERATES the OMEMO IK + prekeys and RUNS the double ratchet
+                   (the per-message crypto). The IK private key is resident on
+                   the box (SYSTEM tier), never on the cold root. The TV is also
+                   the policy approver — which phones/peers board.
+
+  krouter          DISTRIBUTES: relays signed prekey bundles, holds the roster
+                   (kpax) as single source of truth. Never creates, never signs,
+                   never holds a private key. Offline = peer-to-peer direct; the
+                   krouter is a relay when present, never a trust anchor.
+
+  vault (kvaultd)  COORDINATES: the cold, immutable point that holds the PUBLIC
+                   side of an exchange (signed bundles + roster + session state)
+                   and mediates the handshake. No seeds/private keys, so NO
+                   ratchet generator of its own — a ratchet needs the IK, which
+                   the law keeps off the vault. Its "be there for the secrets to
+                   be passed" = the PUBLIC material only.
+
+One line: the kidulKey vouches, the TV encrypts, the krouter delivers, the
+vault holds the (public) door open. The ratchet is the TV's; the vault's
+immutability is for coordination custody, never private-key custody.
+
 ## NAS↔TV data lane — in-transit (LOCKED)
 
 At-rest (cold-storage.md) is not enough. The media stream between NAS and TV
