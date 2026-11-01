@@ -80,6 +80,29 @@ SAFETY RULE (Barticus, locked): we are the guinea pigs. Hold a PASSWORD backup
 as the escape hatch until BOTH keys are present AND confirmed — never lock
 ourselves out of our own tests.
 
+## The PIN — passwdless is earned, never default (LOCKED 2026-11-01, Barticus present)
+
+The machine PIN (the SAME PIN that gates machine access) is the passwdless
+OFF-switch — not a second auth path, not a backdoor. One ladder:
+
+  DEFAULT   the PIN is REQUIRED. Passwdless is NOT default — it is earned.
+  EARN      passwdless becomes an option only once BOTH keys are present AND
+            confirmed (two-key rule). Engaging or disengaging it is a
+            kidulKey-signed transaction (WYSIWYS: "engage passwdless?" on the
+            trusted screen, tap) — the keys guard their own toggle.
+  STASH     engaging passwdless stashes the PIN cold (the vault,
+            decrypt-on-read, cold-storage.md). The machine then opens on the
+            key alone; the PIN sits for a rainy day.
+  REVIVE    a lost key does NOT auto-detect as "lost" — it detects as STRUCK.
+            Strike the lost key from the roster (one line) -> roster count
+            drops below two -> passwdless auto-disengages -> the PIN revives.
+            Register a fresh key -> back to two -> re-engage. The revival
+            rides the SAME revocation path (refresh-on-associate); no new
+            machinery.
+
+The PIN is the two-key rule's escape hatch, made mechanical: it lies dormant
+while the keys hold the door, and wakes the moment the roster drops below two.
+
 ## The personal shell — keyboard, remote, HD (Barticus's lock)
 
 The keyboard and remote are dual-computer devices, and together with the key

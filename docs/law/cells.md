@@ -137,3 +137,25 @@ only key), so a guest cell sees nothing the owner's cell sees no further into.
 "Permissions done right" — nothing new is added, we tweak the walls we have.
 Same principle holds for the kweb: a mobile device joining the mesh is another
 cell, not a new authority.
+
+## Per-folder access — the same wall for DATA (LOCKED 2026-11-01, Barticus present)
+
+Same server, different folders, different roles. A POSIX GROUP is the WRONG
+primitive here: a group can still see (stat) a file it cannot edit, so it
+leaks existence and metadata. The cell's bind-mount is the RIGHT one — a
+folder that is not bind-mounted does not EXIST in that cell's mount namespace:
+not "permission denied", "no such directory".
+
+  identity -> role -> cell. The roster (crypto.md) maps an attested key to a
+  role; the role maps to a cell whose bind-mounts ARE its folder set:
+      adult / owner    = work folders (X,Y,Z) + the public set (A,B,C)
+      child-N          = their own + the public set
+      guest            = the public set only
+  The SERVER enforces it — the cell lives on the server. The krouter only
+  coordinates the rendezvous; run the coordinator, never trust it
+  (identity.md). A cell can neither see nor learn of a folder it was not
+  given.
+
+Same wall as the pen: the bind-mount is the load-bearing seam for DATA exactly
+as it is for CODE — "safe enough to hand a kid" is "this folder does not exist
+for you", not "this folder is read-only for you".

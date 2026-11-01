@@ -8,6 +8,23 @@ const Server = @import("../server.zig").Server;
 
 const c_std = @import("c");
 
+/// Seat trust (input-trust slice 3): read the verdict the kushd gate publishes.
+/// /run/kushd/input-trust = "TRUSTED <64hex>" | "UNTRUSTED" | "ABSENT".
+/// Fail-closed — a missing/unreadable file or a non-TRUSTED first word is
+/// UNTRUSTED. Consulted only when a "harmful" bind (a Mod4/Ctrl action or the
+/// XF86HomePage close verb) is attempted, so plain typing never pays the read.
+fn seatTrusted() bool {
+    const path_z: [:0]const u8 = "/run/kushd/input-trust";
+    const fd_raw = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);
+    if (@as(isize, @bitCast(fd_raw)) < 0) return false;
+    const fd: i32 = @intCast(fd_raw);
+    defer _ = linux.close(fd);
+    var buf: [64]u8 = undefined;
+    const n = linux.read(fd, &buf, buf.len);
+    if (n <= 0) return false;
+    return std.mem.startsWith(u8, buf[0..@intCast(n)], "TRUSTED");
+}
+
 const KeyboardDevice = struct {
     manager: *KeyboardManager,
     keyboard: *wlr.Keyboard,
@@ -151,9 +168,20 @@ const KeyboardDevice = struct {
         // the standard XF86HomePage keysym — the remote's "back to home", the
         // same verb as Mod4+Q close_focused. Unmodified, like the volume keys.
         if (!mod4_active and !ctrl_active and sym == xkb.Keysym.XF86HomePage) {
-            if (handleAction(server, .close_focused)) return;
+            // INPUT-TRUST: the SW "back to home" maps to close_focused — the
+            // same harmful verb as Mod4+Q. Gated with the rest.
+            if (seatTrusted() and handleAction(server, .close_focused)) return;
         }
         if (mod4_active or ctrl_active) {
+            // INPUT-TRUST (slice 3): while the seat is UNTRUSTED (the kidulKey
+            // is absent or unproven) every Mod4/Ctrl action is inert — no
+            // terminal, no close, no reset, no browser. Base keys, media keys,
+            // and raw typing still pass. Fail-closed: the read is paid only on
+            // a harmful bind attempt.
+            if (!seatTrusted()) {
+                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "blocked:untrusted");
+                return;
+            }
             // The media PLAYER is a real deck slide now (TASKCARD-3):
             // Ctrl+Q falls through to close_focused like any slide.
             const action = server.keybinds.match(mod4_active, ctrl_active, base_sym);
