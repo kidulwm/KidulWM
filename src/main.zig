@@ -24,10 +24,25 @@ pub fn main(init: std.process.Init.Minimal) !void {
         break :blk std.mem.eql(u8, val, "pixman");
     };
 
+    // ENVIRONMENT CONTRACT — read it ALL here, once, BEFORE Server.init.
+    // Server.init -> applyTitleBarEnvironment -> setenv() reallocates libc's
+    // environ VECTOR; `init.environ` is a snapshot of that vector, so any
+    // getPosix() after the realloc is a use-after-free (crashed at 0x0 on the
+    // KIDULWM_NO_BACKEND lookup once the GBM/wallpaper allocations clobbered the
+    // freed chunk). Capture every value we depend on now, while it is valid.
+    // XDG_RUNTIME_DIR is REQUIRED — kushd mints it (mintSession). A missing
+    // value means the usher's contract broke: fail NAMED, never guess "/tmp".
+    const runtime_dir: [:0]const u8 = std.process.Environ.getPosix(init.environ, "XDG_RUNTIME_DIR") orelse {
+        std.log.err("KidulWM: FATAL — environ missing XDG_RUNTIME_DIR (kushd contract broken; seat not minted)", .{});
+        return error.MissingRuntimeDir;
+    };
+    const no_backend = std.process.Environ.getPosix(init.environ, "KIDULWM_NO_BACKEND") != null;
+    const maybe_wayland_display = std.process.Environ.getPosix(init.environ, "KIDULWM_WAYLAND_DISPLAY");
+    // ---- end environment contract ----
+
     var server = try Server.init(allocator, force_pixman);
     errdefer server.deinit();
 
-    const runtime_dir = std.process.Environ.getPosix(init.environ, "XDG_RUNTIME_DIR") orelse "/tmp";
     const socket_path = try std.fs.path.join(allocator, &.{ runtime_dir, "kidulwm-control.sock" });
     defer allocator.free(socket_path);
 
@@ -38,8 +53,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
     // sink → FFT bands for widgets). Silently no-ops if PipeWire is absent.
     kmedia.start();
 
-    const no_backend = std.process.Environ.getPosix(init.environ, "KIDULWM_NO_BACKEND") != null;
-    const maybe_wayland_display = std.process.Environ.getPosix(init.environ, "KIDULWM_WAYLAND_DISPLAY");
     try server.start(no_backend, maybe_wayland_display);
 
     server.deinit();
