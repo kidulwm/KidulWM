@@ -824,6 +824,13 @@ pub const Server = struct {
 
         const event_loop = wl_server.getEventLoop();
 
+        // wlroots' wlr_backend_autocreate selects the nested Wayland backend when
+        // WAYLAND_DISPLAY is set. kushd sets it session-wide (so kmedia/kplayd
+        // children inherit it), but we are the compositor — the display we'd
+        // connect to is the one we're about to create. Unset it so autocreate
+        // picks DRM; start() re-sets it once the socket exists (server.zig:1140).
+        _ = unsetenv("WAYLAND_DISPLAY");
+
         const backend = wlr.Backend.autocreate(event_loop, null) catch |err| {
             std.log.warn("wlroots backend autocreate failed ({}); falling back to headless skeleton", .{err});
             return error.BackendCreateFailed;
