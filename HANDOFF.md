@@ -11,35 +11,24 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-10-20)
+## Current attack (2026-11-10)
 
-  MEGA ROACH C1 (docket #24) — the media model swap. C1 PREP DONE + committed:
-    - refresh law (library-model) + lazy-art law (art-chain) LOCKED, kmedia
-      92acd54. Four triggers (additions=inotify / removals=lazy-miss / manual=
-      rescan-button / purchase=inject-on-delivery), no timer, no boot scan; art
-      resolved only on request.
-    - scanreal real-drive proof GREEN, kmedia 5636e96: Scanner produces the
-      real /mnt/sda_backup/Jelly library (127 = 119 movie / 8 series / 0
-      collection). Drop-in for media.zig's find-based model.
-    - boot-state law LOCKED + committed, KidulWM 3e3051e (docket #8).
-  C1 SLICE 1 DONE (this session, verdict 135): find-shell scan + boot prewarm
-    retired. media.zig builds the library lazily on first media-card open via
-    kmedia Scanner (scanRootAs/scanMusic), flattened into the same per-file
-    LibraryEntry the wall renders (flat bridge). execFind/scanCategory(popen)/
-    prewarmThread/spawnPrewarm + server.zig spawnPrewarm call all deleted.
-    PARITY PROVEN: movies 516 = find 516, music 27 = 27 (scanreal flatten).
-    Commits KidulWM 0b67e5a + kmedia 4ab8e2d. DEPLOYED to ksd-reset (sha
-    9e2a990d, .bak-c1slice1) — smoke green (TV scan in-process, no panic).
-    NOT retired yet: g_movies/g_music/g_tv globals + LibraryEntry — they die
-    with C2 (kmedia becomes the client; WM stops owning media presentation).
-  NEXT: C2 client-ify — make kmedia a standalone Wayland client (foreign
-    surface, xdg-toplevel), no compositor scene tree, no render-to-buffer.
-    No kushd gate (that is C3). Host relog first to eyeball slice 1 (media
-    wall = all 516 movies / 27 music, identical look, now from Scanner).
+  KSD BOOT (docket #54) — real kboot->kushd->kidulwm on the 980 Pro. State:
+    - kidulwm segfault FIXED + DEPLOYED today. Commits 07cbfc8 (backend unsetenv
+      WAYLAND_DISPLAY — DRM not nested) + bafe895 (read env once before
+      Server.init; use-after-free via setenv realloc). Built ReleaseSafe,
+      deployed /mnt/ksd/usr/local/bin/kidulwm (stamp bafe895).
+    - REBOOT-TEST PENDING (Barticus in the morning): boot nvme1, confirm kidulwm
+      seats clean — kushd.log "seated kidulwm" with NO "died kidulwm" loop.
+    - FORK FLAG: kboot (logdrain/devRules/log-path, 86 ins) + kushd (log-path
+      /tmp->/var/log) are UNCOMMITTED in the tree but DOCKETS #54 describes them
+      done. Commit+build+deploy them before the crash-survival guarantee holds.
+      This is the "logs survive a crash for a service Bob" work.
+    - OPEN (carried): VMD revert — host root is ALSO behind VMD, needs a plan not
+      a flip. Trackpad loss was Fn+F2 EC toggle (BIOS-LOG 00:15), NOT VMD/security.
 
-  kmedia lane: A/V drift wind-up fix is COMMITTED (cf21d2f) + DEPLOYED
-  (/usr/local/bin/kplayd sha fbf7b926), UNVERIFIED by a real movie — next
-  movie play is the check (should hold ~±6ms, not ramp).
+  kmedia lane: A/V drift wind-up fix COMMITTED (cf21d2f) + DEPLOYED (kplayd sha
+  fbf7b926), UNVERIFIED by a real movie — next play is the check (~±6ms, no ramp).
 
 ## Trip wires / commands / secrets
 

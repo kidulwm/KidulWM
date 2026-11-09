@@ -1,5 +1,103 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-10) — KIDULWM SEGFAULT FIXED + DEPLOYED; REBOOT-TEST PENDING.
+#   THE FIX: kidulwm was crash-looping with a use-after-free segfault (0x0) in Environ.getPosix
+#   (main.zig:41, KIDULWM_NO_BACKEND lookup). Root cause: Server.init -> applyTitleBarEnvironment ->
+#   setenv() REALLOCATES libc's environ VECTOR; Init.Minimal.environ is a SNAPSHOT of that vector, so any
+#   getPosix() after the realloc reads freed heap. NOT a null environ — kushd's hand-off was fine
+#   (XDG_RUNTIME_DIR=/run/user/1000 resolved). Two commits, signed B&B:
+#     07cbfc8  backend: unset WAYLAND_DISPLAY before autocreate (pick DRM, not nested) [recovered verbatim — was pre-existing dirty]
+#     bafe895  main: read environ before Server.init reallocs it (fix boot segfault)    [XDG_RUNTIME_DIR now REQUIRED, fails NAMED]
+#   Built ReleaseSafe (deployed profile), FRESH cache, stamp verified bafe895+6d0a38c, deployed
+#   /mnt/ksd/usr/local/bin/kidulwm (KSD root back to ro). OLD deployed cb643e7 NOT backed up on disk
+#   (cp raced the ro remount) — recoverable from git history. NEXT: reboot into KSD, confirm kidulwm
+#   seats clean (kushd.log "seated kidulwm" with NO "died kidulwm" crash-loop).
+#
+#   FORK-DETECTION FLAG: kboot (logdrain+devRules+log-path, 86 ins) and kushd (log-path /tmp->/var/log)
+#   are UNCOMMITTED in the working tree but DOCKETS #54 already describes them as done. This is the
+#   "logs surviving a crash for a service Bob" work — real, but NOT in git and NOT deployed to KSD yet.
+#   Must be committed + built + deployed before the crash-survival guarantee holds.
+#
+#   STILL OPEN (carried): VMD revert — host root is ALSO behind VMD, needs a plan not a flip.
+#
+# SESSION WRAP-UP (bobdotrix 2026-11-09) — BOOT-BLOCKER SWEEP: WIFI FW BAKED + KIDULWM BACKEND FIXED + SOUND BAKED + PIPEWIRE RUNTIME COPIED.
+#   Four fixes, closes the dual-boot path past wifi, the kidulwm crash-loop, and sound. STILL UNREBOOTED — one reboot
+#   validates all three together (wifi + compositor + audio).
+#   1) WIFI FW BAKED: iwlwifi probe+fw-load at ~0.876s is BEFORE root mount (~1.229s); a no-initrd baked driver can't
+#      see /usr/lib/firmware on root. Baked via CONFIG_EXTRA_FIRMWARE="iwlwifi-QuZ-a0-hr-b0-77.ucode regulatory.db
+#      regulatory.db.p7s i915/tgl_dmc_ver2_12.bin" + CONFIG_EXTRA_FIRMWARE_DIR="firmware" (staged under
+#      linux-7.2.14/firmware/, subdir i915/). `nm vmlinux | grep _fw_` = 4 symbols; bzImage 18.5->19.0MB. CAVEAT:
+#      regulatory.db + .p7s baked but NOT boot-verified (CONFIG_CFG80211_REQUIRE_SIGNED_REGDB=y).
+#   2) KIDULWM BACKEND FIXED: crash-loop "Could not connect to remote display" (BackendCreateFailed). Root cause =
+#      kushd mintSession (main.zig ~line 233) sets WAYLAND_DISPLAY=wayland-1 for EVERY user-class child, so
+#      wlr_backend_autocreate picks the NESTED wayland backend instead of DRM. FIX: one unsetenv("WAYLAND_DISPLAY")
+#      in KidulWM server.zig just before wlr.Backend.autocreate. Built -Doptimize=ReleaseSafe (8,365,160B), deployed
+#      /usr/local/bin/kidulwm (backup kidulwm.bak-prefw). Do NOT set WLR_BACKENDS by hand — the VM rig's
+#      WLR_BACKENDS=drm,libinput is a VM-only crutch; the real host wants the env CLEANED, not forced.
+#   3) SOUND BAKED =y (kernel #5): own kernel had the entire sound stack =m (SND/SND_HDA_INTEL/SND_HDA_CODEC_HDMI);
+#      no initrd + no module loader = zero ALSA ever (kernel.log showed no snd/hda lines). The distro kernel had been
+#      supplying sound via initramfs snd-hda-intel.ko. Baked =y: SOUND + SND + SND_TIMER/SND_PCM/SND_HWDEP + SND_HDA +
+#      SND_HDA_INTEL + SND_HDA_CORE + SND_HDA_GENERIC + SND_HDA_CODEC_HDMI (+_GENERIC/_INTEL) + SND_INTEL_DSP_CONFIG.
+#      GOTCHA: olddefconfig AND syncconfig silently revert SND=y back to =m unless the top-level CONFIG_SOUND=y
+#      umbrella is baked too (everything sits under `if SOUND`). scripts/config wants the CONFIG_ prefix
+#      (--enable CONFIG_SND, NOT --enable SND). Verified: `nm vmlinux` = azx_driver_init + snd_hda_codec_hdmi
+#      initcalls, zero snd-hda*.ko; bzImage 19.0->19.3MB.
+#   4) PIPEWIRE/ALSA RUNTIME COPIED to KSD-root (byte-for-byte CachyOS, no systemd daemon): root had the pipewire/
+#      wireplumber/pipewire-pulse binaries (BuildID f47c5152) but was MISSING the runtime — /usr/lib/spa-0.2
+#      (support/alsa/audioconvert/...), /usr/lib/pipewire-0.3 (32 modules), /usr/share/pipewire + /usr/share/wireplumber,
+#      libasound.so.2, /usr/share/alsa (8.8M incl ucm2), /usr/lib/alsa-lib. All copied. ksound was failing
+#      pw_main_loop_new "can't make support.system handle" because spa-0.2/support was absent. wireplumber.conf already
+#      ships support.logind=disabled (no systemd needed); libudev/libdbus/libsystemd present as libs. Barticus ruling:
+#      carry PipeWire byte-for-byte NOW; native AIG/ALSA is deferred (pipedream / later tinker).
+#   STATE: kernel #5 (sha c5534680...) on ESP vmlinuz-ksd; vmlinuz-ksd.bak-presound(#4) / bak-prefw(#3) / bak-vmd(#2)
+#   kept. KSD-root + ESP unmounted clean. WATCH ON BOOT: WirePlumber's ALSA monitor leans on udev for device discovery
+#   and KSD has NO udevd — if snd_hda_intel shows in kernel.log but no sink appears, that is the culprit (fix: static
+#   ALSA node or direct-card enumeration). /dev/snd = root:audio 0660 via devtmpfs; kidul is in the audio group
+#   (kushd setgroups) so access should hold.
+#
+# SESSION WRAP-UP (bobdotrix 2026-11-09) — #54 PANIC PINNED: PSTORE WORKED, ROOT= WAS A FS-UUID. FIX DEPLOYED.
+#   PSTORE-EFI PROVED LIVE. The 13:50 boot-test panicked, and this time the REAL kmsg survived in NVRAM:
+#   17 dump-type0-* vars (GUID cfc8fc79-…, LINUX_EFI_CRASH_GUID) decompress (raw deflate, -MAX_WBITS) to the
+#   full boot log. VMD fix CONFIRMED GOOD: both NVMe now enumerate (nvme0n1 host + nvme1n1=KSD tower, p1 p2),
+#   iwlwifi/i915 firmware absent (expected, no /lib/firmware yet) but boot proceeds PAST the old VMD panic.
+#   NEW PANIC (real line, no blue screen): "Kernel panic - not syncing: VFS: Unable to mount root fs on
+#   unknown-block(0,0)". Root cause = the cmdline said root=UUID=89bf75b0-… which is the FILESYSTEM uuid of
+#   the ext4 KSD-root. The kernel's early-boot lookup (block/early-lookup.c early_lookup_bdev) resolves ONLY
+#   PARTUUID=/PARTLABEL=/dev-name/devnum — filesystem UUID= needs initrd/udev, and this boot has NO initrd
+#   (init=kboot). So root= never resolved → unknown-block(0,0) → error -6. FIX (deployed + verified on-disk):
+#   ESP/limine.conf cmdline now root=PARTUUID=86e26299-62b3-4fc1-9e3a-aff29097dcf2 (the GPT partition uuid the
+#   kernel's own panic partition-list already showed for nvme1n1p2). Old conf saved limine.conf.bak-fsuuid.
+#   LAW-LEVEL NOTE: KSD uses PARTUUID (or PARTLABEL) for root=, NEVER root=UUID=<fsuuid>, on this initrd-less
+#   boot path. NEXT: reboot, KSD-root mounts, kboot runs. (kboot init path still unproven past mount.)
+# SESSION WRAP-UP (bobdotrix 2026-11-09, takeover of the stuck cert-log session) — PSTORE-EFI BAKED.
+#   Same #54 boot-test, still panicking past the VMD fix (second fault unseen). Fixed the "can't see the
+#   panic" problem: efi-pstore was compiled-in (CONFIG_EFI_VARS_PSTORE=y) but DEFAULT_DISABLE=y turned it
+#   OFF. Flipped CONFIG_EFI_VARS_PSTORE_DEFAULT_DISABLE -> n (make olddefconfig), rebuilt bzImage
+#   sha cb5771f1...ca6ed, deployed /tmp/ksdesp/vmlinuz-ksd (hash-verified on-disk). Old VMD kernel
+#   preserved as vmlinuz-ksd.bak-vmd. Panic kmsg now persists to NVRAM under LINUX_EFI_CRASH_GUID
+#   cfc8fc79-be2e-4ddc-97f0-9f98bfe298a0 (dump-type* vars). READBACK after boot-test (from host):
+#   efivarfs at /sys/firmware/efi/efivars is already mounted; vars show as dump-type*-cfc8fc79-....
+#   `xxd` them (pstore header + compressed kmsg) or `mount -t pstore` on host if enabled. NEXT: boot-test,
+#   then read the REAL panic line instead of the blue screen.
+# SESSION WRAP-UP (bobdotrix 2026-11-09) — #54 BOOT-TEST READY: VMD PANIC FIXED + KIDULKEY GATE TRUSTED.
+#   HOST = Tiger Lake i7-11800H (NOT the miniPC — 11th gen, Intel RST VMD enabled). KSD tower on
+#   nvme1n1: p1=KSD-ESP, p2=KSD-root (UUID 89bf75b0-cbfc-4b22-908a-c62229df37e9). Limine 12.9 UEFI
+#   -> vmlinuz-ksd, init=kboot, NO initrd, kmodd(class "tv")=zero modules.
+#   FIRST BOOT PANIC (2026-11-09): blue DRM-panic screen, CONFIG_PANIC_TIMEOUT=0 => hung. Root cause
+#   CONFIG_VMD=m on a VMD host: BOTH NVMe (incl 980 Pro nvme1n1) sit behind VMD domain 10000:xx,
+#   invisible to a module VMD (no initrd => vmd never loads) => root=UUID unmountable. FIX:
+#   CONFIG_VMD=y baked, rebuilt bzImage sha 8cd5e615 -> ESP/vmlinuz-ksd (old 86af7eb2 saved as
+#   vmlinuz-ksd.bak-novmd), hash-verified + synced. Kernel was tuned for miniPC gen9/10 (no VMD).
+#   NEXT BOOT EXPECTATION: NVMe enumerates, root mounts, boot proceeds PAST the panic. BUT KSD-root
+#   has NO /lib/firmware yet — iwlwifi .ucode won't load (no wifi) + i915 falls back. Add
+#   iwlwifi-QuZ-a0-hr-b0-77.ucode + i915/tgl_dmc_ver2_12.bin (~2MB) before wifi matters.
+#   KIDULKEY #53 (parked behind #54): fw#2 Ed25519 device-proof RE-VERIFIED LIVE (tap-sign VERIFY OK,
+#   pubkey 20a6b571...aabe, 2nd tap same identity). Gate slice 1 PROVEN via production binary
+#   kidulkey-gate -> TRUSTED exit 0; /etc/kushd/input-trust.pub burned + matches. BUG found: fw SIGN
+#   arm loop has NO timeout (blocks forever after host gives up; recover by tap or reset) — fix before
+#   live seat path. Remaining #53: VM-seat functional proof (kushd NETLINK detect + gate verdict ->
+#   seat admits), gated on #54 boot-test. Slices 2-3 (kushd detect, kidulwm seatTrusted) built.
+#   NOW: #54 boot-test on the 980 Pro (VMD fix deployed + verified). Boot, then wire the seat proof.
 # SESSION WRAP-UP (bobdotrix 2026-10-31) — DOCKET #53 KIDULKEY: SPEC FROZEN AS LAW + HARDWARE SOURCED.
 #   Cue "next" -> docket #53 KIDULKEY (the signing root). Step 1 (freeze spec as law) DONE:
 #   docs/law/kidulkey.md v2 LOCKED (Barticus "lock & load" GSI), commit fd3d74a pushed to Codeberg,
