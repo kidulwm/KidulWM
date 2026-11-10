@@ -1,5 +1,5 @@
 diff --git a/backend/libinput/backend.c b/backend/libinput/backend.c
-index 121731b..d754b3b 100644
+index 121731b..477f188 100644
 --- a/backend/libinput/backend.c
 +++ b/backend/libinput/backend.c
 @@ -1,4 +1,5 @@
@@ -43,3 +43,215 @@ index 121731b..d754b3b 100644
  	}
  
  	// TODO: More sophisticated logging
+@@ -230,6 +242,36 @@ struct libinput_device *wlr_libinput_get_device_handle(
+ 	return dev->handle;
+ }
+ 
++enum wlr_libinput_trust wlr_libinput_get_device_trust(
++		struct wlr_input_device *wlr_dev) {
++	struct wlr_libinput_input_device *dev = NULL;
++	switch (wlr_dev->type) {
++	case WLR_INPUT_DEVICE_KEYBOARD:
++		dev = device_from_keyboard(wlr_keyboard_from_input_device(wlr_dev));
++		break;
++	case WLR_INPUT_DEVICE_POINTER:
++		dev = device_from_pointer(wlr_pointer_from_input_device(wlr_dev));
++		break;
++	case WLR_INPUT_DEVICE_SWITCH:
++		dev = device_from_switch(wlr_switch_from_input_device(wlr_dev));
++		break;
++	case WLR_INPUT_DEVICE_TOUCH:
++		dev = device_from_touch(wlr_touch_from_input_device(wlr_dev));
++		break;
++	case WLR_INPUT_DEVICE_TABLET:
++		dev = device_from_tablet(wlr_tablet_from_input_device(wlr_dev));
++		break;
++	case WLR_INPUT_DEVICE_TABLET_PAD:
++		dev = device_from_tablet_pad(wlr_tablet_pad_from_input_device(wlr_dev));
++		break;
++	}
++
++	if (!dev) {
++		return WLR_LIBINPUT_TRUST_UNTRUSTED;
++	}
++	return dev->trust;
++}
++
+ uint32_t usec_to_msec(uint64_t usec) {
+ 	return (uint32_t)(usec / 1000);
+ }
+diff --git a/backend/libinput/events.c b/backend/libinput/events.c
+index 9be5def..bc256ce 100644
+--- a/backend/libinput/events.c
++++ b/backend/libinput/events.c
+@@ -1,6 +1,9 @@
+ 
+ #include <libinput.h>
++#include <linux/input.h>
++#include <stdio.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <wlr/backend/session.h>
+ #include <wlr/interfaces/wlr_keyboard.h>
+ #include <wlr/interfaces/wlr_pointer.h>
+@@ -61,6 +64,96 @@ bool wlr_input_device_is_libinput(struct wlr_input_device *wlr_dev) {
+ 	}
+ }
+ 
++// ---- KSD input-trust: four-tier admission ladder (docs/law/input-trust.md) ----
++// Each device is classified into exactly one tier at enumeration, before it is
++// admitted to the seat. Tier 0/1/3 are decided from bustype + VID:PID. Tier 2
++// (proven) is the crypto-proven remote; the follow-on "harden" slice wires the
++// per-device kidulKey challenge (input-path.draft.md §Two-phase plan). The
++// "dangerous class" reject arm of the ladder lives in the USB guard below us
++// (mass-storage/smartcard/net never reach libinput as input devices), so a
++// malicious HID "keyboard" that slips the guard still lands Tier 3 UNTRUSTED —
++// it types and navigates but never touches a harmful bind.
++
++static bool ksd_bustype_is_internal(int bustype) {
++	// The box's own hardware: AT keyboard, touchpad, lid/power buttons, iGPU,
++	// HDA audio. Kernel-standard bus signals — no allowlist, no proof.
++	switch (bustype) {
++	case BUS_I8042:
++	case BUS_HOST:
++	case BUS_PCI:
++	case BUS_INTEL_ISHTP:
++	case BUS_I2C:
++	case BUS_SPI:
++	case BUS_ISA:
++	case BUS_ISAPNP:
++	case BUS_RMI:
++	case BUS_CEC:
++	case BUS_AMD_SFH:
++	case BUS_SDW:
++		return true;
++	default:
++		return false;
++	}
++}
++
++static bool ksd_vidpid_in_allowlist(int vendor, int product) {
++	// /etc/kushd/input-allowlist — one `vid:pid` per line (hex, no 0x),
++	// optional trailing name, `#` comments. Tier 1: known external devices
++	// (Planck 03a8:a4f9, the remote, ...). Identity is spoofable, so this tier
++	// grants USABLE (type/navigate), never harmful binds.
++	const char *path = "/etc/kushd/input-allowlist";
++	FILE *f = fopen(path, "r");
++	if (!f) {
++		return false;
++	}
++	char line[256];
++	bool found = false;
++	while (fgets(line, sizeof(line), f)) {
++		if (line[0] == '#') {
++			continue;
++		}
++		unsigned int v = 0, p = 0;
++		if (sscanf(line, "%x:%x", &v, &p) == 2 &&
++				(int)v == vendor && (int)p == product) {
++			found = true;
++			break;
++		}
++	}
++	fclose(f);
++	return found;
++}
++
++static const char *ksd_trust_name(enum wlr_libinput_trust t) {
++	switch (t) {
++	case WLR_LIBINPUT_TRUST_INTERNAL: return "internal";
++	case WLR_LIBINPUT_TRUST_USABLE: return "usable";
++	case WLR_LIBINPUT_TRUST_PROVEN: return "proven";
++	case WLR_LIBINPUT_TRUST_UNTRUSTED: return "untrusted";
++	}
++	return "untrusted";
++}
++
++static enum wlr_libinput_trust ksd_classify_device(
++		struct libinput_device *libinput_dev) {
++	int bustype = libinput_device_get_id_bustype(libinput_dev);
++	int vendor = libinput_device_get_id_vendor(libinput_dev);
++	int product = libinput_device_get_id_product(libinput_dev);
++
++	if (ksd_bustype_is_internal(bustype)) {
++		return WLR_LIBINPUT_TRUST_INTERNAL;
++	}
++	if (ksd_vidpid_in_allowlist(vendor, product)) {
++		return WLR_LIBINPUT_TRUST_USABLE;
++	}
++	// Tier 2 (proven) is the crypto-proven remote — no per-device proof is
++	// wired yet, so no device lands here on this build. Deliberately NOT read
++	// from the global /run/kushd/input-trust verdict: that proves the SEAT
++	// (kidulKey dongle tap), not THIS device — promoting every device on a
++	// trusted seat would re-open the "first keyboard wins" hole the ladder
++	// exists to close.
++	return WLR_LIBINPUT_TRUST_UNTRUSTED;
++}
++
+ static void handle_device_added(struct wlr_libinput_backend *backend,
+ 		struct libinput_device *libinput_dev) {
+ 	int vendor = libinput_device_get_id_vendor(libinput_dev);
+@@ -68,12 +161,18 @@ static void handle_device_added(struct wlr_libinput_backend *backend,
+ 	const char *name = libinput_device_get_name(libinput_dev);
+ 	wlr_log(WLR_DEBUG, "Adding %s [%d:%d]", name, vendor, product);
+ 
++	// KSD input-trust: classify + admit BEFORE the device is created.
++	enum wlr_libinput_trust trust = ksd_classify_device(libinput_dev);
++	wlr_log(WLR_INFO, "[input-trust] %s [%04x:%04x] tier=%d %s", name,
++		vendor, product, (int)trust, ksd_trust_name(trust));
++
+ 	struct wlr_libinput_input_device *dev = calloc(1, sizeof(*dev));
+ 	if (dev == NULL) {
+ 		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_libinput_input_device");
+ 		return;
+ 	}
+ 
++	dev->trust = trust;
+ 	dev->handle = libinput_dev;
+ 	libinput_device_ref(libinput_dev);
+ 	libinput_device_set_user_data(libinput_dev, dev);
+diff --git a/include/backend/libinput.h b/include/backend/libinput.h
+index e712388..085ff07 100644
+--- a/include/backend/libinput.h
++++ b/include/backend/libinput.h
+@@ -28,6 +28,7 @@ struct wlr_libinput_backend {
+ 
+ struct wlr_libinput_input_device {
+ 	struct libinput_device *handle;
++	enum wlr_libinput_trust trust; // KSD four-tier admission (see public header)
+ 
+ 	struct wlr_keyboard keyboard;
+ 	struct wlr_pointer pointer;
+diff --git a/include/wlr/backend/libinput.h b/include/wlr/backend/libinput.h
+index 2a4e199..354f75a 100644
+--- a/include/wlr/backend/libinput.h
++++ b/include/wlr/backend/libinput.h
+@@ -17,12 +17,28 @@
+ struct wlr_input_device;
+ struct wlr_tablet_tool;
+ 
++// KSD input-trust: the four-tier admission ladder (docs/law/input-trust.md).
++// A device is classified into exactly one tier at enumeration, BEFORE it is
++// admitted to the seat. The tier gates what the compositor lets the device do
++// (harmful binds live only for INTERNAL + PROVEN).
++enum wlr_libinput_trust {
++	WLR_LIBINPUT_TRUST_INTERNAL = 0,  // tier 0 — the box itself (internal bus)
++	WLR_LIBINPUT_TRUST_USABLE = 1,    // tier 1 — known external (allowlisted VID:PID)
++	WLR_LIBINPUT_TRUST_PROVEN = 2,    // tier 2 — crypto-proven remote (kidulKey challenge)
++	WLR_LIBINPUT_TRUST_UNTRUSTED = 3, // tier 3 — unknown
++};
++
+ struct wlr_backend *wlr_libinput_backend_create(struct wlr_session *session);
+ /**
+  * Gets the underlying struct libinput_device handle for the given input device.
+  */
+ struct libinput_device *wlr_libinput_get_device_handle(
+ 		struct wlr_input_device *dev);
++/**
++ * Gets the KSD input-trust tier for the given libinput input device.
++ */
++enum wlr_libinput_trust wlr_libinput_get_device_trust(
++		struct wlr_input_device *dev);
+ /**
+  * Gets the underlying struct libinput_tablet_tool handle for the given tablet tool.
+  */

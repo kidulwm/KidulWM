@@ -4,3 +4,6 @@ zig-out/
 zig-pkg/
 *.log
 .zig-cache-bak/
+
+# wlroots rebuild checkout (patch source + meson build dir)
+patches/wlroots-src/
