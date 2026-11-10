@@ -1,5 +1,50 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-10) — BOOT DIAGNOSED (no-input) + PROFILES LAW LOCKED (wall = containment).
+#   KSD BOOTS ON NVME1: clock + KSD logo + cursor + widgets render (kidulwm bootcheck verdict OK, eDP-1 1920x1080@144,
+#   GLES2). NO INPUT — two gaps, NEITHER is udev (the patched no-udev stack IS deployed: libinput.so.10.13.0 +
+#   libwlroots-0.20.so both present with .stock backups + 1.31.3 quirks tree). GAP 1: xkeyboard-config absent
+#   (/usr/share/X11/xkb missing) -> xkbcommon "failed to create default keymap" -> even the admitted AT keyboard emits
+#   zero keysyms. GAP 2: Planck not admitted ("keyboards: 5 pointers: 0") — the 5 are internal (Sleep/Power/Power/
+#   VideoBus/AT); the Planck (USB) enumerates ~1.4s AFTER libinput's cold-plug scan, and Phase-2 hotplug (netlink
+#   kobject-uevent listener in the backend) is not built. Added xkeyboard-config as the 4th rootfs data-tree gap in
+#   input-path.draft.md (Mesa / firmware / libinput-quirks / xkeyboard-config).
+#   LOCKED (f208317, signed B&B): profiles.md — the profile IS the cell; wall = CONTAINMENT NOT ARMOR (the wall keeps
+#   foreign stuff AWAY from the trust core; it does not armor the cell's own contents). native/"Private" = trust core,
+#   no cell, "safer than any VM, colder than Qubes at home". pen=foreign distro / brig=foreign code / plank=most-unsafe
+#   guests (discard on misbehave — resolves cells.md "plank=discard" + theme "browser plank"). Escalation = classify-at-
+#   seat + plank-on-threat (NOT live migration). Profiles cued (default at login + per-profile start-at-boot toggle),
+#   settings tentacle owns user+profile mgmt, kidulKey (PERSONAL create/delete, OWNER gates footprint). Colours DEFERRED.
+#   distribution.md (LOCKED): base=golden image no-PM / native=libalpm+our signed repo / foreign=the cell's OWN
+#   package manager (pen apt, brig guest PM). C repo format=pacman's, D dev-mode gate=OWNER's key.
+#   Granny Home/World profile names (tentative; Private=native locked).
+#   NEXT (in order): (0) LAND the libinput fork — the prior session's uncommitted input-path work is STILL IN THE
+#   TREE (git status: M docs/design/input-path.draft.md, M patches/README.md, ?? patches/libinput-1.31.3-ksd-path-
+#   no-udev.patch, ?? patches/libinput-src/); commit it signed B&B BEFORE touching the rootfs. (1) bake xkeyboard-config
+#   into the golden rootfs (trace ksd-golden rootfs-assembly — the 4th data-tree gap). (2) Phase-2 hotplug (netlink
+#   kobject-uevent listener) -> the Planck admits -> a real typing box.
+#
+# SESSION WRAP-UP (bobdotrix 2026-11-10) — LIBINPUT FORK BUILT+DEPLOYED+CHROOT-PROVEN (wlroots patch was necessary-not-sufficient).
+#   The wlroots path patch (below) unblocked the backend, but booting still crashed one level DEEPER: libinput 1.31.3's
+#   own path backend requires udev. Two seams, both patched in our own libinput.so.10 (1.31.3):
+#     path-seat.c  udev_device_from_devnode() waited 200x10ms for udev_device_get_is_initialized(), NEVER true without a
+#                  resident udevd -> "udev device never initialized" -> "Invalid path". Dropped the wait; accept the sysfs
+#                  device udev_device_new_from_devnum() already returns (devnode/syspath/sysname populated).
+#     evdev.c      classification was driven ENTIRELY by ID_INPUT* udev properties (udev's input_id builtin + hwdb); absent
+#                  -> "not tagged as supported input device". Ported udev's input_id into libinput (ksd_evdev_tags_from_evdev,
+#                  reads evdev capability bits via libevdev) as a fallback in evdev_device_get_udev_tags().
+#   PATCH: patches/libinput-1.31.3-ksd-path-no-udev.patch (2 files, sha256 267e60d7...). BUILT 1.31.3 with -Dlibwacom=false
+#   (drops libgudev from DT_NEEDED) prefix=/usr. DEPLOYED /mnt/ksd: libinput.so.10 -> 10.13.0 (stock = .stock), quirks
+#   REPLACED with the matching 1.31.3 set (rootfs had a 1.32 quirks tree -> "Unknown key ModelCircularTouchpad"; 1.32 saved
+#   as usr/share/libinput.1.32.bak).
+#   CHROOT-PROVEN (no udevd, /run/udev absent): 18 devices admitted — AT kb, Planck 03a8:a4f9, ELAN touchpad, lid/power/sleep,
+#   MX Master 3. 10 audio devices (HDA jacks, PC speaker) correctly rejected == stock (switch support = SW_LID/TABLET_MODE/
+#   KEYPAD_SLIDE only). NOTE: the earlier "host smoke test" was a FALSE GREEN — host runs udevd.
+#   PURITY BOUNDARY (LOCKED): libudev.so.1 STAYS as libinput's device model (client lib, no daemon; meson dep_udev is
+#   non-optional). "No udev" = no resident udevd + no database + no rules/hwdb, NOT dropping the libudev client. libgudev is
+#   now orphaned in the rootfs (can remove). NEXT: re-boot-test (Barticus kboot) — expect kushd.log "seated kidulwm", NO
+#   "died kidulwm" loop, AT keyboard + Planck produce input.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-10) — INPUT-PATH FIX BUILT+DEPLOYED: wlroots 0.20.2 patched to path-based libinput (no udev) + 4-tier admission gate.
 #   ROOT CAUSE of the deck-dark boot: wlroots' libinput backend is udev-ONLY (backend.c backend_start() =
 #   libinput_udev_create_context + assign_seat) — a no-udev rootfs enumerates ZERO devices -> "no input
