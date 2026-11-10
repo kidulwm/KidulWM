@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-11) — DOCKET #54 (0)+(1) DONE. Input path UNBLOCKED past the keymap wall.
+#   (0) LIBINPUT FORK LANDED (signed B&B): commit bacf8d9 (patch+docs+README+gitignore for patches/libinput-src/ — the
+#       upstream build checkout is IGNORED like wlroots-src/, NOT committed) + a742cdd (census handoff). Tree clean.
+#   (1) XKEYBOARD-CONFIG BAKED (GAP 1 CLOSED): copied host data tree -> /mnt/ksd/usr/share/X11/xkb (293 files, 4.0M;
+#       sudo cp -a /usr/share/xkeyboard-config-2 ...). VERIFIED: KSD libxkbcommon.so.0 lists /usr/share/X11/xkb in its
+#       default include path + `xkbcli compile-keymap --layout us` against the baked tree = valid keymap (EXIT 0).
+#       The ADMITTED internal AT keyboard will now emit keysyms on next boot. Assembly trace recorded in input-path.draft.md.
+#   REMAINING: (2) Phase-2 hotplug (netlink kobject-uevent listener) so the PLANCK admits (~1.4s post-scan) -> real
+#       typing box. RE-BOOT-TEST now worth it: expect AT keyboard to type even before (2) lands.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-10) — BOOT DIAGNOSED (no-input) + PROFILES LAW LOCKED (wall = containment).
 #   KSD BOOTS ON NVME1: clock + KSD logo + cursor + widgets render (kidulwm bootcheck verdict OK, eDP-1 1920x1080@144,
 #   GLES2). NO INPUT — two gaps, NEITHER is udev (the patched no-udev stack IS deployed: libinput.so.10.13.0 +

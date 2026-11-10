@@ -97,6 +97,21 @@ BELOW seatd, a decision point, not a resident daemon."
   data + the xkbcommon parser, no udev, no daemon. Required for layouts and for
   KidulFlow/braille (multi-layout, blind-usable).
 
+  BAKED 2026-11-11 (gap CLOSED). The host's tree is a symlink
+  /usr/share/X11/xkb -> /usr/share/xkeyboard-config-2 (real data there). The
+  assembly step is a plain data-tree copy — follow the symlink target, do NOT
+  carry the symlink into the rootfs:
+
+    sudo mkdir -p /mnt/ksd/usr/share/X11
+    sudo cp -a /usr/share/xkeyboard-config-2 /mnt/ksd/usr/share/X11/xkb
+
+  VERIFIED: 293 files / 4.0M under /mnt/ksd/usr/share/X11/xkb (compat geometry
+  keycodes rules symbols types); the KSD's own libxkbcommon.so.0 lists
+  /usr/share/X11/xkb in its default include path; `XKB_CONFIG_ROOT=…
+  xkbcli compile-keymap --layout us --rules evdev --model pc105` compiles a
+  valid keymap (EXIT 0). This closes GAP 1 (keymap); the ADMITTED internal AT
+  keyboard will now emit keysyms. The Planck still needs Phase-2 hotplug below.
+
 ## The libinput fork (1.31.3 — a SECOND patch, discovered on boot)
 
 The wlroots patch alone was NOT sufficient. Booting it showed the crash one
