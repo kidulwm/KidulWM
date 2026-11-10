@@ -13,10 +13,12 @@
 #   (cp raced the ro remount) — recoverable from git history. NEXT: reboot into KSD, confirm kidulwm
 #   seats clean (kushd.log "seated kidulwm" with NO "died kidulwm" crash-loop).
 #
-#   FORK-DETECTION FLAG: kboot (logdrain+devRules+log-path, 86 ins) and kushd (log-path /tmp->/var/log)
-#   are UNCOMMITTED in the working tree but DOCKETS #54 already describes them as done. This is the
-#   "logs surviving a crash for a service Bob" work — real, but NOT in git and NOT deployed to KSD yet.
-#   Must be committed + built + deployed before the crash-survival guarantee holds.
+#   FORK FLAG CLEARED 2026-11-10 09:55: the kboot logdrain/devRules/log-path work + kushd
+#   log-path work are now COMMITTED (kboot a7d513f 86ins/4del, kushd 68a102d, both signed B&B).
+#   Re-verified the work was ALREADY DEPLOYED — the Nov 9 binaries carry it (strings show
+#   /var/log/kboot.log + "kboot: forked logdrain" + "kboot: devrule" + /dev/dri in the on-disk
+#   kboot; kernel.log/kboot.log/kushd*.log all persist at /var/log). The earlier "NOT deployed"
+#   note was wrong on that point. No rebuild needed before flip — binaries match source.
 #
 #   STILL OPEN (carried): VMD revert — host root is ALSO behind VMD, needs a plan not a flip.
 #
