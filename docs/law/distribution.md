@@ -1,4 +1,4 @@
-# LAW — software distribution & installation (the cell-keyed package model) (PROPOSED 2026-11-10, v2 — re-cut after Barticus's cells steer)
+# LAW — software distribution & installation (the cell-keyed package model) (LOCKED 2026-11-10, Barticus present)
 
 KSD distributes software three ways, keyed to WHAT it is and WHERE it runs. The
 base is a sealed image with no package manager. Native apps come from our store.
@@ -90,13 +90,13 @@ runs in a brig: a lean Ubuntu guest with its own systemd + X11, `apt install
 zoom`, bridged to kidulwm's face, focus-coupled AV. We maintain ONE brig recipe,
 not a Zoom package — the cell is reusable across a thousand foreign apps.
 
-## Open questions (presented for lock)
+## Rulings (all LOCKED 2026-11-10, Barticus present)
 
-  A. plank — RESOLVED (profiles.md): the most-unsafe guests, discard-on-misbehave.
-     NOT native/no-cage; "native" is the trust core (Private), not a cell.
-  B. store shape — LOCKED: an app (tentacle), not a body organ.
-  C. repo format — reuse pacman's .db + .pkg.tar.zst under our key? Rec: yes.
-  D. dev-mode gate — OWNER's key (kidulkey.md open owner/master hierarchy)?
+  A. plank        the most-unsafe guests, discard-on-misbehave. NOT native/no-cage;
+                  "native" is the trust core (Private), not a cell. (profiles.md.)
+  B. store shape  an app (tentacle), not a body organ.
+  C. repo format  YES — reuse pacman's .db + .pkg.tar.zst under our key.
+  D. dev-mode gate  OWNER's key (kidulkey.md open owner/master hierarchy).
 
 ## Relationship to existing law
 
