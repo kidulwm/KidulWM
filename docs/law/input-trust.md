@@ -78,9 +78,47 @@ keyboard. The remote is the mouth's hand.
                             connect (above).
   seat trust                admit by proof at a gate below seatd, not presence.
 
+## The admission ladder — four tiers (LOCKED 2026-11-10, Barticus present)
+
+Admission is PER-DEVICE, decided at enumeration time — not a single global
+verdict. A device lands in exactly one tier:
+
+  TIER 0  INTERNAL (the box) — detected by KERNEL-STANDARD signals, no list of
+          ours. bustype (libinput_device_get_id_bustype, linux/input.h) on a
+          native bus (I8042/HOST/PCI/INTEL_ISHTP/I2C/SPI), OR a USB device whose
+          sysfs removable=fixed (soldered internal — internal webcam/touchscreen).
+          Covers the AT keyboard, touchpad, lid/power/sleep buttons, the iGPU,
+          and the whole HDA audio stack (headphone jack, speakers, HDMI/DP audio).
+          Auto-admitted, TRUSTED, no proof. These never ask; they ARE the box.
+
+  TIER 1  KNOWN EXTERNAL (identity) — USB/BT whose VID:PID(+serial) is in the
+          burned allowlist (Planck 03A8:A4F9, kidulKey 2fe3, the remote).
+          Admitted as a USABLE keyboard/pointer. Identity is spoofable, so this
+          tier grants USABLE, not harmful.
+
+  TIER 2  PROVEN (crypto) — challenge/response against the burned pubkey
+          (kidulKey Ed25519). The ONLY tier that grants TRUSTED: harmful binds
+          live (spawn/close/reset/browser). Only the remote earns it.
+
+  TIER 3  UNKNOWN — everything else. Benign class (keyboard/pointer) = admitted
+          UNTRUSTED (types, navigates, no harmful binds). Dangerous class
+          (mass-storage, smartcard, network adapter) = REJECTED (the USB
+          guard's block list).
+
+The discriminator is TOPOLOGY + IDENTITY + PROOF — never arrival order. "The
+first keyboard plugged in" is not a trust signal (a rubber ducky that arrives
+first would win). Default is not deny (a dead keyboard is a dead TV); default
+is UNTRUSTED, with the three escalations above. The same ladder is the ONE
+admission doctrine for input, storage (the USB guard), and later network and
+audio — one pattern, not five bespoke rules.
+
 ## Status
 
-Principle LOCKED now. The MECHANISM (the gate's exact hook — extend the USB
-guard vs a seatd plugin vs a udev gate) is a docket, not yet built. Until it
-lands, an unauthenticated input device is treated as UNTRUSTED, which is the
-safe default this law makes explicit.
+Principle LOCKED 2026-10-03; ADMISSION LADDER LOCKED 2026-11-10. The MECHANISM
+(open here since October) is now RESOLVED: the gate is a path-based libinput
+backend in our own wlroots build — each device is classified into a tier AT
+enumeration, before it is admitted to the seat (no resident daemon; a decision
+point in the device path, per the less-running law). The old single-line
+verdict (/run/kushd/input-trust: TRUSTED/UNTRUSTED/ABSENT) is superseded by
+per-device tier assignment at admission time. Patch spec:
+docs/design/input-path.draft.md.

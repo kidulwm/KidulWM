@@ -1,0 +1,45 @@
+diff --git a/backend/libinput/backend.c b/backend/libinput/backend.c
+index 121731b..d754b3b 100644
+--- a/backend/libinput/backend.c
++++ b/backend/libinput/backend.c
+@@ -1,4 +1,5 @@
+ #include <assert.h>
++#include <glob.h>
+ #include <libinput.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+@@ -87,17 +88,28 @@ static bool backend_start(struct wlr_backend *wlr_backend) {
+ 		get_libinput_backend_from_backend(wlr_backend);
+ 	wlr_log(WLR_DEBUG, "Starting libinput backend");
+ 
+-	backend->libinput_context = libinput_udev_create_context(&libinput_impl,
+-		backend, backend->session->udev);
++	// KSD: path-based context (no udev). The DRM backend already has a
++	// no-udev fallback; this is the libinput equivalent.
++	backend->libinput_context = libinput_path_create_context(&libinput_impl,
++		backend);
+ 	if (!backend->libinput_context) {
+ 		wlr_log(WLR_ERROR, "Failed to create libinput context");
+ 		return false;
+ 	}
+ 
+-	if (libinput_udev_assign_seat(backend->libinput_context,
+-			backend->session->seat) != 0) {
+-		wlr_log(WLR_ERROR, "Failed to assign libinput seat");
+-		return false;
++	// Enumerate input device nodes directly. libinput_path_add_device()
++	// opens each path via open_restricted (the seat session) and queues an
++	// ADD event that handle_libinput_readable() dispatches below.
++	glob_t globbuf = {0};
++	if (glob("/dev/input/event*", 0, NULL, &globbuf) == 0) {
++		for (size_t i = 0; i < globbuf.gl_pathc; i++) {
++			if (!libinput_path_add_device(backend->libinput_context,
++					globbuf.gl_pathv[i])) {
++				wlr_log(WLR_ERROR, "Failed to add input device %s",
++					globbuf.gl_pathv[i]);
++			}
++		}
++		globfree(&globbuf);
+ 	}
+ 
+ 	// TODO: More sophisticated logging
