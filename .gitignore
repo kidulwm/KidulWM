@@ -7,3 +7,6 @@ zig-pkg/
 
 # wlroots rebuild checkout (patch source + meson build dir)
 patches/wlroots-src/
+
+# libinput rebuild checkout (patch source + meson build dir)
+patches/libinput-src/

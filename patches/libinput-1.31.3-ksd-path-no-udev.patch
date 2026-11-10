@@ -1,0 +1,265 @@
+diff --git a/src/evdev.c b/src/evdev.c
+index 0a3a1b4..698affd 100644
+--- a/src/evdev.c
++++ b/src/evdev.c
+@@ -1581,6 +1581,206 @@ evdev_fix_abs_resolution(struct evdev_device *device,
+ 	return xres == EVDEV_FAKE_RESOLUTION;
+ }
+ 
++/* KSD: synthesize the udev input tags from the evdev capability bits.
++ *
++ * A no-udev boot has no resident udevd, so the ID_INPUT* properties that
++ * udev's input_id builtin normally writes are absent, and the udev scan in
++ * evdev_device_get_udev_tags() returns NONE. The classification below is a
++ * faithful port of systemd's udev-builtin-input_id.c (test_pointers +
++ * test_key + scrollwheel-only + switch), reading the same capability bits via
++ * libevdev instead of udev. One deliberate difference: udev's input_id relies
++ * on hwdb for ID_INPUT_TRACKBALL and libwacom overrides; a no-udev KSD has no
++ * hwdb, so those model-specific corrections are intentionally absent — the
++ * baseline evdev classification is what we run on.
++ */
++static enum evdev_device_udev_tags
++ksd_evdev_tags_from_evdev(struct evdev_device *device)
++{
++	struct libevdev *evdev = device->evdev;
++	enum evdev_device_udev_tags tags = EVDEV_UDEV_TAG_INPUT;
++	bool is_pointer = false, is_key = false, is_keyboard = false;
++	bool has_keys, has_abs_coordinates, has_3d_coordinates;
++	bool is_accelerometer, is_pointing_stick, has_stylus, has_pen;
++	bool finger_but_no_pen, has_mouse_button, has_rel_coordinates;
++	bool has_mt_coordinates, is_direct, has_touch, has_pad_buttons;
++	bool has_wheel;
++	bool is_tablet, is_touchpad, is_touchscreen, is_joystick;
++	bool is_mouse, is_abs_mouse, is_tablet_pad;
++	size_t num_joystick_buttons = 0, num_joystick_axes = 0;
++	int b, a;
++
++	/* ---- test_key ---- */
++	has_keys = libevdev_has_event_type(evdev, EV_KEY);
++	if (has_keys) {
++		for (b = 0; b < BTN_MISC && !is_key; b++)
++			if (libevdev_has_event_code(evdev, EV_KEY, b))
++				is_key = true;
++		if (!is_key) {
++			for (b = KEY_OK; b < BTN_DPAD_UP && !is_key; b++)
++				if (libevdev_has_event_code(evdev, EV_KEY, b))
++					is_key = true;
++		}
++		if (!is_key) {
++			for (b = KEY_ALS_TOGGLE; b < BTN_TRIGGER_HAPPY && !is_key; b++)
++				if (libevdev_has_event_code(evdev, EV_KEY, b))
++					is_key = true;
++		}
++		/* full keyboard: ESC + digits + Q..D (bits 1..31 all set) */
++		unsigned int first32 = 0;
++		for (b = 1; b < 32; b++)
++			if (libevdev_has_event_code(evdev, EV_KEY, b))
++				first32 |= (1u << b);
++		if ((first32 & 0xFFFFFFFEu) == 0xFFFFFFFEu)
++			is_keyboard = true;
++	}
++	if (is_keyboard || is_key)
++		tags |= EVDEV_UDEV_TAG_KEYBOARD;
++
++	/* ---- test_pointers ---- */
++	has_abs_coordinates = libevdev_has_event_code(evdev, EV_ABS, ABS_X) &&
++			      libevdev_has_event_code(evdev, EV_ABS, ABS_Y);
++	has_3d_coordinates = has_abs_coordinates &&
++			     libevdev_has_event_code(evdev, EV_ABS, ABS_Z);
++	is_accelerometer = libevdev_has_property(evdev, INPUT_PROP_ACCELEROMETER);
++	if (!has_keys && has_3d_coordinates)
++		is_accelerometer = true;
++
++	if (is_accelerometer) {
++		tags |= EVDEV_UDEV_TAG_ACCELEROMETER;
++	} else {
++		is_pointing_stick = libevdev_has_property(evdev, INPUT_PROP_POINTING_STICK);
++		has_stylus = libevdev_has_event_code(evdev, EV_KEY, BTN_STYLUS);
++		has_pen = libevdev_has_event_code(evdev, EV_KEY, BTN_TOOL_PEN);
++		finger_but_no_pen = libevdev_has_event_code(evdev, EV_KEY, BTN_TOOL_FINGER) &&
++				    !has_pen;
++		has_mouse_button = false;
++		for (b = BTN_MOUSE; b < BTN_JOYSTICK && !has_mouse_button; b++)
++			if (libevdev_has_event_code(evdev, EV_KEY, b))
++				has_mouse_button = true;
++		has_rel_coordinates = libevdev_has_event_type(evdev, EV_REL) &&
++				      libevdev_has_event_code(evdev, EV_REL, REL_X) &&
++				      libevdev_has_event_code(evdev, EV_REL, REL_Y);
++		has_mt_coordinates = libevdev_has_event_code(evdev, EV_ABS, ABS_MT_POSITION_X) &&
++				     libevdev_has_event_code(evdev, EV_ABS, ABS_MT_POSITION_Y);
++		/* unset mt if the device claims the whole abs range (input_id heuristic) */
++		if (has_mt_coordinates &&
++		    libevdev_has_event_code(evdev, EV_ABS, ABS_MT_SLOT) &&
++		    libevdev_has_event_code(evdev, EV_ABS, ABS_MT_SLOT - 1))
++			has_mt_coordinates = false;
++		is_direct = libevdev_has_property(evdev, INPUT_PROP_DIRECT);
++		has_touch = libevdev_has_event_code(evdev, EV_KEY, BTN_TOUCH);
++		has_pad_buttons = libevdev_has_event_code(evdev, EV_KEY, BTN_0) &&
++				  libevdev_has_event_code(evdev, EV_KEY, BTN_1) &&
++				  !has_pen;
++		has_wheel = libevdev_has_event_type(evdev, EV_REL) &&
++			    (libevdev_has_event_code(evdev, EV_REL, REL_WHEEL) ||
++			     libevdev_has_event_code(evdev, EV_REL, REL_HWHEEL));
++
++		/* joystick button/axis counts */
++		if (!libevdev_has_event_code(evdev, EV_KEY, BTN_JOYSTICK - 1)) {
++			for (b = BTN_JOYSTICK; b < BTN_DIGI; b++)
++				if (libevdev_has_event_code(evdev, EV_KEY, b))
++					num_joystick_buttons++;
++			for (b = BTN_TRIGGER_HAPPY1; b <= BTN_TRIGGER_HAPPY40; b++)
++				if (libevdev_has_event_code(evdev, EV_KEY, b))
++					num_joystick_buttons++;
++			for (b = BTN_DPAD_UP; b <= BTN_DPAD_RIGHT; b++)
++				if (libevdev_has_event_code(evdev, EV_KEY, b))
++					num_joystick_buttons++;
++		}
++		for (a = ABS_RX; a < ABS_PRESSURE; a++)
++			if (libevdev_has_event_code(evdev, EV_ABS, a))
++				num_joystick_axes++;
++
++		is_tablet = is_touchpad = is_touchscreen = false;
++		is_joystick = is_mouse = is_abs_mouse = is_tablet_pad = false;
++
++		if (has_abs_coordinates) {
++			if (has_stylus || has_pen)
++				is_tablet = true;
++			else if (finger_but_no_pen && !is_direct)
++				is_touchpad = true;
++			else if (has_mouse_button)
++				is_abs_mouse = true;
++			else if (has_touch || is_direct)
++				is_touchscreen = true;
++			else if (num_joystick_buttons > 0 || num_joystick_axes > 0)
++				is_joystick = true;
++		} else if (num_joystick_buttons > 0 || num_joystick_axes > 0)
++			is_joystick = true;
++
++		if (has_mt_coordinates) {
++			if (has_stylus || has_pen)
++				is_tablet = true;
++			else if (finger_but_no_pen && !is_direct)
++				is_touchpad = true;
++			else if (has_touch || is_direct)
++				is_touchscreen = true;
++		}
++
++		if (is_tablet && has_pad_buttons)
++			is_tablet_pad = true;
++
++		if (has_pad_buttons && has_wheel && !has_rel_coordinates) {
++			is_tablet = true;
++			is_tablet_pad = true;
++		}
++
++		if (!is_tablet && !is_touchpad && !is_joystick &&
++		    has_mouse_button &&
++		    (has_rel_coordinates || !has_abs_coordinates))
++			is_mouse = true;
++
++		if (is_mouse && libevdev_get_id_bustype(evdev) == BUS_I2C)
++			is_pointing_stick = true;
++
++		/* joystick un-detection (shared with libinput's own heuristics) */
++		if (is_joystick) {
++			size_t num_well_known = 0;
++			if (has_keys)
++				for (size_t i = 0; i < ARRAY_LENGTH(well_known_keyboard_keys); i++)
++					if (libevdev_has_event_code(evdev, EV_KEY,
++							    well_known_keyboard_keys[i]))
++						num_well_known++;
++			if (num_well_known >= 4 ||
++			    num_joystick_buttons + num_joystick_axes < 2)
++				is_joystick = false;
++			if (has_wheel && has_pad_buttons)
++				is_joystick = false;
++		}
++
++		if (is_pointing_stick)
++			tags |= EVDEV_UDEV_TAG_POINTINGSTICK;
++		if (is_mouse || is_abs_mouse)
++			tags |= EVDEV_UDEV_TAG_MOUSE;
++		if (is_touchpad)
++			tags |= EVDEV_UDEV_TAG_TOUCHPAD;
++		if (is_touchscreen)
++			tags |= EVDEV_UDEV_TAG_TOUCHSCREEN;
++		if (is_joystick)
++			tags |= EVDEV_UDEV_TAG_JOYSTICK;
++		if (is_tablet)
++			tags |= EVDEV_UDEV_TAG_TABLET;
++		if (is_tablet_pad)
++			tags |= EVDEV_UDEV_TAG_TABLET_PAD;
++
++		is_pointer = is_tablet || is_mouse || is_abs_mouse || is_touchpad ||
++			     is_touchscreen || is_joystick || is_pointing_stick;
++	}
++
++	/* scrollwheel-only evdev node -> treat as a key device (input_id) */
++	if (!is_pointer && !is_key &&
++	    libevdev_has_event_type(evdev, EV_REL) &&
++	    (libevdev_has_event_code(evdev, EV_REL, REL_WHEEL) ||
++	     libevdev_has_event_code(evdev, EV_REL, REL_HWHEEL)))
++		tags |= EVDEV_UDEV_TAG_KEYBOARD;
++
++	if (libevdev_has_event_type(evdev, EV_SW))
++		tags |= EVDEV_UDEV_TAG_SWITCH;
++
++	return tags;
++}
++
+ static enum evdev_device_udev_tags
+ evdev_device_get_udev_tags(struct evdev_device *device, struct udev_device *udev_device)
+ {
+@@ -1598,6 +1798,12 @@ evdev_device_get_udev_tags(struct evdev_device *device, struct udev_device *udev
+ 		udev_device = udev_device_get_parent(udev_device);
+ 	}
+ 
++	/* KSD: a no-udev boot has no ID_INPUT* properties (they are written by
++	 * udev's input_id builtin at hotplug). Synthesize the tags from the
++	 * evdev capability bits instead. */
++	if (tags == EVDEV_UDEV_TAG_NONE)
++		tags = ksd_evdev_tags_from_evdev(device);
++
+ 	return tags;
+ }
+ 
+diff --git a/src/path-seat.c b/src/path-seat.c
+index d76bea0..d00f750 100644
+--- a/src/path-seat.c
++++ b/src/path-seat.c
+@@ -330,25 +330,23 @@ udev_device_from_devnode(struct libinput *libinput,
+ {
+ 	struct udev_device *dev;
+ 	struct stat st;
+-	size_t count = 0;
+ 
+ 	if (stat(devnode, &st) < 0)
+ 		return NULL;
+ 
+ 	dev = udev_device_new_from_devnum(udev, 'c', st.st_rdev);
++	if (!dev)
++		return NULL;
+ 
+-	while (dev && !udev_device_get_is_initialized(dev)) {
+-		udev_device_unref(dev);
+-		count++;
+-		if (count > 200) {
+-			log_bug_libinput(libinput,
+-					 "udev device never initialized (%s)\n",
+-					 devnode);
+-			return NULL;
+-		}
+-		msleep(10);
+-		dev = udev_device_new_from_devnum(udev, 'c', st.st_rdev);
+-	}
++	/* KSD: no resident udevd, so the device database is never written and
++	 * udev_device_get_is_initialized() stays false forever. The devnum
++	 * lookup above already fell back to a sysfs device (devnode/syspath/
++	 * sysname/sysattrs populated) — that is complete for our no-udev input
++	 * path. Accept it without waiting on a database that will never exist.
++	 */
++	log_info(libinput,
++		 "KSD: accepting sysfs device %s (no udev database)\n",
++		 devnode);
+ 
+ 	return dev;
+ }

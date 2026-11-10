@@ -8,17 +8,22 @@ and not by hand-rolled evdev parsing.
 
   USE   libinput (the evdev engine + its quirks data). Open, battle-tested,
         already a system dep. Its PATH context (libinput_path_create_context +
-        libinput_path_add_device) does device classification itself from evdev
-        capability bits — no udev involved.
+        libinput_path_add_device) enumerates from the devnode. Device
+        classification and the ID_INPUT* tags libinput needs are PATCHED IN
+        from evdev capability bits (see "the libinput fork" below) — no
+        resident udev.
 
   OWN   enumeration (scan /dev/input/event*), hotplug (the kobject-uevent
         netlink listener kushd already runs), and ADMISSION (the four-tier gate
         in input-trust.md, enforced at enumeration).
 
-  DROP  libudev, the udev database, udev rules, the resident udevd. All three
-        were lawed out already ("NETLINK_KOBJECT_UEVENT listener replaces udevd
-        — no resident udev"). This closes the one seam that still reached for
-        them.
+  DROP  the udev database, udev rules, the resident udevd — all lawed out
+        already ("NETLINK_KOBJECT_UEVENT listener replaces udevd — no resident
+        udev"). This closes the seam that still reached for them. BOUNDARY
+        (refined 2026-11-10): libudev.so.1 the CLIENT lib STAYS — it is
+        libinput's device model (meson dep_udev is non-optional) and reads
+        sysfs directly, no daemon. Dropping it = rewriting libinput's device
+        model = a full fork, not a patch.
 
 ## Why this is the truer path
 
@@ -82,6 +87,53 @@ BELOW seatd, a decision point, not a resident daemon."
   device's own bus/vendor/product (from evdev), not from udev. Copying that
   data dir into the rootfs is still required — it is the third instance of the
   rootfs-assembly data-tree gap (Mesa runtime drivers, firmware, now libinput).
+  The quirks tree MUST match the libinput version (1.31.3) — see below.
+
+  XKB keymap data (xkeyboard-config) is the FOURTH instance of the same gap,
+  found on the nvme1 boot (2026-11-10): /usr/share/X11/xkb is absent, so
+  xkbcommon logs "Failed to add any default include path" and "failed to create
+  default keymap", and even an admitted keyboard produces no keysyms. Ship
+  xkeyboard-config (or an equivalent XKB data tree) into the rootfs — inert
+  data + the xkbcommon parser, no udev, no daemon. Required for layouts and for
+  KidulFlow/braille (multi-layout, blind-usable).
+
+## The libinput fork (1.31.3 — a SECOND patch, discovered on boot)
+
+The wlroots patch alone was NOT sufficient. Booting it showed the crash one
+level deeper: libinput 1.31.3's own path backend still requires udev.
+
+  path-seat.c  udev_device_from_devnode() loops up to 200x10ms waiting for
+               udev_device_get_is_initialized(), which is NEVER true without a
+               resident udevd (set only when udevd writes /run/udev/data).
+               -> "udev device never initialized" -> "Invalid path" -> every
+               device rejected. (Also why the earlier host-side smoke test was
+               a FALSE green — the host runs udevd.)
+
+  evdev.c      evdev_device_get_udev_tags() reads ID_INPUT* udev properties
+               (written by udev's input_id builtin + hwdb). Absent without udev
+               -> every device hits the "not tagged as supported input device"
+               gate. This falsifies the "classification itself from evdev"
+               premise above — libinput 1.31.3 does NOT classify from evdev; we
+               had to make it.
+
+Patch: patches/libinput-1.31.3-ksd-path-no-udev.patch (2 files, sha256 267e60d7…).
+
+  path-seat.c  drop the get_is_initialized() wait; accept the sysfs device
+               (udev_device_new_from_devnum already returns devnode/syspath).
+  evdev.c      ksd_evdev_tags_from_evdev(): faithful port of systemd's
+               udev-builtin-input_id.c (test_pointers + test_key +
+               scrollwheel-only + switch) reading capability bits via libevdev,
+               as a fallback in evdev_device_get_udev_tags() when the udev
+               scan yields NONE.
+
+Built 1.31.3 with -Dlibwacom=false (drops libgudev from libinput's DT_NEEDED),
+prefix=/usr. Quirks data MUST match the libinput version: the rootfs carried a
+1.32 quirks tree -> "Unknown key ModelCircularTouchpad"; shipped 1.31.3's.
+
+CHROOT-PROVEN (no udevd, /run/udev absent): 18 devices admitted — AT keyboard,
+Planck 03a8:a4f9, ELAN touchpad, lid/power/sleep buttons, MX Master 3. 10 audio
+devices (HDA jacks, PC speaker) correctly rejected, identical to stock (switch
+support is SW_LID / SW_TABLET_MODE / SW_KEYPAD_SLIDE only).
 
 ## Hotplug (netlink = DEVICE events, not networking)
 
@@ -110,8 +162,9 @@ linkSystemLibrary("wlroots-0.20").
 
 ## Two-phase plan
 
-  PHASE 1 (unblock the boot): patch + rebuild wlroots, copy
-  /usr/share/libinput/*.quirks into the rootfs, deploy both, boot nvme1.
+  PHASE 1 (unblock the boot): patch + rebuild wlroots AND patch + rebuild
+  libinput (the fork above), copy the MATCHING 1.31.3 quirks into the rootfs,
+  deploy all three, boot nvme1.
   Success = kushd.log "seated kidulwm" with no "died kidulwm" loop AND the
   AT keyboard + Planck produce input (Tier 0 + Tier 1).
 
