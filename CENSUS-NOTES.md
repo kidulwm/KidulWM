@@ -1,5 +1,28 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-10) — INPUT-PATH FIX BUILT+DEPLOYED: wlroots 0.20.2 patched to path-based libinput (no udev) + 4-tier admission gate.
+#   ROOT CAUSE of the deck-dark boot: wlroots' libinput backend is udev-ONLY (backend.c backend_start() =
+#   libinput_udev_create_context + assign_seat) — a no-udev rootfs enumerates ZERO devices -> "no input
+#   devices" -> backend fails -> wlr_seat_destroy assert -> SIGABRT -> kushd respawn backoff forever. The DRM
+#   backend already has a no-udev fallback; libinput had none. Fix closes that asymmetry (input-path.draft.md).
+#   BUILT (KidulWM f602041, signed B&B): wlroots 0.20.2 patched — backend.c backend_start() now
+#   libinput_path_create_context + glob("/dev/input/event*") + libinput_path_add_device() (open_restricted still
+#   routes through wlr_session_open_file/seatd). events.c handle_device_added() classifies each device into the
+#   4-tier ladder (T0 internal bustype / T1 allowlist vid:pid / T2 proven-hook / T3 unknown), stores the tier,
+#   logs "[input-trust] ... tier=N". Public API added: enum wlr_libinput_trust + wlr_libinput_get_device_trust()
+#   (include/wlr/backend/libinput.h). Tier 2 is a documented HOOK — no per-device crypto proof wired yet, and
+#   deliberately NOT read from the global verdict (that proves the SEAT, not the device).
+#   DEPLOYED to /mnt/ksd: our libwlroots-0.20.so (strict-superset ABI — identical DT_NEEDED to stock; MUST
+#   install vulkan-headers or vulkan-renderer=NO silently drops libvulkan.so.1), 54 libinput quirks copied to
+#   usr/share/libinput, /etc/kushd/input-allowlist (planck 03a8:a4f9). Stock .so backed up as
+#   libwlroots-0.20.so.stock. chroot ld-linux --list kidulwm+kboot = CLEAN.
+#   SMOKE-TESTED (host, no udev, no compositor): 20 devices enumerated via path context — AT kb/touchpad/buttons
+#   TIER0, Drop Planck TIER1 (03a8:a4f9), BT MX Keys/Master TIER3. Proves the no-udev enumeration + classification
+#   against real hardware. (scratch/ksd-path-smoke.c prototype.)
+#   NEXT: re-boot-test (Barticus BIOS-swap nvme1) — expect kushd.log "seated kidulwm" with NO "died kidulwm" loop,
+#   AT keyboard + Planck produce input. REMAINING harden: Tier-2 crypto proof + netlink hotplug + kidulwm
+#   per-device enforcement (the getter already exists).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-10) — KIDULWM SEGFAULT FIXED + DEPLOYED; REBOOT-TEST PENDING.
 #   THE FIX: kidulwm was crash-looping with a use-after-free segfault (0x0) in Environ.getPosix
 #   (main.zig:41, KIDULWM_NO_BACKEND lookup). Root cause: Server.init -> applyTitleBarEnvironment ->
