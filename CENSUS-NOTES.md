@@ -30,6 +30,12 @@
 #     player connecting the pipes (kplay.sock) that ALL apps access — kmedia borrows it like any app. Q-C CONFIRMED.
 #     (b) kmedia = klibrary (LOCKED decision): the media app IS the library; binary `klibrary` + repo + app_id
 #     com.kidulworks.klibrary. Executed as its OWN cut AFTER C5 (decouple first, rename second — cosmetic, zero structural risk).
+#     (b2) THREE DISTINCT "LIBRARY" SURFACES (avoid a second card/slide overload): (1) PUBLIC LIBRARY = the landing/home
+#     launcher, 3-button top pill bar the TV boots into (Browser / Public Library / People); (2) MY LIBRARY = user's own
+#     collection title inside the app; (3) the media wall's internal pill (Movies/TV/Music) = the CATEGORY filter inside the
+#     library. "People" = NOT media — it is the mesh (kweb/identity.md, OMEMO + kidulKey), a separate docket. Root-cause
+#     framing corrected: the library model leaked into TWO processes (kmedia AND kidulwm's media.zig), not one; C5 removes
+#     the compositor's second copy, the klibrary rename then makes the survivor's name honest.
 #     (c) ART VOCABULARY LOCKED: the 2:3 fan-art picture = POSTER (art-chain.md <stem>-poster.jpg → poster.jpg → folder.jpg);
 #     the 2:3 grid cell = TILE (ui.md/Wall.zig); "fan-art" = the GENRE, never the noun. "placecard" is OVERLOADED — it means
 #     kfiles' file-detail card (KEEPS the name) + the empty wall placeholder (media-side, dies with C5 as "empty tile").

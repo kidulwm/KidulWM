@@ -140,6 +140,15 @@ Q-G  (NEW, FOLLOW-ON CUT — not part of C5) kmedia = klibrary. The media app is
      orthogonal so C5 stays "remove the intertwining" and the rename stays
      "change the label".
 
+     THREE DISTINCT "LIBRARY" SURFACES (Barticus 2026-11-11): (1) PUBLIC LIBRARY
+     = the landing/home launcher, the 3-button top pill bar the TV boots into
+     (Browser / Public Library / People); (2) MY LIBRARY = the user's own
+     collection title inside the app; (3) the media wall's internal pill
+     (Movies / TV / Music) = the CATEGORY filter inside the library. "People"
+     is NOT media — it is the mesh (kweb / identity.md, OMEMO + kidulKey), a
+     separate docket. NONE of this is C5 scope; C5 is the process decoupling
+     only. The landing pill bar is its own later docket.
+
 Q-E  (NEW) do the test/probe harness binaries get (a) deleted from build.zig
      entirely, (b) gated behind a `-Dharness` flag, or (c) kept built but
      excluded by the deploy whitelist? REC: (c) now (cheapest, keeps dev
