@@ -55,6 +55,11 @@
 #     (f) ENTER = PLAY/PAUSE DURING PLAYBACK (fullscreen.md ruling 9 LOCKED). Remote centre button toggles play/pause ONLY
 #         while media is playing — Granny's "set the hand" button; playback-scoped, Enter keeps "apply" elsewhere; the
 #         physical XF86AudioPlay/Pause stays blind-safe. (Play/pause is the media KEY, NOT space; Mod4+Space = overview.)
+#     (g) DECK VERTICAL AXIS — Q1 RULED (GSI, "smart placement" breakthrough): up/down = instances of the SAME app, stacked
+#         DETERMINISTICALLY below the first. Column = app identity; every multiple opens BELOW the primary and takes focus
+#         (NOT to the right). Position = fn(app identity + instance count), never free-form history — predictable = learnable.
+#         Still a 2D grid (peeks need up/down neighbours). Sub-details (stack order + close-primary behaviour) deferred to
+#         the design doc. Q2 (restore-state owner), Q3 (derived vs editable order), Q4 (non-app surfaces) STILL OPEN.
 #   NOT DONE: KSD has NO keybinds.conf (kidulwm falls back to built-in defaults — pre-existing gap). Host ~/.config/kidulwm/
 #     keybinds.conf still has stale "spawn /usr/bin/ghostty" + "spawn ~/.local/bin/kmedia" lines (host-side cosmetic cleanup).
 #
