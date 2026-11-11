@@ -14,15 +14,17 @@
 #   DEPLOY GOTCHA (recorded): kbrain builds TWO binaries — kbrain (daemon, main.zig, cued by kushd bill.kush as /usr/local/bin/kbrain,
 #     NO app_id) and kbrain-ui (face, ui-main.zig, app_id com.kidulworks.kbrain, keybind spawns it). Do NOT deploy kbrain-ui under the
 #     name "kbrain" (clobbers the daemon). Names are distinct on disk: kbrain + kbrain-ui.
-#   NEXT CUT (C5 DECOUPLING, plan drafted): Barticus surfaced the "mother roach" again (== slide-process.md LOCKED 2026-10-14):
-#     kidulwm/kmedia/kplayd should be INDEPENDENT. VERIFIED: kplayd is ALREADY the resident daemon (kplay.sock listen/bind/accept,
-#     "kfiles borrow it over kplay.sock"); kmedia is ALREADY a client (Wall.zig 3-pill category filter = the FORBIDDEN LAYER gate CLEARED).
-#     What still lags (the intertwining): server.zig special-cases kmedia+kplay by exact app_id (mediaCardToggle 2144 /
-#     handleNewXdgToplevel 4049 / classifyKplay 4070); media.zig+media_slide.zig STILL compiled in (embedded scene tree + MediaWidget);
-#     TWO media paths both wired (Path A mediaCardToggle->kmedia client, Path B mediaSlideKey->embedded widget). EXECUTION PLAN:
-#     docs/design/c5-decoupling.md (DRAFT). GATING Q-A: is Path B (.media_player compositor slide) ever seated on a real boot? census
-#     on ksd-reset VM before ANY delete. Q-B: identify kplayd surface STRUCTURALLY (xdg-foreign child), drop app_id. Q-C: kmedia
-#     focus-or-spawn via kushd seating tag, not app_id (gated on kushd "seat kmedia" act). Q-D: media.zig deletion gate CLEARED.
+#   NEXT CUT (C5 DECOUPLING, plan drafted v2 after Barticus steer): THREE targets.
+#     (1) THE CARD IS DEAD — "NO card at all any more, only the slide". The media card became the media SLIDE (the
+#     placement). Compositor-owned card scene tree (MediaCard/MediaWidget/media_slide.zig) -> ZERO. "card" survives ONLY
+#     for overview mini-grid + dm login — never media. (2) TEST MEDIA ZERO ON KSD — test-media.mp4 (VERIFIED already absent
+#     from /mnt/ksd), Player.zig "old test player" (ALREADY deleted from kmedia/src), 12 test/probe harness binaries
+#     (bench_decode/clockprobe/displaysync/driftprobe/eofprobe/liveavoff/livetest/modeltest/playertest/posprobe/walltest/
+#     tvpacktest + KidulWM kmedia-test + ksoundtest) stay HOST-ONLY, never deployed. (3) app_id special-casing
+#     (mediaCardToggle:2144 / handleNewXdgToplevel:4049 / classifyKplay:4070 + window.zig is_kplay) -> structural. VERIFIED:
+#     kplayd already resident daemon (kplay.sock), kmedia already client (Wall.zig 3-pill = FORBIDDEN LAYER gate CLEARED).
+#     PLAN: docs/design/c5-decoupling.md (DRAFT v2). Open Qs A-F; Q-A gate = is .media_player slide ever seated on real boot?
+#     Q-E = harness binaries: REC keep-built-but-whitelisted. Q-F = leave Player.zig comment history.
 #   NOT DONE: KSD has NO keybinds.conf (kidulwm falls back to built-in defaults — pre-existing gap). Host ~/.config/kidulwm/
 #     keybinds.conf still has stale "spawn /usr/bin/ghostty" + "spawn ~/.local/bin/kmedia" lines (host-side cosmetic cleanup).
 #
