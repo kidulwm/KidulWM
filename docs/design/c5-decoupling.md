@@ -120,13 +120,25 @@ Q-A  (v1, still open) is Path B — the .media_player compositor slide — ever
 Q-B  (v1) kplayd surface identification. REC: structural (xdg-foreign child),
      drop the app_id string. No rename-lockstep ever again.
 
-Q-C  (v1) kmedia focus-or-spawn. REC: kushd seating tag (kushd decides,
-     kidulwm consumes). GATED on kushd growing a "seat kmedia" act. Until then
-     the app_id match is a tolerated bridge — but it dies WITH Target 1 (the
-     mediaCardToggle is part of the card plumbing).
+Q-C  (CONFIRMED 2026-11-11) kmedia is "just another app", seated ONLY by kushd
+     (the usher-man). Not app_id sniffing. kplayd is the SYSTEM player that
+     connects the pipes — the SAME pipes all apps access — so kmedia borrows
+     it over kplay.sock like any other app. kidulwm consumes a seating fact
+     (kushd decides, kidulwm consumes). GATED on kushd growing a "seat kmedia"
+     act (kushd seats body daemons only today). Until then the app_id match is
+     a tolerated bridge, and it dies WITH Target 1.
 
 Q-D  (v1) media.zig deletion gate — VERIFIED CLEARED (Wall.zig 3-pill filter
      ships). C5 may proceed once Q-A confirms Path B dead.
+
+Q-G  (NEW, FOLLOW-ON CUT — not part of C5) kmedia = klibrary. The media app is
+     essentially the media LIBRARY; its name change (binary `klibrary`, repo,
+     app_id com.kidulworks.kmedia → com.kidulworks.klibrary) is LOCKED as a
+     decision now, but EXECUTED as its own cut AFTER C5 — decouple kmedia into
+     a clean client first, then rename. A pure cosmetic cut with zero structural
+     risk once C5 lands. REC: do NOT fold the rename into C5; keep the cuts
+     orthogonal so C5 stays "remove the intertwining" and the rename stays
+     "change the label".
 
 Q-E  (NEW) do the test/probe harness binaries get (a) deleted from build.zig
      entirely, (b) gated behind a `-Dharness` flag, or (c) kept built but

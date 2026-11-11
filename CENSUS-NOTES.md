@@ -25,6 +25,16 @@
 #     kplayd already resident daemon (kplay.sock), kmedia already client (Wall.zig 3-pill = FORBIDDEN LAYER gate CLEARED).
 #     PLAN: docs/design/c5-decoupling.md (DRAFT v2). Open Qs A-F; Q-A gate = is .media_player slide ever seated on real boot?
 #     Q-E = harness binaries: REC keep-built-but-whitelisted. Q-F = leave Player.zig comment history.
+#   BARTICUS RULINGS (2026-11-11, gsi, folded into plan v2 + vocabulary law):
+#     (a) kmedia is "just another app", seated ONLY by kushd (the usher-man), never app_id sniffing. kplayd = the SYSTEM
+#     player connecting the pipes (kplay.sock) that ALL apps access — kmedia borrows it like any app. Q-C CONFIRMED.
+#     (b) kmedia = klibrary (LOCKED decision): the media app IS the library; binary `klibrary` + repo + app_id
+#     com.kidulworks.klibrary. Executed as its OWN cut AFTER C5 (decouple first, rename second — cosmetic, zero structural risk).
+#     (c) ART VOCABULARY LOCKED: the 2:3 fan-art picture = POSTER (art-chain.md <stem>-poster.jpg → poster.jpg → folder.jpg);
+#     the 2:3 grid cell = TILE (ui.md/Wall.zig); "fan-art" = the GENRE, never the noun. "placecard" is OVERLOADED — it means
+#     kfiles' file-detail card (KEEPS the name) + the empty wall placeholder (media-side, dies with C5 as "empty tile").
+#     NEVER "placecard" for a poster. The art-chain.md "the card is the poster is the title" line is the card-era wording
+#     that dies with C5.
 #   NOT DONE: KSD has NO keybinds.conf (kidulwm falls back to built-in defaults — pre-existing gap). Host ~/.config/kidulwm/
 #     keybinds.conf still has stale "spawn /usr/bin/ghostty" + "spawn ~/.local/bin/kmedia" lines (host-side cosmetic cleanup).
 #

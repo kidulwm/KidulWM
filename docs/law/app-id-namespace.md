@@ -37,6 +37,9 @@ than a guess. One root, one lease, forever.
   com.kidul.video-slide-host  -> com.kidulworks.video-slide-host
   com.kidul.kvis              -> com.kidulworks.kvis            (retired — docs only)
   com.kidulwm.kmedia          -> com.kidulworks.kmedia
+                               (PENDING rename to com.kidulworks.klibrary —
+                               kmedia = the library, Barticus 2026-11-11; its
+                               own cut AFTER C5, not part of this sweep)
   com.kidulwm.ktty            -> com.kidulworks.ktty
   com.kidulwm.kfiles          -> com.kidulworks.kfiles
   com.kidulwm.kbrain          -> com.kidulworks.kbrain
