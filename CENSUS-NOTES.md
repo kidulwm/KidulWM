@@ -1,5 +1,21 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — APP_ID NAMESPACE REBUILT + REDEPLOYED to /mnt/ksd (11 binaries, all clean).
+#   Rebuilt ReleaseSafe + deployed: kidulwm, kmedia, kplayd, ktty, kfiles, kbrain (daemon) + kbrain-ui (face), kweather,
+#     ksignals, kslide-template, kidul-browser. VERIFIED via strings: every binary carries com.kidulworks.*, ZERO old-namespace
+#     remnants. kidulwm+ktty deployed via cp->mv atomic. Lockstep trio (kidulwm/kmedia/kplayd) internally consistent.
+#   DEPLOY GOTCHA (recorded): kbrain builds TWO binaries — kbrain (daemon, main.zig, cued by kushd bill.kush as
+#     /usr/local/bin/kbrain, NO app_id) and kbrain-ui (face, ui-main.zig, app_id com.kidulworks.kbrain, keybind spawns it). Do NOT
+#     deploy kbrain-ui under the name "kbrain" (clobbers the daemon). Names are distinct on disk: kbrain + kbrain-ui.
+#   Barticus surfaced the BIG architectural point (== slide-process.md "mother roach" LOCKED 2026-10-14 + kplay.md): kidulwm/
+#     kmedia/kplayd should be INDEPENDENT; kplayd = "always at the ready for any app" (already the design — kplayd_main.zig L5
+#     "kfiles borrow it over kplay.sock"), WM = just a WM, kmedia = the app it was meant to be. CODE STILL LAGS (the intertwining):
+#     (1) server.zig special-cases kmedia+kplay by exact app_id (mediaCardToggle/classifyKplay) — conductor knows apps by NAME;
+#     (2) media.zig (93KB) + media_slide.zig STILL in kidulwm/src/ui/ (embedded player, bypassed not deleted — C5). Finish = C5:
+#     delete embedded player + strip app_id special-casing so kmedia/kplayd are just clients seated by kushd. THIS IS THE NEXT CUT.
+#   NOT DONE: KSD has NO keybinds.conf (kidulwm falls back to built-in defaults — pre-existing gap, config not yet baked to image).
+#     Host ~/.config/kidulwm/keybinds.conf still has stale "spawn /usr/bin/ghostty" + "spawn ~/.local/bin/kmedia" lines (host cleanup).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — APP_ID NAMESPACE FROZEN: com.kidulworks.* (law LOCKED, 9 repos swept).
 #   Law: docs/law/app-id-namespace.md (LOCKED, Barticus "gsi"). Root = com.kidulworks (reverse of kidulworks.com, the domain we
 #     OWN). REJECTED: com.ksd.* (ksd.com is a stranger's domain — would collide the moment kids side-load), com.kidul.* (drift),
