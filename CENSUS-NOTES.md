@@ -1,5 +1,26 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-12) — DOCKET #54 (2) DONE: PHASE-2 NETLINK HOTPLUG BUILT+DEPLOYED.
+#   "next" fired the top non-DONE docket (#54 KSD input). Phase-2 (the last input blocker) is now BUILT: a
+#     NETLINK_KOBJECT_UEVENT listener in the wlroots libinput backend (NEW file backend/libinput/hotplug.c) — the no-udev
+#     equivalent of udevd's monitor — so the Planck (USB, ~1.4s post-scan) and any late device now admits.
+#   DESIGN (Q2 LOCKED, input-path.draft.md): "hotplug home = netlink kobject-uevent listener INSIDE the backend" — the
+#     WLROOTS backend (owns session + event loop), NOT libinput's path-seat.c (no loop there). The docket's "in path-seat.c"
+#     was loose shorthand; corrected in DOCKETS + README.
+#   MECHANISM: socket(AF_NETLINK, SOCK_DGRAM|CLOEXEC, NETLINK_KOBJECT_UEVENT) bound nl_groups=1 (non-root, proven) BEFORE the
+#     cold-plug scan, registered on the event loop AFTER dispatch — buffered uevents replay and are DEDUPED by
+#     libinput_device_get_sysname (no double-add). On input add/remove -> libinput_path_add_device/remove_device; the
+#     four-tier ladder re-runs per device (both paths funnel through DEVICE_ADDED -> handle_device_added).
+#   BUILT+DEPLOYED: wlroots 0.20.2 rebuilt clean (-Werror), DT_NEEDED IDENTICAL to stock (strict superset, no new dep — netlink
+#     is libc socket()). Deployed /mnt/ksd/usr/lib/libwlroots-0.20.so (Phase-1 -> .pre-hotplug; .stock kept). kidulwm resolves
+#     against it in chroot (libwlroots-0.20.so + libinput.so.10). Patch REGENERATED patches/wlroots-0.20.2-libinput-path.patch
+#     (now 6 files, sha256 1d1152ea…) — `git apply --check` clean vs tag 0.20.2.
+#   SMOKE PASS (host): standalone netlink listener (scratch/ksd-netlink-smoke.c) bound non-root, fired `sudo udevadm trigger
+#     --subsystem-match=input --action=add`, received+parsed 18 input ADD uevents -> correct /dev/input/eventN devnodes.
+#   REMAINING: RE-BOOT-TEST (Barticus BIOS-swap nvme1) to confirm the Planck admits -> real typing box. Then "harden" slices:
+#     Tier-2 crypto proof (kidulKey Ed25519 per-device) + kidulwm per-device enforcement (wlr_libinput_get_device_trust exists).
+#   OUT OF SCOPE HERE: Tier-2 proof, kidulwm seatTrusted()->per-device consume, mouth-ttyS0 fallback.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — APP_ID NAMESPACE REBUILT + REDEPLOYED to /mnt/ksd (11 binaries, all clean).
 #   Law: docs/law/app-id-namespace.md (LOCKED, Barticus "gsi"). Root = com.kidulworks (reverse of kidulworks.com, the domain we
 #     OWN). REJECTED: com.ksd.* (ksd.com is a stranger's domain — would collide the moment kids side-load), com.kidul.* (drift),
