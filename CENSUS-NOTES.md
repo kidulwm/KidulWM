@@ -1,34 +1,30 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — APP_ID NAMESPACE REBUILT + REDEPLOYED to /mnt/ksd (11 binaries, all clean).
-#   Rebuilt ReleaseSafe + deployed: kidulwm, kmedia, kplayd, ktty, kfiles, kbrain (daemon) + kbrain-ui (face), kweather,
-#     ksignals, kslide-template, kidul-browser. VERIFIED via strings: every binary carries com.kidulworks.*, ZERO old-namespace
-#     remnants. kidulwm+ktty deployed via cp->mv atomic. Lockstep trio (kidulwm/kmedia/kplayd) internally consistent.
-#   DEPLOY GOTCHA (recorded): kbrain builds TWO binaries — kbrain (daemon, main.zig, cued by kushd bill.kush as
-#     /usr/local/bin/kbrain, NO app_id) and kbrain-ui (face, ui-main.zig, app_id com.kidulworks.kbrain, keybind spawns it). Do NOT
-#     deploy kbrain-ui under the name "kbrain" (clobbers the daemon). Names are distinct on disk: kbrain + kbrain-ui.
-#   Barticus surfaced the BIG architectural point (== slide-process.md "mother roach" LOCKED 2026-10-14 + kplay.md): kidulwm/
-#     kmedia/kplayd should be INDEPENDENT; kplayd = "always at the ready for any app" (already the design — kplayd_main.zig L5
-#     "kfiles borrow it over kplay.sock"), WM = just a WM, kmedia = the app it was meant to be. CODE STILL LAGS (the intertwining):
-#     (1) server.zig special-cases kmedia+kplay by exact app_id (mediaCardToggle/classifyKplay) — conductor knows apps by NAME;
-#     (2) media.zig (93KB) + media_slide.zig STILL in kidulwm/src/ui/ (embedded player, bypassed not deleted — C5). Finish = C5:
-#     delete embedded player + strip app_id special-casing so kmedia/kplayd are just clients seated by kushd. THIS IS THE NEXT CUT.
-#   NOT DONE: KSD has NO keybinds.conf (kidulwm falls back to built-in defaults — pre-existing gap, config not yet baked to image).
-#     Host ~/.config/kidulwm/keybinds.conf still has stale "spawn /usr/bin/ghostty" + "spawn ~/.local/bin/kmedia" lines (host cleanup).
-#
-# SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — APP_ID NAMESPACE FROZEN: com.kidulworks.* (law LOCKED, 9 repos swept).
 #   Law: docs/law/app-id-namespace.md (LOCKED, Barticus "gsi"). Root = com.kidulworks (reverse of kidulworks.com, the domain we
 #     OWN). REJECTED: com.ksd.* (ksd.com is a stranger's domain — would collide the moment kids side-load), com.kidul.* (drift),
 #     com.kidulwm.* (the compositor is a component, not the brand), bare "kidul-browser" (no namespace). Rename table old->new:
 #     kplay, video-slide-host, kvis(retired), kmedia, ktty, kfiles, kbrain, ksignals, kweather, slide, browser. RETIRED: khostty, tray.
 #   LOCKSTEP RULE: app_id is TWO-SIDED (app sets / compositor matches). Exact-eql matchers = ONLY kmedia + kplay (server.zig);
-#     window.zig uses SUBSTRING ("kplay"/"ghostty") which survives the rename. ktty/kfiles/kbrain/kweather/ksignals/browser/slide
-#     are NOT exact-matched -> their rename is compositor-independent. Foreign namespaces (com.mitchellh.*, com.apple.*, com.cmd.*)
-#     NEVER renamed. Source swept in 9 repos (KidulWM, ktty, kmedia, kfiles, kbrain, kweather, ksignals, kslide-template,
-#     kidul-browser) + live law/build/index docs. History (archive, HANDOFF, CENSUS history, dead tray) left old-namespace BY DESIGN.
-#   NOT DONE (next phase): REBUILD + REDEPLOY the 9 binaries. Deployed KSD is still OLD-namespace and internally CONSISTENT (no
-#     breakage yet). The lockstep cut = rebuild kidulwm + kmedia + kplayd TOGETHER; the other 6 are independent. kidulwm swap via
-#     cp->mv atomic (Text file busy). ktty already deployed this session is old-namespace (built pre-rename) — redeploy with the rest.
+#     window.zig uses SUBSTRING ("kplay"/"ghostty") which survives the rename. Foreign namespaces NEVER renamed. Source swept in 9
+#     repos (KidulWM, ktty, kmedia, kfiles, kbrain, kweather, ksignals, kslide-template, kidul-browser) + live law/build/index docs.
+#   REBUILT + REDEPLOYED (DONE): all 11 binaries rebuilt ReleaseSafe and deployed to /mnt/ksd — kidulwm, kmedia, kplayd, ktty,
+#     kfiles, kbrain (daemon) + kbrain-ui (face), kweather, ksignals, kslide-template, kidul-browser. VERIFIED via strings: every
+#     binary carries com.kidulworks.*, ZERO old-namespace remnants. kidulwm+ktty via cp->mv atomic. Lockstep trio consistent.
+#   DEPLOY GOTCHA (recorded): kbrain builds TWO binaries — kbrain (daemon, main.zig, cued by kushd bill.kush as /usr/local/bin/kbrain,
+#     NO app_id) and kbrain-ui (face, ui-main.zig, app_id com.kidulworks.kbrain, keybind spawns it). Do NOT deploy kbrain-ui under the
+#     name "kbrain" (clobbers the daemon). Names are distinct on disk: kbrain + kbrain-ui.
+#   NEXT CUT (C5 DECOUPLING, plan drafted): Barticus surfaced the "mother roach" again (== slide-process.md LOCKED 2026-10-14):
+#     kidulwm/kmedia/kplayd should be INDEPENDENT. VERIFIED: kplayd is ALREADY the resident daemon (kplay.sock listen/bind/accept,
+#     "kfiles borrow it over kplay.sock"); kmedia is ALREADY a client (Wall.zig 3-pill category filter = the FORBIDDEN LAYER gate CLEARED).
+#     What still lags (the intertwining): server.zig special-cases kmedia+kplay by exact app_id (mediaCardToggle 2144 /
+#     handleNewXdgToplevel 4049 / classifyKplay 4070); media.zig+media_slide.zig STILL compiled in (embedded scene tree + MediaWidget);
+#     TWO media paths both wired (Path A mediaCardToggle->kmedia client, Path B mediaSlideKey->embedded widget). EXECUTION PLAN:
+#     docs/design/c5-decoupling.md (DRAFT). GATING Q-A: is Path B (.media_player compositor slide) ever seated on a real boot? census
+#     on ksd-reset VM before ANY delete. Q-B: identify kplayd surface STRUCTURALLY (xdg-foreign child), drop app_id. Q-C: kmedia
+#     focus-or-spawn via kushd seating tag, not app_id (gated on kushd "seat kmedia" act). Q-D: media.zig deletion gate CLEARED.
+#   NOT DONE: KSD has NO keybinds.conf (kidulwm falls back to built-in defaults — pre-existing gap). Host ~/.config/kidulwm/
+#     keybinds.conf still has stale "spawn /usr/bin/ghostty" + "spawn ~/.local/bin/kmedia" lines (host-side cosmetic cleanup).
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — FACE WIRING: ktty + htop + wallpaper + fonts/terminfo deployed to /mnt/ksd.
 #   Remounted /mnt/ksd rw. Deployed (all verify-clean in chroot): /usr/local/bin/ktty (fresh ReleaseSafe build, app_id

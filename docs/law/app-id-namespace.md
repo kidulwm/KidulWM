@@ -75,3 +75,7 @@ nothing. The sweep touches ONLY strings we authored. Test fixtures
                     matches the store's authority.
   ksd-vocabulary-law  naming axes: app_id (WHAT) is this law's subject; the
                     owner-class seating fact (WHERE) is kushd's, untouched.
+  slide-process.md  the process boundary this app_id lockstep enforces. The
+                    kmedia/kplay exact-eql matchers named below are the LAST
+                    place kidulwm reaches inside those apps BY NAME — their
+                    removal is C5, planned at docs/design/c5-decoupling.md.
