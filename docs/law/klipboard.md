@@ -67,7 +67,7 @@ it, or that slot is an unpermissioned hole.
    Our apps do NOT use raw wl_data_device for copy/paste — they speak klip.sock.
    No bypass = no unpermissioned hole.
 2. APP-SCOPED, DOMAIN-TAGGED. Identity is a TUPLE: (app_id, owner-class).
-   app_id says WHAT the app is (com.kidulwm.ktty); owner-class says WHERE it
+   app_id says WHAT the app is (com.kidulworks.ktty); owner-class says WHERE it
    runs and how far we trust it (host-owned / cell-owned / brig-owned — the
    theatre.md owner classes). A brig-owned ktty is a DIFFERENT principal from
    a host-owned ktty, with its own (empty) grant set. Trusting app_id alone is

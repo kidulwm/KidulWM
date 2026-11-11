@@ -503,7 +503,7 @@ pub const Server = struct {
     /// lazily on first fullscreen enter; null until then.
     internal_client: ?*@import("ipc/internal_client.zig").InternalClient = null,
 
-    /// CARD 2b slice 3: kplayd's video toplevel (app_id "com.kidul.kplay"),
+    /// CARD 2b slice 3: kplayd's video toplevel (app_id "com.kidulworks.kplay"),
     /// tracked server-side OUTSIDE the deck/windows list — no deck slide,
     /// no chrome, no focus. Its scene tree is pinned edge-to-edge over the
     /// fullscreen output (placeKplayWindow). Null while kplayd has no
@@ -2141,7 +2141,7 @@ pub const Server = struct {
         const deck = self.spawnDeck();
         for (deck.slides.items, 0..) |slide, idx| {
             if (self.windowById(slide.window_id)) |window| {
-                if (std.mem.eql(u8, window.app_id.asSlice(), "com.kidulwm.kmedia")) {
+                if (std.mem.eql(u8, window.app_id.asSlice(), "com.kidulworks.kmedia")) {
                     deck.focusWindowByIndex(idx);
                     self.clearFocus();
                     self.requestLayout();
@@ -2307,7 +2307,7 @@ pub const Server = struct {
             std.log.err("KidulWM: [2b-smoke] internal client FAILED: {s}", .{@errorName(err)});
             return;
         };
-        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kplay host (smoke)") catch |err| {
+        const host = ic_mod.HostSurface.create(ic, "com.kidulworks.video-slide-host", "kplay host (smoke)") catch |err| {
             std.log.err("KidulWM: [2b-smoke] host surface export FAILED: {s}", .{@errorName(err)});
             return;
         };
@@ -2526,7 +2526,7 @@ pub const Server = struct {
             std.log.warn("KidulWM: video host: internal client unavailable ({s})", .{@errorName(err)});
             return;
         };
-        const host = ic_mod.HostSurface.create(ic, "com.kidul.video-slide-host", "kplay host") catch |err| {
+        const host = ic_mod.HostSurface.create(ic, "com.kidulworks.video-slide-host", "kplay host") catch |err| {
             std.log.warn("KidulWM: video host: surface/export failed ({s})", .{@errorName(err)});
             return;
         };
@@ -4040,13 +4040,13 @@ pub const Server = struct {
             std.log.err("failed to create window for toplevel: {}", .{err});
             return;
         };
-        // CARD 2b slice 3: kplayd's video surface (app_id "com.kidul.kplay")
+        // CARD 2b slice 3: kplayd's video surface (app_id "com.kidulworks.kplay")
         // is NOT a normal slide — no deck entry, no chrome, no focus. It is
         // tracked server-side and pinned over the video slide's rect every
         // layout (placeKplayWindow). It stays a toplevel child of the video
         // slide's host surface (xdg-foreign), never a wl_subsurface.
         if (toplevel.app_id) |app_id| {
-            if (std.mem.eql(u8, std.mem.sliceTo(app_id, 0), "com.kidul.kplay")) {
+            if (std.mem.eql(u8, std.mem.sliceTo(app_id, 0), "com.kidulworks.kplay")) {
                 window.is_kplay = true;
                 self.kplay_window = window;
                 std.log.info("KidulWM: kplayd video toplevel tracked id={d} (no deck/chrome/focus)", .{window.id});
@@ -4056,7 +4056,7 @@ pub const Server = struct {
         self.windows.append(window);
     }
 
-    /// kplayd sets its app_id ("com.kidul.kplay") AFTER xdg_toplevel creation
+    /// kplayd sets its app_id ("com.kidulworks.kplay") AFTER xdg_toplevel creation
     /// (get_toplevel precedes set_app_id by protocol order), so
     /// handleNewXdgToplevel — which reads toplevel.app_id at creation — always
     /// sees null and appends kplayd's video surface to the normal window list.
@@ -4067,7 +4067,7 @@ pub const Server = struct {
     /// handleNewXdgToplevel path) is already is_kplay and is skipped.
     pub fn classifyKplay(self: *Server, window: *Window) void {
         if (window.is_kplay) return;
-        if (!std.mem.eql(u8, window.app_id.asSlice(), "com.kidul.kplay")) return;
+        if (!std.mem.eql(u8, window.app_id.asSlice(), "com.kidulworks.kplay")) return;
         window.is_kplay = true;
         self.kplay_window = window;
         if (window.link.prev != null) window.link.remove();

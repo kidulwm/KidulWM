@@ -55,7 +55,7 @@ pub const Window = struct {
     id: u32,
     link: wl.list.Link,
 
-    /// CARD 2b slice 3: kplayd's video toplevel (app_id "com.kidul.kplay").
+    /// CARD 2b slice 3: kplayd's video toplevel (app_id "com.kidulworks.kplay").
     /// Lives outside the deck/windows list: no slide, no chrome, no focus.
     /// The compositor pins its scene tree over the video slide's rect every
     /// layout (Server.placeKplayWindow).

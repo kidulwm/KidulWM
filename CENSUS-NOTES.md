@@ -1,5 +1,32 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — APP_ID NAMESPACE FROZEN: com.kidulworks.* (law LOCKED, 9 repos swept).
+#   Law: docs/law/app-id-namespace.md (LOCKED, Barticus "gsi"). Root = com.kidulworks (reverse of kidulworks.com, the domain we
+#     OWN). REJECTED: com.ksd.* (ksd.com is a stranger's domain — would collide the moment kids side-load), com.kidul.* (drift),
+#     com.kidulwm.* (the compositor is a component, not the brand), bare "kidul-browser" (no namespace). Rename table old->new:
+#     kplay, video-slide-host, kvis(retired), kmedia, ktty, kfiles, kbrain, ksignals, kweather, slide, browser. RETIRED: khostty, tray.
+#   LOCKSTEP RULE: app_id is TWO-SIDED (app sets / compositor matches). Exact-eql matchers = ONLY kmedia + kplay (server.zig);
+#     window.zig uses SUBSTRING ("kplay"/"ghostty") which survives the rename. ktty/kfiles/kbrain/kweather/ksignals/browser/slide
+#     are NOT exact-matched -> their rename is compositor-independent. Foreign namespaces (com.mitchellh.*, com.apple.*, com.cmd.*)
+#     NEVER renamed. Source swept in 9 repos (KidulWM, ktty, kmedia, kfiles, kbrain, kweather, ksignals, kslide-template,
+#     kidul-browser) + live law/build/index docs. History (archive, HANDOFF, CENSUS history, dead tray) left old-namespace BY DESIGN.
+#   NOT DONE (next phase): REBUILD + REDEPLOY the 9 binaries. Deployed KSD is still OLD-namespace and internally CONSISTENT (no
+#     breakage yet). The lockstep cut = rebuild kidulwm + kmedia + kplayd TOGETHER; the other 6 are independent. kidulwm swap via
+#     cp->mv atomic (Text file busy). ktty already deployed this session is old-namespace (built pre-rename) — redeploy with the rest.
+#
+# SESSION WRAP-UP (bobdotrix 2026-11-11, evening) — FACE WIRING: ktty + htop + wallpaper + fonts/terminfo deployed to /mnt/ksd.
+#   Remounted /mnt/ksd rw. Deployed (all verify-clean in chroot): /usr/local/bin/ktty (fresh ReleaseSafe build, app_id
+#     com.kidulwm.ktty, kidul+cairo, links wayland-client/cairo/xkbcommon/fontconfig/freetype — NO gtk/adwaita), the terminal
+#     launcher /usr/local/bin/launch-kidul-terminal.sh FIXED to `exec /usr/local/bin/ktty` (was exec /usr/bin/ghostty = dead
+#     path; script + tree both patched). htop + libcap.so.2 + terminfo (xterm-ghostty/xterm-256color/ghostty). Wallpaper
+#     theWallpaper.png -> /home/kidul/Pictures/Wallpapers/ (kidulwm hardcodes that path). fontconfig config (/etc/fonts) +
+#     monospace fonts (JetBrainsMono/DejaVuMono/LiberationMono, 40 files) -> /usr/share/fonts (KSD had ZERO fonts; ktty/kfiles
+#     would render blank text without them). ktty spawns bash (KSD passwd kidul=/usr/bin/bash, present) — no fish on KSD.
+#   KNOWN FOLLOW-ON (cosmetic, NOT a blocker): kidulwm window.zig computePeekLabel matches "ghostty" not "ktty" -> ktty window
+#     peek-label falls through to cleaned "ktty" (fine). Add "ktty" nickname + ft_commit counter rename when kidulwm next rebuilt.
+#   REMAINING (unchanged): (2) Phase-2 hotplug (netlink kobject-uevent) so the PLANCK admits -> real typing box. Trackpad
+#     (pointers:0) = Fn+F2 EC toggle, NOT software. RE-BOOT-TEST due (Barticus).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-11) — DOCKET #54 (0)+(1) DONE. Input path UNBLOCKED past the keymap wall.
 #   (0) LIBINPUT FORK LANDED (signed B&B): commit bacf8d9 (patch+docs+README+gitignore for patches/libinput-src/ — the
 #       upstream build checkout is IGNORED like wlroots-src/, NOT committed) + a742cdd (census handoff). Tree clean.
