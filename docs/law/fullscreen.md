@@ -72,6 +72,16 @@ home; fullscreen is a transient mode the card enters and leaves.
    Fullscreen makes this buffer not exist; the windowed path must not leak
    it either.
 
+9. ENTER = PLAY/PAUSE DURING PLAYBACK (LOCKED 2026-11-11). While media is
+   actively playing (fullscreen playback mode), the remote's centre button
+   (Return/Enter) toggles play/pause — a playback-scoped override. The centre
+   button is Granny's "set the hand" button (path of least resistance): when
+   the phone rings she hits it to pause-and-silence, and it's the first thing
+   her finger finds. Scope is playback-ONLY: Enter keeps its "apply" role
+   everywhere else (INPUT LAW), so the override never collides with
+   navigation/apply. The physical media key (XF86AudioPlay/Pause) is unchanged
+   and remains blind-safe (toggles while the screen stays off).
+
 ## What gets deleted
 
 - "video rides the deck" — kplay.md LAW 4's ride-along for the fullscreen

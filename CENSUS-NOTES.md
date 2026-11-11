@@ -41,6 +41,20 @@
 #     kfiles' file-detail card (KEEPS the name) + the empty wall placeholder (media-side, dies with C5 as "empty tile").
 #     NEVER "placecard" for a poster. The art-chain.md "the card is the poster is the title" line is the card-era wording
 #     that dies with C5.
+#   BARTICUS RULINGS (2026-11-11, SECOND BATCH, gsi):
+#     (d) PEEK RETIREMENT + GLOBAL PILL BAR (both parked as docket #56, DEFERRED — huge change, "needs real thought").
+#         (d1) peeks: widget-peeks (logo/clock/network/weather/gauges) LEAVE TV+PC; widgets grow 3-4x and live on the
+#         empty-slides (landing + ends of rows/columns); peeks survive ONLY for games (steam-details) + server (glass case).
+#         peek-as-LAYOUT (the 3-column deck neighbour-sliver) is a DIFFERENT thing and stays. (d2) global pill bar: the
+#         deck's left/right BECOMES left/right on a global pill bar (per-app "depth of last entry" per session) — deck
+#         becomes a projection of the bar, deleting its own ordering logic. Open Q1 vertical (up/down = same-app rows?
+#         browser/TTY only; 2D grid not bolt-on), Q2 restore-state owner, Q3 derived vs editable order, Q4 non-app
+#         surfaces (dialogs/dm/fullscreen). Deck-follows-bar = docs/design/ when un-parked.
+#     (e) NOTIFICATIONS = TOP MARQUEE, not a peek (docs/law/notifications.md LOCKED). Full-width, text-first, every word
+#         legible from the lounge; CFC-pending is the catch-up not the default; chrome law stands (retreats + no input steal).
+#     (f) ENTER = PLAY/PAUSE DURING PLAYBACK (fullscreen.md ruling 9 LOCKED). Remote centre button toggles play/pause ONLY
+#         while media is playing — Granny's "set the hand" button; playback-scoped, Enter keeps "apply" elsewhere; the
+#         physical XF86AudioPlay/Pause stays blind-safe. (Play/pause is the media KEY, NOT space; Mod4+Space = overview.)
 #   NOT DONE: KSD has NO keybinds.conf (kidulwm falls back to built-in defaults — pre-existing gap). Host ~/.config/kidulwm/
 #     keybinds.conf still has stale "spawn /usr/bin/ghostty" + "spawn ~/.local/bin/kmedia" lines (host-side cosmetic cleanup).
 #
