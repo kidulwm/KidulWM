@@ -10,7 +10,7 @@ retrofit.
 Design + rationale: ../docs/design/input-path.draft.md
 Law (admission ladder): ../docs/law/input-trust.md
 
-## The patch — four files
+## The patch — six files
 
 `wlroots-0.20.2-libinput-path.patch` (git diff against tag 0.20.2):
 
@@ -19,22 +19,35 @@ Law (admission ladder): ../docs/law/input-trust.md
     -> libinput_path_create_context + glob("/dev/input/event*") +
     libinput_path_add_device() per path. open_restricted still routes fds
     through wlr_session_open_file (seatd) — no change to kboot devRules /
-    seatd minting / groups.
+    seatd minting / groups. Also wires ksd_hotplug_init/register (below).
 
   backend/libinput/events.c
     handle_device_added(): classify each device into the four-tier ladder
     BEFORE init_device_keyboard/pointer (see below), store it on the device,
     log "[input-trust] <name> [vid:pid] tier=N <tier>".
 
+  backend/libinput/hotplug.c  (NEW — Phase-2, 2026-11-12)
+    NETLINK_KOBJECT_UEVENT listener: the no-udev equivalent of udevd's
+    monitor. Binds the socket BEFORE the cold-plug scan (so no late device is
+    missed; buffered uevents replay after the scan), then on input add/remove
+    drives libinput_path_add_device / libinput_path_remove_device, deduping by
+    sysname. The four-tier ladder re-runs per device because both paths funnel
+    through DEVICE_ADDED -> handle_device_added.
+
+  backend/libinput/meson.build
+    adds hotplug.c to the backend sources.
+
   include/backend/libinput.h
-    struct wlr_libinput_input_device gains `enum wlr_libinput_trust trust`.
+    struct wlr_libinput_input_device gains `enum wlr_libinput_trust trust`;
+    struct wlr_libinput_backend gains the hotplug fd + event source + the
+    ksd_hotplug_{init,register,finish} decls.
 
   include/wlr/backend/libinput.h  (public unstable API)
     enum wlr_libinput_trust + wlr_libinput_get_device_trust() — the read-point
     the compositor uses at keybind dispatch (the old global
     /run/kushd/input-trust verdict is superseded by per-device tier).
 
-sha256: aac16e3d5b026331edbc58ed854c10d307bee69da9734006ad55cae4e3849520
+sha256: 1d1152eab6166bf57b4fc0f62f4da22783802b5ab78610f49657f382c1b1f544
 
 ## The four-tier classification (events.c, in this build)
 
@@ -92,12 +105,14 @@ sha256: aac16e3d5b026331edbc58ed854c10d307bee69da9734006ad55cae4e3849520
   - Tier 2 crypto proof: per-device kidulKey Ed25519 challenge wired into
     events.c (the remote). The kidulkey-gate one-shot is the prover; today no
     device lands in TIER 2 because no per-device proof identity exists.
-  - Netlink kobject-uevent hotplug INSIDE the backend: libinput_path_add_device
-    / libinput_path_remove_device on input add/remove (the cold-plug
-    enumeration already handles the boot-time devices).
   - kidulwm enforcement: switch seatTrusted() from the global verdict to
     per-device tier via wlr_libinput_get_device_trust() (the getter exists;
     the compositor-side consume is the follow-on).
+
+DONE 2026-11-12 (Phase-2): the netlink kobject-uevent hotplug listener
+(hotplug.c above) — libinput_path_add_device / libinput_path_remove_device on
+input add/remove, cold-plug enumeration handles the boot-time devices, the
+listener handles everything after.
 
 ## libinput 1.31.3 rebuild — the path backend's own udev dependency (2026-11-10)
 

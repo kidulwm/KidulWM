@@ -1,5 +1,5 @@
 diff --git a/backend/libinput/backend.c b/backend/libinput/backend.c
-index 121731b..477f188 100644
+index 121731b..5c81fe2 100644
 --- a/backend/libinput/backend.c
 +++ b/backend/libinput/backend.c
 @@ -1,4 +1,5 @@
@@ -8,7 +8,7 @@ index 121731b..477f188 100644
  #include <libinput.h>
  #include <stdlib.h>
  #include <stdio.h>
-@@ -87,17 +88,28 @@ static bool backend_start(struct wlr_backend *wlr_backend) {
+@@ -87,17 +88,33 @@ static bool backend_start(struct wlr_backend *wlr_backend) {
  		get_libinput_backend_from_backend(wlr_backend);
  	wlr_log(WLR_DEBUG, "Starting libinput backend");
  
@@ -27,6 +27,11 @@ index 121731b..477f188 100644
 -			backend->session->seat) != 0) {
 -		wlr_log(WLR_ERROR, "Failed to assign libinput seat");
 -		return false;
++	// KSD Phase-2 hotplug: bind the netlink kobject-uevent socket BEFORE the
++	// cold-plug scan, so a device that enumerates during enumeration is not
++	// missed (its uevent buffers until ksd_hotplug_register below).
++	ksd_hotplug_init(backend);
++
 +	// Enumerate input device nodes directly. libinput_path_add_device()
 +	// opens each path via open_restricted (the seat session) and queues an
 +	// ADD event that handle_libinput_readable() dispatches below.
@@ -43,7 +48,36 @@ index 121731b..477f188 100644
  	}
  
  	// TODO: More sophisticated logging
-@@ -230,6 +242,36 @@ struct libinput_device *wlr_libinput_get_device_handle(
+@@ -122,6 +139,12 @@ static bool backend_start(struct wlr_backend *wlr_backend) {
+ 		wlr_log(WLR_ERROR, "Failed to create input event on event loop");
+ 		return false;
+ 	}
++
++	// KSD Phase-2 hotplug: now register the netlink fd. Any uevents buffered
++	// during the cold-plug scan above are delivered and deduped against the
++	// already-admitted set (the scan raced the listener, not the reverse).
++	ksd_hotplug_register(backend);
++
+ 	wlr_log(WLR_DEBUG, "libinput successfully initialized");
+ 	return true;
+ }
+@@ -146,6 +169,7 @@ static void backend_destroy(struct wlr_backend *wlr_backend) {
+ 	if (backend->input_event) {
+ 		wl_event_source_remove(backend->input_event);
+ 	}
++	ksd_hotplug_finish(backend);
+ 	libinput_unref(backend->libinput_context);
+ 	free(backend);
+ }
+@@ -192,6 +216,7 @@ struct wlr_backend *wlr_libinput_backend_create(struct wlr_session *session) {
+ 	wl_list_init(&backend->devices);
+ 
+ 	backend->session = session;
++	backend->ksd_uevent_fd = -1;
+ 
+ 	backend->session_signal.notify = session_signal;
+ 	wl_signal_add(&session->events.active, &backend->session_signal);
+@@ -230,6 +255,36 @@ struct libinput_device *wlr_libinput_get_device_handle(
  	return dev->handle;
  }
  
@@ -210,11 +244,246 @@ index 9be5def..bc256ce 100644
  	dev->handle = libinput_dev;
  	libinput_device_ref(libinput_dev);
  	libinput_device_set_user_data(libinput_dev, dev);
+diff --git a/backend/libinput/hotplug.c b/backend/libinput/hotplug.c
+new file mode 100644
+index 0000000..89e2f97
+--- /dev/null
++++ b/backend/libinput/hotplug.c
+@@ -0,0 +1,206 @@
++#include <assert.h>
++#include <ctype.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <libinput.h>
++#include <limits.h>
++#include <linux/netlink.h>
++#include <stdio.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <wlr/backend/session.h>
++#include <wlr/util/log.h>
++#include "backend/libinput.h"
++
++/* KSD Phase-2 hotplug: NETLINK_KOBJECT_UEVENT listener (input-path.draft.md).
++ *
++ * The path-based libinput backend (no udev) cold-plugs the boot-time devices
++ * but has no monitor for devices that enumerate LATER — the Planck re-plug, a
++ * remote arriving after boot. This listener is the no-udev equivalent of
++ * udevd's monitor: it consumes the kernel's device add/remove broadcast and
++ * drives libinput_path_add_device / libinput_path_remove_device. The
++ * four-tier admission ladder (events.c) re-runs per device because both
++ * cold-plug and hotplug funnel through libinput's DEVICE_ADDED event ->
++ * handle_device_added.
++ *
++ * "netlink" here is NETLINK_KOBJECT_UEVENT (the kernel's device-hotplug
++ * channel), NOT the network stack. kushd already runs the same listener for
++ * the kidulKey gate; this one watches the input subsystem specifically.
++ */
++
++static bool ksd_uevent_devnode(const char *devpath,
++		char *devnode, size_t devnode_len) {
++	/* Input event devnodes live at .../input/inputN/eventN and surface as
++	 * /dev/input/eventN. Match a basename of "event"+digits so we never touch
++	 * the legacy mice/mouseN/jsN nodes libinput ignores anyway. */
++	const char *base = strrchr(devpath, '/');
++	if (base == NULL) {
++		return false;
++	}
++	base++;
++	if (strncmp(base, "event", 5) != 0) {
++		return false;
++	}
++	const char *p = base + 5;
++	if (*p == '\0') {
++		return false;
++	}
++	for (; *p != '\0'; p++) {
++		if (!isdigit((unsigned char)*p)) {
++			return false;
++		}
++	}
++
++	int n = snprintf(devnode, devnode_len, "/dev/input/%s", base);
++	return n > 0 && (size_t)n < devnode_len;
++}
++
++static struct wlr_libinput_input_device *ksd_find_device_by_devnode(
++		struct wlr_libinput_backend *backend, const char *devnode) {
++	/* devnode is "/dev/input/eventN"; libinput_device_get_sysname() is
++	 * "eventN". Match the basename (sysname) — no udev needed. */
++	const char *base = strrchr(devnode, '/');
++	if (base == NULL) {
++		return NULL;
++	}
++	base++;
++	struct wlr_libinput_input_device *dev;
++	wl_list_for_each(dev, &backend->devices, link) {
++		const char *sysname = libinput_device_get_sysname(dev->handle);
++		if (sysname != NULL && strcmp(sysname, base) == 0) {
++			return dev;
++		}
++	}
++	return NULL;
++}
++
++static void ksd_handle_uevent(struct wlr_libinput_backend *backend,
++		const char *buf, size_t len) {
++	/* A SOCK_DGRAM netlink uevent is one message: a header string
++	 * "action@devpath" followed by KEY=VALUE strings, each NUL-terminated,
++	 * closed by an empty string. Only the header is needed: the devpath's
++	 * basename names the /dev/input/eventN node, which is stable across both
++	 * add and remove (remove carries no SUBSYSTEM/DEVNAME env). */
++	const char *at = memchr(buf, '@', len);
++	if (at == NULL) {
++		return;
++	}
++
++	bool is_add = len >= 4 && strncmp(buf, "add@", 4) == 0;
++	bool is_remove = len >= 7 && strncmp(buf, "remove@", 7) == 0;
++	if (!is_add && !is_remove) {
++		return;
++	}
++
++	const char *devpath = at + 1;
++	char devnode[PATH_MAX];
++	if (!ksd_uevent_devnode(devpath, devnode, sizeof(devnode))) {
++		return;
++	}
++
++	if (is_add) {
++		if (ksd_find_device_by_devnode(backend, devnode) != NULL) {
++			/* A cold-plug/enumeration race already admitted it. */
++			wlr_log(WLR_DEBUG, "[input-hotplug] %s already admitted, skip",
++				devnode);
++			return;
++		}
++		wlr_log(WLR_INFO, "[input-hotplug] add %s", devnode);
++		if (libinput_path_add_device(backend->libinput_context,
++				devnode) == NULL) {
++			wlr_log(WLR_ERROR, "[input-hotplug] failed to add %s", devnode);
++		}
++	} else {
++		struct wlr_libinput_input_device *dev =
++			ksd_find_device_by_devnode(backend, devnode);
++		if (dev == NULL) {
++			wlr_log(WLR_DEBUG, "[input-hotplug] remove %s (not tracked)",
++				devnode);
++			return;
++		}
++		wlr_log(WLR_INFO, "[input-hotplug] remove %s", devnode);
++		libinput_path_remove_device(dev->handle);
++	}
++}
++
++static int handle_ksd_uevent(int fd, uint32_t mask, void *data) {
++	(void)mask;
++	struct wlr_libinput_backend *backend = data;
++	char buf[8192];
++
++	/* Drain the queue: the socket is non-blocking, so loop until EAGAIN. A
++	 * cold-plug replay can deliver a burst of buffered uevents here. */
++	while (true) {
++		ssize_t len = recv(fd, buf, sizeof(buf) - 1, 0);
++		if (len < 0) {
++			/* EAGAIN (== EWOULDBLOCK on Linux): queue drained. */
++			if (errno == EAGAIN) {
++				break;
++			}
++			wlr_log_errno(WLR_ERROR, "[input-hotplug] recv failed");
++			break;
++		}
++		if (len == 0) {
++			break;
++		}
++		buf[len] = '\0';
++		ksd_handle_uevent(backend, buf, (size_t)len);
++	}
++	return 0;
++}
++
++int ksd_hotplug_init(struct wlr_libinput_backend *backend) {
++	/* Bind BEFORE the cold-plug scan so no add/remove is missed: uevents
++	 * arriving during enumeration sit in the socket buffer until the fd is
++	 * registered on the loop (ksd_hotplug_register, after dispatch). */
++	int fd = socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC,
++			NETLINK_KOBJECT_UEVENT);
++	if (fd < 0) {
++		wlr_log_errno(WLR_ERROR, "[input-hotplug] netlink socket failed");
++		return -1;
++	}
++
++	struct sockaddr_nl snl = {
++		.nl_family = AF_NETLINK,
++		/* multicast group 0: kernel kobject uevents (same as udevd's
++		 * monitor and kushd's kidulKey gate). */
++		.nl_groups = 1,
++	};
++	if (bind(fd, (struct sockaddr *)&snl, sizeof(snl)) < 0) {
++		wlr_log_errno(WLR_ERROR, "[input-hotplug] netlink bind failed");
++		close(fd);
++		return -1;
++	}
++
++	int flags = fcntl(fd, F_GETFL, 0);
++	if (flags >= 0) {
++		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
++	}
++
++	backend->ksd_uevent_fd = fd;
++	return 0;
++}
++
++void ksd_hotplug_register(struct wlr_libinput_backend *backend) {
++	if (backend->ksd_uevent_fd < 0) {
++		return;
++	}
++	backend->ksd_uevent_event = wl_event_loop_add_fd(
++		backend->session->event_loop, backend->ksd_uevent_fd,
++		WL_EVENT_READABLE, handle_ksd_uevent, backend);
++	if (backend->ksd_uevent_event == NULL) {
++		wlr_log(WLR_ERROR, "[input-hotplug] failed to register netlink source");
++	}
++}
++
++void ksd_hotplug_finish(struct wlr_libinput_backend *backend) {
++	if (backend->ksd_uevent_event != NULL) {
++		wl_event_source_remove(backend->ksd_uevent_event);
++		backend->ksd_uevent_event = NULL;
++	}
++	if (backend->ksd_uevent_fd >= 0) {
++		close(backend->ksd_uevent_fd);
++		backend->ksd_uevent_fd = -1;
++	}
++}
+diff --git a/backend/libinput/meson.build b/backend/libinput/meson.build
+index 091b0e0..414a55b 100644
+--- a/backend/libinput/meson.build
++++ b/backend/libinput/meson.build
+@@ -17,6 +17,7 @@ endif
+ wlr_files += files(
+ 	'backend.c',
+ 	'events.c',
++	'hotplug.c',
+ 	'keyboard.c',
+ 	'pointer.c',
+ 	'switch.c',
 diff --git a/include/backend/libinput.h b/include/backend/libinput.h
-index e712388..085ff07 100644
+index e712388..25e6e09 100644
 --- a/include/backend/libinput.h
 +++ b/include/backend/libinput.h
-@@ -28,6 +28,7 @@ struct wlr_libinput_backend {
+@@ -20,6 +20,10 @@ struct wlr_libinput_backend {
+ 	struct libinput *libinput_context;
+ 	struct wl_event_source *input_event;
+ 
++	/* KSD Phase-2 hotplug: NETLINK_KOBJECT_UEVENT listener (no-udev monitor). */
++	int ksd_uevent_fd;
++	struct wl_event_source *ksd_uevent_event;
++
+ 	struct wl_listener session_destroy;
+ 	struct wl_listener session_signal;
+ 
+@@ -28,6 +32,7 @@ struct wlr_libinput_backend {
  
  struct wlr_libinput_input_device {
  	struct libinput_device *handle;
@@ -222,6 +491,17 @@ index e712388..085ff07 100644
  
  	struct wlr_keyboard keyboard;
  	struct wlr_pointer pointer;
+@@ -48,6 +53,10 @@ void handle_libinput_event(struct wlr_libinput_backend *state,
+ void destroy_libinput_input_device(struct wlr_libinput_input_device *dev);
+ const char *get_libinput_device_name(struct libinput_device *device);
+ 
++int ksd_hotplug_init(struct wlr_libinput_backend *backend);
++void ksd_hotplug_register(struct wlr_libinput_backend *backend);
++void ksd_hotplug_finish(struct wlr_libinput_backend *backend);
++
+ extern const struct wlr_keyboard_impl libinput_keyboard_impl;
+ extern const struct wlr_pointer_impl libinput_pointer_impl;
+ extern const struct wlr_switch_impl libinput_switch_impl;
 diff --git a/include/wlr/backend/libinput.h b/include/wlr/backend/libinput.h
 index 2a4e199..354f75a 100644
 --- a/include/wlr/backend/libinput.h

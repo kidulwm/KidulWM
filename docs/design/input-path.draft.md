@@ -166,6 +166,17 @@ pre-existing-device gap (a listener sees only CHANGES, never the boot-time
 adds) is already solved by the cold-plug enumeration — the two halves
 complement.
 
+BUILT 2026-11-12 (Phase-2): backend/libinput/hotplug.c — a
+NETLINK_KOBJECT_UEVENT listener (SOCK_DGRAM, nl_groups=1, non-root) bound
+BEFORE the cold-plug scan, registered on the event loop after dispatch, so a
+device that enumerates during the scan is neither missed nor double-added
+(handler dedupes by libinput_device_get_sysname). On input add/remove it calls
+libinput_path_add_device / libinput_path_remove_device; the four-tier ladder
+re-runs because both paths funnel through DEVICE_ADDED -> handle_device_added.
+Deployed /mnt/ksd (libwlroots-0.20.so, DT_NEEDED identical to stock); netlink
+smoke PASS (18 input uevents received + parsed, non-root). Reboot-test = the
+proof that the Planck admits.
+
 ## Vendoring (RESOLVED: patch + rebuild)
 
 wlroots is a pacman binary (wlroots0.20 0.20.2-1.1). "Patch backend.c" means we
@@ -185,6 +196,9 @@ linkSystemLibrary("wlroots-0.20").
 
   PHASE 2 (harden): netlink hotplug in the backend + Tier 2 crypto proof wired
   to the kidulKey gate.
+
+  PHASE 2.5 (netlink hotplug) BUILT 2026-11-12 (backend/libinput/hotplug.c) —
+  see §Hotplug. Tier 2 crypto proof is the remaining Phase-2 half.
 
   NOTE — there is no clean interim crutch for a reboot test. WLR_LIBINPUT_NO_DEVICES=1
   seats with ZERO input forever (no udev monitor to ever add a keyboard); the
