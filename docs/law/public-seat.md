@@ -20,7 +20,7 @@ standard, boring, least-surprising shape).
 
 - Media does NOT live on the immutable root. The public media tree is the
   public user's home: /home/public/Media/{Movies,TV,Music}.
-- Public roster (for now): browser -> media player -> ktty. ktty is TEMPORARY
+- Public roster (for now): browser -> library -> ktty. ktty is TEMPORARY
   on the public seat; it pulls into the admin account once that account lands.
 
 ## The identity tiers
