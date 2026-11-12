@@ -1,5 +1,20 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — PUBLIC SEAT LAW LOCKED + BOOT-QUIET DEPLOYED.
+#   PUBLIC SEAT LAW (docs/law/public-seat.md, commit 5baf290, LOCKED): TV boots into a dedicated 'public' nopasswd
+#     account (zero supp perms), NOT an anonymous profile (maintainability). Media does NOT live on the immutable root —
+#     it lives in /home/public/Media/{Movies,TV,Music} (REVERSES the FLAC-at-/media/Music placement). Public roster for
+#     now = browser -> media player -> ktty (ktty TEMPORARY, pulls to admin acct later). Identity tiers: BOSS/ADMIN
+#     (kidulKey OWNER, grants footprint), WALK-UP (own HD+key, no approval, ZEROIZED on removal), FAMILY (Boss-granted,
+#     expandable). Extends profiles.md + kidulkey.md ("presence free, footprint owned"). globalPillsBar + admin-user-
+#     settings = TBD / deferred.
+#   BOOT-QUIET DEPLOYED: limine.conf cmdline += "quiet loglevel=0" (backup limine.conf.bak-quiet). The verbose text was
+#     the KERNEL printk (kboot is screen-silent — logs to files — and already drains /dev/kmsg -> /var/log/kernel.log,
+#     so silencing the console loses NOTHING). Fade Predator->KSD (kidulwm fade-in-from-black) = NEXT slice, not done.
+#   NEXT (not started): implement 'public' user + /home/public/Media, move FLAC there, wire kmedia music root to
+#     /home/public/Media/Music (scanMusic is dead code; video roots still point at wrong CachyOS /mnt/sda_backup path).
+#   sda1 zero-copy server work: PARKED per Barticus ("NOT NOW").
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — TTY-OWNERSHIP CUT + NETWORK IDENTITY + PII SCRUB.
 #   PTMX/PTY HARDENING (the ktty insta-crash root-caused): devtmpfs makes /dev/ptmx 0600 root:root; no udev -> stays 0600 ->
 #     the seat's openpty() EACCES -> ktty dies OpenptyFailed ~2 frames after map. Fix = THREE coordinated legs, all deployed:
