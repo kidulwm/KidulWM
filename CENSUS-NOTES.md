@@ -10,9 +10,14 @@
 #     settings = TBD / deferred.
 #   BOOT-QUIET DEPLOYED: limine.conf cmdline += "quiet loglevel=0" (backup limine.conf.bak-quiet). The verbose text was
 #     the KERNEL printk (kboot is screen-silent — logs to files — and already drains /dev/kmsg -> /var/log/kernel.log,
-#     so silencing the console loses NOTHING). Fade Predator->KSD (kidulwm fade-in-from-black) = NEXT slice, not done.
-#   NEXT (not started): implement 'public' user + /home/public/Media, move FLAC there, wire kmedia music root to
-#     /home/public/Media/Music (scanMusic is dead code; video roots still point at wrong CachyOS /mnt/sda_backup path).
+#     so silencing the console loses NOTHING). Fade Predator->KSD already exists (kidulwm fades in from black) — done.
+#   USERS CUT (nvme0n1p2 test bed): 'public' uid1001 (zero supp groups) + owner uid1002 w/ random-hash login
+#     'bee62e237cdd37a455eeafca' GECOS 'Owner'. /home/public/Media/{Movies,TV,Music} created; FLAC moved there (now
+#     1001-owned); old /media removed. seed-users.sh committed+pushed kboot e9dfe24 (idempotent, fresh random hash per install).
+#     FINDING: KSD root has NO sudo/su/useradd/shadow/nologin (kernel+pacman only) -> Owner escalation = kushd CLASS
+#     system, not the sudo pkg. Escalation wiring is a later slice.
+#   NEXT: wire kmedia music root -> /home/public/Media/Music (scanMusic dead; video roots still CachyOS /mnt/sda_backup);
+#     switch seat kidul->public (kushd mintSession + config migration); owner escalation via kushd class.
 #   sda1 zero-copy server work: PARKED per Barticus ("NOT NOW").
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — TTY-OWNERSHIP CUT + NETWORK IDENTITY + PII SCRUB.
