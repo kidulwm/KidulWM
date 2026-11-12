@@ -1,5 +1,29 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — TTY-OWNERSHIP CUT + NETWORK IDENTITY + PII SCRUB.
+#   PTMX/PTY HARDENING (the ktty insta-crash root-caused): devtmpfs makes /dev/ptmx 0600 root:root; no udev -> stays 0600 ->
+#     the seat's openpty() EACCES -> ktty dies OpenptyFailed ~2 frames after map. Fix = THREE coordinated legs, all deployed:
+#     (a) kboot devRules() chowns /dev/ptmx root:tty 0660 (SEAT PERMISSION, not world 0666; kidul in 'tty', no sudo), with a 0666
+#     fallback if the rootfs has no tty group; (b) kboot mountEarly() mounts devpts ptmxmode=000 (kills the /dev/pts/ptmx twin,
+#     ONE pty entry); (c) kushd mintSession() setgroups adds "tty" (the trap: mintSession REPLACES supp groups, so /etc/group
+#     'tty' alone was silently dropped at seat-mint). Rootfs /etc/group gained tty:x:5:kidul. Layer-0: KSD kernel 7.2.14 has ZERO
+#     dangerous line disciplines (n_gsm/n_hdlc/n_slcan/n_6pack/n_ppp all =n) -> no TIOCSETD ldisc LPE path; MPTCP compiled OUT ->
+#     CVE-2026-98432 (TCP UAF, fixed 7.2.10) does not apply. Host is 7.2.8 pre-fix but only 127.0.0.1 listener (ollama), not
+#     reachable. kboot+kushd rebuilt ReleaseSafe, sha256-identical on /mnt/ksd, pending reboot with the tty group.
+#   NETWORK IDENTITY -> KSD m.2: knetd saved-network store /mnt/ksd/var/lib/knetd/networks (0600 root:root) written in knetd's
+#     stanza format (network <ssid> / key / auto 1). Router+gateway are DHCP-provided (nothing to copy); KSD leases its OWN IP.
+#     No MAC spoof either side. PSK never echoed to logs, file outside any git tree. Pending reboot: knetd connects at boot.
+#   PII SCRUB (Barticus: "no network details or passwords of ANY type pushed"): the LIVE wifi PSK + SSID
+#     were ALREADY committed+pushed to codeberg knetd (HANDOFF.md, rig/store_test.zig) from Aug/Oct test-rig drills. filter-repo
+#     --replace-text rewrote full history (PSK->REDACTED, SSID->REDACTED-SSID), force-pushed; verified remote clean. gitignored
+#     rig/*.log still hold the SSID on LOCAL disk only (never pushed) — flag for cleanup. testlab-psk-0001 is a fictional
+#     sacrificial test-AP passphrase, kept. Pre-scrub bundle: /tmp/knetd-prescrub.bundle. NOTE: rotation is the REAL fix — the
+#     PSK must be rotated at the router because it was public; the scrub only hides it, the key is now burned.
+#   REVERTED (this session): kushd writeVerdict("TRUSTED") security-off — restored to UNTRUSTED fail-closed. Committed only the
+#     tty-group leg.
+#   BONUS: shamanic FLAC (The Oldest Medicine, 61min) copied to /mnt/ksd/media/Music/ for the ksound test on reboot.
+#   STILL OPEN: mouth getty on ttyS0 crash-loops (needs tty0 fallback) — the one "sleeping" holdout in htop.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-12) — DOCKET #54 (2) DONE: PHASE-2 NETLINK HOTPLUG BUILT+DEPLOYED.
 #   "next" fired the top non-DONE docket (#54 KSD input). Phase-2 (the last input blocker) is now BUILT: a
 #     NETLINK_KOBJECT_UEVENT listener in the wlroots libinput backend (NEW file backend/libinput/hotplug.c) — the no-udev
