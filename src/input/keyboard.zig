@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const std = @import("std");
-const linux = std.os.linux;
 const wl = @import("wayland").server.wl;
 const wlr = @import("wlroots");
 const xkb = @import("xkbcommon");
@@ -8,27 +7,53 @@ const Server = @import("../server.zig").Server;
 
 const c_std = @import("c");
 
-/// Seat trust (input-trust slice 3): read the verdict the kushd gate publishes.
-/// /run/kushd/input-trust = "TRUSTED <64hex>" | "UNTRUSTED" | "ABSENT".
-/// Fail-closed — a missing/unreadable file or a non-TRUSTED first word is
-/// UNTRUSTED. Consulted only when a "harmful" bind (a Mod4/Ctrl action or the
-/// XF86HomePage close verb) is attempted, so plain typing never pays the read.
-fn seatTrusted() bool {
-    // Bench override: the dev bench (systemd, no kushd gate) sets
-    // KIDULWM_INPUT_GATE=off to bypass the gate. The real boot never sets it —
-    // it relies on the verdict kushd publishes. See kushd input-trust-gate.md.
+/// KSD input-trust: the four-tier admission ladder (docs/law/input-trust.md).
+/// Each device is classified at ENUMERATION by the patched wlroots libinput
+/// backend (wlr_libinput_get_device_trust) — the old global
+/// /run/kushd/input-trust verdict is superseded by per-device tier. Harmful
+/// binds (spawn/close/reset/browser) fire only from an INTERNAL (0) or PROVEN
+/// (2) device; USABLE (1) and UNTRUSTED (3) still type and navigate, but never
+/// a harmful action. Consulted only when a harmful bind is attempted, so plain
+/// typing never pays the read.
+///
+/// The getter is resolved at RUNTIME (dlsym), not link time: it exists only in
+/// our patched libwlroots-0.20.so (the KSD root), not in stock wlroots (the
+/// host bench). kidulwm already links libwlroots-0.20.so as a DT_NEEDED
+/// dependency, so dlopen returns the loaded handle and the lookup finds the
+/// symbol on KSD and nothing on the host. Missing getter -> fail-closed
+/// (UNTRUSTED). The handle is deliberately not closed: it is the process's own
+/// already-loaded dependency, never really unloaded.
+const TrustGetter = *const fn (*wlr.InputDevice) callconv(.c) c_int;
+
+fn trustGetter() ?TrustGetter {
+    var lib = std.DynLib.open("libwlroots-0.20.so") catch return null;
+    return lib.lookup(TrustGetter, "wlr_libinput_get_device_trust");
+}
+
+/// True when the source device may fire a harmful bind. Fail-closed: a missing
+/// getter (stock wlroots, host bench) or an unclassifiable device is UNTRUSTED.
+fn deviceHarmfulAllowed(input_device: *wlr.InputDevice) bool {
+    // Bench override: KIDULWM_INPUT_GATE=off bypasses the tier gate entirely
+    // (dev bench: stock wlroots, no kushd, full binds). The real boot never sets
+    // it — it relies on the per-device tier the patched backend assigned.
     if (std.c.getenv("KIDULWM_INPUT_GATE")) |v| {
         if (std.mem.eql(u8, std.mem.span(v), "off")) return true;
     }
-    const path_z: [:0]const u8 = "/run/kushd/input-trust";
-    const fd_raw = linux.open(path_z, .{ .ACCMODE = .RDONLY }, 0);
-    if (@as(isize, @bitCast(fd_raw)) < 0) return false;
-    const fd: i32 = @intCast(fd_raw);
-    defer _ = linux.close(fd);
-    var buf: [64]u8 = undefined;
-    const n = linux.read(fd, &buf, buf.len);
-    if (n <= 0) return false;
-    return std.mem.startsWith(u8, buf[0..@intCast(n)], "TRUSTED");
+    const getter = trustGetter() orelse return false; // stock wlroots: absent
+    const tier: c_int = getter(input_device);
+    // 0 INTERNAL (the box itself), 2 PROVEN (crypto remote) are the TRUSTED
+    // tiers. 1 USABLE and 3 UNTRUSTED never get harmful binds.
+    return tier == 0 or tier == 2;
+}
+
+/// Harmful actions per docs/law/input-trust.md ("spawn/close/reset/browser"):
+/// anything that launches an external process, closes a window, or resets the
+/// compositor. Navigate/card/volume/blanking verbs stay usable for every tier.
+fn actionIsHarmful(action: @import("../config/keybinds.zig").Action) bool {
+    return switch (action) {
+        .spawn, .close_focused, .reload, .wm_reset => true,
+        else => false,
+    };
 }
 
 const KeyboardDevice = struct {
@@ -175,23 +200,22 @@ const KeyboardDevice = struct {
         // same verb as Mod4+Q close_focused. Unmodified, like the volume keys.
         if (!mod4_active and !ctrl_active and sym == xkb.Keysym.XF86HomePage) {
             // INPUT-TRUST: the SW "back to home" maps to close_focused — the
-            // same harmful verb as Mod4+Q. Gated with the rest.
-            if (seatTrusted() and handleAction(server, .close_focused)) return;
+            // same harmful verb as Mod4+Q. Gated on the source device's tier.
+            if (deviceHarmfulAllowed(self.input_device) and handleAction(server, .close_focused)) return;
         }
         if (mod4_active or ctrl_active) {
-            // INPUT-TRUST (slice 3): while the seat is UNTRUSTED (the kidulKey
-            // is absent or unproven) every Mod4/Ctrl action is inert — no
-            // terminal, no close, no reset, no browser. Base keys, media keys,
-            // and raw typing still pass. Fail-closed: the read is paid only on
-            // a harmful bind attempt.
-            if (!seatTrusted()) {
-                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "blocked:untrusted");
-                return;
-            }
-            // The media PLAYER is a real deck slide now (TASKCARD-3):
-            // Ctrl+Q falls through to close_focused like any slide.
+            // INPUT-TRUST: per-device tier (docs/law/input-trust.md). HARMFUL
+            // binds (spawn/close/reset/browser) fire only from an INTERNAL or
+            // PROVEN device; USABLE/UNTRUSTED devices still navigate (focus,
+            // tray, overview, fullscreen, volume) but never a harmful action.
+            // The tier is paid only on a harmful bind attempt — plain typing and
+            // navigation never touch the read.
             const action = server.keybinds.match(mod4_active, ctrl_active, base_sym);
             if (action) |a| {
+                if (actionIsHarmful(a) and !deviceHarmfulAllowed(self.input_device)) {
+                    server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "blocked:tier");
+                    return;
+                }
                 server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, @tagName(a));
                 if (handleAction(server, a)) return;
             } else {
