@@ -70,3 +70,15 @@ standard, boring, least-surprising shape).
   username stays fixed as the stable identity. Renaming touches the label,
   never the account: files are owned by uid, which never moves. [Barticus
   2026-11-12: "if the hash stays the same, we just show it as their name"]
+
+## Direction — FULL kidulKey (true passwordless)
+
+LOCKED DIRECTION 2026-11-12, Barticus present. Implementation DEFERRED
+("nothing to do just now").
+
+- Go FULL kidulKey: a true passwordless system. The key IS the identity.
+- Lost-key lockout: pair TWO keys with every device in production — lose one,
+  the other still unlocks.
+- Granny never needs a password (optionally one fallback).
+- Verify everywhere = a tap (NFC) or fingerprint, biometric stored LOCALLY ONLY:
+  it unlocks the local key, never leaves the device.
