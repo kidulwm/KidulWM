@@ -80,19 +80,64 @@ SAFETY RULE (Barticus, locked): we are the guinea pigs. Hold a PASSWORD backup
 as the escape hatch until BOTH keys are present AND confirmed — never lock
 ourselves out of our own tests.
 
-## The PIN — passwdless is earned, never default (LOCKED 2026-11-01, Barticus present)
+## The entry ladder — the levels (LOCKED 2026-11-11, Barticus present)
 
-The machine PIN (the SAME PIN that gates machine access) is the passwdless
-OFF-switch — not a second auth path, not a backdoor. One ladder:
+One ladder for every box. The PUBLIC user is the floor (the appliance boots
+straight to a shared face — no key, no password, nothing personal on it). The
+PERSONAL layer is key-gated, and how it opens is a LEVEL, not a binary toggle.
+Encourage the safest, never force it: the machine hints, the rating shows
+where you are, and Granny sees only a colour (granny-silence-law), never a
+number or a nag.
 
-  DEFAULT   the PIN is REQUIRED. Passwdless is NOT default — it is earned.
-  EARN      passwdless becomes an option only once BOTH keys are present AND
-            confirmed (two-key rule). Engaging or disengaging it is a
-            kidulKey-signed transaction (WYSIWYS: "engage passwdless?" on the
-            trusted screen, tap) — the keys guard their own toggle.
+  THE FLOOR — PUBLIC USER (nopasswd)
+       Boot straight to the shared/public face: a TV anyone in the house can
+       watch. No key, no password, no personal layer mounted. This is the
+       appliance — not "level zero insecurity": the personal layer lives on a
+       SEPARATE, key-gated partition (partitions.md), so the public face holds
+       nothing to leak. Granny watching TV is not "unauthenticated" — she is
+       simply not in the personal layer.
+
+       nopasswd (zero security) exists ONLY here, at the public boot-landing.
+       The personal layer has NO nopasswd rung — its ladder begins at
+       "passwd" below. Zero security is for the shared TV face, never for the
+       key-gated layer.
+
+  THE LEVELS (low -> high)
+       passwd             typed password only (no key). The pre-key state.
+       key & passwd       ONE key + password. The password is the lockout
+                          lifeline here (lose the key -> REVIVE below).
+       >=2 keys & passwd  redundancy achieved; the password is now only a
+                          phishable extra.
+       2 keys, nopasswd   THE BAR — 100%. Fingerprint-only (key + finger, no
+                          typed password): nothing to phish, redundancy for
+                          the loss.
+       3 keys, nopasswd   110% — beyond the bar (belt-and-braces).
+
+  THE RULE THAT MAKES IT HONEST
+       The typed password FLIPS VALENCE: at ONE key it is a lifeline (raises
+       you), at >=2 keys it is a phishable liability (lowers you). That is why
+       it cannot be a binary and must be a rating. "nopasswd" ALWAYS means
+       key + FINGERPRINT; a bare key (possession only) is not a level — it is
+       the identity.md warning (key + laptop in the same bag).
+
+  ENCOURAGE, NEVER FORCE
+       A fresh box starts at the safe floor (password) and is HINTED up one
+       rung at a time — never blocked, never nagged. The rating is presented
+       subtly at login (colour for Granny, % for the geek). Manufacture-set
+       TVs ship already at the bar (100%+); Granny never sees below it.
+
+The PIN below is the mechanics that make the ladder hold:
+
+  DEFAULT   the PIN is REQUIRED until you climb. Passwdless is NOT default —
+            it is earned.
+  EARN      passwdless (fingerprint-only) becomes an option only once BOTH
+            keys are present AND confirmed (two-key rule). Engaging or
+            disengaging it is a kidulKey-signed transaction (WYSIWYS: "engage
+            passwdless?" on the trusted screen, tap) — the keys guard their
+            own toggle.
   STASH     engaging passwdless stashes the PIN cold (the vault,
             decrypt-on-read, cold-storage.md). The machine then opens on the
-            key alone; the PIN sits for a rainy day.
+            key + finger alone; the PIN sits for a rainy day.
   REVIVE    a lost key does NOT auto-detect as "lost" — it detects as STRUCK.
             Strike the lost key from the roster (one line) -> roster count
             drops below two -> passwdless auto-disengages -> the PIN revives.
