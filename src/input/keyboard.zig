@@ -25,9 +25,18 @@ const c_std = @import("c");
 /// already-loaded dependency, never really unloaded.
 const TrustGetter = *const fn (*wlr.InputDevice) callconv(.c) c_int;
 
+/// Lazy single-flight cache for the getter. Input dispatch runs on the single
+/// wlroots event-loop thread, so a plain global needs no lock. Cached because
+/// dlopen/dlsym must not re-run on every harmful keypress (refcount bump +
+/// symbol search each time); one lookup at first use, held for the session.
+var cached_trust_getter: ?TrustGetter = null;
+
 fn trustGetter() ?TrustGetter {
+    if (cached_trust_getter) |g| return g;
     var lib = std.DynLib.open("libwlroots-0.20.so") catch return null;
-    return lib.lookup(TrustGetter, "wlr_libinput_get_device_trust");
+    const g = lib.lookup(TrustGetter, "wlr_libinput_get_device_trust") orelse return null;
+    cached_trust_getter = g;
+    return g;
 }
 
 /// True when the source device may fire a harmful bind. Fail-closed: a missing
