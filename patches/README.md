@@ -105,9 +105,14 @@ sha256: 1d1152eab6166bf57b4fc0f62f4da22783802b5ab78610f49657f382c1b1f544
   - Tier 2 crypto proof: per-device kidulKey Ed25519 challenge wired into
     events.c (the remote). The kidulkey-gate one-shot is the prover; today no
     device lands in TIER 2 because no per-device proof identity exists.
-  - kidulwm enforcement: switch seatTrusted() from the global verdict to
-    per-device tier via wlr_libinput_get_device_trust() (the getter exists;
-    the compositor-side consume is the follow-on).
+
+DONE 2026-11-13 (kidulwm enforcement): seatTrusted() retired; kidulwm now
+resolves wlr_libinput_get_device_trust() at runtime (dlsym, single-flight
+cached) and gates HARMFUL binds (spawn/close/reset/browser) on the SOURCE
+device's tier — INTERNAL(0) or PROVEN(2) fire, USABLE(1)/UNTRUSTED(3) only
+type+navigate. This closes the "dead Mod4/Ctrl on the laptop" bug (the
+internal AT keyboard is Tier 0 INTERNAL; the old global UNTRUSTED verdict was
+wrongly blocking it). Commits 924e1b7 + 21e8a90, deployed to the KSD root.
 
 DONE 2026-11-12 (Phase-2): the netlink kobject-uevent hotplug listener
 (hotplug.c above) — libinput_path_add_device / libinput_path_remove_device on

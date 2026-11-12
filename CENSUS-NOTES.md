@@ -1,5 +1,28 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-13, morning) — INPUT-TRUST PER-DEVICE ENFORCEMENT (proper fix, seatTrusted retired).
+#   SYMPTOM: fresh KSD boot -> "couldn't open anything, no keypresses work". Barticus's hunch (no global keybind
+#     defaults for the public user) was WRONG — the log showed keybinds: 33 loaded (source=user config), 25 from
+#     /home/public/.config/kidulwm/keybinds.conf over 8 defaults. Defaults + fallback both fine.
+#   ROOT CAUSE: the post-hoc GLOBAL seatTrusted() filter. kushd is fail-CLOSED (writes UNTRUSTED at startup; the
+#     temporary 2026-11-12 fail-open writeVerdict("TRUSTED") was reverted — kushd working tree clean + 00:03 binary
+#     rebuilt fail-closed). The 2fe3 kidulKey dongle IS present (ttyACM0) but enumerates ~1.2s BEFORE kushd binds its
+#     netlink uevent socket -> ZERO "gate fired" events -> verdict stays UNTRUSTED forever -> seatTrusted()==false ->
+#     EVERY Mod4/Ctrl bind inert. Plain typing + media keys still pass (why it read as "keys dead" not "keyboard dead").
+#   THE FIX (proper, per docs/law/input-trust.md ladder): retire the global seatTrusted(); kidulwm now resolves
+#     wlr_libinput_get_device_trust() AT RUNTIME via dlsym (single-flight cached; the getter exists only in our patched
+#     libwlroots-0.20.so on KSD, NOT stock host wlroots, so it's dlsym not link-time) and gates HARMFUL binds
+#     (spawn/close/reset/browser + XF86HomePage close) on the SOURCE device's tier. INTERNAL(0)/PROVEN(2) fire;
+#     USABLE(1)/UNTRUSTED(3) only type+navigate (focus/tray/overview/fullscreen/volume still work). The internal AT
+#     keyboard (bustype I8042) is Tier 0 INTERNAL -> full binds, no crypto-remote needed. Planck (03a8:a4f9) = Tier 1.
+#   Commits 924e1b7 (enforcement) + 21e8a90 (cache). Built ReleaseSafe, deployed /mnt/ksd/usr/local/bin/kidulwm
+#     (stamp 21e8a90, size 8373112); .bak = prior 924e1b7 build. patches/README.md REMAINING updated. REBOOT-TEST
+#     PENDING: boot KSD -> Mod4+Return opens ktty, Mod4+s browser, etc., all from the internal keyboard.
+#   NOTE (defer): the FAIL-CLOSED kushd verdict + cold-plug gap are STILL open (Tier 2 crypto proof is the remaining
+#     harden slice). This fix makes them harmless on the pc/laptop (Tier 0 keyboard self-trusts) but a keyboard-less TV
+#     still needs the crypto remote proven. Also the child spawns inherit WAYLAND_DISPLAY from the compositor — verify
+#     no regression there on reboot.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — PUBLIC SEAT LAW LOCKED + BOOT-QUIET DEPLOYED.
 #   PUBLIC SEAT LAW (docs/law/public-seat.md, commit 5baf290, LOCKED): TV boots into a dedicated 'public' nopasswd
 #     account (zero supp perms), NOT an anonymous profile (maintainability). Media does NOT live on the immutable root —
