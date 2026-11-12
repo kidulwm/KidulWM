@@ -65,3 +65,8 @@ standard, boring, least-surprising shape).
 - Q.E  the owner's real username is a random hash, displayed "Owner".
   [Barticus: makes the hacker's target unguessable — "whose files are they
   trying to hack?"]
+- Q.F  the display name is just the face of the string — the user picks and
+  renames it freely over time (standard chfn/GECOS), while the random-hash
+  username stays fixed as the stable identity. Renaming touches the label,
+  never the account: files are owned by uid, which never moves. [Barticus
+  2026-11-12: "if the hash stays the same, we just show it as their name"]
