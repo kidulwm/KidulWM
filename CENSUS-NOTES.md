@@ -14,11 +14,14 @@
 #     stanza format (network <ssid> / key / auto 1). Router+gateway are DHCP-provided (nothing to copy); KSD leases its OWN IP.
 #     No MAC spoof either side. PSK never echoed to logs, file outside any git tree. Pending reboot: knetd connects at boot.
 #   PII SCRUB (Barticus: "no network details or passwords of ANY type pushed"): the LIVE wifi PSK + SSID
-#     were ALREADY committed+pushed to codeberg knetd (HANDOFF.md, rig/store_test.zig) from Aug/Oct test-rig drills. filter-repo
-#     --replace-text rewrote full history (PSK->REDACTED, SSID->REDACTED-SSID), force-pushed; verified remote clean. gitignored
-#     rig/*.log still hold the SSID on LOCAL disk only (never pushed) — flag for cleanup. testlab-psk-0001 is a fictional
-#     sacrificial test-AP passphrase, kept. Pre-scrub bundle: /tmp/knetd-prescrub.bundle. NOTE: rotation is the REAL fix — the
-#     PSK must be rotated at the router because it was public; the scrub only hides it, the key is now burned.
+#     were ALREADY committed to codeberg knetd (HANDOFF.md, rig/store_test.zig) from Aug/Oct test-rig drills — committed
+#     UNSIGNED under the non-B&B identity "Bob Dotrix <bob@dotrix.org>" (Aug 18 2026, the WPA2 supplicant host-position
+#     session). NOTE the repo is PRIVATE (anonymous access = 404), so the leak was never public — severity is contained,
+#     not burned. filter-repo --replace-text rewrote full history (PSK->REDACTED, SSID->REDACTED-SSID), force-pushed; verified
+#     remote clean. gitignored rig/*.log still hold the SSID on LOCAL disk only (never pushed) — flag for cleanup.
+#     testlab-psk-0001 is a fictional sacrificial test-AP passphrase, kept. Pre-scrub bundle: /tmp/knetd-prescrub.bundle.
+#     SEPARATE HYGIENE ITEM (still open): repo history has 39 unsigned "Bob Dotrix <bob@dotrix.org>" commits vs 22 "B&B" —
+#     signing law was not applied to knetd. Rotation still recommended (cheap insurance) but NOT an emergency since private.
 #   REVERTED (this session): kushd writeVerdict("TRUSTED") security-off — restored to UNTRUSTED fail-closed. Committed only the
 #     tty-group leg.
 #   BONUS: shamanic FLAC (The Oldest Medicine, 61min) copied to /mnt/ksd/media/Music/ for the ksound test on reboot.
