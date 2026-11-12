@@ -19,7 +19,13 @@
 #   MUSIC ROOT WIRED (item 1 DONE, 19053b2): media.zig buildMusic() += /home/public/Media/Music. Live front-end IS media.zig
 #     MediaWidget (fingerprint host=109/KSD=94; sweep 5db316d NOT merged), NOT the kmedia client. Built ReleaseSafe, deployed
 #     /mnt/ksd/usr/local/bin/kidulwm (sha e7f7392...). FLAC shows in Music wall on KSD reboot.
-#   NEXT: switch seat kidul->public (kushd mintSession + config migration); owner escalation via kushd class.
+#   SEAT->PUBLIC (item 2 DONE): /etc/kushd/seat=1001 (was 1000 kidul). Config migrated /home/kidul -> /home/public
+#     (.config/kidulwm{keybinds,outputs,weather} + .config/kidul-browser + Pictures), chown 1001:1001. kushd seatUid()
+#     default+comment corrected 1000->1001 (kidul->public), rebuilt + deployed sha de1eee0.... kidul(1000) left legacy.
+#   OWNER ESCALATION (item 3): DESIGN FROZEN (public-seat.md). Runtime re-seat + landing roster = NEXT slice (a real
+#     kushd/kidulwm feature, not a one-liner). No sudo pkg -> escalation = kushd CLASS, not sudo.
+#   TOMORROW TEST: boot KSD -> public seat (uid 1001); FLAC in Music wall; browser+media+ktty present; keybinds/outputs/
+#     wallpaper from migrated config.
 #   sda1 zero-copy server work: PARKED per Barticus ("NOT NOW").
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — TTY-OWNERSHIP CUT + NETWORK IDENTITY + PII SCRUB.

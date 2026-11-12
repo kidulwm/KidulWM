@@ -82,3 +82,18 @@ LOCKED DIRECTION 2026-11-12, Barticus present. Implementation DEFERRED
 - Granny never needs a password (optionally one fallback).
 - Verify everywhere = a tap (NFC) or fingerprint, biometric stored LOCALLY ONLY:
   it unlocks the local key, never leaves the device.
+
+## Owner escalation (sign-in unlocks the rest)
+
+LOCKED 2026-11-12. Runtime mechanism is a LATER slice (re-seat + landing roster);
+the seat boots as public today.
+
+- Owner (uid 1002) is the escalation identity; the seat boots as public (uid
+  1001, nopasswd, walk-up) with the public roster: face + browser + media + ktty.
+- Sign-in = the kidulKey proof (input-trust gate writes TRUSTED <pubkey>). On
+  proof, kushd RE-SEATS the session as owner (uid 1002) and kidulwm's landing
+  reveals the full roster.
+- The re-seat is a kushd feature (re-mint the session on cue), NOT a seatUid()
+  tweak — the seat is minted once at boot, escalation is a later re-mint.
+- No sudo package (kernel+pacman only): "owner = sudo" = kushd CLASS escalation,
+  not the sudo binary.
