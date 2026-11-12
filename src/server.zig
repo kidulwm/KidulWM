@@ -1217,6 +1217,13 @@ pub const Server = struct {
         // scene/scene_output_layout and most globals do not expose destroy()
         // wrappers in this zig-wlroots version; the display teardown frees them.
         // Destroy only the singletons that have explicit wrappers.
+        // Seat listeners must be detached BEFORE wlr_seat_destroy: wlroots 0.20
+        // asserts every seat event's listener_list is empty, and the failed
+        // backend-init path (libinput cold-plug finds zero devices) drives here
+        // with request_set_selection / request_set_primary_selection still
+        // attached -> SIGABRT. (crash law, seat variant)
+        self.request_set_selection.link.remove();
+        self.request_set_primary_selection.link.remove();
         self.seat.destroy();
         // output_manager has no explicit destroy wrapper in this version.
         self.output_layout.destroy();
