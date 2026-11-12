@@ -347,6 +347,7 @@ fn buildMusic(entries: []LibraryEntry) usize {
     const roots = &[_][]const u8{
         "/home/kidul/Music", "/mnt/hostmedia/music",
         "/mnt/sda_backup/Jelly/Music", "/usr/share/kidul/media/music",
+        "/home/public/Media/Music",
     };
     for (roots) |root| {
         scanner.scanMusic(&mlib, root) catch {};
