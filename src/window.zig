@@ -603,6 +603,7 @@ pub const Window = struct {
         const sa = window.set_app_id.link.prev != null;
         if (window.set_title.link.prev != null) window.set_title.link.remove();
         if (window.set_app_id.link.prev != null) window.set_app_id.link.remove();
+        if (window.request_fullscreen.link.prev != null) window.request_fullscreen.link.remove();
         if (window.map.link.prev != null) window.map.link.remove();
         if (window.unmap.link.prev != null) window.unmap.link.remove();
         if (window.commit.link.prev != null) window.commit.link.remove();
