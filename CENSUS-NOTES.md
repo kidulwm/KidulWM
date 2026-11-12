@@ -16,8 +16,10 @@
 #     1001-owned); old /media removed. seed-users.sh committed+pushed kboot e9dfe24 (idempotent, fresh random hash per install).
 #     FINDING: KSD root has NO sudo/su/useradd/shadow/nologin (kernel+pacman only) -> Owner escalation = kushd CLASS
 #     system, not the sudo pkg. Escalation wiring is a later slice.
-#   NEXT: wire kmedia music root -> /home/public/Media/Music (scanMusic dead; video roots still CachyOS /mnt/sda_backup);
-#     switch seat kidul->public (kushd mintSession + config migration); owner escalation via kushd class.
+#   MUSIC ROOT WIRED (item 1 DONE, 19053b2): media.zig buildMusic() += /home/public/Media/Music. Live front-end IS media.zig
+#     MediaWidget (fingerprint host=109/KSD=94; sweep 5db316d NOT merged), NOT the kmedia client. Built ReleaseSafe, deployed
+#     /mnt/ksd/usr/local/bin/kidulwm (sha e7f7392...). FLAC shows in Music wall on KSD reboot.
+#   NEXT: switch seat kidul->public (kushd mintSession + config migration); owner escalation via kushd class.
 #   sda1 zero-copy server work: PARKED per Barticus ("NOT NOW").
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — TTY-OWNERSHIP CUT + NETWORK IDENTITY + PII SCRUB.
