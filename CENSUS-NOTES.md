@@ -4,8 +4,8 @@
 #   PUBLIC SEAT LAW (docs/law/public-seat.md, commit 5baf290, LOCKED): TV boots into a dedicated 'public' nopasswd
 #     account (zero supp perms), NOT an anonymous profile (maintainability). Media does NOT live on the immutable root —
 #     it lives in /home/public/Media/{Movies,TV,Music} (REVERSES the FLAC-at-/media/Music placement). Public roster for
-#     now = browser -> media player -> ktty (ktty TEMPORARY, pulls to admin acct later). Identity tiers: BOSS/ADMIN
-#     (kidulKey OWNER, grants footprint), WALK-UP (own HD+key, no approval, ZEROIZED on removal), FAMILY (Boss-granted,
+#     now = browser -> media player -> ktty (ktty TEMPORARY, pulls to admin acct later). Identity tiers: OWNER (std
+#     sudo, random-hash login name, grants footprint), WALK-UP (own HD+key, no approval, ZEROIZED on removal), FAMILY (Owner-granted,
 #     expandable). Extends profiles.md + kidulkey.md ("presence free, footprint owned"). globalPillsBar + admin-user-
 #     settings = TBD / deferred.
 #   BOOT-QUIET DEPLOYED: limine.conf cmdline += "quiet loglevel=0" (backup limine.conf.bak-quiet). The verbose text was

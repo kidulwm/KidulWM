@@ -1,6 +1,9 @@
 # LAW — the public seat & the walk-up identity
 
 LOCKED 2026-11-12, Barticus present. Q.A/B/C resolved (rulings below).
+AMENDED 2026-11-12 (later): BOSS/ADMIN -> OWNER (a standard sudo user); owner +
+  public are plain Linux accounts (no custom auth code); the owner's real login
+  name is a RANDOM HASH, shown as "Owner" in the face.
 
 Lane: cross-cutting (kushd seating, kmedia, kidul-browser, kidulwm).
 Related: profiles.md (the profile is the cell), kidulkey.md (presence free /
@@ -22,8 +25,11 @@ standard, boring, least-surprising shape).
 
 ## The identity tiers
 
-- BOSS / ADMIN account — opened by the kidulKey (OWNER). Grants disk space
-  (footprint) to users: "the Boss hands out the space upon request."
+- OWNER account — a standard Linux sudo user. The face shows "Owner"; the
+  underlying login name is a RANDOM HASH, so the target is unguessable (an
+  attacker must land BOTH the hash name and the key, not "root"/"admin").
+  Grants disk space (footprint): "the Owner hands out the space upon request."
+  kidulKey stays the code-signing / verified-boot root, NOT the login gate.
 - WALK-UP user — anyone with their own HD + key/password seats themselves,
   borrows the stage, NO approval (they bring their own footprint). On removal
   + sign-out the user is ZEROIZED: nothing to remember.
@@ -54,3 +60,8 @@ standard, boring, least-surprising shape).
   safer place]
 - Q.C  ktty temporary on the public seat. [Barticus: yes — safest; Granny/Boss
   hold the kidulKey to open the ADMIN/BOSS account]
+- Q.D  owner + public are plain Linux accounts (sudo + nopasswd), no custom
+  auth code. [Barticus 2026-11-12: "already standard linux settings again"]
+- Q.E  the owner's real username is a random hash, displayed "Owner".
+  [Barticus: makes the hacker's target unguessable — "whose files are they
+  trying to hack?"]
