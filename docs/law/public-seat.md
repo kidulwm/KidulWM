@@ -77,6 +77,8 @@ LOCKED DIRECTION 2026-11-12, Barticus present. Implementation DEFERRED
 ("nothing to do just now").
 
 - Go FULL kidulKey: a true passwordless system. The key IS the identity.
+  (That "key IS the identity" is the kID — kid.md: one key, one roster,
+  deny-by-default, file-by-file.)
 - Lost-key lockout: pair TWO keys with every device in production — lose one,
   the other still unlocks.
 - Granny never needs a password (optionally one fallback).

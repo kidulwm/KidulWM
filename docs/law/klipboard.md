@@ -118,6 +118,8 @@ it, or that slot is an unpermissioned hole.
        certified by the cold key); klipd = POLICY + enforcement + revocation
        (hot, in-memory); kushd = seating/lifecycle cues; vault = cold, signs
        the muster, NEVER in the hot clipboard path. The cold key stays cold.
+       (The "muster" here = the roster/kpax = the kID's list — kid.md: one
+       key, one roster, deny-by-default.)
 - Q.D  IDENTITY TODAY: the muster is not built (crypto.md). klipd therefore
        ships with a LOCAL app_id registry (SO_PEERCRED -> app_id, seeded with
        the house apps) and binds to the real muster when it lands. Do NOT

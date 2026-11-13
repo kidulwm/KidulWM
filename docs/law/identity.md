@@ -1,5 +1,10 @@
 # LAW — identity (the four scopes + the bar) (LOCKED 2026-10-04, Barticus present)
 
+(kID — the kidul identification — is the umbrella over this file: kid.md names
+the identity itself — one key, one roster, deny-by-default, file-by-file. THIS
+file is the scope half — which tool serves which audience. Siblings, not one:
+kid.md = WHO and the gate; identity.md = the bar the tools must clear.)
+
 HOLD THE BAR, NOT THE PROTOCOL. Protocols change; we change with them and
 hold the bar HIGH when we do. The bar is: forward secrecy, real verification
 (out-of-band where it counts), no shared secrets. The protocol is just the

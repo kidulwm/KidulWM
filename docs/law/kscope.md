@@ -13,8 +13,9 @@ Two names, two things, never blurred:
 
 Naming note: the K-prefix by the letter of theatre.md is for RESIDENT DAEMONS.
 kscope is a SCHEME, not a daemon — it follows the krypto / kpax / KID precedent
-(scheme names), not the ksound / knetd / kushd daemon pattern. If a resident
-daemon ever forms to run the wire, that daemon earns its own K-name later.
+(scheme names; the KID = the kID — kid.md), not the ksound / knetd / kushd
+daemon pattern. If a resident daemon ever forms to run the wire, that daemon
+earns its own K-name later.
 
 ## What it is
 
