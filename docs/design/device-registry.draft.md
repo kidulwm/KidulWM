@@ -1,17 +1,44 @@
-# DESIGN (draft) — device registry = roster/kpax, wired to input-trust admission
+# DESIGN (draft) — the kidulKey is "a key for everything": one roster, many consumers (input-trust is the first)
 
-DRAFT 2026-11-13, bobdotrix. Freeze this before any code. It pins ONE increment:
-the device "user vault" Barticus described is the roster (kpax) that ALREADY
-exists in law — the work is wiring it into the input-trust ladder, not building
-a new vault. It also records the honest build status so the next session reads
-the same words.
+DRAFT 2026-11-13, bobdotrix. Freeze this before any code. The "user vault"
+Barticus described is NOT a device registry and NOT a special place — it is the
+WHOLE kidulKey system: one key that verifies the user across EVERY surface
+(buying media / accessing the account, the 5-phones-per-TV roster, opening
+"person" in settings, and using the keyboard). "A key for everything." This doc
+pins the ONE shared substrate and names the FIRST consumer we wire (input-trust
+Tier 2, because it is the one with hardware today), then records the honest
+build status.
 
 ## The increment (one sentence)
 
-Do NOT build a new vault feature. Wire the existing roster — the kidulKey-signed
-`{ attested-device-key -> role }` list (crypto.md §household roster, kidulkey.md
-§what-it-signs) — into the input-trust admission ladder as the single source of
-device identity. That is "verify once, known everywhere by the same key."
+Do NOT build a new vault feature, and do NOT build a device-only registry. Wire
+the ONE roster — the kidulKey-signed `{ attested-key -> role }` list (crypto.md
+§household roster, kidulkey.md §what-it-signs) — as the single source of WHO for
+EVERY "admit by proof." Input-trust Tier 2 is the first consumer; media purchase,
+the phones roster, and settings/person are the SAME verification, not new
+systems. "Every admit-by-proof resolves to the ONE signed roster."
+
+## One key, many consumers (the "key for everything" map)
+
+The kidulKey verifies the user; every surface that needs to know WHO you are
+asks the SAME question and resolves to the SAME roster. The consumers are the
+same primitive wearing different faces:
+
+  input-trust Tier 2   the keyboard/remote proof  — FIRST (hardware today: the
+                       kidulKey dongle is a CDC-ACM prover, 2fe3:0004)
+  media purchase       "download / buy" account access — the media shop, and
+                       anything else we end up selling. Same proof, same roster.
+  phones per TV        the household roster (crypto.md role ∈ { TV, child-1..5,
+                       guest, adult, NAS, remote }) — the kweb 5-phones-per-TV.
+                       Same proof, same roster.
+  settings / "person"  opening your person in the settings app — access
+                       required, key exchange fires. Same proof, same roster.
+
+This is crypto.md §One substrate, three consumers made explicit: ONE crypto
+substrate (X25519, Ed25519, AES-GCM — kidulKey), MANY cued consumers. The
+"crossing over" Barticus flagged is not a confusion — it is the design. The
+roster is the keystone every admit resolves to; input-trust is just the first
+place we turn it on.
 
 ## Identity vs approval (the boundary that keeps it clean)
 
@@ -20,32 +47,36 @@ it is already law in two places:
 
   WHO (identity)   the roster/kpax. Signed ONCE by the root. Global: every box
                    caches a copy, verifies the signature, knows "this is
-                   Barticus's Planck." Non-repudiable, non-revocable-by-locality.
-                   This is what propagates system-wide.
+                   Barticus's Planck / Granny's phone." Non-repudiable. This is
+                   what propagates system-wide, and it is the SAME roster for
+                   every consumer above.
 
-  WHAT (approval)  the per-node tier + allowlist (input-trust.md §ladder). Local,
-                   revocable per box. "Approved on the TV" means "approved for
-                   TV things on the TV," NOT "root everywhere."
+  WHAT (approval)  the per-node tier + allowlist (input-trust.md §ladder) and,
+                   more generally, each surface's own grant. Local, revocable.
+                   "Approved on the TV" means "approved for TV things on the TV,"
+                   NOT "root everywhere." One key = one identity, NOT one
+                   universal approval; approval stays per-surface.
 
 Collapsing the roster into the cold vault (cold-storage.md) undoes this split.
 The roster is PUBLIC signed material (cached per box, on the krouter —
 kidulkey.md: "Public = published, no secret"). The cold vault holds SECRETS.
 Two different organs; keep them two.
 
-## The roster is the "user vault access list" (resolve the naming)
+## The roster is the shared WHO for every consumer (resolve the naming)
 
-Barticus's "user vault" intuition maps to the roster, not to cold-storage:
+Barticus's "user vault" = the kidulKey system itself, not any one file:
 
-  roster (kpax)   { attested-device-key -> role }  signed by kidulKey root
+  roster (kpax)   { attested-key -> role }  signed by kidulKey root
                   cached per box, source of truth on the krouter
-                  PUBLIC, signed, global = the access LIST
+                  PUBLIC, signed, global = the ONE list every admit resolves to
   cold vault      the user's encrypted home — data at rest, cued, decrypt-on-read
                   holds SECRETS, holds NO private keys (crypto.md)
 
-One line: the roster is WHO is known; the vault is WHERE secrets rest. The
-device registry is the roster.
+One line: the roster is WHO is known (for input, purchase, phones, settings);
+the vault is WHERE secrets rest. The "key for everything" is the roster plus
+the signing root above it — not the vault, not a device-only registry.
 
-## How it wires into the ladder
+## How the FIRST consumer wires into the ladder
 
 Today (deployed 21e8a90) the ladder classifies at enumeration from topology +
 identity only:
@@ -60,9 +91,11 @@ The wiring this doc pins: TIER 2 resolves against the ROSTER, not a local file.
 At enumeration, a device presenting a proof identity is challenged against the
 roster's attested key for that device (kidulKey Ed25519 challenge/response,
 WYSIWYS tap). Pass -> the roster's role for that key applies -> Tier 2, harmful
-binds live. The roster is the access list; the ladder is the enforcement point.
+binds live. The SAME roster later answers "may this phone board" (crypto.md
+§TV is the policy approver) and "is this the account that buys media" — those
+are later consumers on the same keystone, not new rosters.
 
-  roster (WHO)  --signed once-->  cached on box  -->  ladder challenges against it
+  roster (WHO)  --signed once-->  cached on box  -->  every consumer challenges it
   ladder (WHAT)   per-device, at enumeration, fail-closed to UNTRUSTED
 
 ## The gate today — what it is, what it is NOT
@@ -118,15 +151,17 @@ built. Bench access TODAY is a plain ed25519 key on disk."
 
   VPN/WireGuard/Mullvad config + creds, and the Planck allowlist config, NEVER
   go to Codeberg. They are copied directly machine -> KSD m.2. The roster
-  (kpax) as a "user vault access list" is PUBLIC signed material — it is NOT a
-  secret and NOT a credential; only its SIGNING key is. Keep signing keys in
-  silicon, never in a repo.
+  (kpax) is PUBLIC signed material — it is NOT a secret and NOT a credential;
+  only its SIGNING key is. Keep signing keys in silicon, never in a repo.
 
 ## Relationship to existing law
 
-  crypto.md          §household roster -> this doc wires it to admission.
+  crypto.md          §One substrate, three consumers + §household roster -> this
+                     doc makes the consumers explicit (input, purchase, phones,
+                     settings); every admit resolves to the ONE roster.
   kidulkey.md        §what-it-signs ("every admit-by-proof resolves to the ONE
-                     signed roster") -> the roster becomes the Tier 2 source.
+                     signed roster") -> the roster is the key-for-everything
+                     keystone; input-trust Tier 2 is its first consumer.
   input-trust.md     §ladder + §Status -> TIER 2 PROVEN resolves against the
                      roster, never the global /run/kushd/input-trust verdict.
   cold-storage.md    the vault stays SECRETS-ONLY; it is not the roster's home.
