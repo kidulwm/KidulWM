@@ -38,6 +38,16 @@
 #     still needs the crypto remote proven. Also the child spawns inherit WAYLAND_DISPLAY from the compositor — verify
 #     no regression there on reboot.
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-13) — kID LAW LOCKED + LIMINE-LEVEL BOOT-QUIET (the REAL fix).
+#   kID LAW (docs/law/kid.md, LOCKED 2026-11-13): kID = the kidul identification. One key (kidulKey family), one roster
+#     (kpax), deny-by-default, file-by-file (fs-verity+IMA). Four consumers = ONE verification (keyboard, media purchase,
+#     phones, settings/person). BOUNDARY: kID=WHO (universal); approval=WHAT (per-surface). "100% universal approval would
+#     defeat what we are doing" (Barticus). Cross-ref'd crypto.md §KID+kpax + kidulkey.md ("KID = the kID"). Docket #57 klink updated.
+#   BOOT-QUIET REAL FIX: the residual "1-2 text flashes" were LIMINE'S OWN banner, NOT the kernel. limine.conf now has
+#     `quiet: yes` (Limine-level option, distinct from kernel cmdline "quiet loglevel=0" which was already live). backup
+#     limine.conf.bak-before-quiet-option. ESP remounted ro after. Limine quiet suppresses ALL screen output except
+#     panics/warnings. NOT killable: the Acer Predator firmware logo (DMI "Acer Predator PH315-54" — BIOS-level, not a
+#     Linux file); kidulwm fade-from-black still covers it. Reboot to confirm: Predator logo -> black -> KSD deck, no text.
 # SESSION WRAP-UP (bobdotrix 2026-11-12, evening) — PUBLIC SEAT LAW LOCKED + BOOT-QUIET DEPLOYED.
 #   PUBLIC SEAT LAW (docs/law/public-seat.md, commit 5baf290, LOCKED): TV boots into a dedicated 'public' nopasswd
 #     account (zero supp perms), NOT an anonymous profile (maintainability). Media does NOT live on the immutable root —
