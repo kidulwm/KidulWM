@@ -4480,11 +4480,21 @@ pub const Server = struct {
         }
         if (pid != 0) return;
 
-        // redirect stdio so the compositor keeps its pipe fds
+        // stdin from /dev/null; stdout+stderr APPEND to a spawn log so a
+        // spawned app's crash reason survives. kboot pre-creates
+        // /var/log/kushd-spawn.log world-writable (0666) because the seat is
+        // non-root and cannot create files in root-owned /var/log. Without
+        // this, ktty's OpenptyFailed etc. vanished into /dev/null — the
+        // "insta-crash with no explanation" trap.
         const devnull = linux.open("/dev/null", .{ .ACCMODE = .RDONLY }, 0);
         if (@as(isize, @bitCast(devnull)) >= 0) {
             const fd: i32 = @intCast(devnull);
             _ = linux.dup2(fd, linux.STDIN_FILENO);
+            _ = linux.close(fd);
+        }
+        const spawnlog = linux.open("/var/log/kushd-spawn.log", .{ .ACCMODE = .WRONLY, .APPEND = true }, 0);
+        if (@as(isize, @bitCast(spawnlog)) >= 0) {
+            const fd: i32 = @intCast(spawnlog);
             _ = linux.dup2(fd, linux.STDOUT_FILENO);
             _ = linux.dup2(fd, linux.STDERR_FILENO);
             _ = linux.close(fd);
