@@ -192,6 +192,10 @@ door says she boards, nobody else can change it, and she never remembers a
 password again, because it is her, boarding her ship, and the list already
 knows her.
 
+(The KID here is the kID — the kidul identification — now with its own law at
+kid.md: deny-by-default, one key, one roster, file-by-file. This section names
+the gate; kid.md is the umbrella.)
+
 STATUS (honest): the architecture is frozen here; the MECHANISM is not yet
 built. Bench access TODAY is a plain ed25519 key on disk
 (~/.ssh/id_ed25519_kidulwm); hardware-attested SSH + the resident-key client

@@ -256,7 +256,8 @@ window = bounded by the next association, accepted.
   - Not in the boot order (no crypto in the boot graph; its boot role is
     OFFLINE verification — the IMA keyring + the signed golden image).
   - Not the ratchet. Not a second authority (the KID is the ONE admission
-    authority — no doorman).
+    authority — no doorman). The KID = the kID (kidul identification — kid.md:
+    deny-by-default, one key, one roster, file-by-file).
   - The HD is not the vault; the keyboard is not the root.
 
 ## North star — the open-source kidulKey (Barticus, klip grant Q.B)
