@@ -122,3 +122,13 @@ point in the device path, per the less-running law). The old single-line
 verdict (/run/kushd/input-trust: TRUSTED/UNTRUSTED/ABSENT) is superseded by
 per-device tier assignment at admission time. Patch spec:
 docs/design/input-path.draft.md.
+
+AMENDED 2026-11-13 (Barticus present): HOUSE TRUSTED EXTERNAL exception. The
+Planck (03A8:A4F9) — Barticus's daily driver ("I use it for everything") — is
+escalated to TIER 0 INTERNAL trust by house decree, so it fires harmful binds
+(spawn/close/reset/browser) exactly like the box's own keyboard. Deliberate,
+named, single-device exception; a NEW external still clears the ladder. The
+discriminator (topology + identity + proof, never arrival order) is unchanged —
+this is a decree about ONE known identity, not a new admission path. Implemented
+as a hardcoded VID:PID check in ksd_classify_device (events.c), before the
+allowlist lookup.

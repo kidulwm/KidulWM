@@ -13,10 +13,14 @@ footprint owned), bill.kush (the seating chart), landing.md (the landing look).
 
 The TV boots into the PUBLIC seat: a dedicated, standard-Linux account —
 `public`, no password, zero supplementary permissions (no audio/video/input/
-tty/render). It is a seat identity, not a human login — kushd seats it as the
+render). It is a seat identity, not a human login — kushd seats it as the
 default profile (profiles.md: "the default profile starts at login"). Chosen
 over "anonymous profile" for maintainability (a real nopasswd account is the
 standard, boring, least-surprising shape).
+
+EXCEPTION (2026-11-13): public carries ONE supplementary group — `tty` — so
+ktty can openpty() (kboot gates /dev/ptmx at 0660 root:tty). It grants pty
+allocation only, not audio/video/input/render.
 
 - Media does NOT live on the immutable root. The public media tree is the
   public user's home: /home/public/Media/{Movies,TV,Music}.
