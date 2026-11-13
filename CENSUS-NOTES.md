@@ -1,5 +1,20 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-13, late morning) — DEVICE REGISTRY DRAFT FROZEN (docs/design/device-registry.draft.md).
+#   Barticus's "user vault access list" = the ROSTER/kpax that already exists in law, NOT a new vault. The increment:
+#     wire the kidulKey-signed { attested-device-key -> role } roster into input-trust Tier 2 (PROVEN) as the source of
+#     device identity. WHO=roster (global, signed once), WHAT=per-node tier+allowlist (local, revocable) — the split he
+#     asked for is already law. Roster is PUBLIC signed material on the krouter; the cold vault (cold-storage.md) holds
+#     SECRETS only, never the roster, never private keys. kidulKey dongle = CDC-ACM prover (2fe3:0004), NOT a keyboard —
+#     the Tier 2 production device is the REMOTE (HID + kidulKey seed). So "plug in + verify" today verifies the CRYPTO
+#     PRIMITIVE (challenge/response), not a live Tier 2 keyboard. Build order (5 slices) frozen in the doc; NOT code yet.
+#   TESTABLE NOW (host, CachyOS): kidulkey-gate builds clean (zig 0.17.0); test-proof.py needs cryptography (have 50.0.1).
+#     Plug dongle -> python3 tools/test-proof.py /dev/ttyACM0  (VERIFY: OK = proof holds)  OR
+#     kidulkey-gate /dev/ttyACM0 (TRUSTED/UNTRUSTED + writes global verdict). Global verdict SUPERSEDED — don't wire Tier 2
+#     to it. PITFALL: SIGN arms with NO timeout — if host times out & closes tty, dongle stays ARMED forever (blinking,
+#     ignores input). Recovery: tap BUTTON1 once, or reset. Keep host tap window >= gate's 30s.
+#   NOT BUILT (docket #53): roster/kpax enforcement, key-cast vault unlock, hw-attested SSH, Tier 2 wired to roster.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-13, morning) — INPUT-TRUST PER-DEVICE ENFORCEMENT (proper fix, seatTrusted retired).
 #   SYMPTOM: fresh KSD boot -> "couldn't open anything, no keypresses work". Barticus's hunch (no global keybind
 #     defaults for the public user) was WRONG — the log showed keybinds: 33 loaded (source=user config), 25 from
