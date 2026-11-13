@@ -1,5 +1,18 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, later) — KPX ROSTER VERIFIER LANDED (slice 3, roster-resolution half).
+#   Built kidulkey/gate/src/roster.zig + src/kpax.zig (commit 59d49e9, kidulkey repo, pushed): the kpax module
+#     parses/canonicalizes/verifies the roster (roster-format.md) + resolves a key-id -> role (deny-by-default).
+#     kpax CLI = canonical/sign/verify/resolve (sign is a TEST helper; real root signing = cold WYSIWYS ceremony).
+#   PROVEN end-to-end (real files): Zig Ed25519 seed->keypair == Python cryptography (same seed -> same root
+#     JIrL26-.../248acbdb...); verify OK; resolve -> tv/remote; unknown -> untrusted (exit 1); tampered byte ->
+#     BAD SIGNATURE; canonical re-sort order-independent. Unit tests 2/2, no leaks (zig build test).
+#   Zig 0.17 API notes (for next cuts): Ed25519.KeyPair.generateDeterministic(seed) (no .create); sign() takes
+#     the kp BY VALUE + returns !Signature; ArrayList is .empty + per-call allocator (append(alloc, x),
+#     toOwnedSlice(alloc)); addTest uses .root_module not .root_source_file; hexToBytes returns ![]u8 (use _ =).
+#   REMAINING slice 3 = the enumeration challenge wiring; slice 4 = kidulkey-gate split (crypto heart -> per-
+#     device proof call, drop the global verdict). NEXT slice needs the dongle for a live test.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, afternoon) — ROSTER-FORMAT (kpax) LOCKED (build-order slice 2).
 #   "next" fired: top non-DONE docket = #54 remaining = Tier-2 crypto proof -> roster (keyboard-less TV).
 #   LANDED prior session's uncommitted work (4 commits, signed B&B, pushed 77077ae..6ccc3f3): Planck

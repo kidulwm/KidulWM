@@ -145,10 +145,16 @@ built. Bench access TODAY is a plain ed25519 key on disk."
      (kpax): line-oriented canonical text + detached Ed25519 sig, version/prev-
      hash chain, tombstone-not-delete, deny-by-default. Rulings A-D locked.
   3. Tier 2 wiring: ladder challenges a proof-presenting device against the
-     roster's attested key at enumeration; fail-closed to UNTRUSTED.  <- NEXT
+     roster's attested key at enumeration; fail-closed to UNTRUSTED.
+     [roster-verifier HALF DONE 2026-11-14: kidulkey/gate `kpax` module + CLI
+     (src/roster.zig, src/kpax.zig) — parse/canonicalize/verify detached
+     Ed25519 sig + resolve key-id -> role, deny-by-default. Proven end-to-end:
+     Zig Ed25519 == Python cryptography (same seed -> same root), tamper ->
+     BAD SIGNATURE, canonical re-sort order-independent. Enumeration challenge
+     wiring = remaining half, gated on slice 4.]
   4. kidulkey-gate: split the crypto heart (challenge/verify) from the global
      verdict write — the heart becomes the per-device proof call; the global
-     verdict write is dropped.
+     verdict write is dropped.  <- NEXT (needs dongle for a live test)
   5. Wire the remote (HID + kidulKey seed) as the Tier 2 production device.
 
 ## Local-only artifacts (LOCKED, cross-ref kidulwm-codeberg-workflow)
