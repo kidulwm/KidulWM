@@ -137,11 +137,15 @@ built. Bench access TODAY is a plain ed25519 key on disk."
 
 ## Build order (the next slices, in order)
 
-  1. Freeze this doc (the increment + the naming + the boundary).
-  2. Roster file shape: signed `{ attested-key -> role }`, one file, krouter is
-     source of truth, box caches + verifies. (Spec the format, not the code.)
+  1. [DONE via kid.md LOCKED 2026-11-13] Freeze this doc (the increment + the
+     naming + the boundary) — the thesis is absorbed into kid.md (the kID
+     umbrella: one key, one roster, deny-by-default); this doc keeps the build
+     order.
+  2. [DONE 2026-11-14] Roster file shape -> LOCKED as docs/law/roster-format.md
+     (kpax): line-oriented canonical text + detached Ed25519 sig, version/prev-
+     hash chain, tombstone-not-delete, deny-by-default. Rulings A-D locked.
   3. Tier 2 wiring: ladder challenges a proof-presenting device against the
-     roster's attested key at enumeration; fail-closed to UNTRUSTED.
+     roster's attested key at enumeration; fail-closed to UNTRUSTED.  <- NEXT
   4. kidulkey-gate: split the crypto heart (challenge/verify) from the global
      verdict write — the heart becomes the per-device proof call; the global
      verdict write is dropped.

@@ -1,10 +1,10 @@
-# DESIGN (draft) — kpax: the roster file format (signed { attested-key -> role })
+# LAW — roster-format (kpax): the signed { attested-key -> role } file
 
-DRAFT 2026-11-14, bobdotrix. Freeze before any code. This is build-order slice 2
-of docs/design/device-registry.draft.md ("Roster file shape — spec the format,
+LOCKED 2026-11-14, Barticus present (GSI). This is build-order slice 2 of
+docs/design/device-registry.draft.md ("Roster file shape — spec the format,
 not the code"). It pins the ON-DISK / ON-WIRE shape of kpax so the Tier-2 wiring
 (slice 3: ladder challenges a proof-presenting device against the roster) has a
-concrete format to parse and verify. No code moves until this is locked.
+concrete format to parse and verify.
 
 ## The increment (one sentence)
 
@@ -124,28 +124,24 @@ Nothing here runs at boot-time (crypto.md: crypto is connection-time, never
 boot-time). Verification is cued at association, exactly like every other
 admit-by-proof.
 
-## Open questions (recommendation on each)
+## Rulings (LOCKED 2026-11-14, Barticus present: yes to all recs)
 
-  A. CONTAINER — line-oriented canonical text (recommended) vs canonical JSON
-     (RFC 8785). Line format wins: minimal Zig parser (no JSON in stdlib), grep-
-     auditable for the sysadmin, canonical-by-construction (sort + exact bytes,
-     no canonicalization library). JSON buys interop we don't need on-box.
-     Recommend: line format.
+  A. CONTAINER — line-oriented canonical text. Minimal Zig parser (no JSON in
+     stdlib), grep-auditable for the sysadmin, canonical-by-construction (sort
+     + exact bytes, no canonicalization library). JSON is NOT used on-box.
 
-  B. SIGNATURE — single ROOT signature + `root=` field (recommended) vs a
-     2-of-2 threshold across both root keys. crypto.md says "re-sign the roster,
-     done" (one re-sign); the two-key rule is REDUNDANCY (either root can act,
-     strike the lost one), not a quorum. Recommend: single signature, `root=`
-     names which key; a strike is a version bump re-signed by the survivor/new.
+  B. SIGNATURE — single ROOT signature + `root=` field naming which of the two
+     root keys signed. The two-key rule is REDUNDANCY (either root can act,
+     strike the lost one), not a quorum; a strike is a version bump re-signed
+     by the survivor / a freshly registered key.
 
-  C. CHAIN — version + prev-hash (recommended) vs version-only. identity.md
-     mandates rotation-is-visible; prev-hash makes a silent rollback detectable.
-     Cost is one 32-byte field. Recommend: chain.
+  C. CHAIN — version + prev-hash. Rotation is a visible, chained event
+     (identity.md §key transparency); a silent rollback is detectable. Cost is
+     one 32-byte field per version.
 
   D. ROLE ENUM — fixed known set + free-form extension, child-1..5 as FIVE
-     explicit slots (recommended) vs `child-<N>` un-bounded. crypto.md caps at
-     5; five explicit tokens make the cap structural, not a policy check.
-     Recommend: five explicit child slots + free-form extension token.
+     explicit slots. The five-token cap is structural (crypto.md §99), not a
+     policy check; an unknown role fails-closed to guest/untrusted.
 
 ## Relationship to existing law
 
