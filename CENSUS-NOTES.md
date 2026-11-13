@@ -1,5 +1,24 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, afternoon) — ROSTER-FORMAT (kpax) LOCKED (build-order slice 2).
+#   "next" fired: top non-DONE docket = #54 remaining = Tier-2 crypto proof -> roster (keyboard-less TV).
+#   LANDED prior session's uncommitted work (4 commits, signed B&B, pushed 77077ae..6ccc3f3): Planck
+#     house-trusted-external decree (Tier 0; VERIFIED in patches/wlroots-src/backend/libinput/events.c
+#     0x03a8:0xa4f9 — the tracked wlroots-*.patch still LAGS the gitignored source, regenerate before
+#     next patch cut), public-seat 'tty' exception, spawn-log forensics fix (server.zig stdout/stderr ->
+#     /var/log/kushd-spawn.log), census wrap-up 11-14.
+#   ROSTER-FORMAT LAW LOCKED (docs/law/roster-format.md, commit ba6b7a4): kpax = the signed
+#     { attested-key -> role } file. Line-oriented canonical text + detached Ed25519 sig (root= names
+#     which of the two root keys); version + prev-hash chain (key transparency); tombstone-not-delete
+#     for strikes; deny-by-default. Rulings A-D (container line-format / single root sig / chain /
+#     5 explicit child slots + extension) LOCKED "yes to all recs". KEYSTONE: the roster's attested-key
+#     IS the device's Ed25519 proof key — the same key Tier-2 challenge/response proves; one key, one
+#     roster, one challenge (media purchase / phones / settings all parse this one file).
+#   device-registry.draft.md build order updated: slice 1 (kid.md) + slice 2 (roster-format) DONE.
+#     NEXT = slice 3 (Tier-2 wiring: ladder challenges a proof-presenting device against the roster at
+#     enumeration, fail-closed to UNTRUSTED); then slice 4 (kidulkey-gate split: crypto heart vs global
+#     verdict write) + slice 5 (wire the HID+seed remote).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14) — KTTY ALIVE + BARE SHELL + DOCKET #58 (OUR PACMAN).
 #   KTTY ALIVE: the last fix (PATH env in kushd mintSession) WAS correct — ktty opens/closes clean, steady
 #     ~512MB RAM, plays nicely in the deck. Barticus: "so proud of you right now".
