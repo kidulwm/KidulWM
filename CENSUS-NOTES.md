@@ -1,5 +1,26 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14) — KTTY ALIVE + BARE SHELL + DOCKET #58 (OUR PACMAN).
+#   KTTY ALIVE: the last fix (PATH env in kushd mintSession) WAS correct — ktty opens/closes clean, steady
+#     ~512MB RAM, plays nicely in the deck. Barticus: "so proud of you right now".
+#   INPUT-TRUST RE-BOOT-TEST PASSED (2026-11-14): Barticus live on KSD — ktty types from the keyboard, apps
+#     open/close + move through the deck. "Ridiculously snappy — cleaner than host + Niri." #54's remaining =
+#     Tier-2 crypto proof -> roster (keyboard-less TV), then #57; #58 rides parallel.
+#   BARE SHELL (why "can't ls"): KSD rootfs shell path carries exactly 7 binaries — bash, sh, htop, seatd,
+#     pipewire, pipewire-pulse, wireplumber. NO ls/cat/grep/sed/awk/find/lsblk/mount/ps, no busybox, no pacman.
+#     "command not found" = MISSING, NOT BLOCKED (nothing filters exec; input-trust gate = input devices, not
+#     process spawn). htop works because it's one of the 7, installed for the RAM check.
+#   DOCKET #58 OPEN (OUR PACMAN — the NATIVE store, iLoveCandy): distribution.md (LOCKED) says "our pacman" IS
+#     the NATIVE store = libalpm engine + kidulkey-signed repo (ruling C: reuse pacman's .db + .pkg.tar.zst under
+#     our key). iLoveCandy = libalpm's own progress callback (free). A tentacle/app, Grannyized, installs NATIVE
+#     apps to the WRITABLE layer ("nothing installable touches /"), NOT the immutable root. First cut = base
+#     toolchain (coreutils+util-linux+procps+findutils) + fastfetch. Foreign (Debian/Rocky) = cells, apt/dnf in-cage.
+#   FASTFETCH: trivial drop-in (2MiB installed / 675KiB download; deps glibc[present]+yyjson). No /etc/os-release
+#     on KSD root -> renders bare "Linux" = the pure-linux candy Barticus wants; test run for #58. If the read
+#     looks right we keep it, else build our own fastfetch-kstyle later.
+#   OBSERVED GAP (log-reading): pipewire+pipewire-pulse+wireplumber are ON the root but nothing spawns them ->
+#     ksound "no pipewire" / kmedia "Host is down". Separate docket, not #58.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-13, late morning) — DEVICE REGISTRY DRAFT FROZEN (docs/design/device-registry.draft.md).
 #   Barticus's "user vault access list" = the ROSTER/kpax that already exists in law, NOT a new vault. The increment:
 #     wire the kidulKey-signed { attested-device-key -> role } roster into input-trust Tier 2 (PROVEN) as the source of
