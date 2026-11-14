@@ -93,14 +93,14 @@ not a Zoom package — the cell is reusable across a thousand foreign apps.
 ## Rulings (all LOCKED 2026-11-10, Barticus present)
 
   A. plank        cell type 3 — own kernel + own compositor. NOT native/no-cage;
-                  "native" is the trust core (Private), not a cell. (profiles.md.)
+                  "native" (the host) is the trust core, not a cell. (environment.md.)
   B. store shape  an app (tentacle), not a body organ.
   C. repo format  YES — reuse pacman's .db + .pkg.tar.zst under our key.
   D. dev-mode gate  OWNER's key (kidulkey.md open owner/master hierarchy).
 
 ## Relationship to existing law
 
-  profiles.md        the profile is the cell (wall = containment, not armor);
+  environment.md     the environment is per-app (wall = containment, not armor);
                      Private = native = trust core, not a cell.
   cells.md           pen/brig/plank classes (+ micro-brig, a brig variant);
                      overboard = the discard verb; socket bridge.

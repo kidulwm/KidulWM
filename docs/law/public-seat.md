@@ -6,7 +6,7 @@ AMENDED 2026-11-12 (later): BOSS/ADMIN -> OWNER (a standard sudo user); owner +
   name is a RANDOM HASH, shown as "Owner" in the face.
 
 Lane: cross-cutting (kushd seating, kmedia, kidul-browser, kidulwm).
-Related: profiles.md (the profile is the cell), kidulkey.md (presence free /
+Related: environment.md (the environment is per-app), kidulkey.md (presence free /
 footprint owned), bill.kush (the seating chart), landing.md (the landing look).
 
 ## The public user
@@ -14,8 +14,8 @@ footprint owned), bill.kush (the seating chart), landing.md (the landing look).
 The TV boots into the PUBLIC seat: a dedicated, standard-Linux account —
 `public`, no password, zero supplementary permissions (no audio/video/input/
 render). It is a seat identity, not a human login — kushd seats it as the
-default profile (profiles.md: "the default profile starts at login"). Chosen
-over "anonymous profile" for maintainability (a real nopasswd account is the
+default seat (environment.md: apps seat by default at login). Chosen
+over "anonymous account" for maintainability (a real nopasswd account is the
 standard, boring, least-surprising shape).
 
 EXCEPTION (2026-11-13): public carries ONE supplementary group — `tty` — so
@@ -42,8 +42,8 @@ allocation only, not audio/video/input/render.
 
 ## Relationship to existing law
 
-- EXTENDS profiles.md: "public user" = the default profile = a dedicated
-  nopasswd cell; walk-up / family / BOSS are the account tiers.
+- EXTENDS environment.md: "public user" = the default seat = a dedicated
+  nopasswd account; walk-up / family / BOSS are the account tiers.
 - EXTENDS kidulkey.md: BOSS = OWNER key (footprint); walk-up = PERSONAL key
   (presence free — own HD). "Presence free, footprint owned" is the base.
 - GROUNDS bill.kush: the seating chart already carries the roster — public
@@ -53,11 +53,11 @@ allocation only, not audio/video/input/render.
 ## Reversals
 
 - Supersedes the earlier "media on root /media" placement (the FLAC at
-  /media/Music): media lives in the public profile's home. Root is immutable.
+  /media/Music): media lives in the public seat's home. Root is immutable.
 
 ## Rulings (this lock)
 
-- Q.A  public user = a dedicated nopasswd account (not an anonymous profile),
+- Q.A  public user = a dedicated nopasswd account (not an anonymous account),
   for maintainability. [Barticus 2026-11-12: "easiest to maintain"]
 - Q.B  media in /home/public/Media, NOT /media on root. [Barticus: immutable
   root makes media-on-root backwards; a zero-permission nopasswd user is the

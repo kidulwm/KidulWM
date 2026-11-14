@@ -183,7 +183,7 @@ unattended); HOW a door opens is kidulkey.md's one ladder, everywhere.
   6. NO FREE-FORM CLASS. A new box type = a new named class, reviewed like a
      law. No runtime flag soup, no cross-product ("server in a VM" is a new
      named class, not a flag on server).
-  7. THE CLASS IS NOT A PROFILE. profiles.md = CELL confinement (pen/brig/
+  7. THE CLASS IS NOT AN ENVIRONMENT. environment.md = CELL confinement (pen/brig/
      plank — what walls a foreign process gets). The class = the MACHINE (what
      kind of box). Orthogonal; do not merge the words.
 

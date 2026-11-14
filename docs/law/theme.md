@@ -5,6 +5,9 @@ AMENDED 2026-11-14 (Barticus present, GSI): browser ZONE names aligned to the
 cell types — the least-safe zone is now "pen" (cells.md re-cut: pen/brig/plank).
 The browser zones themselves are DEPRECATED: removed in the browser redo,
 replaced by browser settings + downloads at the bottom (ruling Q.D).
+AMENDED 2026-11-14 (later, GSI): the browser zones are RETIRED, replaced by the
+ENVIRONMENT GLOW (environment.md): host/pen/brig/plank = orange/amber/purple/blue,
+a containment ramp shown as a soft glow around the focused pill (ruling Q.E).
 
 Lane: cross-app (kfiles, kidul-browser, kmedia + KidulWM media.zig).
 Related: styles (THE PILL, CFC law), landing law, chrome law, identity law.
@@ -35,12 +38,11 @@ lands on. The others radiate around it.
                or far right), available but NOT in the user's face (shop is
                last-resort). COLOUR TBD (open).
   2 = ORANGE   warning / least-safe.  #d9722e — the emergency-orange of the left
-               signals beacon. kfiles DRIVES · media MOVIES · browser PEN.
+               signals beacon. kfiles DRIVES · media MOVIES.
                (media MOVIES renders a MUTED shade — "warning muted-orange".)
-  3 = BLUE     calm / landing / default. #6a8fc4. kfiles HOME · media TV ·
-               browser BRIG.
+  3 = BLUE     calm / landing / default. #6a8fc4. kfiles HOME · media TV.
   4 = PURPLE   play / safe. #BD00FF — the KidulWorks sig purple (trident outer
-               prongs). kfiles SETTINGS · media MUSIC · browser PLANK.
+               prongs). kfiles SETTINGS · media MUSIC.
   5 = GREEN    books / status. #6b9e75. media BOOKS (ebooks, far right in the
                5-button bar) · healthy/ok signals (mounted/downloaded/family).
 
@@ -75,10 +77,25 @@ Chrome tokens (not pill slots):
    the same-ish colour, never a hue jump. Focus is shown by brightening, not by
    switching colour.
 
+## The environment glow (containment, not content)
+
+A second axis, separate from the content slots: the focused pill glows the
+ENVIRONMENT its app runs in (environment.md — host/pen/brig/plank). The glow is a
+soft transparent ring around the focused pill's outer edge, more opaque than Bob's
+ball glow but translucent, X px out. Warm = uncontained, cool = contained:
+
+  host  = ORANGE #d9722e   warning — no wall, "be careful here"
+  pen   = AMBER  #9e7e52   warm — light wall, shared kernel
+  brig  = PURPLE #BD00FF   cool — heavy wall, own kernel
+  plank = BLUE   #6a8fc4   coolest — heaviest wall, safe to do anything
+
+Default = the safety colour; the user may recolor any app/machine to their own
+scheme (colour = meaning, user-changable). Reverses the browser-zone pen/brig/plank
+mapping below.
+
 ## Remaps this law makes
 
-- browser zones: pen green #6b9e75 -> ORANGE #d9722e (least-safe = warning, the
-  fix), brig blue #6a8fc4 (unchanged), plank rust #a8604e -> PURPLE #BD00FF.
+- browser zones: RETIRED (superseded by the environment glow, ruling Q.E).
 - media: movies -> orange #d9722e (was blue #6a8fc4), tv -> blue #6a8fc4 (was
   green #6b9e75), music -> purple #BD00FF (was amber #9e7e52).
 - files: DRIVES -> orange, HOME -> blue, SETTINGS -> purple (was mono-gold #34).
@@ -99,9 +116,11 @@ Chrome tokens (not pill slots):
   2/3/4, blue still the landing. (Barticus 2026-10-26.)
 - Q.C  shop = "What's New" buy-media button, on the far edge, subtle; colour
   TBD. (Barticus 2026-10-26.)
-- Q.D  DEPRECATION (2026-11-14, GSI): the browser pen/brig/plank zones are
-  REMOVED in the browser redo. The space they occupied becomes browser SETTINGS
-  (background, etc.) + DOWNLOADS at the bottom, plus an "advanced settings"
-  toggle — the geek door. The simpler the better; until then the pen/brig/plank
-  colour mapping (orange/blue/purple) is a temporary hold, and the zone names
-  align to the cell types (pen, never "cell").
+- Q.D  BROWSER BOTTOM BAR (2026-11-14, GSI): the browser zones are retired — the
+  glow now shows the environment. The space becomes browser SETTINGS (background,
+  etc.) + DOWNLOADS at the bottom, plus an "advanced settings" toggle — the geek
+  door. The simpler the better.
+- Q.E  ENVIRONMENT GLOW (2026-11-14, GSI): the focused pill glows its app's
+  environment colour — host=orange, pen=amber, brig=purple, plank=blue (warm =
+  uncontained, cool = contained). Replaces the sash + inner border. User may
+  recolor per-app/machine (colour = meaning, user-changable).

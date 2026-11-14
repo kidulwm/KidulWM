@@ -4,7 +4,7 @@ RE-CUT 2026-11-14 (Barticus present, GSI): the 2026-10-05 lock dropped the
 third cell type and froze "plank" as the DISCARD verb. Barticus's model is
 three CELL TYPES; this file restores it. Reversals at the bottom.
 
-The native home is NOT a cell (profiles.md: Private = native, no wall). A cell
+The native home is NOT a cell (environment.md: host = native, no wall). A cell
 is a foreign thing we wall off. There are THREE cell types, distinguished by
 MECHANISM — how much of its own world the guest owns.
 
@@ -201,7 +201,7 @@ for you", not "this folder is read-only for you".
   This file's 2026-10-05 lock froze "plank = the DISCARD verb" and dropped the
   third cell type. That is REVERSED: plank is cell type 3 (own kernel + own
   compositor); the discard verb is "overboard" / "cast overboard".
-  profiles.md's "plank = the discard", distribution.md's "plank = the discard",
+  environment.md's "plank = the discard", distribution.md's "plank = the discard",
   and GLOSSARY.md's "plank = the DISCARD verb" are corrected to match.
   theme.md's "browser plank" zone already meant the deepest zone — that reading
   now aligns with plank = cell type 3, no change needed there.

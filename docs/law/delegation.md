@@ -49,13 +49,13 @@ tree. Attenuation, applied to evidence (logs.md).
 
 ## KLIP transfer — the concrete instance
 
-A klip (a move between cells/profiles) is the everyday act the tree governs.
+A klip (a move between environments) is the everyday act the tree governs.
 Two moves, one rule each:
 
-  AMBIENT      same class, same sub-profile (pen<->pen, brig<->brig) — free,
+  AMBIENT      same environment (pen<->pen, brig<->brig) — free,
                no grant, no keypress. Cheap append to the audit log.
-  ESCALATION   cross-class OR cross-profile (Private / Play) OR across a Kustom
-               variation — a dongle keypress PER-KLIP, resolved to a roster
+  ESCALATION   cross-environment (host -> pen -> brig -> plank, or any seat
+               change) — a dongle keypress PER-KLIP, resolved to a roster
                identity, never a broad ruling. The key proves WHO; WHO is a
                node on the tree.
 
@@ -79,8 +79,8 @@ Never let one word mean both.
                     the tree's nodes.
   roster-format.md  the kpax file — tree membership on disk + the prev-hash
                     chain the audit log reuses.
-  profiles.md       the profile is the cell — the tree grants which profile
-                    (folder set) a user may reach.
+  environment.md    the environment is per-app — the tree grants which seat a
+                    user's apps may run in.
   public-seat.md    owner (uid 1002) = admin; the seat boots public, re-seats
                     on the owner's proof.
   cells.md          per-folder bind-mount ("this folder does not exist") — the
