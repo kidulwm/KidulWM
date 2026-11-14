@@ -1,5 +1,24 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, evening) — SLICE 4 SET UP, PRESS-GO ON RETURN.
+#   Barticus stepped out mid-slice-4; dongle IS in (/dev/ttyACM0 c166 root:uucp). kidulkey/kushd/KidulWM
+#   all CLEAN — nothing half-done. RECON done; plan below.
+#   GATE TODAY (kidulkey/gate/src/main.zig): writeVerdict("UNTRUSTED") fail-closed -> PUBKEY -> pair-once burn
+#   /etc/kushd/input-trust.pub -> SIGN nonce -> SIG -> verify -> writeVerdict("TRUSTED <pk>"). kushd ALSO writes
+#   the verdict (startup UNTRUSTED + ABSENT on remove) + spawns the gate on dongle-add (execve GATE_PATH
+#   GATE_TTY GATE_PUBKEY). KEY FINDING: /run/kushd/input-trust is DEAD WEIGHT — written by gate+kushd, READ BY
+#   NOBODY (KidulWM src/input/keyboard.zig:13 "superseded by per-device tier"). Safe to drop.
+#   TRUST-ANCHOR SHIFT: pair-once device-pubkey -> ONE signing-ROOT pubkey certifying the whole roster
+#   (roster+sig = public/rotatable; root pub = the burn-in anchor).
+#   SLICE 4 PLAN (kidulkey/gate/src/main.zig): (1) extract proveDevice(fd, roster, alloc) -> ?role: read PUBKEY
+#   -> encodeKeyId -> resolve vs roster (absent/struck -> null, NO challenge) -> SIGN nonce -> SIG -> verify ->
+#   role|null. (2) DROP writeVerdict + VERDICT_PATH/TMP + pair-once read/writePubkeyFile. (3) main args ->
+#   <tty> <roster> <roster.sig> <root-pub-hex>; load+verify roster sig via roster.verifySig (fail-closed), then
+#   proveDevice; print role, exit 0/1. THEN kushd: drop its writeVerdict + pass roster/sig/root-pub in spawnGate
+#   (slice 3 enumeration-wiring rides the same change). LIVE-TEST on return: zig build, then tap the dongle
+#   against a real signed test roster (reuse scratch/kpax-demo fixture). PITFALL: firmware SIGN arms with NO
+#   timeout — gate timeout leaves dongle armed (ignores UART); recover by tapping BUTTON1 once.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, later) — KPX ROSTER VERIFIER LANDED (slice 3, roster-resolution half).
 #   Built kidulkey/gate/src/roster.zig + src/kpax.zig (commit 59d49e9, kidulkey repo, pushed): the kpax module
 #     parses/canonicalizes/verifies the roster (roster-format.md) + resolves a key-id -> role (deny-by-default).
