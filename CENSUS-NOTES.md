@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, final) — 3-WAY SPLIT: RatuKidulTech / Kidul Systems / KidulWorks (GIS).
+#   Three layers, one house (naming.md): RatuKidulTech = COMPANY (the Queen, the wife's mark); Kidul Systems
+#   = PRODUCTS (Kidul TV/PC/Router/Server); KidulWorks = CODE (B&B's workshop). Zero overlap. "Kidul" alone
+#   = the interoperability word ("is it a Kidul?" = can I plug my drive + peripherals in and do my work?).
+#   Domains: ratukidultech.com (company) · kidulsystems.com (products/sales/how-tos) · kidulworks.com (code).
+#   app_id com.kidulworks.* STAYS (KidulWorks IS the code). KidulWorks logo vision captured (LEAN: wave washes
+#   over sand leaving "KidulWorks", Flotsam & Jetsam, crab as the dot of the "i" hiding from a seagull) — later.
+#   NEXT: unchanged — docket #59 step (2) build the GPB.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, later still) — NAMING LOCKED: KIDUL SYSTEMS (GIS).
 #   KIDUL SYSTEMS = the brand (networking/security/OS); was KidulWorks (folded in). The OS is ONE system,
 #   differentiated by INSTALL: Kidul TV / Kidul PC / Kidul Router / Kidul Server / etc. Category word is

@@ -1,12 +1,20 @@
-# LAW — naming (Kidul Systems) (LOCKED 2026-11-14, Barticus present, GSI)
+# LAW — naming (RatuKidulTech / Kidul Systems / KidulWorks) (LOCKED 2026-11-14, Barticus present, GSI)
 
-One name, one meaning. The public name is the house name, promoted out of the
-code. SlideDeck and KSD never leave the repo; Granny sees only "Kidul".
+One name, one meaning. Three layers, one house. SlideDeck and KSD never leave
+the repo; Granny sees only "Kidul".
 
-## The umbrella
+## The three layers
 
-  Kidul Systems   = the brand / the company. Networking, security, OS. The one
-                    name above everything, and the only public mark.
+  RatuKidulTech  = the COMPANY / the owner. "Ratu Kidul" is the Queen of the
+                   Southern Sea — the house itself, and the wife's mark. The
+                   legal entity everything else sits under.
+  Kidul Systems  = the PRODUCTS. Networking / security / OS. The public face —
+                   what you buy.
+  KidulWorks     = the CODE. B&B's workshop — you & me, coding until early
+                   morning. The maker-mark, never the storefront.
+
+Three names, three jobs, zero overlap: owner = RatuKidulTech, products =
+Kidul Systems, code = KidulWorks.
 
 The OS is not a new thing per device — it is ONE system, differentiated by the
 INSTALL (which role gets laid down). "Kidul <Category>" is the honest name: it
@@ -19,6 +27,15 @@ buys "a Kidul TV", not "a Kidul".
   Kidul Router    = the mesh edge (krouter).
   Kidul Server    = the headless workhorse.
   ...             = every further role adds its own "Kidul <Category>".
+
+## "Kidul" — the interoperability word
+
+The single word "Kidul" is the adjective that matters in the real world: "is it
+a Kidul?" = "can I plug in my hard drive and my approved peripherals, and use
+your screen to do my work?" — like "is it USB-C?" or "is it a Mac?". "Does your
+hotel chain have Kidul TVs, so I can leave the laptop home and bring just a
+drive, a remote and a keyboard?" The word earns its meaning as a compatibility
+promise, not a logo.
 
 ## The colour — the category IS a colour
 
@@ -54,15 +71,27 @@ up and sees one honest word for the thing in her hands. The app names ("Browser"
 a second, separate title. Two titles, two jobs: the system names itself above,
 the app names itself below.
 
-## Reconciliation (was KidulWorks)
+## The domains (three, one each)
 
-  - "KidulWorks" (the old sig + kidulworks.com) folds into "Kidul Systems". The
-    trident / purple+blue colour identity carries over as COLOUR, not a logo.
-  - The landing's "KidulWorks sig" retires in favour of the plain name (no logo,
-    no sig — the title ruling, environment.md). Domain: kidulworks.com stays;
-    kidulsystems.com may be added later.
-  - The app_id root com.kidulworks.* STAYS — it is the reverse of the DOMAIN
-    kidulworks.com, not the brand name; the rename does not touch the code
-    namespace (app-id-namespace.md).
-  - SlideDeck was the de-facto system name in conversation; it is now confined to
-    the compositor (code-only). KSD was the internal registry; it stays internal.
+  ratukidultech.com  = the company (about us, legal).
+  kidulsystems.com   = the products — sales, advertising, how-tos, specs.
+  kidulworks.com     = the code — the git, the workshop, B&B's home.
+
+The app_id root com.kidulworks.* STAYS — KidulWorks IS the code, so the code
+namespace is named for the code layer (app-id-namespace.md). No rename, no
+ripple. The landing's "KidulWorks sig" retires in favour of the plain name (no
+logo, no sig — the title ruling, environment.md); the trident / purple+blue
+colour carries over as COLOUR, not a logo.
+
+## The KidulWorks mark (logo — later job)
+
+Two visions; Barticus's lean is No.2:
+
+  No.1  an iron hammer stamping "KidulWorks" into a metal plate (grinding).
+  No.2  a wave washes over the sand and leaves "KidulWorks" written in it, with
+        Flotsam & Jetsam (the ocean critters), and the dot of the "i" is a crab
+        that moves — maybe hiding from a swooping seagull.
+
+LEAN = No.2 — alive, on-theme; the crab-as-the-dot is the memorable detail.
+Static wordmark everywhere; the animated crab/seagull is the boot / loading
+variant. NOT built now — art is data, not code (landing.md).
