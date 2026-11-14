@@ -17,6 +17,10 @@
 #   verb lands. kmail tailwind = Nov 12-13 2026 Outlook
 #   outage (2 days, 74 countries, 100k+ reports, network-upgrade fault NOT a hack). #58 OUR PACMAN
 #   rides parallel. Install-sizing question OPEN: 1TB drive % split root/public/per-user partitions.
+#   KLIP TRANSFER (Barticus 2026-11-14): per-class ambient (pen<->pen, brig<->brig) + key-gated
+#   cross-class/cross-sub-profile (Private/Progress/Play) per-klip; APPEND-ONLY HASH-CHAINED audit
+#   log (roster prev-hash pattern), log-read itself attenuating. VOCAB CATCH: "plank" is LOCKED as
+#   the DISCARD verb (cells.md), NOT a class — pen/brig are the two classes.
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-14, evening) — SLICE 4 DONE + LIVE-PROVEN.
 #   kidulkey-gate refactored to a per-device proof: proveDevice(fd, roster) -> ?role (read PUBKEY -> resolve
