@@ -50,14 +50,18 @@ the native core). The profile is the user-facing unit of confinement.
   VM. grannyize.md applied to the security model: the depth is hidden, never
   removed. Qubes colours windows; KSD lists profiles.
 
-  Granny surface (LOCKED 2026-11-14): Private / Play / Progress.
-    Private  = native (valuables, banking, our code, no foreign).
-    Play     = the socials + fun, a brig by default (spoofed persona, cells.md),
-               the plank later when the remote-desktop VMs are "flying".
-               Granny sees "her browser", never the cell.
-    Progress = study & work, the family's everyday (pen). Granny's "progress
-               days are over" — she never lands here; it is for the rest of
-               the family.
+  Granny surface (LOCKED 2026-11-14, re-cut same day): Private / Play / Kustom.
+    Private  = profile 1 — native (valuables, banking, our code, no foreign).
+    Play     = profile 2 — the cell: everything else (socials, fun, study,
+               work). The auto-seat picks pen/brig/plank by content (cells.md);
+               brig by default for the socials (spoofed persona), the plank
+               later when the remote-desktop VMs are "flying". Granny sees
+               "her browser", never the cell.
+    Kustom   = the variation door, NOT a profile — for now, just another BUTTON.
+               Custom settings = variations WITHIN each profile (study/work
+               mode, kid-mode, which apps) — built out OVER TIME, no hurry.
+               The geek's door; depth Granny never sees. Two profiles + one
+               button = three pills; Granny needs only Private + Play.
 
 ## The escalation (classify at seat, overboard on threat)
 

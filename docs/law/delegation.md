@@ -54,10 +54,10 @@ Two moves, one rule each:
 
   AMBIENT      same class, same sub-profile (pen<->pen, brig<->brig) — free,
                no grant, no keypress. Cheap append to the audit log.
-  ESCALATION   cross-class OR cross-sub-profile (Private / Progress / Play) —
-               a dongle keypress PER-KLIP, resolved to a roster identity,
-               never a broad ruling. The key proves WHO; WHO is a node on the
-               tree.
+  ESCALATION   cross-class OR cross-profile (Private / Play) OR across a Kustom
+               variation — a dongle keypress PER-KLIP, resolved to a roster
+               identity, never a broad ruling. The key proves WHO; WHO is a
+               node on the tree.
 
 Every klip — ambient and escalation alike — appends to the audit log, so the
 record is complete, not just the loud events.
