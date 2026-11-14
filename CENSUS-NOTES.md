@@ -8,8 +8,10 @@
 #   NEW next = #59 USER PARTITIONS & ISOLATIONS (loose DOCKETS, not versioned): every user on their
 #   own key-gated partition; external/net drives = "just another partition" behind the key; co-owned
 #   = second key with internal separation; per-folder is the common ask, per-key is our upgrade.
-#   Build order LOCKED (bobdotrix, spec-before-surface): (1) FREEZE partition rules (extend
-#   partitions.md -> per-user key-gated partition + co-owned second-key + install % split); (2)
+#   Build order LOCKED (bobdotrix, spec-before-surface): (1) FREEZE partition rules + DELEGATION
+#   law (extend partitions.md -> per-user key-gated partition + co-owned second-key + install %
+#   split; NEW ruling: OWNER=admin=Granny/CEO, SUB-USERS=delegation tree, ATTENUATION=every
+#   permission has a creator who grants <= their own, NEVER more -> freeze as delegation.md); (2)
 #   globalPillsBar (Browser/Library/People); (3) People/admin settings app ("person" key exchange);
 #   (4) partition mechanism (key-cast mount on proof). Security checked in the background as each
 #   verb lands. kmail tailwind = Nov 12-13 2026 Outlook
