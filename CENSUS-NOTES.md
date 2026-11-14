@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, later still) — NAMING LOCKED: KIDUL SYSTEMS (GIS).
+#   KIDUL SYSTEMS = the brand (networking/security/OS); was KidulWorks (folded in). The OS is ONE system,
+#   differentiated by INSTALL: Kidul TV / Kidul PC / Kidul Router / Kidul Server / etc. Category word is
+#   PERMANENT (honest descriptor + colour anchor). Device colour = its primary environment colour
+#   (naming.md): TV=ORANGE, PC=LIME, Server=ELECTRIC BLUE, Router=ELECTRIC PURPLE — same ramp as theme.md
+#   Q.E, one meaning. Code names stay internal: SlideDeck (WM), KSD (registry), StarShipKidul (ship), KWEB
+#   (mesh). System title above the GPB = the PRODUCT name ("Kidul TV"), outline-only, no logo/sig.
+#   NEW LAW: docs/law/naming.md. landing.md "KidulWorks sig" -> "Kidul Systems name" (sig/logo retires).
+#   MY 1%: I pushed back on dropping the category name "once it's a household name" — keep it permanently.
+#   NEXT: unchanged — docket #59 step (2) build the GPB.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, later) — SEAT-GRADE RETIRED + COLOUR RE-RULED + TITLE RULING (GIS).
 #   SEAT-GRADE RETIRED: Barticus asked if it was redundant — YES. It was a third name for "what walls a
 #   process", sitting on top of ENVIRONMENT (confinement: host/pen/brig/plank) + PERMISSIONS (access:

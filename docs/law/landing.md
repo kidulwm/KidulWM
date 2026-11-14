@@ -1,10 +1,13 @@
 # LAW — the Landing (files/browser/media converge on one look & feel)
 
 LOCKED 2026-10-26, Barticus present. Q.A resolved: the media title is "Library".
-AMENDED 2026-10-26 (later): the space above the bar is EMPTY "awaiting design"
-for now — the KISS title + Batik corners + KidulWorks sig (props 2/3/4/6) are a
+AMENDED 2026-11-14 (later): the space above the bar is EMPTY "awaiting design"
+for now — the KISS title + Batik corners + Kidul Systems name (props 2/3/4/6) are a
 LATER pass, not the current landing. Current clean landing = pill bar CFC'd +
 content centred + ZERO crumbs + empty space above.
+AMENDED 2026-11-14 (GSI): the brand is KIDUL SYSTEMS (was KidulWorks); the sig
+LOGO retires in favour of the plain name (naming.md — no logo, no sig, just the
+name). The system title ABOVE the GPB = "Kidul TV" (naming.md).
 
 Lane: cross-app (kfiles, kidul-browser, kmedia).
 Related: styles (CFC law, THE PILL, corner language, whispy icons, Granny test),
@@ -29,7 +32,7 @@ clean CENTRED stage and nothing else:
   - the pill bar CFC'd dead-centre (w/2 AND h/2 — kmedia slide law #1),
   - the app's content centred below it,
   - ZERO breadcrumbs (crumbs are a while-browsing aid, never a landing element),
-  - above the bar: the Batik corners, the centred title, and the KidulWorks sig.
+  - above the bar: the Batik corners, the centred title, and the Kidul Systems name.
 
 Granny never needs to know she is using "kfiles" or "kidul-browser" — she needs
 to know she is in HER FILES, on HER BROWSER, watching HER LIBRARY. The app id
@@ -66,19 +69,19 @@ disappears; a KISS title tells her what the app does.
    strip.
 
 5. ONE LANGUAGE, THREE APPS. The landing shape (centred bar + centred content +
-   centred title + Batik corners + KidulWorks sig) is IDENTICAL across
+   centred title + Batik corners + Kidul Systems name) is IDENTICAL across
    files/browser/media. Only the title and the content swap. Freeze once, build
    three times to match.
 
-6. KIDULWORKS SIGNATURE (B&B). A small "KidulWorks" logo in purple & blue — the
+6. KIDUL SYSTEMS NAME. A small "Kidul Systems" name in purple & blue — the
    B&B signature colours, timeless — sits just above the focused pill, small
    enough that the colour never distracts from the pill's focus, but placed so it
-   walks the eye up and down the line: title -> sig -> focused pill. NOT big,
+   walks the eye up and down the line: title -> name -> focused pill. NOT big,
    wisely placed, our mark on every surface.
 
 ## Relationship to existing law
 
-- EXTENDS kidul-filler-zones: the Batik corners + centred title + KidulWorks sig
+- EXTENDS kidul-filler-zones: the Batik corners + centred title + Kidul Systems name
   ARE the first filler marks (the filler-zones "first marks" open question). The
   "NEEDS FILLER" placeholder retires in favour of them.
 - REFINES kfiles-top-nav: the focus model (focused element centres, hard stops)
@@ -106,7 +109,7 @@ disappears; a KISS title tells her what the app does.
   the PLACE not the stuff, parallels "Folders & Files", and is the word the whole
   family already owns from Plex/Jellyfin.
 - Q.B  corner art: Batik pattern (Barticus 2026-10-26), not a goddess picture.
-- Q.C  placement: title CENTRED, Batik in the corners, KidulWorks sig above the
+- Q.C  placement: title CENTRED, Batik in the corners, Kidul Systems name above the
   focused pill (Barticus 2026-10-26).
 - Q.D  LANDING UNIFICATION (2026-11-14, GSI): every app's landing = the title ABOVE
   the CFC'd app-top bar, content below — identical across apps. The media player's

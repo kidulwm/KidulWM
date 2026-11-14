@@ -41,7 +41,7 @@ lands on. The others radiate around it.
                signals beacon. kfiles DRIVES · media MOVIES.
                (media MOVIES renders a MUTED shade — "warning muted-orange".)
   3 = BLUE     calm / landing / default. #6a8fc4. kfiles HOME · media TV.
-  4 = PURPLE   play / safe. #BD00FF — the KidulWorks sig purple (trident outer
+  4 = PURPLE   play / safe. #BD00FF — the Kidul Systems purple (trident outer
                prongs). kfiles SETTINGS · media MUSIC.
   5 = GREEN    books / status. #6b9e75. media BOOKS (ebooks, far right in the
                5-button bar) · healthy/ok signals (mounted/downloaded/family).
