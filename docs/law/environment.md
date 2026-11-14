@@ -82,6 +82,14 @@ The global pill bar IS the apps list — one per seat, always the very top. Publ
 user: AI / Browser / Games / Library / People. The owner: every installed app is its
 own pill. People = the admin surface (users, grants, roster), not a profile picker.
 
+Three names, one deck (the up+1 / up+2 offset vocabulary retires):
+  the bar    = the GPB, the system apps-list, always the very top.
+  app top    = each app's own CFC'd topPillsBar (today's "up+1"); the first move
+               DOWN CFC's it and the app opens.
+  the peek   = the app's title shown under the focused GPB button before entering —
+               no process behind it. The title is copied from the app's topTitle,
+               so the peek tracks the focused button.
+
 ## Reversals
 
   profiles (this file)  the 2026-11-10 "profile is the cell" model and the

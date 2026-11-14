@@ -45,7 +45,8 @@ kfiles top bar (true CFC, LOCKED):
   SETTINGS LEFT = left-of-end-crumb    ;  RIGHT = the logo slot
 
 (media player / browser / settings zones enumerated when those apps adopt
-the CFC top bar. The media player already reserves a logo slot in THE UP+1
+the CFC top bar. The media player already reserves a logo slot in the app top
+(was "UP+1" — the app-top vocabulary, environment.md).
 state — the filler law generalises it.)
 
 ## Mechanism (code)

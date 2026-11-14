@@ -108,3 +108,8 @@ disappears; a KISS title tells her what the app does.
 - Q.B  corner art: Batik pattern (Barticus 2026-10-26), not a goddess picture.
 - Q.C  placement: title CENTRED, Batik in the corners, KidulWorks sig above the
   focused pill (Barticus 2026-10-26).
+- Q.D  LANDING UNIFICATION (2026-11-14, GSI): every app's landing = the title ABOVE
+  the CFC'd app-top bar, content below — identical across apps. The media player's
+  tiles-above-the-bar landing is corrected to match (title above, tiles below).
+  The media library's movement (down into tiles, back up to the bar) is exactly
+  the resting position every app should open on.
