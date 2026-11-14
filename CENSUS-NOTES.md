@@ -8,9 +8,11 @@
 #   NEW next = #59 USER PARTITIONS & ISOLATIONS (loose DOCKETS, not versioned): every user on their
 #   own key-gated partition; external/net drives = "just another partition" behind the key; co-owned
 #   = second key with internal separation; per-folder is the common ask, per-key is our upgrade.
-#   Build order: (1) globalPillsBar on the public landing (Browser/Library/People); (2) People/admin
-#   settings app (#57's wall — "person" key exchange); (3) add/delete users + key-gated partitions.
-#   Security checked in the background as each verb lands. kmail tailwind = Nov 12-13 2026 Outlook
+#   Build order LOCKED (bobdotrix, spec-before-surface): (1) FREEZE partition rules (extend
+#   partitions.md -> per-user key-gated partition + co-owned second-key + install % split); (2)
+#   globalPillsBar (Browser/Library/People); (3) People/admin settings app ("person" key exchange);
+#   (4) partition mechanism (key-cast mount on proof). Security checked in the background as each
+#   verb lands. kmail tailwind = Nov 12-13 2026 Outlook
 #   outage (2 days, 74 countries, 100k+ reports, network-upgrade fault NOT a hack). #58 OUR PACMAN
 #   rides parallel. Install-sizing question OPEN: 1TB drive % split root/public/per-user partitions.
 #
