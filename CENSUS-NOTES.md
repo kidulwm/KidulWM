@@ -1,5 +1,25 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, late night) — V2 RE-CUT: PROFILES DISSOLVE -> PER-APP ENVIRONMENT (GIS).
+#   Barticus caught my twist: the Private/Play/Kustom pills were NOT the global pill bar — the GPB IS
+#   the APPS LIST. That mistake surfaced the clean option: NO PROFILES AT ALL. Environment is a PER-APP
+#   property (host/pen/brig/plank), chosen at INSTALL (mini app store, safety-by-default), shown by a
+#   soft GLOW around the focused pill — the containment colour, NOT a sash or inner border.
+#   COLOUR RAMP REVERSED (theme.md Q.E): host=ORANGE (no wall, "be careful"), pen=amber, brig=purple,
+#   plank=BLUE (safe to do anything). Warm=uncontained -> cool=contained. "Native is safer than any VM"
+#   REFRAMED not reversed: native = lowest ATTACK SURFACE (our code only) but NO WALL; the glow shows
+#   CONTAINMENT (a different axis). The glow = soft transparent ring, more opaque than Bob's ball glow,
+#   X px out, user-recolorable per app/machine.
+#   GPB = apps list, one per seat. Public: AI / Browser / Games / Library / People (5). Owner: every
+#   installed app = its own pill (2+ email pills side by side, host vs brig, told apart by the glow).
+#   A whole OS on a plank = just another app pill / slide in the deck; GNOME takeover only while focused.
+#   LAZY-OPEN: the bar is a row of doors — no process until first down-move (defense by architecture).
+#   NAMING: bar / app-top / peek retire up+1/up+2 (environment.md, landing.md Q.D, kidul-filler-zones).
+#   LAW (commits 75447e4 + 87cfc26): profiles.md -> environment.md (rewrite); cells/delegation/
+#   distribution/machine-classes/public-seat refs -> environment; theme.md glow + reversed ramp.
+#   kgames docked as #61 (space invaders, Bob's balls bullets, ocean Kidul theme — first Cairo game).
+#   NEXT: docket #59 step (2) = build the GPB (apps list, 5 public buttons, glow-coded, lazy-open).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, night) — #59 STEP 1 FROZEN + CELL TAXONOMY RE-CUT (GIS).
 #   Barticus caught a drift: "plank" was his ORIGINAL third cell type (own kernel + own compositor =
 #   full separate desktop), but the 2026-10-05 cells.md lock had frozen it as "the DISCARD verb" and
