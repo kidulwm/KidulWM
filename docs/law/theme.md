@@ -1,6 +1,10 @@
 # LAW — the Theme (one set of colour tokens, colour = meaning, user-changable)
 
 LOCKED 2026-10-26, Barticus present.
+AMENDED 2026-11-14 (Barticus present, GSI): browser ZONE names aligned to the
+cell types — the least-safe zone is now "pen" (cells.md re-cut: pen/brig/plank).
+The browser zones themselves are DEPRECATED: removed in the browser redo,
+replaced by browser settings + downloads at the bottom (ruling Q.D).
 
 Lane: cross-app (kfiles, kidul-browser, kmedia + KidulWM media.zig).
 Related: styles (THE PILL, CFC law), landing law, chrome law, identity law.
@@ -8,9 +12,9 @@ Related: styles (THE PILL, CFC law), landing law, chrome law, identity law.
 ## Problem
 
 Browser, media player and files each hardcoded their own pill colours and
-drifted apart: browser cell/brig/plank = green/blue/rust, media movies/tv/music
+drifted apart: browser pen/brig/plank = green/blue/rust, media movies/tv/music
 = blue/green/amber, files = mono-gold. The colours carried no shared meaning,
-and one was actively wrong — browser "cell" (LEAST safe) was GREEN, which reads
+and one was actively wrong — browser "pen" (LEAST safe) was GREEN, which reads
 "safe/go". Backwards.
 
 ## Concept — colour = meaning
@@ -31,7 +35,7 @@ lands on. The others radiate around it.
                or far right), available but NOT in the user's face (shop is
                last-resort). COLOUR TBD (open).
   2 = ORANGE   warning / least-safe.  #d9722e — the emergency-orange of the left
-               signals beacon. kfiles DRIVES · media MOVIES · browser CELL.
+               signals beacon. kfiles DRIVES · media MOVIES · browser PEN.
                (media MOVIES renders a MUTED shade — "warning muted-orange".)
   3 = BLUE     calm / landing / default. #6a8fc4. kfiles HOME · media TV ·
                browser BRIG.
@@ -64,7 +68,7 @@ Chrome tokens (not pill slots):
    edge. Both use the SAME colour template, blue pinned centre.
 
 4. ZONE COLOUR IS THE PILL COLOUR. The browser searchBar pill carries the colour
-   of the cell/brig/plank zone the browser is in — the "area it is working in".
+   of the pen/brig/plank zone the browser is in — the "area it is working in".
    That is the browser's safety signal (Qubes, subtler).
 
 5. FOCUSED BORDER = BRIGHTER. The border's focused state is a brighter version of
@@ -73,7 +77,7 @@ Chrome tokens (not pill slots):
 
 ## Remaps this law makes
 
-- browser zones: cell green #6b9e75 -> ORANGE #d9722e (least-safe = warning, the
+- browser zones: pen green #6b9e75 -> ORANGE #d9722e (least-safe = warning, the
   fix), brig blue #6a8fc4 (unchanged), plank rust #a8604e -> PURPLE #BD00FF.
 - media: movies -> orange #d9722e (was blue #6a8fc4), tv -> blue #6a8fc4 (was
   green #6b9e75), music -> purple #BD00FF (was amber #9e7e52).
@@ -95,3 +99,8 @@ Chrome tokens (not pill slots):
   2/3/4, blue still the landing. (Barticus 2026-10-26.)
 - Q.C  shop = "What's New" buy-media button, on the far edge, subtle; colour
   TBD. (Barticus 2026-10-26.)
+- Q.D  DEPRECATION (2026-11-14, GSI): the browser pen/brig/plank zones are
+  REMOVED in the browser redo. The space they occupied becomes browser SETTINGS
+  (background, etc.) + DOWNLOADS at the bottom — the simpler the better. Until
+  then the pen/brig/plank colour mapping (orange/blue/purple) is a temporary
+  hold, and the zone names align to the cell types (pen, never "cell").

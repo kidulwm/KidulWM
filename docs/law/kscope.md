@@ -8,7 +8,7 @@ it (transport). "Scope" carries both — the range you see and the reach you mak
 
 Two names, two things, never blurred:
 - kscope = the whole capability (see another ship, rendezvous, push a slide).
-- the gangway = the pixel-transport seam inside it (the plank the show crosses).
+- the gangway = the pixel-transport seam inside it.
   kscope spots the ship; the gangway boards it.
 
 Naming note: the K-prefix by the letter of theatre.md is for RESIDENT DAEMONS.
