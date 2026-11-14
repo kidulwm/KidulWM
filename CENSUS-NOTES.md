@@ -6,9 +6,10 @@
 #   dropped the third type. RE-CUT cells.md/profiles.md/distribution.md: THREE cell types = pen (shared
 #   kernel + host compositor) / brig (own kernel + host compositor, renders as a slide) / plank (own
 #   kernel + own compositor, full desktop). Discard verb is now "overboard"/"cast overboard" (his word).
-#   micro-brig = brig VARIANT (variants allowed per type). GRANNY SURFACE LOCKED: Private (native,
-#   banking) / Play (brig by default = socials; plank later when kwayland remote-desktop VMs "fly") /
-#   Progress (pen, study-work, "her progress days are over"). Granny sees ONLY Private + Play.
+#   micro-brig = brig VARIANT (variants allowed per type). GRANNY SURFACE LOCKED (re-cut): Private
+#   (native, banking) / Play (brig by default = socials; plank later when kwayland remote-desktop VMs
+#   "fly") / Kustom (the variation door — for now just another button, built out over time). "Progress"
+#   RETIRED as a profile name. Granny sees ONLY Private + Play; Kustom is the geek door.
 #   AUTO-SEAT-SAFEST (cells.md): "browsers go in X" — the usher seats, never the user; auto-suggest
 #   safest, allow return, encourage staying. SPOOFED PERSONA: the socials brig ships a synthetic
 #   identity (fake name/history/contacts) — nothing real to slurp, defense by arithmetic not vigilance.
