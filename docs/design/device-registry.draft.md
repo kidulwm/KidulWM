@@ -146,16 +146,19 @@ built. Bench access TODAY is a plain ed25519 key on disk."
      hash chain, tombstone-not-delete, deny-by-default. Rulings A-D locked.
   3. Tier 2 wiring: ladder challenges a proof-presenting device against the
      roster's attested key at enumeration; fail-closed to UNTRUSTED.
-     [roster-verifier HALF DONE 2026-11-14: kidulkey/gate `kpax` module + CLI
-     (src/roster.zig, src/kpax.zig) — parse/canonicalize/verify detached
-     Ed25519 sig + resolve key-id -> role, deny-by-default. Proven end-to-end:
-     Zig Ed25519 == Python cryptography (same seed -> same root), tamper ->
-     BAD SIGNATURE, canonical re-sort order-independent. Enumeration challenge
-     wiring = remaining half, gated on slice 4.]
+     [roster-verifier DONE + gate resolves the roster DONE (slice 4). Remaining
+     half = seat admission consumes the gate's reported role to actually admit
+     a Tier 2 device — that is slice 5, the remote.]
   4. kidulkey-gate: split the crypto heart (challenge/verify) from the global
      verdict write — the heart becomes the per-device proof call; the global
-     verdict write is dropped.  <- NEXT (needs dongle for a live test)
+     verdict write is dropped.  [DONE 2026-11-14: gate 678932f proveDevice()
+     resolves the roster + drops the global verdict + pair-once burn; kushd
+     b44ab22 drops its verdict write + passes roster/sig/root-pub. LIVE-PROVEN:
+     tap -> TRUSTED role=remote; bad sig -> roster signature BAD; decoy roster
+     -> UNTRUSTED (deny-by-default).]
   5. Wire the remote (HID + kidulKey seed) as the Tier 2 production device.
+     <- NEXT (closes slice 3: seat admission consumes the gate's role; the
+        dongle is the prototype proof primitive, the remote the production input)
 
 ## Local-only artifacts (LOCKED, cross-ref kidulwm-codeberg-workflow)
 
