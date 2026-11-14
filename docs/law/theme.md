@@ -101,6 +101,7 @@ Chrome tokens (not pill slots):
   TBD. (Barticus 2026-10-26.)
 - Q.D  DEPRECATION (2026-11-14, GSI): the browser pen/brig/plank zones are
   REMOVED in the browser redo. The space they occupied becomes browser SETTINGS
-  (background, etc.) + DOWNLOADS at the bottom — the simpler the better. Until
-  then the pen/brig/plank colour mapping (orange/blue/purple) is a temporary
-  hold, and the zone names align to the cell types (pen, never "cell").
+  (background, etc.) + DOWNLOADS at the bottom, plus an "advanced settings"
+  toggle — the geek door. The simpler the better; until then the pen/brig/plank
+  colour mapping (orange/blue/purple) is a temporary hold, and the zone names
+  align to the cell types (pen, never "cell").
