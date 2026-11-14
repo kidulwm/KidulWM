@@ -1,5 +1,32 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, night) — #59 STEP 1 FROZEN + CELL TAXONOMY RE-CUT (GIS).
+#   Barticus caught a drift: "plank" was his ORIGINAL third cell type (own kernel + own compositor =
+#   full separate desktop), but the 2026-10-05 cells.md lock had frozen it as "the DISCARD verb" and
+#   dropped the third type. RE-CUT cells.md/profiles.md/distribution.md: THREE cell types = pen (shared
+#   kernel + host compositor) / brig (own kernel + host compositor, renders as a slide) / plank (own
+#   kernel + own compositor, full desktop). Discard verb is now "overboard"/"cast overboard" (his word).
+#   micro-brig = brig VARIANT (variants allowed per type). GRANNY SURFACE LOCKED: Private (native,
+#   banking) / Play (brig by default = socials; plank later when kwayland remote-desktop VMs "fly") /
+#   Progress (pen, study-work, "her progress days are over"). Granny sees ONLY Private + Play.
+#   AUTO-SEAT-SAFEST (cells.md): "browsers go in X" — the usher seats, never the user; auto-suggest
+#   safest, allow return, encourage staying. SPOOFED PERSONA: the socials brig ships a synthetic
+#   identity (fake name/history/contacts) — nothing real to slurp, defense by arithmetic not vigilance.
+#   #59 STEP 1 FROZEN (commit 109a059): partitions.md extended (per-user key-gated partitions + co-owned
+#   second key + external/net = "just another partition" + install % split SYSTEM 32GiB / PUBLIC 128GiB
+#   / FREE POOL remainder ~771GiB — principle, not hard numbers); delegation.md NEW (owner=admin,
+#   sub-user tree, attenuation grant<=own never-more, log-read attenuation, klip transfer ambient+
+#   escalation, People vs My People split); logs.md NEW (append-only hash-chained system logs, roster
+#   prev-hash pattern, encrypted vault rotation, CEO/root read).
+#   VOCAB FLAGS: (1) "plank" now carries TWO senses — cell type 3 AND kscope.md's gangway ("the plank
+#   the show crosses", kscope.md line 11) — split before they tangle. (2) theme.md browser zones say
+#   "cell/brig/plank" where "cell" = pen — align to pen/brig/plank later. (3) GLOSSARY.md is LOOSE
+#   (~/dev, not versioned) — its plank/overboard fix is local-only, not pushed.
+#   NEXT: docket #59 step (2) = globalPillsBar on the PUBLIC LANDING (Browser / Library / People only,
+#   no settings to public uid); step (3) = People/admin settings app; step (4) = partition mechanism.
+#   #58 OUR PACMAN rides parallel. Contacts/"My People" + calendar linkage are specced (delegation.md)
+#   but NOT built — later slices.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, evening) — PIVOT: #59 USER PARTITIONS & ISOLATIONS is next.
 #   Slice 4 landed + live-proven (tap -> TRUSTED role=remote). Slice 5 (wire the remote) is now
 #   BACK-BURNERED — no remote exists yet -> DOCKETS #60 "waiting the remote" (carries Barticus's
