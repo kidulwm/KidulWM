@@ -21,6 +21,11 @@
 #   cross-class/cross-sub-profile (Private/Progress/Play) per-klip; APPEND-ONLY HASH-CHAINED audit
 #   log (roster prev-hash pattern), log-read itself attenuating. VOCAB CATCH: "plank" is LOCKED as
 #   the DISCARD verb (cells.md), NOT a class — pen/brig are the two classes.
+#   IMMUTABLE LOGS (Barticus 2026-11-14): ALL system logs (printk drain /dev/kmsg->kernel.log,
+#   daemon logs, klip audit) append-only + hash-chained; large logs rotate into an ENCRYPTED VAULT
+#   owned by root, only owner decrypts; read=CEO/root. ALREADY: kboot forkLogDrain (fsync/record) +
+#   kushd redirectStdio root-before-drop (non-root can't tamper own log). MISSING: append-only
+#   enforcement + hash chain + vault. Vision: immutable base+logs = audit-grade -> gov -> local LLM.
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-14, evening) — SLICE 4 DONE + LIVE-PROVEN.
 #   kidulkey-gate refactored to a per-device proof: proveDevice(fd, roster) -> ?role (read PUBKEY -> resolve
