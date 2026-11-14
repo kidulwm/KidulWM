@@ -38,13 +38,13 @@ package manager in play is determined by the CELL TYPE, not by us:
          Arch). Its apt/pacman runs INSIDE the pen. Cheap, feel-local, kid-safe
          (cells.md: "foreign DISTRO -> pen").
 
-  brig   KVM, own kernel; foreign CODE, or a whole foreign OS (Ubuntu with its
-         own systemd and X11). That OS's package manager runs INSIDE the guest,
-         caged by the AV bridge + superior usher + network pen (cells.md:
-         "foreign CODE -> brig").
+  brig   KVM, own kernel, HOST compositor (renders as a slide into kidulwm);
+         foreign CODE. The guest's package manager runs INSIDE the guest, caged
+         by the AV bridge + superior usher + network pen (cells.md: "foreign
+         CODE -> brig").
 
-  plank  the discard — the most-unsafe guests: run whatever, overboard on
-         misbehave. The least-trusted cell, enforced by discard (profiles.md).
+  plank  own kernel + own compositor — the full separate desktop (its own
+         distro AND window manager AND everything). The deepest cell; the wild.
          NOT native/no-cage — "native" is the trust core (Private), not a cell.
 
 ## The systemd problem dissolves at the cell wall
@@ -92,7 +92,7 @@ not a Zoom package — the cell is reusable across a thousand foreign apps.
 
 ## Rulings (all LOCKED 2026-11-10, Barticus present)
 
-  A. plank        the most-unsafe guests, discard-on-misbehave. NOT native/no-cage;
+  A. plank        cell type 3 — own kernel + own compositor. NOT native/no-cage;
                   "native" is the trust core (Private), not a cell. (profiles.md.)
   B. store shape  an app (tentacle), not a body organ.
   C. repo format  YES — reuse pacman's .db + .pkg.tar.zst under our key.
@@ -102,7 +102,8 @@ not a Zoom package — the cell is reusable across a thousand foreign apps.
 
   profiles.md        the profile is the cell (wall = containment, not armor);
                      Private = native = trust core, not a cell.
-  cells.md           pen/brig/micro-brig classes + the plank (discard); socket bridge.
+  cells.md           pen/brig/plank classes (+ micro-brig, a brig variant);
+                     overboard = the discard verb; socket bridge.
   dom0.md            network in the brig, not the trust core; knetd caged.
   verified-boot.md   dm-verity base + fs-verity/IMA writable layer (native exec gate).
   kidulkey.md        signing root + FRIENDLY tier (per-user footprint gating).

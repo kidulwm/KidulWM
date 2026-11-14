@@ -19,11 +19,9 @@ protects the trust core FROM the contents of the cell.
   brig                    heavy wall — foreign CODE, own kernel. The serious
                           tool; a kernel-bug survives its own kernel.
 
-  plank                   the discard — the most-unsafe guests: run whatever,
-                          overboard on misbehave. The least-trusted cell,
-                          enforced by discard. (Resolves cells.md's "plank =
-                          discard verb" and theme.md's "browser plank" into one
-                          thing.)
+  plank                   heavy wall — own kernel + own compositor: a full
+                          separate desktop (its own distro, window manager,
+                          everything). The wild.
 
 The more dangerous the guest, the thicker the wall — not to protect the guest,
 to protect us from the guest. The high-value stuff needs no wall (it is ours);
@@ -52,21 +50,25 @@ the native core). The profile is the user-facing unit of confinement.
   VM. grannyize.md applied to the security model: the depth is hidden, never
   removed. Qubes colours windows; KSD lists profiles.
 
-  Granny surface (Private locked; Home/World tentative, pin when ready):
-    Private  = native (valuables, our code, no foreign).
-    Home     = pen (everyday, foreign distro, kid-safe).
-    World    = brig / plank (the wild; "not the best for Granny").
+  Granny surface (LOCKED 2026-11-14): Private / Play / Progress.
+    Private  = native (valuables, banking, our code, no foreign).
+    Play     = the socials + fun, a brig by default (spoofed persona, cells.md),
+               the plank later when the remote-desktop VMs are "flying".
+               Granny sees "her browser", never the cell.
+    Progress = study & work, the family's everyday (pen). Granny's "progress
+               days are over" — she never lands here; it is for the rest of
+               the family.
 
-## The escalation (classify at seat, plank on threat)
+## The escalation (classify at seat, overboard on threat)
 
 Dodgy code is never "moved" pen -> brig live. Two moves, already in cells.md:
 
   1. CLASSIFY AT SEAT TIME — foreign DISTRO seats in a pen; foreign CODE seats
      in a brig, never a pen. The hostile thing was never in the pen.
-  2. DISCARD ON THREAT — if something in a pen turns hostile after all, it goes
-     overboard (the plank) and, if it still deserves to run, re-seats in a brig.
+  2. DISCARD ON THREAT — if something in a pen turns hostile after all, it is
+     cast overboard and, if it still deserves to run, re-seats in a brig.
 
-The plank is the enforcement of the escalation.
+Casting overboard is the enforcement of the escalation.
 
 ## Lifecycle — cued, not resident
 
@@ -97,13 +99,15 @@ live and the direction reads right.
               browser's zone is whatever profile it runs in. Browser plank
               settings removed later (no hurry); the plank colour mapping is
               parked, not re-ruled.
-  cells.md    "plank = discard verb" is expanded, not reversed: the plank is the
-              least-trusted cell, and discard is its enforcement.
+  cells.md    REVERSED 2026-11-14: this file's 2026-11-10 note claimed "plank =
+              discard verb is expanded, not reversed". That itself is reversed —
+              plank is cell type 3 (own kernel + own compositor); the discard
+              verb is "overboard". See cells.md Reversals.
 
 ## Relationship to existing law
 
   cells.md        extended: identity -> role -> cell becomes identity -> account
-                  -> profiles -> cell; plank resolved (least-trusted cell).
+                  -> profiles -> cell; plank = cell type 3, overboard = discard.
   dom0.md         "colder than Qubes" extended to the native home (safer than
                   any VM, own code, no foreign).
   kidulkey.md     PERSONAL authorizes profile lifecycle; OWNER gates footprint.

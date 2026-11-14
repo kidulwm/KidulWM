@@ -1,37 +1,62 @@
-# LAW — The Cells (pen & brig, the security classes) (LOCKED 2026-10-05, Barticus present)
+# LAW — The Cells (pen, brig, plank — the three cell types) (LOCKED 2026-10-05, Barticus present; RE-CUT 2026-11-14)
 
-The two arms of the seat grade are the two security classes, and they map to
-WHO plays there, not to a geometry. One naming, stated once.
+RE-CUT 2026-11-14 (Barticus present, GSI): the 2026-10-05 lock dropped the
+third cell type and froze "plank" as the DISCARD verb. Barticus's model is
+three CELL TYPES; this file restores it. Reversals at the bottom.
 
-## The classes: kids in the pen, adults in the brig
+The native home is NOT a cell (profiles.md: Private = native, no wall). A cell
+is a foreign thing we wall off. There are THREE cell types, distinguished by
+MECHANISM — how much of its own world the guest owns.
 
-  pen / kcell   the PLAY PEN — kids play here. Our code AND foreign DISTROS
-                (Debian userspace, apt, apps). Namespaces + Wayland/PipeWire
-                socket passthrough, shared kernel, native speed, no hypervisor.
-                It is NOT the serious safety tool. Seeing a foreign distro run
-                on the host kernel is what makes it a true play-pen: it is the
-                comfortable, feel-local, everyday surface. It must still be
-                hardened to the ceiling, but its job is "safe enough to hand a
-                kid," not "safe against a hostile binary."
+## The three cell types (mechanism, not content)
 
-  brig / KVM    the PUB — adults go here. Foreign CODE we do not trust
-                (hostile binary, kernel-bug-grade threat). Own kernel survives
-                a kernel bug; a container shares the kernel so it does not.
-                This IS the serious safety tool. The exception, not the default.
+  pen / kcell   shared kernel, HOST compositor. A foreign DISTRO (Debian, apt,
+                apps) running on OUR kernel in namespaces + Wayland/PipeWire
+                passthrough. Native speed, no hypervisor — "Debian on our
+                kernel". Closest to home, the everyday surface. Hardened to the
+                ceiling (subuid remap, cap-drop, no_new_privs) but its job is
+                "safe enough to hand a kid", not "safe against a hostile
+                binary."
 
-The division is a one-liner, frozen: foreign DISTRO -> pen, foreign CODE ->
-brig. A kernel-bug-grade prisoner escalates from pen to brig; a hostile binary
-is never seated in the pen at all.
+  brig / KVM    own kernel, HOST compositor. Foreign CODE we do not trust. The
+                guest has its OWN kernel (survives a kernel bug) but renders as
+                a SLIDE into kidulwm (the brig-shim scanout) — no guest desktop
+                of its own. This is the serious safety tool. The socials seat
+                here by default (see "the spoofed persona").
 
-## Both arms hardened to the ceiling — "as safe as possible," not "safe enough"
+  plank         own kernel, own compositor. The full separate desktop — its own
+                distro AND its own window manager AND its own everything. The
+                deepest isolation: not just a slide in our face, a whole other
+                face. The wild. Granny lands here when the kwayland remote
+                desktop + VMs are "flying" — and never knows she moved.
 
-The pen being a play-pen does NOT relax its hardening. Both arms get every
-wall the box can raise, because the whole point of the split is that each arm
-is as safe as its mechanism allows, and the choice of arm is the only thing
+The one-liner, frozen: foreign DISTRO -> pen, foreign CODE -> brig, a whole
+other desktop -> plank. A kernel-bug-grade prisoner escalates pen -> brig; a
+guest that needs its own world escalates brig -> plank.
+
+Variants are allowed per type. micro-brig is a brig VARIANT (own kernel,
+minimal initramfs + one trusted binary), not a fourth type. pen/brig/plank are
+the three; everything else is a flavour of one of them.
+
+## Auto-seat-safest (Granny never sees a cell)
+
+"Browsers go in X" — the seating is automatic, chosen by the usher, never by
+the user. Granny sees "her browser", never pen/brig/plank (those words are for
+B&B, not her). The default auto-suggests the SAFEST class for the content, and
+the user may come back from safety — but we encourage staying. The three types
+are the mechanism; the auto-seat is the policy; simplicity for Granny is the
+whole point (it IS the path to adoption).
+
+## Every type hardened to the ceiling — "as safe as possible," not "safe enough"
+
+The pen being a play-pen does NOT relax its hardening. Every type gets every
+wall the box can raise, because the whole point of the split is that each type
+is as safe as its mechanism allows, and the choice of type is the only thing
 that relaxes. The pen is hardened with namespaces + caps + user-namespace
-remap + no_new_privs; the brig with a whole separate kernel. Never say "it's
-just a pen, so we can skip a wall." The wall set is fixed per arm; the ARM is
-what you change when the threat outgrows it.
+remap + no_new_privs; the brig with a whole separate kernel; the plank with a
+whole separate compositor AND kernel. Never say "it's just a pen, so we can
+skip a wall." The wall set is fixed per type; the TYPE is what you change when
+the threat outgrows it.
 
 ## The pen's own ceiling (what "as safe as possible" means, concretely)
 
@@ -120,12 +145,14 @@ pipes, focus routing the AV, life routing the network.
 
 ## Names already locked (do not re-derive)
 
-  pen        = namespaces/LXC — our code + foreign DISTROS (kcell).
-  brig       = KVM — foreign CODE we don't trust; the pub.
-  the plank  = the DISCARD verb — process-death-is-the-kill extended to a
-               whole cell/guest.
-  micro-brig = the lean foreign-code guest (stock kernel + minimal initramfs +
-               one trusted binary, tens of MB).
+  pen        = shared kernel + host compositor — our code + foreign DISTROS
+               (kcell).
+  brig       = own kernel + host compositor — foreign CODE we don't trust.
+  plank      = own kernel + own compositor — a full separate desktop.
+  micro-brig = a brig VARIANT (own kernel, minimal initramfs + one trusted
+               binary, tens of MB). Variants are allowed per type.
+  overboard  = the DISCARD verb — process-death-is-the-kill extended to a whole
+               cell/guest ("cast overboard"). Never "plank".
 
 ## The guest network is just a cell (LOCKED 2026-10-05)
 
@@ -137,6 +164,15 @@ only key), so a guest cell sees nothing the owner's cell sees no further into.
 "Permissions done right" — nothing new is added, we tweak the walls we have.
 Same principle holds for the kweb: a mobile device joining the mesh is another
 cell, not a new authority.
+
+## The spoofed persona (socials have nothing real to leak)
+
+The socials (Zoom, the PII-suckers) seat in a brig by default — but the wall
+alone isn't the win. The brig ships with a SYNTHETIC identity: fake name, fake
+history, no real contacts, no real files. The socials can exfiltrate their
+entire world and get a fake person. Defense by architecture, not vigilance:
+there is nothing real in the cell to slurp. Granny logs in as herself; the cell
+only ever sees a shadow of her.
 
 ## Per-folder access — the same wall for DATA (LOCKED 2026-11-01, Barticus present)
 
@@ -159,3 +195,13 @@ not "permission denied", "no such directory".
 Same wall as the pen: the bind-mount is the load-bearing seam for DATA exactly
 as it is for CODE — "safe enough to hand a kid" is "this folder does not exist
 for you", not "this folder is read-only for you".
+
+## Reversals (2026-11-14 re-cut)
+
+  This file's 2026-10-05 lock froze "plank = the DISCARD verb" and dropped the
+  third cell type. That is REVERSED: plank is cell type 3 (own kernel + own
+  compositor); the discard verb is "overboard" / "cast overboard".
+  profiles.md's "plank = the discard", distribution.md's "plank = the discard",
+  and GLOSSARY.md's "plank = the DISCARD verb" are corrected to match.
+  theme.md's "browser plank" zone already meant the deepest zone — that reading
+  now aligns with plank = cell type 3, no change needed there.
