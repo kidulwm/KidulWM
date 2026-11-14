@@ -92,6 +92,8 @@ Two visions; Barticus's lean is No.2:
         Flotsam & Jetsam (the ocean critters), and the dot of the "i" is a crab
         that moves — maybe hiding from a swooping seagull.
 
-LEAN = No.2 — alive, on-theme; the crab-as-the-dot is the memorable detail.
-Static wordmark everywhere; the animated crab/seagull is the boot / loading
-variant. NOT built now — art is data, not code (landing.md).
+LEAN = No.2 — alive, on-theme; the crab-as-the-dot is the memorable detail. The
+moving crab/seagull is ONLY a GIF — the boot/ready splash + intro/outro, NEVER a
+permanent moving logo. The static wordmark is the norm; the coding mark lives
+only on intro/outro anyway. Design the logo around the LOOK of the Flotsam (the
+ocean critter). MUCH later — art is data, not code (landing.md).

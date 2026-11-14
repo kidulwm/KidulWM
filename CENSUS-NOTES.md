@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, building) — TRAVEL/ZEROIZE INSIGHT + BUILD START (GIS).
+#   INSIGHT (unintentional gain): "what size Kiduls do you have?" — a hotel Kidul TV / portable tablet doubles
+#   as a travel OFFICE: plug in your kidulKey, work on private stuff (no laptop/powerbank/charger), and it's
+#   ZEROIZED when you leave. A huge product feature that falls out of the architecture for free. Future slice.
+#   LOGO (naming.md): moving crab/seagull = GIF ONLY (boot/ready splash + intro/outro), never permanent. Design
+#   around the Flotsam look. MUCH later.
+#   BUILD: starting docket #59 step (2) — the GPB (apps list, 5 public buttons, glow, lazy-open, peek, title).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, final) — 3-WAY SPLIT: RatuKidulTech / Kidul Systems / KidulWorks (GIS).
 #   Three layers, one house (naming.md): RatuKidulTech = COMPANY (the Queen, the wife's mark); Kidul Systems
 #   = PRODUCTS (Kidul TV/PC/Router/Server); KidulWorks = CODE (B&B's workshop). Zero overlap. "Kidul" alone
