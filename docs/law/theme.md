@@ -6,8 +6,8 @@ cell types — the least-safe zone is now "pen" (cells.md re-cut: pen/brig/plank
 The browser zones themselves are DEPRECATED: removed in the browser redo,
 replaced by browser settings + downloads at the bottom (ruling Q.D).
 AMENDED 2026-11-14 (later, GSI): the browser zones are RETIRED, replaced by the
-ENVIRONMENT GLOW (environment.md): host/pen/brig/plank = orange/amber/purple/blue,
-a containment ramp shown as a soft glow around the focused pill (ruling Q.E).
+ENVIRONMENT GLOW (environment.md): host=ORANGE (muted), pen=LIME, brig=ELECTRIC
+BLUE, plank=ELECTRIC PURPLE — muted home, electric cells (ruling Q.E).
 
 Lane: cross-app (kfiles, kidul-browser, kmedia + KidulWM media.zig).
 Related: styles (THE PILL, CFC law), landing law, chrome law, identity law.
@@ -82,16 +82,20 @@ Chrome tokens (not pill slots):
 A second axis, separate from the content slots: the focused pill glows the
 ENVIRONMENT its app runs in (environment.md — host/pen/brig/plank). The glow is a
 soft transparent ring around the focused pill's outer edge, more opaque than Bob's
-ball glow but translucent, X px out. Warm = uncontained, cool = contained:
+ball glow but translucent, X px out. Muted home -> electric cells:
 
-  host  = ORANGE #d9722e   warning — no wall, "be careful here"
-  pen   = AMBER  #9e7e52   warm — light wall, shared kernel
-  brig  = PURPLE #BD00FF   cool — heavy wall, own kernel
-  plank = BLUE   #6a8fc4   coolest — heaviest wall, safe to do anything
+  host  = ORANGE #d9722e    muted — "keep out unless you really need to": the one
+                            place you hesitate; don't bring strays home.
+  pen   = LIME   #32cd32    light wall, shared kernel (kid-safe green).
+  brig  = ELECTRIC BLUE #1e90ff    heavy wall, own kernel.
+  plank = ELECTRIC PURPLE #bd00ff  heaviest wall — do anything, can't hurt the
+                            system.
 
 Default = the safety colour; the user may recolor any app/machine to their own
-scheme (colour = meaning, user-changable). Reverses the browser-zone pen/brig/plank
-mapping below.
+scheme (colour = meaning, user-changable). Muted home -> electric cells: the home
+is the only thing you protect, so it alone stays muted; the cells go electric — the
+deeper the wall, the louder the colour, because a contained app can do anything and
+that freedom should feel vivid.
 
 ## Remaps this law makes
 
@@ -120,7 +124,9 @@ mapping below.
   glow now shows the environment. The space becomes browser SETTINGS (background,
   etc.) + DOWNLOADS at the bottom, plus an "advanced settings" toggle — the geek
   door. The simpler the better.
-- Q.E  ENVIRONMENT GLOW (2026-11-14, GSI): the focused pill glows its app's
-  environment colour — host=orange, pen=amber, brig=purple, plank=blue (warm =
-  uncontained, cool = contained). Replaces the sash + inner border. User may
-  recolor per-app/machine (colour = meaning, user-changable).
+- Q.E  ENVIRONMENT GLOW (2026-11-14, GSI; re-ruled same day): the focused pill
+  glows its app's environment colour — host=ORANGE (muted), pen=LIME, brig=
+  ELECTRIC BLUE, plank=ELECTRIC PURPLE. Muted home, electric cells: the home is
+  the only thing you protect, so it alone stays muted (the "keep out unless you
+  really need to" warning); the cells go electric — the deeper the wall, the
+  louder the colour. User may recolor per-app/machine.

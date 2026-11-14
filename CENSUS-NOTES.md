@@ -1,5 +1,24 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, later) — SEAT-GRADE RETIRED + COLOUR RE-RULED + TITLE RULING (GIS).
+#   SEAT-GRADE RETIRED: Barticus asked if it was redundant — YES. It was a third name for "what walls a
+#   process", sitting on top of ENVIRONMENT (confinement: host/pen/brig/plank) + PERMISSIONS (access:
+#   grant tree / partitions). The starship ladder maps: bridge=host, wardroom/quarters=pen, brig=brig.
+#   GLOSSARY + building-blocks.md carry the retirement; kushd's "seat grade: system/service/restricted"
+#   (src/main.zig) is the same axis in code — refactor to environment classes when it is built.
+#   COLOUR RE-RULED (theme.md Q.E + environment.md, re-ruled same day): host=ORANGE (muted #d9722e),
+#   pen=LIME (#32cd32), brig=ELECTRIC BLUE (#1e90ff), plank=ELECTRIC PURPLE (#bd00ff). PSYCHOLOGY:
+#   muted home -> electric cells. The home is the only thing you protect, so it alone stays muted (the
+#   "keep out unless you really need to / don't bring strays home" warning); the cells go electric — the
+#   deeper the wall, the louder the colour (a contained app can do anything; the colour celebrates it).
+#   TITLE RULING (environment.md): ONE generic name, same text in the GPB peek AND the app-top — plain,
+#   large, outline-only, no branding, no k'ified code name. Granny sees "Browser", code keeps k'ified ids.
+#   DOCKETED #62 (LATER JOB): Bob's balls everywhere — slide indicators around chamfered slide margins
+#   (not quite fullscreen; fullscreen for media/VM), GPB nav dot (down-into-app cue), browser download
+#   dots. NOT started.
+#   NEXT: unchanged — docket #59 step (2) build the GPB (apps list, 5 public buttons, glow-coded,
+#   generic-title peek, lazy-open).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, late night) — V2 RE-CUT: PROFILES DISSOLVE -> PER-APP ENVIRONMENT (GIS).
 #   Barticus caught my twist: the Private/Play/Kustom pills were NOT the global pill bar — the GPB IS
 #   the APPS LIST. That mistake surfaced the clean option: NO PROFILES AT ALL. Environment is a PER-APP

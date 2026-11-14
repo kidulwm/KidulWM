@@ -62,13 +62,16 @@ out. It is the one visible record of where an app lives. Default = the safety co
 the user may recolor any app/machine to their own scheme (colour = meaning,
 user-changable — theme.md).
 
-  host  = ORANGE   warning — no wall, "be careful here", a bad app can hurt the system
-  pen   = amber    warm — light wall, shared kernel
-  brig  = purple   cool — heavy wall, own kernel
-  plank = BLUE     coolest — heaviest wall, safe to do anything
+  host  = ORANGE (muted)      "keep out unless you really need to" — the only place
+                              you hesitate; don't bring strays home.
+  pen   = LIME GREEN          light wall, shared kernel (kid-safe).
+  brig  = ELECTRIC BLUE       heavy wall, own kernel.
+  plank = ELECTRIC PURPLE     heaviest wall — do anything, can't hurt the system.
 
-Warm = uncontained (danger) -> cool = contained (safe). Reverses theme.md's
-pen/brig/plank mapping (below).
+Muted home -> electric cells. The home is the only thing you protect, so it alone
+stays muted (the warning colour); the cells go electric — the deeper the wall, the
+louder the colour, because a contained app can do anything and that freedom should
+feel vivid. Reverses theme.md's pen/brig/plank mapping (below).
 
 ## Lazy-open — a door, not a running app
 
@@ -90,6 +93,11 @@ Three names, one deck (the up+1 / up+2 offset vocabulary retires):
                no process behind it. The title is copied from the app's topTitle,
                so the peek tracks the focused button.
 
+The TITLE is one generic name, the same text in both places — the peek AND the
+app-top. "What does Granny want": Browser, Public Library, Media Player — plain,
+large, outline-only, no branding, no k'ified code name. The code keeps its k'ified
+identifiers; Granny sees only the generic word. No reinvented second title.
+
 ## Reversals
 
   profiles (this file)  the 2026-11-10 "profile is the cell" model and the
@@ -97,11 +105,12 @@ Three names, one deck (the up+1 / up+2 offset vocabulary retires):
                         No profiles; environment is per-app.
   "native is safer than any VM"  reframed, not reversed: native has the LOWEST
                         attack surface (our code only) but NO wall — so the glow
-                        (containment) shows native warm, not cool. "Colder than
-                        Qubes" still holds for the DATA; the glow is a different axis.
+                        shows native MUTED (the "keep out unless you need to"
+                        warning), while the cells go electric. "Colder than Qubes"
+                        still holds for the DATA; the glow is a different axis.
   theme.md              the pen/brig/plank colour ramp is REVERSED to host/pen/brig/
-                        plank = orange/amber/purple/blue; the sash/browser-zone
-                        becomes the glow.
+                        plank = orange(muted)/lime/electric-blue/electric-purple;
+                        the sash/browser-zone becomes the glow.
   cells.md              "auto-seat-safest" becomes "install-time, safety-by-default".
 
 ## Relationship to existing law
