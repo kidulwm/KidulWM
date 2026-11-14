@@ -1,5 +1,19 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, evening) — PIVOT: #59 USER PARTITIONS & ISOLATIONS is next.
+#   Slice 4 landed + live-proven (tap -> TRUSTED role=remote). Slice 5 (wire the remote) is now
+#   BACK-BURNERED — no remote exists yet -> DOCKETS #60 "waiting the remote" (carries Barticus's
+#   hardware vision: ksound RESISTANCE DIAL non-negotiable + centre clickable button + directional
+#   keys; fidget-spinner grab point; flip-open mini keyboard on magnets; 50-yr rebuildable). The
+#   NEW next = #59 USER PARTITIONS & ISOLATIONS (loose DOCKETS, not versioned): every user on their
+#   own key-gated partition; external/net drives = "just another partition" behind the key; co-owned
+#   = second key with internal separation; per-folder is the common ask, per-key is our upgrade.
+#   Build order: (1) globalPillsBar on the public landing (Browser/Library/People); (2) People/admin
+#   settings app (#57's wall — "person" key exchange); (3) add/delete users + key-gated partitions.
+#   Security checked in the background as each verb lands. kmail tailwind = Nov 12-13 2026 Outlook
+#   outage (2 days, 74 countries, 100k+ reports, network-upgrade fault NOT a hack). #58 OUR PACMAN
+#   rides parallel. Install-sizing question OPEN: 1TB drive % split root/public/per-user partitions.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, evening) — SLICE 4 DONE + LIVE-PROVEN.
 #   kidulkey-gate refactored to a per-device proof: proveDevice(fd, roster) -> ?role (read PUBKEY -> resolve
 #   vs roster [absent/struck -> null, NO challenge] -> SIGN nonce -> SIG -> verify). DROPPED the global verdict

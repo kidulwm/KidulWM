@@ -157,8 +157,10 @@ built. Bench access TODAY is a plain ed25519 key on disk."
      tap -> TRUSTED role=remote; bad sig -> roster signature BAD; decoy roster
      -> UNTRUSTED (deny-by-default).]
   5. Wire the remote (HID + kidulKey seed) as the Tier 2 production device.
-     <- NEXT (closes slice 3: seat admission consumes the gate's role; the
-        dongle is the prototype proof primitive, the remote the production input)
+     [BACK-BURNERED 2026-11-14 — no remote yet; DOCKETS #60 "waiting the remote"
+     carries the hardware vision. Closes slice 3: seat admission consumes the
+     gate's role; the dongle is the prototype proof primitive, the remote the
+     production input.]
 
 ## Local-only artifacts (LOCKED, cross-ref kidulwm-codeberg-workflow)
 
