@@ -6,10 +6,13 @@
 #   TL=home(GPB), TR=quit→Home screen (ctrl+Q), Enter=apply, Esc=cancel, dial=ksound volume.
 #   Kidul TV mark doubles as Home CFC + GPB top-1/3 title. navDots + BobsBalls replace the
 #   peeks; deck = keyboard/mouse only. environment.md amended (GPB summoned not autostarted).
-#   BUILD SLICES QUEUED (not yet coded): (1) reverse the GPB autostart — boot lands Home,
-#   GPB summoned; KEEP the gpbSlideSpawn code for future autostart. (2) the Home screen
-#   (widgets + Kidul TV CFC + navDots + spatial walk). (3) ↑=home (app→GPB→Home screen).
-#   DEPLOYED binary ddd961c STILL auto-opens the GPB — the reversal is queued, not shipped.
+#   BUILD (bobdotrix 2026-11-15, affed13): (1) reverse autostart DONE — boot lands KidulHome,
+#   GPB summoned (↓); gpbSlideSpawn + gpb_booted field KEPT. ↓ summon + ↑ return WIRED
+#   (gpbSummon + gpbSlideKey Up: KidulHome ↔ UserHome loop). Build+test+smoke all clean.
+#   NOT deployed; key-injection loop (real ↓/↑) needs VM/hardware. REMAINING: ↑ from app →
+#   UserHome (app→GPB leg); KidulHome surface (Top layer: widgets + Kidul TV CFC + navDots +
+#   spatial walk); peek retirement; TL/TR remap (home=UserHome, quit=KidulHome).
+#   DEPLOYED binary on /mnt/ksd is STILL ddd961c (auto-opens GPB) — deploy pending Barticus.
 #
 # BUILD PROGRESS (bobdotrix 2026-11-14) — GPB BUILT + SMOKE-TESTED + DEPLOYED (commit ddd961c).
 #   The GPB is a compositor slide (kind .gpb, persistent index 0) mirroring the media player: LOOK = media.zig
