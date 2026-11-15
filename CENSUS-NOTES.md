@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-14, post-sleep) — GPB = A SLIDE (not overlay) + UP=HOME + PEEKS->KGAMES (GIS).
+#   GPB RE-CUT (environment.md): the globalPillsBar is its OWN SLIDE in the deck, NOT a global overlay.
+#   Autostarted at boot (focused on Library, fades in after background); kushd's first job = seat the GPB.
+#   "up ALWAYS = home" — TREES EXPAND DOWNWARD (project root = top row, subfolders open BELOW) so the rule is
+#   universal. PEEKS RETIRED from general code -> reserved for kgames; the title below the GPB is just "the
+#   title". "Still picture" trick: every app's landing renders the SAME bar (only focused button + title differ),
+#   so the deck slide animation moves the focused button — the bar never moves. 1 app = 1 column.
+#   DEFERRED (not lost): the transparent filter/overlay (widgets + movie/sports/nightmode filter) — later.
+#   BUILD: #59 step (2) re-cut — GPB as a slide landing, SIMPLER than the overlay (no new surface; reuses the
+#   deck). media.zig PILL_* + renderCard() is the model.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, building) — TRAVEL/ZEROIZE INSIGHT + BUILD START (GIS).
 #   INSIGHT (unintentional gain): "what size Kiduls do you have?" — a hotel Kidul TV / portable tablet doubles
 #   as a travel OFFICE: plug in your kidulKey, work on private stuff (no laptop/powerbank/charger), and it's

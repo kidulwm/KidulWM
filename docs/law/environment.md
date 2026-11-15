@@ -86,17 +86,27 @@ user: AI / Browser / Games / Library / People. The owner: every installed app is
 own pill. People = the admin surface (users, grants, roster), not a profile picker.
 
 Three names, one deck (the up+1 / up+2 offset vocabulary retires):
-  the bar    = the GPB, the system apps-list, always the very top.
-  app top    = each app's own CFC'd topPillsBar (today's "up+1"); the first move
-               DOWN CFC's it and the app opens.
-  the peek   = the app's title shown under the focused GPB button before entering —
-               no process behind it. The title is copied from the app's topTitle,
-               so the peek tracks the focused button.
+  the bar    = the GPB, the system apps-list — its OWN SLIDE in the deck, NOT a
+               global overlay. The home slide, autostarted at boot (focused on
+               Library, fading in after the background). "Up" from any app
+               returns to it: up ALWAYS = home.
+  app top    = each app's own CFC'd topPillsBar; the first move DOWN from the GPB
+               opens the app (spawned lazily — no process until the down-move).
+  the peek   = RETIRED from general code, reserved for kgames. The title below the
+               GPB is just "the title" — the focused app's generic name.
 
-The TITLE is one generic name, the same text in both places — the peek AND the
-app-top. "What does Granny want": Browser, Public Library, Media Player — plain,
-large, outline-only, no branding, no k'ified code name. The code keeps its k'ified
+The TITLE is one generic name, the same text below the GPB AND above the app-top.
+"What does Granny want": Browser, Public Library, Media Player — plain, large,
+outline-only, no branding, no k'ified code name. The code keeps its k'ified
 identifiers; Granny sees only the generic word. No reinvented second title.
+
+The GPB owns the TOP of the deck: every app's landing renders the SAME bar (the
+"still picture" — identical geometry, only the focused button + the title below
+differ), so the deck's slide animation is what moves the focused button. The bar
+never actually moves. ONE app = ONE column; up = the column's landing (the GPB).
+TREES EXPAND DOWNWARD so "up = home" is universal — the file tree is the one
+surface that must OBEY this rule, not break it (project root = the top row,
+subfolders open BELOW).
 
 ## Reversals
 
