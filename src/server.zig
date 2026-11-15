@@ -1990,6 +1990,20 @@ pub const Server = struct {
         self.requestLayout();
     }
 
+    pub fn gpbSummon(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.findKind(.gpb)) |idx| {
+            // GPB already present (persistent) — just re-focus it. It is a
+            // compositor slide (no client window), so clearFocus is correct.
+            deck.focusWindowByIndex(idx);
+            self.clearFocus();
+            self.requestLayout();
+            std.log.info("KidulWM: GPB summoned (KidulHome → UserHome)", .{});
+        } else {
+            self.gpbSlideSpawn();
+        }
+    }
+
     fn gpbSlideOpen(self: *Server, output: *Output) void {
         if (output.gpb_slide.isOpen()) return;
         const tree = self.scene.tree.createSceneTree() catch return;
@@ -2102,6 +2116,12 @@ pub const Server = struct {
                     else => null,
                 };
                 if (cmd) |command| self.spawnCommand(command);
+            },
+            xkb.Keysym.Up => {
+                // Kidul Flow: ↑ from UserHome returns to KidulHome — the empty
+                // slot before the GPB. focusPrev from index 0 lands on
+                // .before_first and clears focus (no client window to focus).
+                self.focusPrev();
             },
             xkb.Keysym.Escape => {
                 // Top level — hard stop, nothing to back out of.
@@ -3920,14 +3940,10 @@ pub const Server = struct {
             }
         }
 
-        // Autostart the GPB (apps list) once the first layout runs — the boot
-        // home (environment.md). Re-entrant-safe: gpb_booted flips before the
-        // spawn's requestLayout re-enters applyLayout.
-        if (!self.gpb_booted) {
-            self.gpb_booted = true;
-            self.gpbSlideSpawn();
-            self.requestLayout();
-        }
+        // KidulHome is the boot root (kidul-flow.md): the deck boots EMPTY; the
+        // GPB (UserHome) is summoned by ↓/TL, never autostarted. gpbSlideSpawn
+        // + the gpb_booted field are RETAINED for a future autostart need —
+        // re-enable by re-adding the latch below.
 
         if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen())) {
             self.clearFocus();

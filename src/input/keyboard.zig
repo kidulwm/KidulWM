@@ -285,6 +285,16 @@ const KeyboardDevice = struct {
             if (server.gpbSlideKey(sym)) return;
             // fall through — no swallow
         }
+        // KidulHome (empty deck / empty slot) — ↓ summons UserHome (the GPB).
+        // Kidul Flow: ↓ = deeper; the first deeper is into the apps list.
+        {
+            const home_deck = server.currentDeckPub();
+            const at_home = home_deck.slides.items.len == 0 or home_deck.empty_slot != .none;
+            if (at_home and sym == xkb.Keysym.Down) {
+                server.gpbSummon();
+                return;
+            }
+        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 
