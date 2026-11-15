@@ -1,14 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
-# BUILD PROGRESS (bobdotrix 2026-11-14) — GPB SLICE A FOUNDATION (module written + wired, COMPILES).
-#   src/ui/gpb.zig NEW: GpbApp (AI/Browser/Games/Library/People) + GpbBar (focused + state_generation) +
-#   renderCard (5-seg PILL track + outline "Kidul TV" title + below-title) + renderToBuffer (media_slide
-#   pattern). server.zig: import + per-output `gpb` field + init. `zig build` EXIT 0 (render path
-#   force-compiled via comptime ref). NOT yet rendered on screen. REMAINING slices: (B) on-screen render
-#   (per-output scene tree + buffer at the TOP strip) + deck offset (reserve the strip in applyLayout);
-#   (C) input — moveFocus + lazy-open (down-move spawns app); (D) autostart (kushd seats GPB, fades in).
-#   media_slide.zig is the wiring template (scene tree + DataBuffer + raiseToTop); media.zig PILL_* is the
-#   render template. cairo_text_path IS available (src/dm/c.h includes full cairo.h).
+# BUILD PROGRESS (bobdotrix 2026-11-14) — GPB BUILT + SMOKE-TESTED + DEPLOYED (commit ddd961c).
+#   The GPB is a compositor slide (kind .gpb, persistent index 0) mirroring the media player: LOOK = media.zig
+#   PILL (5-seg track AI/Browser/Games/Library/People, outline "Kidul TV" title, below-title); MOVEMENTS =
+#   ←→ focus walk (hard stops), ↓/Enter lazy-open (Browser=launch-kidul-browser.sh, Library=kmedia), Esc hard
+#   stop. Autostarts at boot (gpb_booted latch in applyLayout). Smoke test PASSED (headless boot+render+clean
+#   IPC quit, 1 output 0 drops). Deployed ReleaseSafe -> /mnt/ksd/usr/local/bin/kidulwm (stamp ddd961c, .bak
+#   kept, remounted ro). TEST: Barticus reboots the KSD -> GPB focused on Library; ←→ moves the pill.
+#   REMAINING: AI/Games/People doors (no apps yet, no-op on ↓); scroll-window for owner >7 apps (bar stays
+#   5-seg, names scroll with hard stops — Barticus 2026-11-14); kushd autostart line (compositor self-spawns now).
+#   File map: src/ui/gpb.zig (GpbApp+GpbBar+GpbSlide+render), slidedeck.zig (.gpb kind), server.zig
+#   (gpbSlideSpawn/Open/Refresh/CloseOn/Key + boot latch + applyLayout hook + peek visibility), keyboard.zig (route).
 #
 # SESSION WRAP-UP (bobdotrix 2026-11-14, post-sleep) — GPB = A SLIDE (not overlay) + UP=HOME + PEEKS->KGAMES (GIS).
 #   GPB RE-CUT (environment.md): the globalPillsBar is its OWN SLIDE in the deck, NOT a global overlay.
