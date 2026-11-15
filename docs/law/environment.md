@@ -87,7 +87,7 @@ own pill. People = the admin surface (users, grants, roster), not a profile pick
 
 Three homes, one deck (the up+1 / up+2 / "top" vocabulary retires — kidul-flow.md):
   KidulHome = the system home ("our home"), the boot root. "Kidul TV" CFC'd + the
-              four widget faces + navDots, drawn on the Top layer. The compositor
+              three widget faces + navDots, drawn on the Top layer. The compositor
               lands here at boot, NOT on UserHome (kidul-flow.md).
   UserHome  = the user's home — the apps list (the pill bar), its OWN SLIDE in the
               deck, NOT a global overlay. SUMMONED (not autostarted) via ↓ from

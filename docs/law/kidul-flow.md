@@ -26,6 +26,11 @@ navigation law; no modes, no per-app exceptions to the direction meanings.
   The "up+1 / up+2 / the top / the bar / app top" vocabulary is RETIRED. Three
   homes, named by what they are: Kidul / User / App.
 
+  "GlobalPillsBar" ("gpb") is NOT retired — it stays as the COMPONENT name for
+  the pill bar that UserHome draws, to distinguish it from the library pill bar,
+  the browser hybrid search bar, and the other bars. UserHome = the slide name;
+  GlobalPillsBar = the bar itself.
+
 ## The verbs (hard stops, no cycling)
 
   ↑     shallower — one level up the tree
@@ -50,14 +55,17 @@ navigation law; no modes, no per-app exceptions to the direction meanings.
 ## The widgets — faces on the Top layer, apps in the deck
 
   [Weather]          [Network]
-                     [Clock]
-                     [Calendar]
+                     [Clock & Calendar]
 
-  ←→  Weather ↔ Calendar
-  ↑↓  Calendar → Clock → Network
+  ←→  Weather ↔ Clock & Calendar
+  ↑↓  Network ↔ Clock & Calendar
   Focused widget = white. Enter = enter the focused widget.
-  MUCH LARGER than today, same sides (weather left, network/clock/calendar right),
+  MUCH LARGER than today, same sides (weather left, network/clock & calendar right),
   up top around the Kidul TV CFC.
+
+  Clock & Calendar is ONE app — clock + calendar + alarms + appointments, one
+  temporal surface. The face shows the time/date; pressing it opens the app as a
+  normal slide.
 
   A widget is a FACE + an APP, never an always-on gauge:
     the FACE  = compositor-painted on the Top layer — a live, dumb shortcut ("just
