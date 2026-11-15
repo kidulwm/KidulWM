@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# DESIGN FREEZE (bobdotrix 2026-11-14, GSI) — KIDUL FLOW LAW: docs/law/kidul-flow.md.
+#   One tree: Home screen (system home, "our home" — Kidul TV CFC'd + widgets + navDots,
+#   the boot root) → GPB (user's home, summoned by ↓/TL) → app. Remote: arrows=flow,
+#   TL=home(GPB), TR=quit→Home screen (ctrl+Q), Enter=apply, Esc=cancel, dial=ksound volume.
+#   Kidul TV mark doubles as Home CFC + GPB top-1/3 title. navDots + BobsBalls replace the
+#   peeks; deck = keyboard/mouse only. environment.md amended (GPB summoned not autostarted).
+#   BUILD SLICES QUEUED (not yet coded): (1) reverse the GPB autostart — boot lands Home,
+#   GPB summoned; KEEP the gpbSlideSpawn code for future autostart. (2) the Home screen
+#   (widgets + Kidul TV CFC + navDots + spatial walk). (3) ↑=home (app→GPB→Home screen).
+#   DEPLOYED binary ddd961c STILL auto-opens the GPB — the reversal is queued, not shipped.
+#
 # BUILD PROGRESS (bobdotrix 2026-11-14) — GPB BUILT + SMOKE-TESTED + DEPLOYED (commit ddd961c).
 #   The GPB is a compositor slide (kind .gpb, persistent index 0) mirroring the media player: LOOK = media.zig
 #   PILL (5-seg track AI/Browser/Games/Library/People, outline "Kidul TV" title, below-title); MOVEMENTS =
