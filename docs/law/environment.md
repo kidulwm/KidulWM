@@ -87,9 +87,14 @@ own pill. People = the admin surface (users, grants, roster), not a profile pick
 
 Three names, one deck (the up+1 / up+2 offset vocabulary retires):
   the bar    = the GPB, the system apps-list — its OWN SLIDE in the deck, NOT a
-               global overlay. The home slide, autostarted at boot (focused on
-               Library, fading in after the background). "Up" from any app
-               returns to it: up ALWAYS = home.
+               global overlay. The user's home, SUMMONED (not autostarted) via ↓
+               from the Home screen or the TL button. "Up" from any app returns
+               to it; "up" from the GPB returns to the Home screen (the system
+               home — kidul-flow.md).
+  the home   = the Home screen — the system home ("our home"), the boot root.
+               "Kidul TV" CFC'd, the four widgets (weather/network/clock/
+               calendar), navDots. The compositor lands here at boot, NOT on
+               the GPB (kidul-flow.md).
   app top    = each app's own CFC'd topPillsBar; the first move DOWN from the GPB
                opens the app (spawned lazily — no process until the down-move).
   the peek   = RETIRED from general code, reserved for kgames. The title below the
@@ -104,9 +109,10 @@ The GPB owns the TOP of the deck: every app's landing renders the SAME bar (the
 "still picture" — identical geometry, only the focused button + the title below
 differ), so the deck's slide animation is what moves the focused button. The bar
 never actually moves. ONE app = ONE column; up = the column's landing (the GPB).
-TREES EXPAND DOWNWARD so "up = home" is universal — the file tree is the one
-surface that must OBEY this rule, not break it (project root = the top row,
-subfolders open BELOW).
+TREES EXPAND DOWNWARD so "up = one level shallower" is universal — the file tree
+is the one surface that must OBEY this rule, not break it (project root = the
+top row, subfolders open BELOW). Up from an app = the GPB; up from the GPB = the
+Home screen (kidul-flow.md).
 
 ## Reversals
 
