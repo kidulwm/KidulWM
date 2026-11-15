@@ -134,8 +134,8 @@ pub const Output = struct {
     home_slide: tray_slide_mod.TraySlide = .{},
     /// Media player slide content painter state (kind .media_player slide).
     media_slide: media_slide_mod.MediaSlide = .{},
-    /// Global pill bar (GPB) state — the apps list top bar (environment.md).
-    gpb: gpb_mod.GpbBar = .{},
+    /// Global pill bar (GPB) slide state — the apps list (environment.md).
+    gpb_slide: gpb_mod.GpbSlide = .{},
     /// CARD 2b slice 2: the exported host toplevel (kplayd parents its video
     /// surface to this via xdg-foreign). One per fullscreen session — lives
     /// on the output that owns the media card, NOT a deck slide.
@@ -169,7 +169,7 @@ pub const Output = struct {
             .overview = .{},
             .home_slide = .{},
             .media_slide = .{},
-            .gpb = .{},
+            .gpb_slide = .{},
             .peek = peek_mod.Peek.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,
@@ -450,6 +450,8 @@ pub const Server = struct {
     /// A5 boot ladder latch: the media PLAYER slide is spawned once, on the
     /// first output to land.
     boot_player_spawned: bool = false,
+    /// Autostart the GPB (apps list) once the first layout runs.
+    gpb_booted: bool = false,
     /// Boot-target setting (boot-state.md LOCKED 2026-10-19): WHICH app the
     /// system seats as PRIMARY on cold boot. Read from boot.toml; `tv` maps
     /// to the in-process media player ladder below; the rest are post-#24.
@@ -1967,6 +1969,146 @@ pub const Server = struct {
         output.home_slide.card_last_h = 0;
         output.home_slide.card_last_notif_gen = 0;
         std.log.info("KidulWM: home slide closed", .{});
+    }
+
+    /// Spawn the GPB (apps list) at index 0 — the boot home. Persistent (not
+    /// ephemeral): "up ALWAYS = home" returns here. One per deck.
+    pub fn gpbSlideSpawn(self: *Server) void {
+        const deck = self.spawnDeck();
+        if (deck.findKind(.gpb) != null) return;
+        if (deck.overview_slide_open) {
+            if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
+            deck.overview_slide_open = false;
+            deck.empty_slot = .none;
+        }
+        self.focusOutputForDeck(deck);
+        _ = deck.addCompositorSlide(.gpb, 0, false);
+        if (self.outputForDeck(deck)) |output| {
+            self.gpbSlideOpen(output);
+        }
+        self.clearFocus();
+        self.requestLayout();
+    }
+
+    fn gpbSlideOpen(self: *Server, output: *Output) void {
+        if (output.gpb_slide.isOpen()) return;
+        const tree = self.scene.tree.createSceneTree() catch return;
+        output.gpb_slide.tree = tree;
+        tree.node.raiseToTop();
+        self.overlay_tree.node.raiseToTop();
+        self.gpbSlideRefresh(output);
+        std.log.info("KidulWM: GPB slide open on output", .{});
+    }
+
+    /// Render the GPB bar into the slide's card buffer at the slide's stock
+    /// deck rect (full output). Re-render guarded by geometry + state_generation.
+    pub fn gpbSlideRefresh(self: *Server, output: *Output) void {
+        const tree = output.gpb_slide.tree orelse return;
+        const deck = &output.deck;
+        const idx = deck.findKind(.gpb) orelse {
+            self.gpbSlideCloseOn(output);
+            return;
+        };
+        const target = deck.targetForSlide(idx);
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        const buf_w: i32 = @intCast(target.width);
+        const buf_h: i32 = @intCast(target.height);
+        const pos_x: i32 = target.x + box.x;
+        const pos_y: i32 = target.y + box.y;
+        if (buf_w <= 0 or buf_h <= 0) return;
+        const geom_same = (buf_w == output.gpb_slide.card_last_w and
+            buf_h == output.gpb_slide.card_last_h);
+        const gen_same = (output.gpb_slide.bar.state_generation == output.gpb_slide.card_last_gen);
+        if (geom_same and gen_same and !output.gpb_slide.card_dirty and output.gpb_slide.card_buffer != null) {
+            if (output.gpb_slide.card_buffer) |card| {
+                output.gpb_slide.tree.?.node.setPosition(pos_x, pos_y);
+                card.node.raiseToTop();
+            }
+            self.overlay_tree.node.raiseToTop();
+            return;
+        }
+        output.gpb_slide.card_last_w = buf_w;
+        output.gpb_slide.card_last_h = buf_h;
+        output.gpb_slide.card_last_gen = output.gpb_slide.bar.state_generation;
+        output.gpb_slide.card_dirty = false;
+        const buffer = gpb_mod.renderToBuffer(&output.gpb_slide.bar, self.theme, buf_w, buf_h, scale) orelse return;
+        if (output.gpb_slide.card_buffer) |old| old.node.destroy();
+        const card = tree.createSceneBuffer(buffer) catch {
+            wlr.Buffer.drop(buffer);
+            return;
+        };
+        wlr.Buffer.drop(buffer);
+        output.gpb_slide.card_buffer = card;
+        card.setDestSize(buf_w, buf_h);
+        tree.node.setPosition(pos_x, pos_y);
+        card.node.raiseToTop();
+        self.overlay_tree.node.raiseToTop();
+    }
+
+    fn gpbSlideCloseOn(self: *Server, output: *Output) void {
+        _ = self;
+        if (!output.gpb_slide.isOpen()) return;
+        output.gpb_slide.tree.?.node.destroy();
+        output.gpb_slide.tree = null;
+        output.gpb_slide.card_buffer = null;
+        output.gpb_slide.card_last_w = 0;
+        output.gpb_slide.card_last_h = 0;
+        output.gpb_slide.card_last_gen = std.math.maxInt(u32);
+        output.gpb_slide.card_dirty = true;
+        std.log.info("KidulWM: GPB slide closed", .{});
+    }
+
+    /// INPUT LAW (environment.md) on the GPB: ←→ move focus between the apps
+    /// (HARD STOPS), ↓/Enter = lazy-open the focused app, Esc = hard stop at
+    /// the top. Mirrors mediaSlideKey: keys reach the GPB only while it is the
+    /// focused centre slide. Unconsumed keys fall through — nothing swallowed.
+    pub fn gpbSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
+        const xkb = @import("xkbcommon");
+        const deck = self.currentDeck();
+        if (deck.findKind(.gpb) == null) return false;
+        if (deck.empty_slot != .none) return false;
+        if (deck.focused_index >= deck.slides.items.len) return false;
+        if (deck.slides.items[deck.focused_index].kind != .gpb) return false;
+        var out_opt: ?*Output = null;
+        {
+            var it = self.outputs.iterator(.forward);
+            while (it.next()) |o| {
+                if (&o.deck == deck) {
+                    out_opt = o;
+                    break;
+                }
+            }
+        }
+        const out = out_opt orelse return false;
+        if (!out.gpb_slide.isOpen()) return false;
+
+        switch (sym) {
+            xkb.Keysym.Left => {
+                _ = out.gpb_slide.bar.moveFocus(-1);
+                self.gpbSlideRefresh(out);
+            },
+            xkb.Keysym.Right => {
+                _ = out.gpb_slide.bar.moveFocus(1);
+                self.gpbSlideRefresh(out);
+            },
+            xkb.Keysym.Down, xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
+                // LAZY-OPEN: the focused app spawns on the first down-move.
+                // AI / Games / People are not built yet — a no-op for now.
+                const cmd: ?[]const u8 = switch (out.gpb_slide.bar.focused) {
+                    .browser => "/usr/local/bin/launch-kidul-browser.sh",
+                    .library => "/usr/local/bin/kmedia",
+                    else => null,
+                };
+                if (cmd) |command| self.spawnCommand(command);
+            },
+            xkb.Keysym.Escape => {
+                // Top level — hard stop, nothing to back out of.
+            },
+            else => return false,
+        }
+        return true;
     }
 
     /// ONE PLAYER PER SESSION (law: media-is-a-slide.md ruling 3). CARD 2b
@@ -3596,7 +3738,8 @@ pub const Server = struct {
                 const n_slides = output.deck.slides.items.len;
                 const content_slide = output.deck.empty_slot == .none and
                     output.deck.focused_index < n_slides and
-                    output.deck.slides.items[output.deck.focused_index].kind != .home;
+                    output.deck.slides.items[output.deck.focused_index].kind != .home and
+                        output.deck.slides.items[output.deck.focused_index].kind != .gpb;
                 output.peek.setHidden(content_slide);
                 const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
                     (output.deck.empty_slot == .after_last and n_slides > 0);
@@ -3710,6 +3853,13 @@ pub const Server = struct {
                 }
                 self.overlay_tree.node.raiseToTop();
             }
+            if (output.gpb_slide.isOpen()) {
+                self.gpbSlideRefresh(output);
+                if (output.gpb_slide.tree) |tree| {
+                    tree.node.raiseToTop();
+                }
+                self.overlay_tree.node.raiseToTop();
+            }
 
             if (deck_ptr == active_deck) {
                 if (deck_ptr.empty_slot == .none) {
@@ -3768,6 +3918,15 @@ pub const Server = struct {
                     }
                 }
             }
+        }
+
+        // Autostart the GPB (apps list) once the first layout runs — the boot
+        // home (environment.md). Re-entrant-safe: gpb_booted flips before the
+        // spawn's requestLayout re-enters applyLayout.
+        if (!self.gpb_booted) {
+            self.gpb_booted = true;
+            self.gpbSlideSpawn();
+            self.requestLayout();
         }
 
         if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen())) {

@@ -209,6 +209,22 @@ pub const GpbBar = struct {
     }
 };
 
+/// Per-output scene state for the GPB (mirrors MediaSlide): tree + buffer +
+/// the bar widget + repaint guards.
+pub const GpbSlide = struct {
+    tree: ?*wlr.SceneTree = null,
+    card_buffer: ?*wlr.SceneBuffer = null,
+    bar: GpbBar = .{},
+    card_last_w: i32 = 0,
+    card_last_h: i32 = 0,
+    card_last_gen: u32 = std.math.maxInt(u32),
+    card_dirty: bool = true,
+
+    pub fn isOpen(self: *const GpbSlide) bool {
+        return self.tree != null;
+    }
+};
+
 /// Render the GPB into a wlroots buffer (mirrors media_slide.renderToBuffer).
 /// Caller destroys the intermediate cairo surface.
 pub fn renderToBuffer(

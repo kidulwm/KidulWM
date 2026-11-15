@@ -280,6 +280,11 @@ const KeyboardDevice = struct {
             if (server.mediaSlideKey(sym)) return;
             // fall through — no swallow
         }
+        // GPB (apps list) owns arrows/enter while focused (environment.md).
+        if (server.currentDeckPub().findKind(.gpb) != null) {
+            if (server.gpbSlideKey(sym)) return;
+            // fall through — no swallow
+        }
         server.seat.keyboardNotifyKey(event.time_msec, event.keycode, event.state);
     }
 
@@ -435,7 +440,7 @@ const KeyboardDevice = struct {
                             server.mediaSlideClose();
                             return true;
                         },
-                        .app => {},
+                        .app, .gpb => {},
                     }
                 }
                 if (server.focused_window) |win| {
