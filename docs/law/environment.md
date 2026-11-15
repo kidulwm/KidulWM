@@ -79,40 +79,39 @@ The bar is a row of doors. An app's code does not execute until the user moves D
 into its button — a plank does not spin up a whole GNOME until you walk in. A door
 not entered has no process. Same discipline as process-death-is-the-kill.
 
-## The bar (GPB) is the apps list
+## UserHome (the pill bar) is the apps list
 
 The global pill bar IS the apps list — one per seat, always the very top. Public
 user: AI / Browser / Games / Library / People. The owner: every installed app is its
 own pill. People = the admin surface (users, grants, roster), not a profile picker.
 
-Three names, one deck (the up+1 / up+2 offset vocabulary retires):
-  the bar    = the GPB, the system apps-list — its OWN SLIDE in the deck, NOT a
-               global overlay. The user's home, SUMMONED (not autostarted) via ↓
-               from the Home screen or the TL button. "Up" from any app returns
-               to it; "up" from the GPB returns to the Home screen (the system
-               home — kidul-flow.md).
-  the home   = the Home screen — the system home ("our home"), the boot root.
-               "Kidul TV" CFC'd, the four widgets (weather/network/clock/
-               calendar), navDots. The compositor lands here at boot, NOT on
-               the GPB (kidul-flow.md).
-  app top    = each app's own CFC'd topPillsBar; the first move DOWN from the GPB
-               opens the app (spawned lazily — no process until the down-move).
-  the peek   = RETIRED from general code, reserved for kgames. The title below the
-               GPB is just "the title" — the focused app's generic name.
+Three homes, one deck (the up+1 / up+2 / "top" vocabulary retires — kidul-flow.md):
+  KidulHome = the system home ("our home"), the boot root. "Kidul TV" CFC'd + the
+              four widget faces + navDots, drawn on the Top layer. The compositor
+              lands here at boot, NOT on UserHome (kidul-flow.md).
+  UserHome  = the user's home — the apps list (the pill bar), its OWN SLIDE in the
+              deck, NOT a global overlay. SUMMONED (not autostarted) via ↓ from
+              KidulHome or the TL button. "Up" from any app returns to it; "up"
+              from UserHome returns to KidulHome (kidul-flow.md).
+  AppHome   = each app's own CFC'd top bar (the app's landing); the first move DOWN
+              from UserHome opens the app AT its AppHome (spawned lazily — no
+              process until the down-move). Every app navigates DOWN from there.
+  the peek  = RETIRED from general code, reserved for kgames. The title below
+              UserHome is just "the title" — the focused app's generic name.
 
-The TITLE is one generic name, the same text below the GPB AND above the app-top.
+The TITLE is one generic name, the same text below UserHome AND above the AppHome.
 "What does Granny want": Browser, Public Library, Media Player — plain, large,
 outline-only, no branding, no k'ified code name. The code keeps its k'ified
 identifiers; Granny sees only the generic word. No reinvented second title.
 
-The GPB owns the TOP of the deck: every app's landing renders the SAME bar (the
+UserHome owns the TOP of the deck: every app's landing renders the SAME bar (the
 "still picture" — identical geometry, only the focused button + the title below
 differ), so the deck's slide animation is what moves the focused button. The bar
-never actually moves. ONE app = ONE column; up = the column's landing (the GPB).
+never actually moves. ONE app = ONE column; up = the column's landing (UserHome).
 TREES EXPAND DOWNWARD so "up = one level shallower" is universal — the file tree
 is the one surface that must OBEY this rule, not break it (project root = the
-top row, subfolders open BELOW). Up from an app = the GPB; up from the GPB = the
-Home screen (kidul-flow.md).
+top row, subfolders open BELOW). Up from an app = UserHome; up from UserHome =
+KidulHome (kidul-flow.md).
 
 ## Reversals
 

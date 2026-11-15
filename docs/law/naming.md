@@ -62,12 +62,12 @@ category. One ramp, one meaning, everywhere.
                   carries the system.
   KWEB          = the owned mesh. Public only where the mesh itself is discussed.
 
-## The system title (above the GPB)
+## The system title (above UserHome)
 
-The word shown above the global pill bar is the PRODUCT name — "Kidul TV",
+The word shown above UserHome is the PRODUCT name — "Kidul TV",
 "Kidul PC", ... — large, outline-only, no logo, no sig, no branding. Granny looks
 up and sees one honest word for the thing in her hands. The app names ("Browser",
-"Library") live BELOW the bar (the peek) and above the app-top bar (landing.md) —
+"Library") live BELOW UserHome and above the AppHome (landing.md) —
 a second, separate title. Two titles, two jobs: the system names itself above,
 the app names itself below.
 

@@ -7,7 +7,7 @@ LATER pass, not the current landing. Current clean landing = pill bar CFC'd +
 content centred + ZERO crumbs + empty space above.
 AMENDED 2026-11-14 (GSI): the brand is KIDUL SYSTEMS (was KidulWorks); the sig
 LOGO retires in favour of the plain name (naming.md — no logo, no sig, just the
-name). The system title ABOVE the GPB = "Kidul TV" (naming.md).
+name). The system title ABOVE UserHome = "Kidul TV" (naming.md).
 
 Lane: cross-app (kfiles, kidul-browser, kmedia).
 Related: styles (CFC law, THE PILL, corner language, whispy icons, Granny test),
@@ -112,7 +112,7 @@ disappears; a KISS title tells her what the app does.
 - Q.C  placement: title CENTRED, Batik in the corners, Kidul Systems name above the
   focused pill (Barticus 2026-10-26).
 - Q.D  LANDING UNIFICATION (2026-11-14, GSI): every app's landing = the title ABOVE
-  the CFC'd app-top bar, content below — identical across apps. The media player's
+  the CFC'd AppHome bar, content below — identical across apps. The media player's
   tiles-above-the-bar landing is corrected to match (title above, tiles below).
   The media library's movement (down into tiles, back up to the bar) is exactly
   the resting position every app should open on.
