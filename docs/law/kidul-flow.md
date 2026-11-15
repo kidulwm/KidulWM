@@ -55,17 +55,17 @@ navigation law; no modes, no per-app exceptions to the direction meanings.
 ## The widgets — faces on the Top layer, apps in the deck
 
   [Weather]          [Network]
-                     [Clock & Calendar]
+                     [Time]
 
-  ←→  Weather ↔ Clock & Calendar
-  ↑↓  Network ↔ Clock & Calendar
+  ←→  Weather ↔ Time
+  ↑↓  Network ↔ Time
   Focused widget = white. Enter = enter the focused widget.
-  MUCH LARGER than today, same sides (weather left, network/clock & calendar right),
+  MUCH LARGER than today, same sides (weather left, network/time right),
   up top around the Kidul TV CFC.
 
-  Clock & Calendar is ONE app — clock + calendar + alarms + appointments, one
-  temporal surface. The face shows the time/date; pressing it opens the app as a
-  normal slide.
+  Time is ONE app — the clock (time of day) + the calendar (place in the
+  historical time line) + alarms + appointments. The face shows the time/date;
+  pressing it opens the app as a normal slide.
 
   A widget is a FACE + an APP, never an always-on gauge:
     the FACE  = compositor-painted on the Top layer — a live, dumb shortcut ("just
