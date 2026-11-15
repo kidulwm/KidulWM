@@ -52,6 +52,7 @@ const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
 const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
+const gpb_mod = @import("ui/gpb.zig");
 const kplay_client_mod = @import("ipc/kplay_client.zig");
 const media_mod = @import("ui/media.zig");
 const peek_mod = @import("ui/peek.zig");
@@ -133,6 +134,8 @@ pub const Output = struct {
     home_slide: tray_slide_mod.TraySlide = .{},
     /// Media player slide content painter state (kind .media_player slide).
     media_slide: media_slide_mod.MediaSlide = .{},
+    /// Global pill bar (GPB) state — the apps list top bar (environment.md).
+    gpb: gpb_mod.GpbBar = .{},
     /// CARD 2b slice 2: the exported host toplevel (kplayd parents its video
     /// surface to this via xdg-foreign). One per fullscreen session — lives
     /// on the output that owns the media card, NOT a deck slide.
@@ -166,6 +169,7 @@ pub const Output = struct {
             .overview = .{},
             .home_slide = .{},
             .media_slide = .{},
+            .gpb = .{},
             .peek = peek_mod.Peek.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,

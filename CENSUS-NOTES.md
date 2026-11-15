@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD PROGRESS (bobdotrix 2026-11-14) — GPB SLICE A FOUNDATION (module written + wired, COMPILES).
+#   src/ui/gpb.zig NEW: GpbApp (AI/Browser/Games/Library/People) + GpbBar (focused + state_generation) +
+#   renderCard (5-seg PILL track + outline "Kidul TV" title + below-title) + renderToBuffer (media_slide
+#   pattern). server.zig: import + per-output `gpb` field + init. `zig build` EXIT 0 (render path
+#   force-compiled via comptime ref). NOT yet rendered on screen. REMAINING slices: (B) on-screen render
+#   (per-output scene tree + buffer at the TOP strip) + deck offset (reserve the strip in applyLayout);
+#   (C) input — moveFocus + lazy-open (down-move spawns app); (D) autostart (kushd seats GPB, fades in).
+#   media_slide.zig is the wiring template (scene tree + DataBuffer + raiseToTop); media.zig PILL_* is the
+#   render template. cairo_text_path IS available (src/dm/c.h includes full cairo.h).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-14, post-sleep) — GPB = A SLIDE (not overlay) + UP=HOME + PEEKS->KGAMES (GIS).
 #   GPB RE-CUT (environment.md): the globalPillsBar is its OWN SLIDE in the deck, NOT a global overlay.
 #   Autostarted at boot (focused on Library, fades in after background); kushd's first job = seat the GPB.
