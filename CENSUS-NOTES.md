@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-16, GSI) — DESIGN FROZEN (identity + provisioning + size control). Commit 99aaab0.
+#   kid.md: kID has TWO names — hash (identity, key-derived, /home/$HASH, never shown) + alias (display,
+#   changeable, user-facing only; residents local-unique via symlink, crew free + hash-logged). kidulName =
+#   store-side (NOT local), parked for the future KidulVerse doc (store + OwnedProductList = storage-without-
+#   storage; kID hash = account key). settings.md: provisioning = name + partition size, system does the rest
+#   (carve -> defaultHome skeleton -> seed roster -> bind kID -> mount). Size control = ONE fill bar, tap =
+#   quarter jump, hold = 1% fine, +/- buttons, ball at fill edge, % CFC'd, hint line, consent-on-consent nag
+#   (default cancel, "full" extra beat), device-class default (TV 50% "sharing is caring", PC full), keyboard
+#   types the %. NEXT: step 3 = wire the "waiting for tap" to the kidulkey-gate verdict (tap -> challenge/
+#   verify -> "TRUSTED role=<role>"). Name-entry letter-bar still TBD (the one uncracked piece).
 # BUILD (bobdotrix 2026-11-16, GSI) — TWO DOORS + NAMING SPLIT LOCKED. Commit 3fdba76 (pushed).
 #   Barticus ruling: OwnersFam = Residents (who you LIVE with), KidulCrew = crew who DROP BY (sign-in only,
 #   no list), SystemFam = the gear. "Family you live with -> Crew you hang with." Homes rebuilds to two
