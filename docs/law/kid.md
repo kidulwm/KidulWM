@@ -55,6 +55,28 @@ many cued consumers, one roster behind them all.
   NOT the vault    the cold vault is WHERE secrets rest; kID is WHO you are.
                    Two organs (cold-storage.md) — never collapse them.
 
+## The two names (hash = the name, alias = the face)
+
+The kID has ONE true name and ONE display name. Never three — the third lives
+somewhere else entirely.
+
+  hash    = the identity. The key-derived string (/home/$HASH — public-seat.md,
+            settings.md). Every system thing IS the hash: the mount, the roster,
+            the logs, the storage. Never shown to the user, never changes.
+  alias   = the display. "Dave". User-facing only. "Dave today, David tomorrow"
+            and the system never flinches — nothing stores or logs the alias; it
+            is a face, not a fact. Changeable.
+
+  Residents: the alias is checked against the local roster — the /home symlink
+  needs a unique name (no two /home/Dave). Crew: any name, no clash — crew has
+  no home and the system keys them by hash; two crew "Daves" are two hashes,
+  and crew logs carry the hash, not the name.
+
+kidulName is NOT local. It is the store's domain name (the friendly address on
+the mesh), a separate concern parked for the KidulVerse doc (store +
+OwnedProductList = storage without storage; the kID hash is the account key).
+It never names a user on the box.
+
 ## Relationship to existing law (this doc is the umbrella, not a rewrite)
 
   crypto.md    §KID + kpax — the admission gate. This file is that section's

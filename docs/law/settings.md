@@ -105,6 +105,50 @@ partition". What is NOT built is the one-pass wiring that, on proof:
 Identity/kID answers WHO (kid.md, identity.md); this mount answers WHAT. The
 missing piece is tying proof -> re-seat -> mount in a single pass.
 
+## Provisioning (name + size + the rest)
+
+Claiming a home is a resident being provisioned, and the owner is just the
+FIRST resident: empty roster -> first key claims as owner. Every "+ VIP" after
+runs the SAME path. The user gives TWO things; the system does the rest.
+
+  the user gives:  name + partition size
+  the system does: carve the partition -> instantiate the defaultHome skeleton
+                   -> seed the roster entry -> bind the kID -> mount on proof.
+
+  name   the alias (the face — kid.md). Residents check against the local roster
+         (the /home symlink needs a unique name); Crew need no unique name
+         (hash-keyed). Text entry is the hard remote problem — a letter pill-bar
+         (a second GPB of letters) or keyboard-only; TBD.
+  size   ONE fill bar (spec below). The default is set by the DEVICE CLASS, not
+         the user: TV = 50% ("it's a TV, sharing is caring"), PC = full.
+
+  defaultHome   a skeleton — the standard pill layout + default theme,
+                instantiated into each new partition. A defined template
+                artifact, not built ad hoc.
+
+## The size control (the "no-slider slider")
+
+One fill bar, arrow-native: no dragging, no typing (unless you have a
+keyboard).
+
+  [ - ]  ====...====o....========  [ + ]
+            taken % shaded gold, ball at the edge, size CFC'd in the middle
+
+  tap <- / ->    coarse: jump a quarter (¼ ½ ¾ full). Hard stops at 0 and full.
+  press & hold   fine: walk 1% steps, accelerating (~1% -> ~5%/step) so a full
+                 sweep is seconds, not fifty presses. Hard stops, no wrap.
+  keyboard       type the exact % (the laptop/testing escape hatch).
+  hint line      one line teaching the gesture: "tap for a quarter, hold to
+                 fine-tune".
+
+  Consent on consent: any size -> a nag screen in Granny's terms (never
+  "mkfs.ext4"), ball DEFAULTS TO CANCEL, and "full" gets an extra beat — it is
+  the only choice that can eat the system. Partitioning is fatal, so it is the
+  one place to be heavy.
+
+  Tuning knobs (on boot): tap/hold threshold ~250ms, hold acceleration curve,
+  and the exact ball/fill chrome.
+
 ## Build order (the #57 slice, folded from key-entry.draft.md)
 
   1. HOMES SLIDE (DONE)       compositor-owned slide (kind .homes) + Mod4+T
