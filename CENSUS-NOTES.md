@@ -1,5 +1,18 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-17, GSI) — STEP 3 KUSHD ROUTE DONE + PUSHED. kushd a5e91ca + KidulWM b3c2825.
+#   kushd: cue verb "homes-gate" (reserved, never an act name) -> fork kidulkey-gate with stdout+stderr
+#   piped -> poll-loop drains the pipe -> writes the verdict line back on the SAME connection. Cue socket
+#   chmod 0666 (non-root kidulwm can cue); SIGPIPE ignored (slide backing out mid-tap must not kill the
+#   usher); busy guard keys on gate_client_fd (NOT gate_pid — waitpid clears gate_pid the instant the
+#   gate exits, leaving an undrained pipe a cue could clobber); drain handles POLLHUP (gate exits with no
+#   output -> fail-closed UNTRUSTED). Rig-proven (fake gate): TRUSTED role=owner relays; silent/failed
+#   gate -> UNTRUSTED; concurrent cue -> busy. kidulwm: HomesBar verdict state (waiting/trusted/untrusted)
+#   + role buffer; the prompt renders "TRUSTED role=<role>" (bright) / "no access" (dim) / "waiting for
+#   tap" (gold). Server gate client (connect + write homes-gate + readable event source, fail-closed on
+#   EOF/error); back-out or slide-close cancels the in-flight cue + resets to waiting; re-enter re-cues.
+#   Slide NEVER owns the gate — it cues the usher and renders the verdict. NEXT: step 4 = re-seat + mount
+#   (proof -> re-seat -> mount drives), then 5 = landing reveal, 6 = claim.
 # BUILD (bobdotrix 2026-11-16, GSI) — DESIGN FROZEN (identity + provisioning + size control). Commit 99aaab0.
 #   kid.md: kID has TWO names — hash (identity, key-derived, /home/$HASH, never shown) + alias (display,
 #   changeable, user-facing only; residents local-unique via symlink, crew free + hash-logged). kidulName =
