@@ -2111,7 +2111,7 @@ pub const Server = struct {
                 // LAZY-OPEN: the focused app spawns on the first down-move.
                 // AI / Games / People are not built yet — a no-op for now.
                 const cmd: ?[]const u8 = switch (out.gpb_slide.bar.focused) {
-                    .browser => "/usr/local/bin/launch-kidul-browser.sh",
+                    .search => "/usr/local/bin/launch-kidul-browser.sh",
                     .library => "/usr/local/bin/kmedia",
                     else => null,
                 };

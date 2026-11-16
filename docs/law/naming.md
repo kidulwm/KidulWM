@@ -66,10 +66,17 @@ category. One ramp, one meaning, everywhere.
 
 The word shown above UserHome is the PRODUCT name — "Kidul TV",
 "Kidul PC", ... — large, outline-only, no logo, no sig, no branding. Granny looks
-up and sees one honest word for the thing in her hands. The app names ("Browser",
+up and sees one honest word for the thing in her hands. The app names ("Search",
 "Library") live BELOW UserHome and above the AppHome (landing.md) —
 a second, separate title. Two titles, two jobs: the system names itself above,
 the app names itself below.
+
+The public pill bar is AI · Games · Library · Search · People, Library centred
+as the landing pill (environment.md, kidul-flow.md). "Search" is the pill name
+for the browser app — the code name "Browser" / kidul-browser survives,
+internal-only. "People" is the session button (the kidulKey door: "Key In"
+while public, "End Session" signed in), not a profile switcher. "AI" is the
+slimmed BobPI for now, renamed later.
 
 ## The domains (three, one each)
 

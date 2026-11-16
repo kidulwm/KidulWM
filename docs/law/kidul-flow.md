@@ -16,7 +16,10 @@ navigation law; no modes, no per-app exceptions to the direction meanings.
 
   KidulHome    the system home ("our home"), the boot root — "Kidul TV" CFC'd +
                the widget faces + navDots, drawn on the Top layer.
-  UserHome     the user's home — the apps list (the pill bar). "My apps."
+  UserHome     the user's home — the apps list (the pill bar). "My apps." Generic:
+               one concept, many users. publicHome (the public seat — a
+               restricted, "useless & harmless by design" account) and bartsHome
+               are instances of it, not a separate kind of bar.
   AppHome      each app's own landing — its CFC'd top bar. Every app opens AT its
                AppHome and navigates DOWN from there.
 
@@ -30,6 +33,15 @@ navigation law; no modes, no per-app exceptions to the direction meanings.
   the pill bar that UserHome draws, to distinguish it from the library pill bar,
   the browser hybrid search bar, and the other bars. UserHome = the slide name;
   GlobalPillsBar = the bar itself.
+
+## UserHome focus (session state)
+
+  Public = fresh every use: UserHome opens focused on Library (the centred
+  landing pill). The TV always lands Library; the PC keeps persistent history
+  later (resume the last-used app). ↑ back from an app returns focus to the
+  app you just left — the focused pill never resets while you navigate within
+  a session (the `focused` field holds it). Sign in / out is "Key In" /
+  "End Session" on the People pill (environment.md).
 
 ## The verbs (hard stops, no cycling)
 

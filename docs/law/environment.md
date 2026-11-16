@@ -82,8 +82,10 @@ not entered has no process. Same discipline as process-death-is-the-kill.
 ## UserHome (the pill bar) is the apps list
 
 The global pill bar IS the apps list — one per seat, always the very top. Public
-user: AI / Browser / Games / Library / People. The owner: every installed app is its
-own pill. People = the admin surface (users, grants, roster), not a profile picker.
+user: AI / Games / Library / Search / People (Library centred, the landing pill).
+The owner: every installed app is its own pill. People = the session button —
+"Key In" while public, "End Session" when signed in; the kidulKey door, NOT a
+profile switcher (there are no profiles to switch — see "No profiles" above).
 
 Three homes, one deck (the up+1 / up+2 / "top" vocabulary retires — kidul-flow.md):
   KidulHome = the system home ("our home"), the boot root. "Kidul TV" CFC'd + the
@@ -100,7 +102,7 @@ Three homes, one deck (the up+1 / up+2 / "top" vocabulary retires — kidul-flow
               UserHome is just "the title" — the focused app's generic name.
 
 The TITLE is one generic name, the same text below UserHome AND above the AppHome.
-"What does Granny want": Browser, Public Library, Media Player — plain, large,
+"What does Granny want": Search, Public Library, Media Player — plain, large,
 outline-only, no branding, no k'ified code name. The code keeps its k'ified
 identifiers; Granny sees only the generic word. No reinvented second title.
 
