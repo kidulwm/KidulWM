@@ -1,5 +1,21 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-16, late evening) — "next" fired: uncommitted work LANDED + #57 slice SPEC'd.
+#   RECONCILE: "next" = #59's next build step = #57 THE CORRECT BASE (settings app + person key-exchange +
+#   kushd re-seat). Its two gate-prereqs are now DONE (re-boot-test MET; Tier-2 proof -> roster LIVE), so
+#   the slice is UNBLOCKED. SPEC-BEFORE-SURFACE: wrote docs/design/key-entry.draft.md (committed d0fb3ae,
+#   signed B&B) — the settings-app slide (keybind), claim-vs-sign-in flow, and kushd RE-MINT wiring as a
+#   6-step incremental build order + done-when + three open questions for verdict (keybind chord, first-cut
+#   scope, deploy ordering). NOT built; NOT deployed.
+#   LANDED (relog-risk, now pushed): kboot 47eb9f6 (public seat -> tty group for ktty pty) + 9532a85
+#   (pc-class boot hardening: mouthTty class-gates ttyS0/tty0 phantom crash-loop, empty PS1, sda1 media
+#   mount noatime, 0666 kushd-spawn.log) — zig build clean. kslide-template aa5ab2b: untracked zig-out +
+#   .zig-cache (46 files, was permanently "dirty"); added .gitignore to match kboot. All /home/dad/dev
+#   repos swept clean.
+#   LOOSE END (still open, Barticus's call): KSD NOT deployed — repo ahead, /mnt/ksd still ddd961c, nvme1
+#   UNMOUNTED (KSD-root ext4 + KSD-ESP vfat present, not mounted). GPB + kidul-flow (down/up summon) +
+#   re-centred pill bar (AI·Games·Library·Search·kidulKey) all BUILT + smoke-tested but undeployed. The
+#   key-entry slice (this turn's spec) builds in parallel; deploy = VM-prove then write to nvme1p2 rootfs.
 # SESSION WRAP-UP (bobdotrix 2026-11-16, evening) — SECURITY LAW ARC FROZEN: THE APEX (attestation).
 #   A full privacy/security model locked across six commits (7f47732..7b7ac97). The kidulKey grew from
 #   signing-root to the GATE, apex = attestation: the key verifies the host (proof in code) and REFUSES
