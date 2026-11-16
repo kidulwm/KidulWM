@@ -11,24 +11,27 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-10)
+## Current attack (2026-11-16)
 
-  KSD BOOT (docket #54) — real kboot->kushd->kidulwm on the 980 Pro. State:
-    - kidulwm segfault FIXED + DEPLOYED today. Commits 07cbfc8 (backend unsetenv
-      WAYLAND_DISPLAY — DRM not nested) + bafe895 (read env once before
-      Server.init; use-after-free via setenv realloc). Built ReleaseSafe,
-      deployed /mnt/ksd/usr/local/bin/kidulwm (stamp bafe895).
-    - REBOOT-TEST PENDING (Barticus in the morning): boot nvme1, confirm kidulwm
-      seats clean — kushd.log "seated kidulwm" with NO "died kidulwm" loop.
-    - FORK FLAG: kboot (logdrain/devRules/log-path, 86 ins) + kushd (log-path
-      /tmp->/var/log) are UNCOMMITTED in the tree but DOCKETS #54 describes them
-      done. Commit+build+deploy them before the crash-survival guarantee holds.
-      This is the "logs survive a crash for a service Bob" work.
-    - OPEN (carried): VMD revert — host root is ALSO behind VMD, needs a plan not
-      a flip. Trackpad loss was Fn+F2 EC toggle (BIOS-LOG 00:15), NOT VMD/security.
+  THE APEX (attestation) — security law arc FROZEN this session, ZERO built.
+    - Commits 7f47732..7b7ac97: kidulkey-entry.md (claim vs sign-in, one key
+      many seats), logs.md (zero standing read, on-demand key-tap grant),
+      attestation.md (THE APEX: the kidulKey is the GATE — verifies the host,
+      refuses to unseal on a dirty one), kidulkey.md (GATE role added).
+    - The surgery (next build phase): partition/isolation + fTPM wiring +
+      key-hardware + sealed-secret release + kushd seat. All unbuilt; the law
+      is the spec the build must obey.
+    - Pill bar work (0f2559d + cfe2113) DONE + recorded, NOT deployed.
 
-  kmedia lane: A/V drift wind-up fix COMMITTED (cf21d2f) + DEPLOYED (kplayd sha
-  fbf7b926), UNVERIFIED by a real movie — next play is the check (~±6ms, no ramp).
+  CARRIED THREADS (do not lose):
+    - kboot UNCOMMITTED: seed-users.sh + src/main.zig (mtime Nov 13).
+    - kslide-template dirty: zig-out/bin/kslide-template.
+    - KSD NOT deployed: repo ahead of /mnt/ksd (still ddd961c).
+    - KSD DRIVE (nvme1) PRESENT BUT UNMOUNTED: /mnt/ksd empty — mount first.
+
+  NEXT SESSION: the surgery (partition/isolation first, then fTPM + key-hardware
+    + attestation), or fire 'next' for the top non-DONE docket. Law is frozen;
+    build starts from clean context on top of it.
 
 ## Trip wires / commands / secrets
 

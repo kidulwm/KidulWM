@@ -1,5 +1,36 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-16, evening) — SECURITY LAW ARC FROZEN: THE APEX (attestation).
+#   A full privacy/security model locked across six commits (7f47732..7b7ac97). The kidulKey grew from
+#   signing-root to the GATE, apex = attestation: the key verifies the host (proof in code) and REFUSES
+#   to unseal the user's cryptography on a dirty host. "The seal is fakeable; the code isn't." Chain:
+#     1. kidulkey-entry.md (NEW) — claim vs sign-in: first login = OWNER initial claim, distinct from
+#        after-setup sign-in. One key many seats (identity, never authority). Temp B&B key = nRF dongle
+#        until real kidulKey hardware; password backup retained (never lock ourselves out).
+#     2. logs.md (patched) — owner = ALL logs + highest priority; root/B&B = ZERO standing read (NOT
+#        even the 200MB live window — REVISED from the earlier "200MB direct" ruling). Read ONLY on a
+#        kidulKey-tap = consent, scoped to one task, then closes. "Monkey off our back": we can't do it
+#        if we tried, provable in code.
+#     3. attestation.md (NEW, THE APEX) — the kidulKey is the GATE: verifies the host (code hash + active
+#        log config) against the KidulWorks root BEFORE releasing the user's cryptography. Key does NOT
+#        trust the host's word — verifies a signed fTPM quote (host measures, key verifies). Kiosk/hotel
+#        mode = zero-PII metering only (usage time + data size; no PII field in the signed schema). Dirty
+#        host -> NO: "not safe here, don't use this system." The NO is the product. kidulkey.md (patched)
+#        adds the GATE role beside signer + identity.
+#   VERIFIED-BOOT NOTE (don't re-derive): "verified boot" is NOT novel — Chrome OS/Android's dm-verity
+#     (Merkle tree over the root fs). Our apex is not the TERM, it's the ANCHOR: theirs = the box's own
+#     kernel (self-check); ours = YOUR external key gating your data (the box can't vouch for itself).
+#     Secure boot anchor = vendor; libreboot = firmware freedom (usually disables secure boot).
+#   ALL LAW, NONE BUILT. The surgery = partition/isolation + fTPM wiring + key-hardware + sealed-secret
+#     release + kushd seat. Next build phase, fresh session.
+#   CARRIED THREADS: kboot UNCOMMITTED (seed-users.sh + src/main.zig, Nov 13); kslide-template dirty
+#     (zig-out/bin/kslide-template). kidulKey claim flow / kushd seat re-mint / key-entry slide surface
+#     NOT built. KSD NOT deployed (repo ahead; /mnt/ksd still ddd961c). KSD DRIVE nvme1 PRESENT BUT
+#     UNMOUNTED (/mnt/ksd empty) — mount before any KSD verify.
+#   LIVE-PROVEN this session: dongle 20a6b571...aabe -> gate -> signed roster -> TRUSTED role=owner
+#     (kidulkey/gate built clean; test roster in scratch/kidulkey-test). Stuck-ARMED dongle recovery =
+#     USB authorized 0/1 toggle (folded into the kidulkey skill).
+#
 # DESIGN FREEZE (bobdotrix 2026-11-14, GSI) — KIDUL FLOW LAW: docs/law/kidul-flow.md.
 #   One tree: Home screen (system home, "our home" — Kidul TV CFC'd + widgets + navDots,
 #   the boot root) → GPB (user's home, summoned by ↓/TL) → app. Remote: arrows=flow,
