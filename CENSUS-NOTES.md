@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-16, GSI) — TWO DOORS + NAMING SPLIT LOCKED. Commit 3fdba76 (pushed).
+#   Barticus ruling: OwnersFam = Residents (who you LIVE with), KidulCrew = crew who DROP BY (sign-in only,
+#   no list), SystemFam = the gear. "Family you live with -> Crew you hang with." Homes rebuilds to two
+#   deliberately asymmetric doors: Residents = name list + "+ VIP" (focus Owner); KidulCrew = key glyph +
+#   "sign in". One shared prompt ("waiting for tap"); dip-your-toe flow (down in, up/Esc back out at every
+#   level). Right = consent on a name; down = straight into the prompt for KidulCrew. HomesBar level machine
+#   (pill/list/prompt) + moveLeft/Right/Up/Down/confirm/back. Visitor RETIRED -> KidulCrew. naming.md gets a
+#   "families" section (SystemFam/OwnersFam/KidulCrew). Drive scoping unchanged: Residents = local+ext+net,
+#   KidulCrew = ext only (approved key access, NO public drives). NEXT: step 3 = wire the tap to the
+#   kidulkey-gate verdict (already live); then 4 = re-seat + mount.
 # BUILD (bobdotrix 2026-11-16, GSI) — STEP 2 DONE: Resident/Visitor pill bar + name list + "tap your key".
 #   Commit 41fbbf9 (pushed). ui/homes.zig HomesBar widget: 2-segment THE PILL (Resident|Visitor, CFC dead-centre)
 #   + the focused seat's name list below + "+ add user"; focus lands on Owner (Resident); Enter -> "tap your key"
