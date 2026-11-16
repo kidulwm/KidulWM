@@ -8,8 +8,9 @@
 #   (carve -> defaultHome skeleton -> seed roster -> bind kID -> mount). Size control = ONE fill bar, tap =
 #   quarter jump, hold = 1% fine, +/- buttons, ball at fill edge, % CFC'd, hint line, consent-on-consent nag
 #   (default cancel, "full" extra beat), device-class default (TV 50% "sharing is caring", PC full), keyboard
-#   types the %. NEXT: step 3 = wire the "waiting for tap" to the kidulkey-gate verdict (tap -> challenge/
-#   verify -> "TRUSTED role=<role>"). Name-entry letter-bar still TBD (the one uncracked piece).
+#   types the %. NEXT: step 3 = KUSHD ROUTE (locked 2026-11-16) — slide's "waiting for tap" cues kushd ->
+#   kushd forks kidulkey-gate (kidulkey/gate, PROVEN) -> "TRUSTED role=<role>" verdict back over IPC -> slide
+#   surfaces it (UNTRUSTED -> "no access"); slide never owns the gate. Name-entry letter-bar still TBD.
 # BUILD (bobdotrix 2026-11-16, GSI) — TWO DOORS + NAMING SPLIT LOCKED. Commit 3fdba76 (pushed).
 #   Barticus ruling: OwnersFam = Residents (who you LIVE with), KidulCrew = crew who DROP BY (sign-in only,
 #   no list), SystemFam = the gear. "Family you live with -> Crew you hang with." Homes rebuilds to two

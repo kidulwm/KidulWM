@@ -159,9 +159,12 @@ keyboard).
      a name list + "+ VIP" (focus on Owner); KidulCrew = a sign-in only (no
      list). Right on a name (or down on KidulCrew) opens the shared "waiting
      for tap" prompt. Dip-your-toe flow: up backs out at every level.
-  3. GATE PROOF (reuse)       the tap -> kidulkey-gate challenge/verify ->
-     "TRUSTED role=<role>" line. ALREADY live (slice 4 + test roster); this
-     slice only wires the slide's tap to the gate's verdict.
+  3. GATE PROOF               the tap -> kidulkey-gate challenge/verify ->
+     "TRUSTED role=<role>" line. ALREADY live (slice 4 + test roster:
+     kidulkey/gate + kpax CLI, proven). This slice wires the slide's tap to the
+     verdict — KUSHD ROUTE (locked 2026-11-16): the slide cues kushd, kushd
+     forks kidulkey-gate (the same fork input-trust already uses), the verdict
+     returns to the slide over IPC. The slide never owns the gate.
   4. RE-SEAT + MOUNT          on proof, kushd RE-SEATS the session as the
      resolved role AND mounts that seat's drives (Residents = local + external +
      networked; KidulCrew = external only) — the plug-and-play wiring.
