@@ -45,20 +45,23 @@ grants the partition (partitions.md) + priority. The roster FORMAT is unchanged
 (a key may already carry several entries); the resolution + the sign-in flow
 change.
 
-## Owner authority — all logs, higher priority (Barticus 2026-11-16)
+## Owner authority — all logs, zero standing read for B&B (Barticus 2026-11-16)
 
 The OWNER seat holds the full history and the highest priority (QoS + policy,
-cells.md). The ROOT (the B&B signing key) does NOT: it reads only the DIRECT
-logs — the live ~200MB operational window — never the overflow. Logs past the
-window rotate into the owner's encrypted .md archive, decryptable ONLY by the
-owner (logs.md: "owned by root, decryptable ONLY by the owner"). The owner is
-truly the owner: the whole immutable record is theirs; the signer is
-architecturally blinded to the history.
+cells.md). The ROOT (the B&B signing key) and B&B the agent hold ZERO standing
+READ — not even the live logs. The drain (root) WRITES logs and never reads them
+back. Logs past the ~200MB window rotate into the owner's encrypted .md archive,
+decryptable ONLY by the owner (logs.md). The owner is truly the owner: the whole
+immutable record is theirs; everyone else is architecturally blinded to it,
+provably, in code — not a promise.
 
-The owner may delegate a SCOPED log read to a service-bob (security /
-customer-service) ON REQUEST — a grant on the delegation tree (delegation.md:
-log read is attenuating), never standing access. Safety (encryption) +
-ownership (owner holds the data) + usability (delegate on request).
+B&B (us) reads a log ONLY when the user grants it: a kidulKey tap = consent, a
+scoped read for that one task, then it closes. Zero standing access is the
+"monkey off our back" — we can't do it if we tried, and that's provable. The
+owner may delegate a scoped read to a service-bob (security / customer-service)
+the same way: ON REQUEST, a grant on the delegation tree (delegation.md: log
+read is attenuating), never standing access. Safety (encryption) + ownership
+(owner holds the data) + usability (delegate on request).
 
 ## The surface (KISS)
 
