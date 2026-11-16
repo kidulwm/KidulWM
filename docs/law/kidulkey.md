@@ -176,6 +176,16 @@ a hotel TV, and any screen becomes your system — same identity, same data, a
 different window. That is the kweb pitch, and it is what makes the key family
 the whole point: the kidulKey is the thing that makes any screen yours.
 
+## The kidulKey is the GATE — it opens nothing on a dirty host (Barticus 2026-11-16)
+
+The key's boot role is OFFLINE verification (the IMA keyring + the signed golden
+image). It is also the GATE: before releasing the user's cryptography (partition
+key / LUKS decrypt), it verifies the host is CLEAN — the code hash + the active
+log config, attested against the KidulWorks root. Clean -> open. Dirty -> NO:
+"not safe here, don't use this system", the user's data stays sealed. The seal
+(a visual checkmark) is fakeable; the code is not; the key only trusts the proof
+in code. See attestation.md.
+
 ## Where the keys and salts reside (Granny stays safest)
 
   private keys   born on-die in each secure element (root / box / personal),
