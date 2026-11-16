@@ -1,6 +1,9 @@
 # LAW — attestation (the clean-check & the gate)
 
-LOCKED 2026-11-16, Barticus present (GSI).
+LOCKED 2026-11-16, Barticus present (GSI). This is the APEX of the security
+architecture (Barticus, GSI) — every other layer (verified boot, zero-access
+logs, one-key-many-seats, the roster) terminates here: the key that verifies
+and refuses.
 
 The kidulKey verifies the host BEFORE it opens anything. It does not trust the
 screen (the seal is fakeable) — it verifies the PROOF IN CODE, and refuses to
