@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-16, GSI) — STEP 1b DONE: kidulFlow door + law frozen (Resident/Visitor + drives).
+#   Commit 9207668 (pushed). GPB pill kidulKey -> Homes (enum + label "Homes"); Down/Return on the pill
+#   opens the compositor slide (gpbSlideKey -> homesSlideFocusOrSpawn); search/library still spawn as
+#   before. ui/homes.zig title "Homes". LAW settings.md amended: kidulFlow primary (Mod4+T secondary);
+#   Resident = per-user partition (local+external+networked) vs Visitor = hotel (external only, no
+#   partition, no persistence); drives-on-key-in = proof->re-seat->mount (unbuilt plug-and-play gap);
+#   Homes = thin SLIDE, NOT a media-style controlling feature. Build clean. NEXT: step 2 = Resident/Visitor
+#   CFC pills + name lists + add-user (focus Owner/Resident), "tap your key" on name select.
 # BUILD (bobdotrix 2026-11-16, GSI) — HOMES SLIDE step 1 DONE: Mod4+T opens the Homes slide (empty shell).
 #   Commit 663ceae (pushed). SlideKind.homes + Action.homes_toggle + ui/homes.zig (title "HOMES" + "person"
 #   row, gold/dim-gold on near-black shell) + server homesSlideFocusOrSpawn/Open/Refresh/Close/CloseOn +
