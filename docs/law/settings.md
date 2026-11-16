@@ -16,7 +16,8 @@ admin corner; they are two entities.
              kidulkey-entry.md) and where the userHomes are managed: the
              user/kidulKey roster (People, delegation.md) + allocations. "Out
              of touch" by design: your identity + access layer is not a
-             personal preference you edit. Opened by a KEYBIND (Mod4+T). This
+             personal preference you edit. Opened by a KEYBIND (Mod4+T) — a
+             SECONDARY shortcut; the primary entry is the kidulFlow pill. This
              is THE WALL (#57) — docket #59 step (3).
   Settings   the user's PERSONAL, transportable surface — themes, brightness,
              presets. Travels with the user, never the machine. Per-app
@@ -42,7 +43,8 @@ The PRIMARY entry is the pill: the GPB's kidulKey pill is renamed Homes, and
 the flow is KidulHome -> down (UserHome / publicPillsBar) -> right (to Homes)
 -> down (enter). Arrow-only, remote-native — no launcher. On the pill, the
 slide shows its TITLE below the bar (the same title reveal as every slide);
-the Resident / Visitor content appears once you are IN the slide, not before.
+the Residents / KidulCrew content appears once you are IN the slide, not
+before.
 
 Mod4+t was the retired "tray toggle" — the old launcher that became the tray,
 and the tray was designed out by the deck (Home). That code is dead; Mod4+T is
@@ -66,22 +68,28 @@ authoritative box (ktv native networking, machine-classes.md) — no
 remote-desktop middleman. Nothing new: the ruling lives in delegation.md; the
 Homes surface is where those verbs are CAST.
 
-## Resident / Visitor (the two seats of the door)
+## Residents / KidulCrew (the two doors)
 
-The Homes slide opens on two CFC pills — Resident and Visitor — the top-level
-split of the roster. Roles (owner / adult / child / tv / nas / ...) are
-ATTRIBUTES of a resident name, not pills.
+The Homes slide opens on two CFC pills — Residents and KidulCrew — and the
+two doors are deliberately NOT symmetric. Roles (owner / adult / child / tv /
+nas / ...) are ATTRIBUTES of a resident name, not pills. "Family you live
+with -> Crew you hang with."
 
-  Resident   someone who LIVES here: owns a per-user partition (allocated at
-             creation), sees local allocations + external + networked drives.
-             Focus lands on the Owner under Resident.
-  Visitor    a guest of the TV (the hotel case): NO local drive space, no
-             partition, no persistence. Sees UNFAMILIAR external drives only —
-             what you plug in, nothing else. Roster entry only.
-  add user   under both. Resident add = roster entry + carve the per-user
-             partition UP FRONT (so the drive has room before they key in).
-             Visitor add = roster entry only. Later file/drive approvals happen
-             in kfiles (move-copy.md).
+  Residents  a LIST. The OwnersFam — who LIVES here. Each named resident owns
+             a per-user partition (allocated at creation) and sees local +
+             external + networked drives. Focus lands on the Owner. "+ VIP"
+             adds a resident (roster entry + carve the partition up front).
+  KidulCrew  NO list — a sign-in only. The crew who DROP BY. A kidulKey
+             glyph, focused; keying in proves who they are and their external
+             drive rides in with them. Approved key access OR no access — no
+             public drives. No roster entry, no partition, no persistence.
+
+The key prompt is the SAME surface for both; only the drive scoping differs.
+Key flow (arrow-only): pill level <- -> switches the doors, down descends.
+Residents: down into the list, up/down walks names, right consents -> the
+prompt. KidulCrew: down steps straight into the prompt. Up (or Esc) steps
+back out at every level — "dip your toe in": nothing commits until the key
+does. Later file/drive approvals happen in kfiles (move-copy.md).
 
 ## Drives on key-in (the plug-and-play wiring)
 
@@ -91,8 +99,8 @@ unmounted on lock (unplug = gone); external/net drives = "just another
 partition". What is NOT built is the one-pass wiring that, on proof:
 
   re-seat the session (kushd re-mint)  ->  mount the seat's drives:
-     Resident  ->  local allocation + external + networked
-     Visitor   ->  external only
+     Residents  ->  local allocation + external + networked
+     KidulCrew  ->  external only (approved key access; no public drives)
 
 Identity/kID answers WHO (kid.md, identity.md); this mount answers WHAT. The
 missing piece is tying proof -> re-seat -> mount in a single pass.
@@ -103,15 +111,16 @@ missing piece is tying proof -> re-seat -> mount in a single pass.
      shortcut. Empty shell: title "Homes" + a placeholder row.
   1b. KIDULFLOW DOOR          rename the GPB kidulKey pill -> Homes; Down on the
      pill enters the slide (homesSlideFocusOrSpawn). Primary entry.
-  2. RESIDENT/VISITOR         the shell's row becomes two CFC pills (Resident /
-     Visitor) + a name list under each + add-user. Focus on Owner (Resident).
-     The "tap your key" prompt appears when a name is selected.
+  2. TWO DOORS (DONE)         two CFC pills (Residents / KidulCrew). Residents =
+     a name list + "+ VIP" (focus on Owner); KidulCrew = a sign-in only (no
+     list). Right on a name (or down on KidulCrew) opens the shared "waiting
+     for tap" prompt. Dip-your-toe flow: up backs out at every level.
   3. GATE PROOF (reuse)       the tap -> kidulkey-gate challenge/verify ->
      "TRUSTED role=<role>" line. ALREADY live (slice 4 + test roster); this
      slice only wires the slide's tap to the gate's verdict.
   4. RE-SEAT + MOUNT          on proof, kushd RE-SEATS the session as the
-     resolved role AND mounts that seat's drives (Resident = local + external +
-     networked; Visitor = external only) — the plug-and-play wiring.
+     resolved role AND mounts that seat's drives (Residents = local + external +
+     networked; KidulCrew = external only) — the plug-and-play wiring.
   5. LANDING REVEAL           kidulwm's landing shows the FULL roster on owner,
      public roster on public — the "crossing over" made visible.
   6. CLAIM FLOW               empty roster -> first proof seeds the roster as
@@ -122,7 +131,7 @@ missing piece is tying proof -> re-seat -> mount in a single pass.
 
 ## done-when (the #57 slice)
 
-  - Mod4+T opens Homes; "person" shows "tap your key";
+  - Mod4+T opens Homes; "person" shows the "waiting for tap" prompt;
   - the tap proves against the roster and re-seats the session as the resolved
     role (claim seeds owner on empty roster; sign-in resolves the role set);
   - the landing reveals the full roster on owner, public roster on public;
@@ -143,6 +152,9 @@ No incremental partial deploys.
   - "Admin" RETIRED as an entity name — it survives ONLY as the delegation
     ROLE (delegation.md: "owner = admin"; "sub-admin"). Homes (surface) and
     admin (role) no longer share a word.
+  - "Visitor" RETIRED -> "KidulCrew": the crew you hang with (non-residents,
+    sign-in only), distinct from the OwnersFam (Residents) and the SystemFam
+    (the gear). Locked in naming.md.
   - Loose "settings" senses NOT swept here (deferred to the build cut):
     ksignals = the HOST's v1 settings surface (daily-driver.md, host-side,
     not KSD); kfiles "SETTINGS" = a kfiles nav element (app-local); "advanced

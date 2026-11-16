@@ -2187,11 +2187,13 @@ pub const Server = struct {
         std.log.info("KidulWM: Homes slide closed", .{});
     }
 
-    /// INPUT LAW (settings.md) on the Homes slide: ←→ switches Resident /
-    /// Visitor (HARD STOPS), ↑↓ moves the name-list focus (HARD STOPS, no
-    /// wrap), Enter = "tap your key", Esc = back out of the key prompt (hard
-    /// stop at the root). Mirrors gpbSlideKey: keys reach the slide only while
-    /// it is the focused centre slide. Unconsumed keys fall through.
+    /// INPUT LAW (settings.md) on the Homes slide, two doors. Pill level: ←→
+    /// switches Residents / KidulCrew (HARD STOPS), ↓ descends. Residents
+    /// list: ↑↓ walks names, → consents (key prompt), ↑ at the top / ← / Esc
+    /// ascend. KidulCrew: ↓ steps straight into the key prompt. Prompt: ↑ /
+    /// ← / Esc back out — "dip your toe in", nothing commits until the key
+    /// does. Mirrors gpbSlideKey: keys reach the slide only while it is the
+    /// focused centre slide. Unconsumed keys fall through.
     pub fn homesSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
         const xkb = @import("xkbcommon");
         const deck = self.currentDeck();
@@ -2214,23 +2216,23 @@ pub const Server = struct {
 
         switch (sym) {
             xkb.Keysym.Left => {
-                _ = out.homes_slide.bar.moveSeat(-1);
+                _ = out.homes_slide.bar.moveLeft();
                 self.homesSlideRefresh(out);
             },
             xkb.Keysym.Right => {
-                _ = out.homes_slide.bar.moveSeat(1);
+                _ = out.homes_slide.bar.moveRight();
                 self.homesSlideRefresh(out);
             },
             xkb.Keysym.Up => {
-                _ = out.homes_slide.bar.moveName(-1);
+                _ = out.homes_slide.bar.moveUp();
                 self.homesSlideRefresh(out);
             },
             xkb.Keysym.Down => {
-                _ = out.homes_slide.bar.moveName(1);
+                _ = out.homes_slide.bar.moveDown();
                 self.homesSlideRefresh(out);
             },
             xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
-                _ = out.homes_slide.bar.select();
+                _ = out.homes_slide.bar.confirm();
                 self.homesSlideRefresh(out);
             },
             xkb.Keysym.Escape => {

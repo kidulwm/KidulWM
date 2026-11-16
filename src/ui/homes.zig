@@ -6,18 +6,22 @@ const style_mod = @import("../core/style.zig");
 const Style = style_mod.Style;
 const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
-/// Compositor-owned Homes slide (docs/law/settings.md): the immutable door
-/// that switches publicHome -> privateHome. Step 2 = the surface — a
-/// Resident / Visitor pill bar (THE PILL, 2 segments) + a name list under the
-/// focused seat + "+ add user", with "tap your key" on select. The roster
-/// below is a SAMPLE placeholder; the real roster wires in step 3 (gate proof)
-/// / 6 (claim). Thin by design — this must NOT grow media.zig-style.
+/// Compositor-owned Homes slide (docs/law/settings.md): the immutable door.
+/// Two doors, deliberately asymmetric:
+///   - Residents (OwnersFam): a name LIST — who LIVES here. → consents on a
+///     name -> the key prompt -> local + external + networked.
+///   - KidulCrew: NO list — who DROPS BY. ↓ steps straight into the key prompt
+///     -> approved external access only, their drive rides in with the key.
+/// "Family you live with → Crew you hang with." The key prompt is the SAME
+/// surface for both; only the drive scoping differs (step 4). "Dip your toe
+/// in": ↓ steps in, ↑ steps back out, nothing commits until the key does.
+/// Sample roster is a placeholder until step 3 (gate proof) / 6 (claim). Thin
+/// by design — must NOT grow media.zig-style.
 ///
-/// Law: settings.md (Resident/Visitor seats), styles (THE PILL, CFC, INPUT
-/// LAW ↑↓=focus ←→=move Enter=apply Esc=back, hard stops — no wrap).
+/// Law: settings.md (two doors), styles (THE PILL, CFC, INPUT LAW), naming.md
+/// (SystemFam / OwnersFam / KidulCrew).
 const RESIDENT_NAMES = [_][:0]const u8{ "Owner", "Kid 1", "Kid 2" };
-const VISITOR_NAMES = [_][:0]const u8{"Guest"};
-const ADD_USER_LABEL: [:0]const u8 = "+ add user";
+const ADD_VIP_LABEL: [:0]const u8 = "+ VIP";
 
 const PILL_SEG_W: f64 = 280.0;
 const PILL_TRACK_H: f64 = 56.0;
@@ -40,77 +44,146 @@ const PILL_GOLD = pc(0x948e7b);
 const PILL_TEXT_ACTIVE = pc(0xe8e6df);
 const PILL_TEXT_DIM = pc(0x6a6354);
 
-const Seat = enum { resident, visitor };
+const Seat = enum { residents, kidulcrew };
+const Level = enum { pill, list, prompt };
 
-/// The Homes slide's in-slide widget: the Resident / Visitor pill bar and the
-/// focused seat's name list. Render state + focus only (the roster is a sample
-/// until step 3).
+/// The Homes slide's in-slide widget: the Residents / KidulCrew pill bar and
+/// the focused door's content (a name list for Residents, a sign-in for
+/// KidulCrew, or the shared key prompt). Render state + focus only (the roster
+/// is a sample until step 3).
 pub const HomesBar = struct {
-    seat: Seat = .resident,
+    seat: Seat = .residents,
+    level: Level = .pill,
     name_index: usize = 0,
-    key_entry: bool = false,
     state_generation: u32 = 0,
 
     fn bump(self: *HomesBar) void {
         self.state_generation +%= 1;
     }
 
-    fn names(self: *const HomesBar) []const [:0]const u8 {
-        return if (self.seat == .resident) &RESIDENT_NAMES else &VISITOR_NAMES;
-    }
-
     fn nameCount(self: *const HomesBar) usize {
-        return self.names().len + 1; // +1 = "+ add user"
+        _ = self; // roster is a compile-time sample until step 3
+        return RESIDENT_NAMES.len + 1; // +1 = "+ VIP"
     }
 
     fn listLabel(self: *const HomesBar, i: usize) [:0]const u8 {
-        const n = self.names();
-        if (i < n.len) return n[i];
-        return ADD_USER_LABEL;
+        _ = self; // roster is a compile-time sample until step 3
+        if (i < RESIDENT_NAMES.len) return RESIDENT_NAMES[i];
+        return ADD_VIP_LABEL;
     }
 
-    fn focusedLabel(self: *const HomesBar) [:0]const u8 {
-        return self.listLabel(self.name_index);
-    }
-
-    /// ←→ : switch Resident/Visitor (hard stop; resets list focus to 0).
-    pub fn moveSeat(self: *HomesBar, step: i32) bool {
-        if (self.key_entry) return false;
-        const cur: i32 = if (self.seat == .resident) 0 else 1;
-        const target = cur + step;
-        if (target < 0 or target >= 2) return false;
-        self.seat = if (target == 0) .resident else .visitor;
-        self.name_index = 0;
+    fn descend(self: *HomesBar) bool {
+        // .pill -> .list (Residents) or .prompt (KidulCrew).
+        if (self.level != .pill) return false;
+        if (self.seat == .residents) {
+            self.level = .list;
+            self.name_index = 0;
+        } else {
+            self.level = .prompt;
+        }
         self.bump();
         return true;
     }
 
-    /// ↑↓ : move focus down/up the name list (hard stop, no wrap).
-    pub fn moveName(self: *HomesBar, step: i32) bool {
-        if (self.key_entry) return false;
-        const cur: i64 = @intCast(self.name_index);
-        const target = cur + @as(i64, @intCast(step));
-        if (target < 0 or target >= @as(i64, @intCast(self.nameCount()))) return false;
-        self.name_index = @intCast(target);
+    fn consent(self: *HomesBar) bool {
+        // .list -> .prompt (right arrow on a name).
+        if (self.level != .list) return false;
+        self.level = .prompt;
         self.bump();
         return true;
     }
 
-    /// Enter : select the focused entry -> "tap your key". Step 2 surface
-    /// only; the gate proof (step 3) replaces the prompt with the challenge.
-    pub fn select(self: *HomesBar) bool {
-        if (self.key_entry) return false;
-        self.key_entry = true;
-        self.bump();
-        return true;
+    fn ascend(self: *HomesBar) bool {
+        switch (self.level) {
+            .pill => return false, // hard stop at the root
+            .list => {
+                self.level = .pill;
+                self.bump();
+                return true;
+            },
+            .prompt => {
+                self.level = if (self.seat == .residents) .list else .pill;
+                self.bump();
+                return true;
+            },
+        }
     }
 
-    /// Esc : back out of "tap your key" to the list (hard stop at the root).
+    /// ← : at the pill level, move the seat left (hard stop at the left edge);
+    /// below the pill, step back up one level.
+    pub fn moveLeft(self: *HomesBar) bool {
+        switch (self.level) {
+            .pill => {
+                if (self.seat == .kidulcrew) {
+                    self.seat = .residents;
+                    self.bump();
+                    return true;
+                }
+                return false;
+            },
+            .list, .prompt => return self.ascend(),
+        }
+    }
+
+    /// → : at the pill level, move the seat right (hard stop at the right
+    /// edge); in the Residents list, consent (open the key prompt).
+    pub fn moveRight(self: *HomesBar) bool {
+        switch (self.level) {
+            .pill => {
+                if (self.seat == .residents) {
+                    self.seat = .kidulcrew;
+                    self.bump();
+                    return true;
+                }
+                return false;
+            },
+            .list => return self.consent(),
+            .prompt => return false, // waiting for the tap
+        }
+    }
+
+    /// ↑ : walk the list up (ascend at the top); back out of the prompt; hard
+    /// stop at the pill.
+    pub fn moveUp(self: *HomesBar) bool {
+        switch (self.level) {
+            .pill => return false,
+            .list => {
+                if (self.name_index == 0) return self.ascend();
+                self.name_index -= 1;
+                self.bump();
+                return true;
+            },
+            .prompt => return self.ascend(),
+        }
+    }
+
+    /// ↓ : descend (pill -> list/prompt); walk the list down (hard stop at the
+    /// bottom); no-op while waiting for the tap.
+    pub fn moveDown(self: *HomesBar) bool {
+        switch (self.level) {
+            .pill => return self.descend(),
+            .list => {
+                if (self.name_index + 1 >= self.nameCount()) return false;
+                self.name_index += 1;
+                self.bump();
+                return true;
+            },
+            .prompt => return false,
+        }
+    }
+
+    /// Enter : keyboard alias — descend at the pill, consent in the list.
+    pub fn confirm(self: *HomesBar) bool {
+        switch (self.level) {
+            .pill => return self.descend(),
+            .list => return self.consent(),
+            .prompt => return false,
+        }
+    }
+
+    /// Esc : step back up one level, hard stop at the pill (back-home.md).
     pub fn back(self: *HomesBar) bool {
-        if (!self.key_entry) return false;
-        self.key_entry = false;
-        self.bump();
-        return true;
+        return self.ascend();
     }
 
     fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
@@ -128,6 +201,21 @@ pub const HomesBar = struct {
         c.cairo_close_path(cr);
     }
 
+    fn drawKey(cr: *c.cairo_t, cx: f64, cy: f64, s: f64, col: PillColor, alpha: f64) void {
+        // Minimal kidulKey glyph: ring head + stem + one tooth.
+        const head_r = s * 0.30;
+        c.cairo_set_source_rgba(cr, col.r, col.g, col.b, alpha);
+        c.cairo_set_line_width(cr, s * 0.09);
+        c.cairo_arc(cr, cx, cy, head_r, 0.0, std.math.pi * 2.0);
+        c.cairo_stroke(cr);
+        c.cairo_move_to(cr, cx, cy + head_r);
+        c.cairo_line_to(cr, cx, cy + s);
+        c.cairo_stroke(cr);
+        c.cairo_move_to(cr, cx, cy + s * 0.82);
+        c.cairo_line_to(cr, cx + head_r, cy + s * 0.82);
+        c.cairo_stroke(cr);
+    }
+
     pub fn renderCard(self: *HomesBar, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: Style, scale_f: f64) void {
         const pad_x: f64 = 22.0 * scale_f;
         const content_w = w_d - 2.0 * pad_x;
@@ -142,7 +230,7 @@ pub const HomesBar = struct {
         const pill_r = pill_h * 0.5;
         const pill_w = seg_w - 2.0 * inset;
 
-        // CFC: the interaction (pill track) is dead-centre; title above, list below.
+        // CFC: the interaction (pill track) is dead-centre; title above, content below.
         const track_y = (h_d - track_h) * 0.5;
         const title_font: f64 = @as(f64, style_.font_size_l) * 1.5 * scale_f;
         const list_font: f64 = @as(f64, style_.font_size_m) * scale_f;
@@ -162,28 +250,7 @@ pub const HomesBar = struct {
             c.cairo_show_text(cr, "Homes");
         }
 
-        if (self.key_entry) {
-            // ---- "tap your key" (the one-prompt door). ----
-            const sel = self.focusedLabel();
-            var ext: c.cairo_text_extents_t = undefined;
-            c.cairo_set_font_size(cr, list_font);
-            c.cairo_set_source_rgba(cr, PILL_TEXT_ACTIVE.r, PILL_TEXT_ACTIVE.g, PILL_TEXT_ACTIVE.b, 1.0);
-            c.cairo_text_extents(cr, sel.ptr, &ext);
-            const sy = track_y + track_h + 22.0 * scale_f + ext.height;
-            c.cairo_move_to(cr, pad_x + (content_w - ext.width) * 0.5, sy);
-            c.cairo_show_text(cr, sel.ptr);
-
-            var ext2: c.cairo_text_extents_t = undefined;
-            c.cairo_set_font_size(cr, title_font * 0.6);
-            c.cairo_set_source_rgba(cr, PILL_GOLD.r, PILL_GOLD.g, PILL_GOLD.b, 1.0);
-            c.cairo_text_extents(cr, "tap your key", &ext2);
-            const ky = sy + list_gap + ext2.height;
-            c.cairo_move_to(cr, pad_x + (content_w - ext2.width) * 0.5, ky);
-            c.cairo_show_text(cr, "tap your key");
-            return;
-        }
-
-        // ---- The pill track (2 segments: Resident | Visitor). ----
+        // ---- The pill track (2 segments: Residents | KidulCrew). ----
         roundedRect(cr, track_x, track_y, track_w, track_h, track_r);
         c.cairo_set_source_rgba(cr, PILL_TRACK_FILL.r, PILL_TRACK_FILL.g, PILL_TRACK_FILL.b, 1.0);
         c.cairo_fill_preserve(cr);
@@ -191,7 +258,7 @@ pub const HomesBar = struct {
         c.cairo_set_line_width(cr, 1.5);
         c.cairo_stroke(cr);
 
-        // Segment separator (one, between Resident and Visitor).
+        // Segment separator (one, between the two doors).
         c.cairo_set_source_rgba(cr, PILL_TRACK_BORDER.r, PILL_TRACK_BORDER.g, PILL_TRACK_BORDER.b, 90.0 / 255.0);
         c.cairo_set_line_width(cr, 1.0);
         {
@@ -201,9 +268,9 @@ pub const HomesBar = struct {
             c.cairo_stroke(cr);
         }
 
-        const active: usize = if (self.seat == .resident) 0 else 1;
+        const active: usize = if (self.seat == .residents) 0 else 1;
 
-        // Floating inner pill on the focused seat (gold ring).
+        // Floating inner pill on the focused door (gold ring).
         {
             const pill_x = track_x + @as(f64, @floatFromInt(active)) * seg_w + inset;
             const pill_y = track_y + inset;
@@ -215,11 +282,11 @@ pub const HomesBar = struct {
             c.cairo_stroke(cr);
         }
 
-        // Seat labels.
+        // Door labels.
         {
             const pill_font: f64 = @as(f64, style_.font_size_l) * scale_f;
             c.cairo_set_font_size(cr, pill_font);
-            const labels = [_][:0]const u8{ "Resident", "Visitor" };
+            const labels = [_][:0]const u8{ "Residents", "KidulCrew" };
             for (0..PILL_COUNT) |i| {
                 const seg_x = track_x + @as(f64, @floatFromInt(i)) * seg_w;
                 var ext: c.cairo_text_extents_t = undefined;
@@ -231,16 +298,43 @@ pub const HomesBar = struct {
             }
         }
 
-        // ---- Name list below the track (the focused seat's names + add user).
-        {
+        // ---- Content below the track, by state. ----
+        if (self.level == .prompt) {
+            // The shared key prompt ("waiting for tap").
+            const glyph_s = 44.0 * scale_f;
+            const glyph_cx = pad_x + content_w * 0.5;
+            const glyph_cy = track_y + track_h + 36.0 * scale_f;
+            drawKey(cr, glyph_cx, glyph_cy, glyph_s, PILL_GOLD, 1.0);
+
+            // Context above the glyph (the chosen name for Residents).
+            if (self.seat == .residents) {
+                const label = self.listLabel(self.name_index);
+                var ext: c.cairo_text_extents_t = undefined;
+                c.cairo_set_font_size(cr, list_font);
+                c.cairo_set_source_rgba(cr, PILL_TEXT_ACTIVE.r, PILL_TEXT_ACTIVE.g, PILL_TEXT_ACTIVE.b, 1.0);
+                c.cairo_text_extents(cr, label.ptr, &ext);
+                c.cairo_move_to(cr, pad_x + (content_w - ext.width) * 0.5, glyph_cy - 16.0 * scale_f);
+                c.cairo_show_text(cr, label.ptr);
+            }
+
+            // "waiting for tap" below the glyph.
+            var ext2: c.cairo_text_extents_t = undefined;
+            c.cairo_set_font_size(cr, list_font);
+            c.cairo_set_source_rgba(cr, PILL_GOLD.r, PILL_GOLD.g, PILL_GOLD.b, 1.0);
+            c.cairo_text_extents(cr, "waiting for tap", &ext2);
+            c.cairo_move_to(cr, pad_x + (content_w - ext2.width) * 0.5, glyph_cy + glyph_s + 18.0 * scale_f + ext2.height);
+            c.cairo_show_text(cr, "waiting for tap");
+        } else if (self.seat == .residents) {
+            // ---- Residents: the name list (focus only while inside the list).
             c.cairo_set_font_size(cr, list_font);
             const count = self.nameCount();
+            const focus_active = (self.level == .list);
             var i: usize = 0;
             while (i < count) : (i += 1) {
                 const label = self.listLabel(i);
                 var ext: c.cairo_text_extents_t = undefined;
                 c.cairo_text_extents(cr, label.ptr, &ext);
-                const focused = (i == self.name_index);
+                const focused = focus_active and (i == self.name_index);
                 const tcol = if (focused) PILL_TEXT_ACTIVE else PILL_TEXT_DIM;
                 const ly = track_y + track_h + 22.0 * scale_f + ext.height +
                     @as(f64, @floatFromInt(i)) * (ext.height + list_gap * 0.5);
@@ -256,6 +350,18 @@ pub const HomesBar = struct {
                     c.cairo_stroke(cr);
                 }
             }
+        } else {
+            // ---- KidulCrew, at the pill: a sign-in (dim key + "sign in").
+            const glyph_s = 44.0 * scale_f;
+            const glyph_cx = pad_x + content_w * 0.5;
+            const glyph_cy = track_y + track_h + 36.0 * scale_f;
+            drawKey(cr, glyph_cx, glyph_cy, glyph_s, PILL_GOLD, 120.0 / 255.0);
+            var ext: c.cairo_text_extents_t = undefined;
+            c.cairo_set_font_size(cr, list_font);
+            c.cairo_set_source_rgba(cr, PILL_TEXT_DIM.r, PILL_TEXT_DIM.g, PILL_TEXT_DIM.b, 1.0);
+            c.cairo_text_extents(cr, "sign in", &ext);
+            c.cairo_move_to(cr, pad_x + (content_w - ext.width) * 0.5, glyph_cy + glyph_s + 18.0 * scale_f + ext.height);
+            c.cairo_show_text(cr, "sign in");
         }
     }
 };
@@ -316,5 +422,5 @@ pub fn renderToBuffer(
 // renderToBuffer fails the build, not the first runtime frame.
 comptime {
     _ = renderToBuffer;
-    _ = HomesBar.moveSeat;
+    _ = HomesBar.moveDown;
 }

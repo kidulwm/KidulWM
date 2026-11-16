@@ -16,6 +16,23 @@ the repo; Granny sees only "Kidul".
 Three names, three jobs, zero overlap: owner = RatuKidulTech, products =
 Kidul Systems, code = KidulWorks.
 
+## The families (SystemFam / OwnersFam / KidulCrew)
+
+"Family" is a loaded word — it must never mean two things at once. Three
+buckets, kept apart on purpose:
+
+  SystemFam   = the GEAR. TV / router / server — "the family of systems"
+                (kidulSystems' hardware: one system, many roles).
+  OwnersFam   = the RESIDENTS. Dad / Mum / kid — the family you LIVE with.
+                The Homes "Residents" list.
+  KidulCrew   = the non-residents. The crew you HANG with — like-minded
+                people who drop by, key in, and their external drive rides
+                in. The Homes "KidulCrew" door (sign-in, no list).
+
+"Family you live with → Crew you hang with." The Systems family and the
+Owners family are never conflated: the gear is SystemFam, the household is
+OwnersFam, and the wider circle is the KidulCrew.
+
 The OS is not a new thing per device — it is ONE system, differentiated by the
 INSTALL (which role gets laid down). "Kidul <Category>" is the honest name: it
 says what the thing is. The category word is PERMANENT — never dropped "once it
