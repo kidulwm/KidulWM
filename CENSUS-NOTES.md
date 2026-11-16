@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-16, GSI) — STEP 2 DONE: Resident/Visitor pill bar + name list + "tap your key".
+#   Commit 41fbbf9 (pushed). ui/homes.zig HomesBar widget: 2-segment THE PILL (Resident|Visitor, CFC dead-centre)
+#   + the focused seat's name list below + "+ add user"; focus lands on Owner (Resident); Enter -> "tap your key"
+#   (one-prompt), Esc backs out. Sample roster (Owner/Kid1/Kid2; Guest) = placeholder until step 3 gate-proof / 6
+#   claim. server homesSlideKey (INPUT LAW: <- -> seat, ^ v list, Enter apply, Esc back, hard stops) + gen/dirty
+#   repaint guards (mirrors GpbSlide); keyboard routes .homes keys. Build clean; binary confirmed (strings + fns).
+#   NEXT: step 3 = wire the tap to the kidulkey gate verdict (already live), then 4 = re-seat + mount drives,
+#   5 = landing reveal, 6 = claim. Homes stays THIN (Barticus: no media.zig-style controlling feature).
 # BUILD (bobdotrix 2026-11-16, GSI) — STEP 1b DONE: kidulFlow door + law frozen (Resident/Visitor + drives).
 #   Commit 9207668 (pushed). GPB pill kidulKey -> Homes (enum + label "Homes"); Down/Return on the pill
 #   opens the compositor slide (gpbSlideKey -> homesSlideFocusOrSpawn); search/library still spawn as
