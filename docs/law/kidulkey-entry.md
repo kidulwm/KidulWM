@@ -19,6 +19,32 @@ The roster being empty IS the unclaimed state — no separate "claimed" flag.
 "Empty roster -> claim; non-empty -> sign in." deny-by-default throughout
 (kid.md, roster-format.md): an absent or struck key never seats.
 
+## One key, many seats (Barticus 2026-11-16)
+
+Until the real kidulKey hardware arrives (not yet designed — the current
+nRF52840 dongle is not USB-C), the ONE dongle key is the TEMPORARY B&B key: it
+serves as the prototype signing ROOT (the "fake B&B signature" — immutable
+root, roster, git B&B identity, upgrades) AND as the identity for every test
+seat (ROOT / owner / user2 / a second Granny account / ...). It is a stand-in —
+"fake" only in that it is not the final hardware — and is retired the moment we
+lock in the right key. The password backup stays in place until then
+(kidulkey.md safety rule: we never lock ourselves out).
+
+Rulings that OUTLIVE the prototype:
+  - one key, many seats   one physical key = one identity; that identity holds
+    MANY seats (accounts). The same key signs in to any of them.
+  - key grants identity, NOT authority   the SEAT determines what you can see
+    and do — never the key. Even the King's B&B key, seated as user2, sees ONLY
+    user2's partition; B&B cannot see what user2 is doing. Root-signing power
+    (WHO signs the system) is strictly separate from seat visibility (WHAT a
+    seat can see). Privacy is per-seat, even against the signing key's holder.
+
+Roster consequence: resolve returns a key's full ROLE SET (not the first match),
+and sign-in becomes prove -> list the key's roles -> pick the seat -> the seat
+grants the partition (partitions.md) + priority. The roster FORMAT is unchanged
+(a key may already carry several entries); the resolution + the sign-in flow
+change.
+
 ## The surface (KISS)
 
 The kidulKey pill opens the key-entry slide (a normal slide, like Library).
