@@ -2147,13 +2147,20 @@ pub const Server = struct {
         if (buf_w <= 0 or buf_h <= 0) return;
         const geom_same = (buf_w == output.homes_slide.card_last_w and
             buf_h == output.homes_slide.card_last_h);
-        if (geom_same and output.homes_slide.card_buffer != null) {
-            tree.node.setPosition(pos_x, pos_y);
+        const gen_same = (output.homes_slide.bar.state_generation == output.homes_slide.card_last_gen);
+        if (geom_same and gen_same and !output.homes_slide.card_dirty and output.homes_slide.card_buffer != null) {
+            if (output.homes_slide.card_buffer) |card| {
+                output.homes_slide.tree.?.node.setPosition(pos_x, pos_y);
+                card.node.raiseToTop();
+            }
+            self.overlay_tree.node.raiseToTop();
             return;
         }
         output.homes_slide.card_last_w = buf_w;
         output.homes_slide.card_last_h = buf_h;
-        const buffer = homes_mod.renderToBuffer(self.theme, buf_w, buf_h, scale) orelse return;
+        output.homes_slide.card_last_gen = output.homes_slide.bar.state_generation;
+        output.homes_slide.card_dirty = false;
+        const buffer = homes_mod.renderToBuffer(&output.homes_slide.bar, self.theme, buf_w, buf_h, scale) orelse return;
         if (output.homes_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
             wlr.Buffer.drop(buffer);
@@ -2164,6 +2171,7 @@ pub const Server = struct {
         card.setDestSize(buf_w, buf_h);
         tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
+        self.overlay_tree.node.raiseToTop();
     }
 
     fn homesSlideCloseOn(self: *Server, output: *Output) void {
@@ -2174,7 +2182,64 @@ pub const Server = struct {
         output.homes_slide.card_buffer = null;
         output.homes_slide.card_last_w = 0;
         output.homes_slide.card_last_h = 0;
+        output.homes_slide.card_last_gen = std.math.maxInt(u32);
+        output.homes_slide.card_dirty = true;
         std.log.info("KidulWM: Homes slide closed", .{});
+    }
+
+    /// INPUT LAW (settings.md) on the Homes slide: ←→ switches Resident /
+    /// Visitor (HARD STOPS), ↑↓ moves the name-list focus (HARD STOPS, no
+    /// wrap), Enter = "tap your key", Esc = back out of the key prompt (hard
+    /// stop at the root). Mirrors gpbSlideKey: keys reach the slide only while
+    /// it is the focused centre slide. Unconsumed keys fall through.
+    pub fn homesSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
+        const xkb = @import("xkbcommon");
+        const deck = self.currentDeck();
+        if (deck.findKind(.homes) == null) return false;
+        if (deck.empty_slot != .none) return false;
+        if (deck.focused_index >= deck.slides.items.len) return false;
+        if (deck.slides.items[deck.focused_index].kind != .homes) return false;
+        var out_opt: ?*Output = null;
+        {
+            var it = self.outputs.iterator(.forward);
+            while (it.next()) |o| {
+                if (&o.deck == deck) {
+                    out_opt = o;
+                    break;
+                }
+            }
+        }
+        const out = out_opt orelse return false;
+        if (!out.homes_slide.isOpen()) return false;
+
+        switch (sym) {
+            xkb.Keysym.Left => {
+                _ = out.homes_slide.bar.moveSeat(-1);
+                self.homesSlideRefresh(out);
+            },
+            xkb.Keysym.Right => {
+                _ = out.homes_slide.bar.moveSeat(1);
+                self.homesSlideRefresh(out);
+            },
+            xkb.Keysym.Up => {
+                _ = out.homes_slide.bar.moveName(-1);
+                self.homesSlideRefresh(out);
+            },
+            xkb.Keysym.Down => {
+                _ = out.homes_slide.bar.moveName(1);
+                self.homesSlideRefresh(out);
+            },
+            xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
+                _ = out.homes_slide.bar.select();
+                self.homesSlideRefresh(out);
+            },
+            xkb.Keysym.Escape => {
+                _ = out.homes_slide.bar.back();
+                self.homesSlideRefresh(out);
+            },
+            else => return false,
+        }
+        return true;
     }
 
     /// INPUT LAW (environment.md) on the GPB: ←→ move focus between the apps

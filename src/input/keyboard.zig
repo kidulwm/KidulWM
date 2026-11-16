@@ -285,6 +285,12 @@ const KeyboardDevice = struct {
             if (server.gpbSlideKey(sym)) return;
             // fall through — no swallow
         }
+        // Homes slide owns arrows/enter while focused (settings.md: Resident /
+        // Visitor seats). Mirrors the GPB route — no swallow.
+        if (server.currentDeckPub().findKind(.homes) != null) {
+            if (server.homesSlideKey(sym)) return;
+            // fall through — no swallow
+        }
         // KidulHome (empty deck / empty slot) — ↓ summons UserHome (the GPB).
         // Kidul Flow: ↓ = deeper; the first deeper is into the apps list.
         {
