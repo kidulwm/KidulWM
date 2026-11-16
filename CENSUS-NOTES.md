@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-16, GSI) — HOMES SLIDE step 1 DONE: Mod4+T opens the Homes slide (empty shell).
+#   Commit 663ceae (pushed). SlideKind.homes + Action.homes_toggle + ui/homes.zig (title "HOMES" + "person"
+#   row, gold/dim-gold on near-black shell) + server homesSlideFocusOrSpawn/Open/Refresh/Close/CloseOn +
+#   applyLayout paint + output-deinit teardown + close_focused(.homes) + video-exit guard. homes_toggle is a
+#   slide toggle (no spawn) => non-harmful, usable every input tier. Mod4+t re-bound OFF tray_toggle (still
+#   routes to the home slide via IPC; its full demolition = separate cut). config/keybinds.conf updated.
+#   zig build clean; strings confirm ui/homes wired + analyzed. Live keypress deferred to VM/KSD hardware.
+#   NEXT: step 2 = the "person" / "tap your key" screen (in-slide), then gate proof + kushd re-mint + landing.
 # DESIGN FREEZE (bobdotrix 2026-11-16, GSI) — SETTINGS ARCHITECTURE LAW: docs/law/settings.md.
 #   Barticus's verdict on the #57 slice locked into law. The split: Admin (standalone, IMMUTABLE,
 #   root-owned, system-adherent — key-entry + user/kidulKey + allocations + People; opened Mod4+T) vs
