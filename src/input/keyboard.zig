@@ -372,7 +372,7 @@ const KeyboardDevice = struct {
         // animation are NOT deck-mutating and stay put while the video plays.
         switch (action) {
             .spawn, .close_focused, .overview_toggle, .signals_card_toggle,
-            .tray_toggle, .tray_activate, .focus_output_next,
+            .tray_toggle, .homes_toggle, .tray_activate, .focus_output_next,
             .move_to_output_next, .park_toggle => {
                 if (server.video_fullscreen) server.videoFullscreenExit();
             },
@@ -398,6 +398,13 @@ const KeyboardDevice = struct {
                 // keybind target — focus the home slide, or spawn one at
                 // before_first if this row has none (A7).
                 server.homeSlideFocusOrSpawn();
+                return true;
+            },
+            .homes_toggle => {
+                // Homes (settings.md): the immutable key-entry door — focus it
+                // or spawn an empty shell (step 1; the "person" tap wires the
+                // gate in step 2).
+                server.homesSlideFocusOrSpawn();
                 return true;
             },
             .tray_select_next => {
@@ -440,6 +447,10 @@ const KeyboardDevice = struct {
                     switch (slide.kind) {
                         .home => {
                             server.homeSlideClose();
+                            return true;
+                        },
+                        .homes => {
+                            server.homesSlideClose();
                             return true;
                         },
                         .media_player => {

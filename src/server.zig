@@ -52,6 +52,7 @@ const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
 const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
+const homes_mod = @import("ui/homes.zig");
 const gpb_mod = @import("ui/gpb.zig");
 const kplay_client_mod = @import("ipc/kplay_client.zig");
 const media_mod = @import("ui/media.zig");
@@ -136,6 +137,8 @@ pub const Output = struct {
     media_slide: media_slide_mod.MediaSlide = .{},
     /// Global pill bar (GPB) slide state — the apps list (environment.md).
     gpb_slide: gpb_mod.GpbSlide = .{},
+    /// Homes slide content painter state (kind .homes slide) — settings.md.
+    homes_slide: homes_mod.HomesSlide = .{},
     /// CARD 2b slice 2: the exported host toplevel (kplayd parents its video
     /// surface to this via xdg-foreign). One per fullscreen session — lives
     /// on the output that owns the media card, NOT a deck slide.
@@ -170,6 +173,7 @@ pub const Output = struct {
             .home_slide = .{},
             .media_slide = .{},
             .gpb_slide = .{},
+            .homes_slide = .{},
             .peek = peek_mod.Peek.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,
@@ -281,6 +285,11 @@ pub const Output = struct {
             self.home_slide.tree = null;
             self.home_slide.card_buffer = null;
             self.home_slide.chrome_buffer = null;
+        }
+        if (self.homes_slide.tree) |tree| {
+            tree.node.destroy();
+            self.homes_slide.tree = null;
+            self.homes_slide.card_buffer = null;
         }
         self.peek.deinit();
     }
@@ -2072,6 +2081,100 @@ pub const Server = struct {
         output.gpb_slide.card_last_gen = std.math.maxInt(u32);
         output.gpb_slide.card_dirty = true;
         std.log.info("KidulWM: GPB slide closed", .{});
+    }
+
+    /// Homes slide (settings.md): focus-or-spawn, like the home slide (A7).
+    /// At most one per row; never auto-respawned; standard quit destroys it.
+    pub fn homesSlideFocusOrSpawn(self: *Server) void {
+        const deck = self.spawnDeck();
+        if (deck.overview_slide_open) {
+            if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
+            deck.overview_slide_open = false;
+            deck.empty_slot = .none;
+        }
+        self.focusOutputForDeck(deck);
+        if (deck.findKind(.homes)) |idx| {
+            deck.focusWindowByIndex(idx);
+        } else {
+            _ = deck.addCompositorSlide(.homes, 0, true);
+            if (self.outputForDeck(deck)) |output| {
+                self.homesSlideOpen(output);
+            }
+        }
+        self.clearFocus();
+        self.requestLayout();
+    }
+
+    /// Standard quit on the Homes slide (A7): destroy it like any slide.
+    pub fn homesSlideClose(self: *Server) void {
+        const deck = self.currentDeck();
+        if (deck.findKind(.homes) == null) return;
+        if (self.outputForDeck(deck)) |output| {
+            self.homesSlideCloseOn(output);
+        }
+        _ = deck.removeCompositorSlide(.homes);
+        self.requestLayout();
+    }
+
+    /// Create the Homes slide's scene tree on the output. Deck entry is
+    /// created by the caller.
+    fn homesSlideOpen(self: *Server, output: *Output) void {
+        if (output.homes_slide.isOpen()) return;
+        const tree = self.scene.tree.createSceneTree() catch return;
+        output.homes_slide.tree = tree;
+        tree.node.raiseToTop();
+        self.homesSlideRefresh(output);
+        std.log.info("KidulWM: Homes slide open on output", .{});
+    }
+
+    /// Render the Homes shell into the slide's card buffer at the slide's
+    /// stock deck rect. Re-render guarded by geometry.
+    pub fn homesSlideRefresh(self: *Server, output: *Output) void {
+        const tree = output.homes_slide.tree orelse return;
+        const deck = &output.deck;
+        const idx = deck.findKind(.homes) orelse {
+            self.homesSlideCloseOn(output);
+            return;
+        };
+        const target = deck.targetForSlide(idx);
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        const scale: u32 = @intFromFloat(@max(1.0, output.wlr_output.scale));
+        const buf_w: i32 = @intCast(target.width);
+        const buf_h: i32 = @intCast(target.height);
+        const pos_x: i32 = target.x + box.x;
+        const pos_y: i32 = target.y + box.y;
+        if (buf_w <= 0 or buf_h <= 0) return;
+        const geom_same = (buf_w == output.homes_slide.card_last_w and
+            buf_h == output.homes_slide.card_last_h);
+        if (geom_same and output.homes_slide.card_buffer != null) {
+            tree.node.setPosition(pos_x, pos_y);
+            return;
+        }
+        output.homes_slide.card_last_w = buf_w;
+        output.homes_slide.card_last_h = buf_h;
+        const buffer = homes_mod.renderToBuffer(self.theme, buf_w, buf_h, scale) orelse return;
+        if (output.homes_slide.card_buffer) |old| old.node.destroy();
+        const card = tree.createSceneBuffer(buffer) catch {
+            wlr.Buffer.drop(buffer);
+            return;
+        };
+        wlr.Buffer.drop(buffer);
+        output.homes_slide.card_buffer = card;
+        card.setDestSize(buf_w, buf_h);
+        tree.node.setPosition(pos_x, pos_y);
+        card.node.raiseToTop();
+    }
+
+    fn homesSlideCloseOn(self: *Server, output: *Output) void {
+        _ = self;
+        if (!output.homes_slide.isOpen()) return;
+        output.homes_slide.tree.?.node.destroy();
+        output.homes_slide.tree = null;
+        output.homes_slide.card_buffer = null;
+        output.homes_slide.card_last_w = 0;
+        output.homes_slide.card_last_h = 0;
+        std.log.info("KidulWM: Homes slide closed", .{});
     }
 
     /// INPUT LAW (environment.md) on the GPB: ←→ move focus between the apps
@@ -3876,6 +3979,13 @@ pub const Server = struct {
             if (output.gpb_slide.isOpen()) {
                 self.gpbSlideRefresh(output);
                 if (output.gpb_slide.tree) |tree| {
+                    tree.node.raiseToTop();
+                }
+                self.overlay_tree.node.raiseToTop();
+            }
+            if (output.homes_slide.isOpen()) {
+                self.homesSlideRefresh(output);
+                if (output.homes_slide.tree) |tree| {
                     tree.node.raiseToTop();
                 }
                 self.overlay_tree.node.raiseToTop();
