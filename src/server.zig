@@ -393,6 +393,16 @@ pub const Server = struct {
     /// its real app_id. -1 = not connected (klipd is kushd-cued, starts after
     /// us; reconnects lazily on the next relay).
     klip_fd: linux.fd_t = -1,
+    /// KUSHD ROUTE (settings.md step 3): the Homes slide's client line to
+    /// kushd's cue socket. When the key prompt ("waiting for tap") is entered,
+    /// kidulwm writes "homes-gate" and reads the proof verdict kushd relays back
+    /// on the same connection. The slide never owns the gate — it only cues the
+    /// usher and renders the verdict. gate_fd < 0 = not cued.
+    gate_fd: linux.fd_t = -1,
+    gate_source: ?*wl.EventSource = null,
+    gate_buf: [256]u8 = undefined,
+    gate_buf_len: usize = 0,
+    gate_output: ?*Output = null,
     /// Guards the wlroots scene graph against cross-thread mutation.
     /// (Phase 0 retires the IPC thread, so this is now uncontended on the
     /// main loop — kept as a no-op guard pending a dedicated removal card.)
@@ -1195,6 +1205,8 @@ pub const Server = struct {
         self.wl_server.destroyClients();
 
         self.ipc_server.destroy();
+
+        self.homesGateCancel(); // drop any in-flight proof cue
 
         self.media_player.deinit();
         self.keybinds.deinit();
@@ -2175,7 +2187,6 @@ pub const Server = struct {
     }
 
     fn homesSlideCloseOn(self: *Server, output: *Output) void {
-        _ = self;
         if (!output.homes_slide.isOpen()) return;
         output.homes_slide.tree.?.node.destroy();
         output.homes_slide.tree = null;
@@ -2184,6 +2195,8 @@ pub const Server = struct {
         output.homes_slide.card_last_h = 0;
         output.homes_slide.card_last_gen = std.math.maxInt(u32);
         output.homes_slide.card_dirty = true;
+        // A slide closed mid-proof leaves an orphaned cue — cancel it.
+        self.homesGateCancel();
         std.log.info("KidulWM: Homes slide closed", .{});
     }
 
@@ -2241,7 +2254,135 @@ pub const Server = struct {
             },
             else => return false,
         }
+        // KUSHD ROUTE: reconcile the cue with the bar level after every move.
+        // Entering .prompt arms the proof; backing out cancels it.
+        self.homesSyncGate(out);
         return true;
+    }
+
+    /// KUSHD ROUTE (settings.md step 3): reconcile the gate cue with the Homes
+    /// bar's level. The slide never owns the gate — on .prompt entry it cues
+    /// kushd ("homes-gate") and reads the verdict back on the same connection;
+    /// on exit it cancels any in-flight proof and resets to "waiting".
+    fn homesSyncGate(self: *Server, out: *Output) void {
+        if (out.homes_slide.bar.level == .prompt) {
+            if (out.homes_slide.bar.verdict == .waiting and self.gate_fd < 0) {
+                self.homesGateCue(out);
+            }
+        } else {
+            self.homesGateCancel();
+            out.homes_slide.bar.resetVerdict();
+        }
+    }
+
+    /// Connect to kushd's cue socket, send "homes-gate", and register a readable
+    /// event source for the verdict. Fail-safe: on any connect/write/register
+    /// failure the bar stays "waiting" (kushd not up yet — nothing to prove).
+    fn homesGateCue(self: *Server, out: *Output) void {
+        if (self.gate_fd >= 0) return; // already cued
+        const path: []const u8 = blk: {
+            if (std.c.getenv("KUSH_SOCK")) |s|
+                break :blk std.mem.span(s);
+            break :blk "/tmp/kushd.sock";
+        };
+        const fd: linux.fd_t = @intCast(linux.socket(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0));
+        if (fd < 0) return;
+        var addr: linux.sockaddr.un = .{ .family = linux.AF.UNIX, .path = @splat(0) };
+        if (path.len >= addr.path.len) {
+            _ = linux.close(fd);
+            return;
+        }
+        @memcpy(addr.path[0..path.len], path);
+        if (linux.connect(fd, @ptrCast(&addr), @sizeOf(linux.sockaddr.un)) != 0) {
+            _ = linux.close(fd);
+            return; // kushd not up — no proof possible, stay waiting
+        }
+        const cue = "homes-gate\n";
+        const wn = linux.write(fd, cue.ptr, cue.len);
+        if (@as(isize, @bitCast(wn)) <= 0) {
+            _ = linux.close(fd);
+            return;
+        }
+        self.gate_source = self.wl_server.getEventLoop().addFd(*Server, fd, .{ .readable = true }, handleGateReadable, self) catch {
+            _ = linux.close(fd);
+            return;
+        };
+        self.gate_fd = fd;
+        self.gate_buf_len = 0;
+        self.gate_output = out;
+        std.log.info("KidulWM: Homes gate cued to kushd", .{});
+    }
+
+    /// Cancel an in-flight proof (slide backed out / closed before the verdict).
+    fn homesGateCancel(self: *Server) void {
+        if (self.gate_source) |s| {
+            s.remove();
+            self.gate_source = null;
+        }
+        if (self.gate_fd >= 0) {
+            _ = linux.close(self.gate_fd);
+            self.gate_fd = -1;
+        }
+        self.gate_buf_len = 0;
+        self.gate_output = null;
+    }
+
+    fn handleGateReadable(_fd: c_int, _mask: wl.EventMask, server: *Server) c_int {
+        _ = _fd;
+        _ = _mask;
+        server.homesGateDrain();
+        return 0;
+    }
+
+    fn homesGateDrain(self: *Server) void {
+        if (self.gate_fd < 0) return;
+        const room = self.gate_buf.len - self.gate_buf_len;
+        const rc = linux.read(self.gate_fd, self.gate_buf[self.gate_buf_len..].ptr, room);
+        const n = switch (linux.errno(rc)) {
+            .SUCCESS => rc,
+            .AGAIN, .INTR => return,
+            else => {
+                self.homesGateFinish(.untrusted, "");
+                return;
+            },
+        };
+        if (n == 0) {
+            // EOF without a verdict (kushd closed early) — fail-closed.
+            self.homesGateFinish(.untrusted, "");
+            return;
+        }
+        self.gate_buf_len += @intCast(n);
+        if (std.mem.indexOfScalar(u8, self.gate_buf[0..self.gate_buf_len], '\n')) |nl| {
+            const line = std.mem.trim(u8, self.gate_buf[0..nl], " \t\r");
+            self.homesGateApply(line);
+        }
+    }
+
+    fn homesGateApply(self: *Server, line: []const u8) void {
+        if (std.mem.startsWith(u8, line, "TRUSTED role=")) {
+            const role = line["TRUSTED role=".len..];
+            self.homesGateFinish(.trusted, role);
+        } else {
+            // "UNTRUSTED", "busy" (a proof already in flight), or anything else
+            // -> no access this tap. Re-entering the prompt re-cues.
+            self.homesGateFinish(.untrusted, "");
+        }
+    }
+
+    fn homesGateFinish(self: *Server, v: homes_mod.Verdict, role: []const u8) void {
+        if (self.gate_source) |s| {
+            s.remove();
+            self.gate_source = null;
+        }
+        if (self.gate_fd >= 0) {
+            _ = linux.close(self.gate_fd);
+            self.gate_fd = -1;
+        }
+        self.gate_buf_len = 0;
+        const out = self.gate_output orelse return;
+        self.gate_output = null;
+        out.homes_slide.bar.setVerdict(v, role);
+        self.homesSlideRefresh(out);
     }
 
     /// INPUT LAW (environment.md) on the GPB: ←→ move focus between the apps

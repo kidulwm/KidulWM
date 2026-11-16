@@ -47,6 +47,14 @@ const PILL_TEXT_DIM = pc(0x6a6354);
 const Seat = enum { residents, kidulcrew };
 const Level = enum { pill, list, prompt };
 
+/// The proof verdict, surfaced in the key prompt (settings.md step 3 KUSHD
+/// ROUTE). The slide never owns the gate — it cues kushd and renders whatever
+/// verdict comes back: waiting (tap pending), trusted (the resolved role), or
+/// untrusted ("no access").
+pub const Verdict = enum { waiting, trusted, untrusted };
+
+const ROLE_BUF_LEN = 32;
+
 /// The Homes slide's in-slide widget: the Residents / KidulCrew pill bar and
 /// the focused door's content (a name list for Residents, a sign-in for
 /// KidulCrew, or the shared key prompt). Render state + focus only (the roster
@@ -56,6 +64,30 @@ pub const HomesBar = struct {
     level: Level = .pill,
     name_index: usize = 0,
     state_generation: u32 = 0,
+
+    // KUSHD ROUTE verdict (step 3). The slide renders it; kushd computes it.
+    verdict: Verdict = .waiting,
+    role: [ROLE_BUF_LEN]u8 = undefined,
+    role_len: usize = 0,
+
+    /// Record the proof verdict kushd relayed back. `role` is the roster role
+    /// ("owner", "child-1", ...) on TRUSTED; ignored otherwise. Bumps the
+    /// generation so the slide repaints.
+    pub fn setVerdict(self: *HomesBar, v: Verdict, role: []const u8) void {
+        self.verdict = v;
+        self.role_len = @min(role.len, ROLE_BUF_LEN);
+        if (self.role_len > 0) @memcpy(self.role[0..self.role_len], role[0..self.role_len]);
+        self.bump();
+    }
+
+    /// Reset to "waiting" — called when the slide backs out of the prompt so a
+    /// re-entry starts a fresh proof.
+    pub fn resetVerdict(self: *HomesBar) void {
+        if (self.verdict == .waiting and self.role_len == 0) return;
+        self.verdict = .waiting;
+        self.role_len = 0;
+        self.bump();
+    }
 
     fn bump(self: *HomesBar) void {
         self.state_generation +%= 1;
@@ -300,11 +332,13 @@ pub const HomesBar = struct {
 
         // ---- Content below the track, by state. ----
         if (self.level == .prompt) {
-            // The shared key prompt ("waiting for tap").
+            // The shared key prompt (KUSHD ROUTE step 3): the glyph + a status
+            // line driven by the verdict kushd relayed back.
             const glyph_s = 44.0 * scale_f;
             const glyph_cx = pad_x + content_w * 0.5;
             const glyph_cy = track_y + track_h + 36.0 * scale_f;
-            drawKey(cr, glyph_cx, glyph_cy, glyph_s, PILL_GOLD, 1.0);
+            const glyph_col = if (self.verdict == .trusted) PILL_TEXT_ACTIVE else PILL_GOLD;
+            drawKey(cr, glyph_cx, glyph_cy, glyph_s, glyph_col, 1.0);
 
             // Context above the glyph (the chosen name for Residents).
             if (self.seat == .residents) {
@@ -317,13 +351,28 @@ pub const HomesBar = struct {
                 c.cairo_show_text(cr, label.ptr);
             }
 
-            // "waiting for tap" below the glyph.
+            // Status line below the glyph: verdict-dependent.
+            var status_buf: [64]u8 = undefined;
+            const status: [:0]const u8 = switch (self.verdict) {
+                .waiting => "waiting for tap",
+                .trusted => blk: {
+                    const s = std.fmt.bufPrint(&status_buf, "TRUSTED role={s}", .{self.role[0..self.role_len]}) catch "trusted";
+                    status_buf[s.len] = 0;
+                    break :blk status_buf[0..s.len :0];
+                },
+                .untrusted => "no access",
+            };
             var ext2: c.cairo_text_extents_t = undefined;
             c.cairo_set_font_size(cr, list_font);
-            c.cairo_set_source_rgba(cr, PILL_GOLD.r, PILL_GOLD.g, PILL_GOLD.b, 1.0);
-            c.cairo_text_extents(cr, "waiting for tap", &ext2);
+            const stat_col: PillColor = switch (self.verdict) {
+                .waiting => PILL_GOLD,
+                .trusted => PILL_TEXT_ACTIVE,
+                .untrusted => PILL_TEXT_DIM,
+            };
+            c.cairo_set_source_rgba(cr, stat_col.r, stat_col.g, stat_col.b, 1.0);
+            c.cairo_text_extents(cr, status.ptr, &ext2);
             c.cairo_move_to(cr, pad_x + (content_w - ext2.width) * 0.5, glyph_cy + glyph_s + 18.0 * scale_f + ext2.height);
-            c.cairo_show_text(cr, "waiting for tap");
+            c.cairo_show_text(cr, status.ptr);
         } else if (self.seat == .residents) {
             // ---- Residents: the name list (focus only while inside the list).
             c.cairo_set_font_size(cr, list_font);
