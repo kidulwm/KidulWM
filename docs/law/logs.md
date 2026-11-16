@@ -25,6 +25,13 @@ Logs that grow too large rotate into an ENCRYPTED VAULT owned by root,
 decryptable ONLY by the owner (Granny / CEO). The archive is cold; it is not a
 live-readable file.
 
+The window (Barticus 2026-11-16): the DIRECT logs — the live, unrotated ~200MB —
+stay root-readable (the B&B key's operational window: enough to run + upgrade,
+never enough to surveil the household). Everything past the window is overflow:
+encrypted into the owner's .md archive, decryptable ONLY by the owner
+(kidulkey-entry.md: owner = all logs + priority, root = 200MB direct only).
+The owner delegates a scoped read to a service-bob on request (delegation.md).
+
 ## Read is attenuating
 
 Reading a log is itself a grant on the delegation tree (delegation.md): a
