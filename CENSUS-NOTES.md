@@ -1,5 +1,17 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# DESIGN FREEZE (bobdotrix 2026-11-16, GSI) — SETTINGS ARCHITECTURE LAW: docs/law/settings.md.
+#   Barticus's verdict on the #57 slice locked into law. The split: Admin (standalone, IMMUTABLE,
+#   root-owned, system-adherent — key-entry + user/kidulKey + allocations + People; opened Mod4+T) vs
+#   Settings (the user's transportable PERSONAL surface — themes/brightness/presets, per-app openings,
+#   userHome Settings button — a LATER slice). Mod4+t re-bound: the retired tray_toggle / old launcher
+#   (designed out by Homes) is dead code; keycombos SECONDARY to kidulFlow but kept for testing/laptops.
+#   Sub-admin = delegation.md's grant tree CONSOLIDATED (CEO/marketing model: sub-admin allocates within
+#   the owner-granted space, attenuation; ktv seats all screens off one authoritative box — no RDP).
+#   key-entry.draft.md marked SUPERSEDED (folded; archived, not deleted). Build order + done-when live in
+#   the law. DEPLOY ALL AT ONCE (GPB + kidul-flow + pill bar + Admin slice) — no incremental deploys —
+#   then Barticus boots + inspects. NEXT = start the Admin slice build: step 1 = re-bind Mod4+T -> spawn
+#   the Admin slide (empty shell), then person/key-entry screen.
 # SESSION WRAP-UP (bobdotrix 2026-11-16, late evening) — "next" fired: uncommitted work LANDED + #57 slice SPEC'd.
 #   RECONCILE: "next" = #59's next build step = #57 THE CORRECT BASE (settings app + person key-exchange +
 #   kushd re-seat). Its two gate-prereqs are now DONE (re-boot-test MET; Tier-2 proof -> roster LIVE), so

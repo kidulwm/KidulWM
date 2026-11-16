@@ -1,9 +1,9 @@
-# DESIGN DRAFT — the key-entry slice (settings app + "person" proof + kushd re-seat)
+# DESIGN DRAFT — the key-entry slice (SUPERSEDED — folded into docs/law/settings.md)
 
-Docket: #57 THE CORRECT BASE (cue: next) — also #59 build-order step (3).
-Status: DRAFT, awaiting GSI. Law this obeys (all LOCKED): kidulkey-entry.md
-(claim vs sign-in), public-seat.md (owner escalation), kid.md (one key one
-roster), roster-format.md, device-proof.md, delegation.md, attestation.md.
+Superseded 2026-11-16: Barticus locked the settings architecture into
+docs/law/settings.md (Admin immutable vs Settings transportable, Mod4+T
+keybind, sub-admin = delegation tree). This draft's build order was folded
+there. Kept for the archive; see the law for the live rulings.
 
 ## Why now (unblocked)
 
