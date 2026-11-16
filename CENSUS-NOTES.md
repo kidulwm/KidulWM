@@ -13,15 +13,16 @@
 #   UserHome (app→GPB leg); KidulHome surface (Top layer: widgets + Kidul TV CFC + navDots +
 #   spatial walk); peek retirement; TL/TR remap (home=UserHome, quit=KidulHome).
 #   DEPLOYED binary on /mnt/ksd is STILL ddd961c (auto-opens GPB) — deploy pending Barticus.
-#   BUILD (bobdotrix 2026-11-16, 0f2559d): public pill bar RENAMED+RE-CENTRED — AI·Games·
-#   Library·Search·People, Library centred/landing. Browser pill → Search (code name
-#   Browser/kidul-browser survives). People = session button (Key In public / End Session
-#   signed-in), the kidulKey door — not a profile switcher. AI = slimmed BobPI (rename
-#   later). publicHome = the public user's UserHome instance. Focus: public fresh-every-use
-#   → Library; TV always Library; PC history later; ↑ from app returns to the app you just
-#   left. Re-landed after the 2026-11-15 storm cut (earlier patches never flushed — recovered
-#   from session transcript). Law amended (environment.md, kidul-flow.md, naming.md).
-#   Build+test+smoke clean. NOT deployed.
+#   BUILD (bobdotrix 2026-11-16, 0f2559d + cfe2113): public pill bar RENAMED+RE-CENTRED —
+#   AI·Games·Library·Search·kidulKey, Library centred/landing. Browser pill → Search (code
+#   name Browser/kidul-browser survives). kidulKey = the whole key experience — sign in with
+#   your key, attach your own drive (a rando sign in), and the roster of granted users
+#   (People, delegation.md) — identity, not a profile switcher. Pill name corrected
+#   People → kidulKey. AI = slimmed BobPI (rename later). publicHome = the public user's
+#   UserHome instance. Focus: public fresh-every-use → Library; TV always Library; PC history
+#   later; ↑ from app returns to the app you just left. Re-landed after the 2026-11-15 storm
+#   cut (earlier patches never flushed — recovered from session transcript). Law amended
+#   (environment.md, kidul-flow.md, naming.md). Build+test+smoke clean. NOT deployed.
 #
 # BUILD PROGRESS (bobdotrix 2026-11-14) — GPB BUILT + SMOKE-TESTED + DEPLOYED (commit ddd961c).
 #   The GPB is a compositor slide (kind .gpb, persistent index 0) mirroring the media player: LOOK = media.zig
