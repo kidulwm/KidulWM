@@ -6,9 +6,9 @@ const style_mod = @import("../core/style.zig");
 const Style = style_mod.Style;
 const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
-/// Compositor-owned HOMES slide (docs/law/settings.md): the immutable door
+/// Compositor-owned Homes slide (docs/law/settings.md): the immutable door
 /// that switches publicHome -> privateHome. Step 1 = the empty shell — a
-/// "HOMES" title and a "person" row. The "tap your key" surface (step 2)
+/// "Homes" title and a "person" row. The "tap your key" surface (step 2)
 /// replaces the person-row content; the key-entry is the door, the shell is
 /// its frame. One scene tree per output; render state only (tree + buffer +
 /// repaint guard). Follows the home_slide / gpb_slide compositor-slide
@@ -25,7 +25,7 @@ pub const HomesSlide = struct {
     }
 };
 
-/// Render the Homes shell (near-black bg + CFC gold "HOMES" title + a
+/// Render the Homes shell (near-black bg + CFC gold "Homes" title + a
 /// "person" row) into a wlroots buffer at physical pixels (logical × scale).
 pub fn renderToBuffer(
     style: Style,
@@ -72,9 +72,9 @@ pub fn renderToBuffer(
     cairo.cairo_select_font_face(cr, "JetBrains Mono", cairo.CAIRO_FONT_SLANT_NORMAL, cairo.CAIRO_FONT_WEIGHT_BOLD);
     cairo.cairo_set_font_size(cr, title_size);
     cairo.cairo_set_source_rgba(cr, gold[0], gold[1], gold[2], gold[3]);
-    cairo.cairo_text_extents(cr, "HOMES", &ext);
+    cairo.cairo_text_extents(cr, "Homes", &ext);
     cairo.cairo_move_to(cr, (w - ext.width) / 2.0 - ext.x_bearing, y0 + title_size);
-    cairo.cairo_show_text(cr, "HOMES");
+    cairo.cairo_show_text(cr, "Homes");
 
     // "person" row (dim gold, medium, centered, below the title).
     cairo.cairo_select_font_face(cr, "JetBrains Mono", cairo.CAIRO_FONT_SLANT_NORMAL, cairo.CAIRO_FONT_WEIGHT_NORMAL);

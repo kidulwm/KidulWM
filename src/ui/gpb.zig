@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The global pill bar (GPB) — the apps list: AI / Games / Library / Search /
-// kidulKey. A compositor-owned TOP BAR (one render per output), the deck slides
+// Homes. A compositor-owned TOP BAR (one render per output), the deck slides
 // BELOW it. Follows the media_slide / media.zig render patterns.
 //
 // Law: environment.md ("the bar = the GPB ... its OWN SLIDE"), naming.md
@@ -14,9 +14,10 @@ const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
 /// The five public apps on the GPB (naming.md + environment.md). Library is
 /// centred (index 2) and is the fresh-boot default focus. The right-most pill
-/// is kidulKey — the key experience (sign in, attach a drive, the roster).
-/// The signed-in owner sees MORE pills later; the public seat sees these five.
-pub const GpbApp = enum { ai, games, library, search, kidulkey };
+/// is Homes — the immutable key-entry door (settings.md): sign in, attach a
+/// drive, the roster. The signed-in owner sees MORE pills later; the public
+/// seat sees these five.
+pub const GpbApp = enum { ai, games, library, search, homes };
 
 pub fn appLabel(app: GpbApp) [:0]const u8 {
     return switch (app) {
@@ -24,7 +25,7 @@ pub fn appLabel(app: GpbApp) [:0]const u8 {
         .games => "Games",
         .library => "Library",
         .search => "Search",
-        .kidulkey => "kidulKey",
+        .homes => "Homes",
     };
 }
 
@@ -34,7 +35,7 @@ fn displayIndex(app: GpbApp) usize {
         .games => 1,
         .library => 2,
         .search => 3,
-        .kidulkey => 4,
+        .homes => 4,
     };
 }
 
@@ -44,7 +45,7 @@ fn appFromIndex(i: usize) GpbApp {
         1 => .games,
         2 => .library,
         3 => .search,
-        else => .kidulkey,
+        else => .homes,
     };
 }
 

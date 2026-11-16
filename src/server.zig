@@ -2211,14 +2211,18 @@ pub const Server = struct {
                 self.gpbSlideRefresh(out);
             },
             xkb.Keysym.Down, xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
-                // LAZY-OPEN: the focused app spawns on the first down-move.
-                // AI / Games / kidulKey are not built yet — a no-op for now.
-                const cmd: ?[]const u8 = switch (out.gpb_slide.bar.focused) {
-                    .search => "/usr/local/bin/launch-kidul-browser.sh",
-                    .library => "/usr/local/bin/kmedia",
-                    else => null,
-                };
-                if (cmd) |command| self.spawnCommand(command);
+                // LAZY-OPEN: Homes is a compositor slide (open it); the rest
+                // spawn an external app. AI / Games are not built yet — no-op.
+                if (out.gpb_slide.bar.focused == .homes) {
+                    self.homesSlideFocusOrSpawn();
+                } else {
+                    const cmd: ?[]const u8 = switch (out.gpb_slide.bar.focused) {
+                        .search => "/usr/local/bin/launch-kidul-browser.sh",
+                        .library => "/usr/local/bin/kmedia",
+                        else => null,
+                    };
+                    if (cmd) |command| self.spawnCommand(command);
+                }
             },
             xkb.Keysym.Up => {
                 // Kidul Flow: ↑ from UserHome returns to KidulHome — the empty
