@@ -71,12 +71,13 @@ up and sees one honest word for the thing in her hands. The app names ("Search",
 a second, separate title. Two titles, two jobs: the system names itself above,
 the app names itself below.
 
-The public pill bar is AI · Games · Library · Search · People, Library centred
+The public pill bar is AI · Games · Library · Search · kidulKey, Library centred
 as the landing pill (environment.md, kidul-flow.md). "Search" is the pill name
 for the browser app — the code name "Browser" / kidul-browser survives,
-internal-only. "People" is the session button (the kidulKey door: "Key In"
-while public, "End Session" signed in), not a profile switcher. "AI" is the
-slimmed BobPI for now, renamed later.
+internal-only. "kidulKey" is the pill for the whole key experience — sign in
+with your key, attach your own drive (a "rando" sign in), and the roster of
+granted users ("People", delegation.md) — identity, not just a sign-in, and not
+a profile switcher. "AI" is the slimmed BobPI for now, renamed later.
 
 ## The domains (three, one each)
 

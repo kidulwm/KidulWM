@@ -40,8 +40,8 @@ navigation law; no modes, no per-app exceptions to the direction meanings.
   landing pill). The TV always lands Library; the PC keeps persistent history
   later (resume the last-used app). ↑ back from an app returns focus to the
   app you just left — the focused pill never resets while you navigate within
-  a session (the `focused` field holds it). Sign in / out is "Key In" /
-  "End Session" on the People pill (environment.md).
+  a session (the `focused` field holds it). Sign in / out lives on the kidulKey
+  pill (the key experience — environment.md).
 
 ## The verbs (hard stops, no cycling)
 

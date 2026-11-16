@@ -82,10 +82,12 @@ not entered has no process. Same discipline as process-death-is-the-kill.
 ## UserHome (the pill bar) is the apps list
 
 The global pill bar IS the apps list — one per seat, always the very top. Public
-user: AI / Games / Library / Search / People (Library centred, the landing pill).
-The owner: every installed app is its own pill. People = the session button —
-"Key In" while public, "End Session" when signed in; the kidulKey door, NOT a
-profile switcher (there are no profiles to switch — see "No profiles" above).
+user: AI / Games / Library / Search / kidulKey (Library centred, the landing pill).
+The owner: every installed app is its own pill. kidulKey = the whole key
+experience, not just a sign-in — the door for signing in with your key, attaching
+your own drive with your own key (a "rando" sign in), and the roster of users the
+owner has granted access to (People — delegation.md). Identity, not a profile
+switcher (there are no profiles to switch — see "No profiles" above).
 
 Three homes, one deck (the up+1 / up+2 / "top" vocabulary retires — kidul-flow.md):
   KidulHome = the system home ("our home"), the boot root. "Kidul TV" CFC'd + the
