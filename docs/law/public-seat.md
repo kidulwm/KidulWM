@@ -4,6 +4,9 @@ LOCKED 2026-11-12, Barticus present. Q.A/B/C resolved (rulings below).
 AMENDED 2026-11-12 (later): BOSS/ADMIN -> OWNER (a standard sudo user); owner +
   public are plain Linux accounts (no custom auth code); the owner's real login
   name is a RANDOM HASH, shown as "Owner" in the face.
+AMENDED 2026-11-17 (Barticus present, GSI): the FACE (kidulwm) is a CONDUCTOR uid
+  — never public, never any user — so re-seat re-mints the USER identity, never
+  the face. See re-seat.md (LOCKED).
 
 Lane: cross-cutting (kushd seating, kmedia, kidul-browser, kidulwm).
 Related: environment.md (the environment is per-app), kidulkey.md (presence free /
@@ -94,8 +97,9 @@ LOCKED DIRECTION 2026-11-12, Barticus present. Implementation DEFERRED
 LOCKED 2026-11-12. Runtime mechanism is a LATER slice (re-seat + landing roster);
 the seat boots as public today.
 
-- Owner (uid 1002) is the escalation identity; the seat boots as public (uid
-  1001, nopasswd, walk-up) with the public roster: face + browser + media + ktty.
+- Owner (uid 1002) is the escalation identity; the USER identity boots as public
+  (uid 1001, nopasswd, walk-up) with the public roster: face + browser + media +
+  ktty. The FACE is a conductor uid, not public (re-seat.md, AMENDED 2026-11-17).
 - Sign-in = the kidulKey proof (input-trust gate writes TRUSTED <pubkey>). On
   proof, kushd RE-SEATS the session as owner (uid 1002) and kidulwm's landing
   reveals the full roster.

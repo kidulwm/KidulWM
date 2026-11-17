@@ -1,6 +1,8 @@
 # LAW — kID (the kidul identification) — deny-by-default, one key, one roster
 
 LOCKED 2026-11-13, Barticus present (GSI).
+AMENDED 2026-11-17 (Barticus present, GSI): the home/login name is a RANDOM hash
+(home-hash), NOT the key-derived key-id — see re-seat.md §Reversals.
 
 ## One line
 
@@ -60,9 +62,14 @@ many cued consumers, one roster behind them all.
 The kID has ONE true name and ONE display name. Never three — the third lives
 somewhere else entirely.
 
-  hash    = the identity. The key-derived string (/home/$HASH — public-seat.md,
-            settings.md). Every system thing IS the hash: the mount, the roster,
-            the logs, the storage. Never shown to the user, never changes.
+  hash    = the identity. The key-derived string — the base64url key-id that the
+            roster (kpax) and allocation map (kalloc) index by, and that the
+            gate emits. Every WHO-resolution IS the hash: the roster, the logs.
+            Never shown to the user, never changes.
+  home-hash  = a RANDOM string (generated at claim) naming the user's Linux
+            login AND /home/<home-hash>. NOT key-derived (re-seat.md §Reversals
+            — the key-id is broadcast during proof, so a key-derived home name
+            is a guessable target).
   alias   = the display. "Dave". User-facing only. "Dave today, David tomorrow"
             and the system never flinches — nothing stores or logs the alias; it
             is a face, not a fact. Changeable.
@@ -86,6 +93,8 @@ It never names a user on the box.
   identity.md  the four scopes + the bar (which tool serves which audience).
   input-trust.md  the ladder — fail-closed, UNTRUSTED default (the deny-by-default).
   public-seat.md  the floor — public nopasswd, nothing personal on it.
+  re-seat.md      the conductor face + identity re-mint; REVERSES the
+                  "key-derived hash" home naming above (home-hash is random).
   verified-boot.md  fs-verity + IMA — the per-file enforcement (file-by-file).
   partitions.md  the key-gated personal layer the kID casts.
   kid-unlinkability.md  the privacy law — WHO/WHAT/ENVELOPE, blind signatures,
