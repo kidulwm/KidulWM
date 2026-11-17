@@ -7,8 +7,11 @@
 #   /etc/kushd/{kalloc,vault} removed (new-TV state). Rootfs backup kept at /mnt/sda_backup/ksd-rootfs-backup-20261117.
 #   KEPT (what the manual pass proved, de-risks the app wiring): kopen/kclose VERBS live on a real LUKS2 partition
 #   (OPENED/CLOSED, aes-xts-plain64); kalloc sign/verify/resolve byte-exact; mapper law (token = dm-crypt name) holds.
-#   NEXT BUILD: the carve ceremony wired into kushd (slice-4 cue plumbing = re-seat+mount, settings.md step 4) + the
-#   Homes slide provisioning (fill bar + name, step 6) — first key tap carves Dad's partition THROUGH the app.
+#   BUILT + PROVEN (kcarve, kidulkey d20a9db): the carve verb — FREE POOL partition + LUKS2 + keygen + vault park,
+#   mkfs stays app-side (Barticus). Live-proven on a loop rig (test-kcarve.sh): carve %/full, LUKS2 aes-xts, keyfile
+#   64B 0600 parked in vault, kopen/kclose on the carved partition (mapper law: dm-crypt name = token). NEXT BUILD:
+#   wire kcarve into kushd (claim flow + slice-4 cue plumbing = re-seat+mount, settings.md step 4) + the Homes slide
+#   provisioning UI (fill bar + name, step 6) — first key tap carves Dad's partition THROUGH the app.
 # DESIGN (bobdotrix 2026-11-17, GSI) — STEP 4 SLICE 4 CUE-CHAIN FROZEN + kmount mapper-first. kidulkey + KidulWM.
 #   MAPPER LAW (frozen): the dm-crypt mapping name IS the kalloc token — kopen opens the partition AS its token
 #   (/dev/mapper/<token>); kmount mounts /dev/mapper/<token> when present, else the raw by-partuuid/by-uuid
