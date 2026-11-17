@@ -45,11 +45,20 @@ performs the mount". This file is the build order; the law is the contract.
       close + unknown-name fail-closed (tools/test-luks.sh). The Kleaner (3)
       cues kclose on exit.
 
-  3. The Kleaner verb. [TODO] — one-shot, same sealing. Unmount + luks close +
-     zeroize runtime footprint + key bytes. Fired on presence exit + end-of-session.
+  3. The clean-close verbs. [DONE] — kumount + kclean (the Kleaner), completing
+     the exit sequence (kumount -> kclose[2b] -> kclean). kumount <mountpoint>
+     = umount2(flags 0, NO MNT_DETACH — EBUSY fail-closes, no lazy half-tear).
+     kclean <path...> = the Kleaner scrub: open O_WRONLY, refuse non-regular
+     (S_ISREG), overwrite full length with zeros, fsync, unlink; idempotent
+     (ENOENT = clean). Live-proven (tools/test-klean.sh): umount success +
+     bare-dir fail-closed; zeroize proven via hard-link alias reading all-zeros
+     (overwrite-before-unlink, not just unlink); missing-path idempotent;
+     directory refused. kclean serves BOTH clean-open (entry) and clean-close
+     (exit) — one idempotent scrub, one job.
 
-  4. kushd cue plumbing. [TODO] — on proof: cue mounter (after kalloc resolve);
-     on sign-out/unplug: cue Kleaner. Both verbs on the existing cue-socket pattern.
+  4. kushd cue plumbing. [TODO] — on proof: cue kopen -> kmount (after kalloc
+     resolve); on sign-out/unplug/end-of-session: cue kumount -> kclose ->
+     kclean. All verbs on the existing cue-socket pattern.
 
   5. kushd self-trim (the enforcement pass). [TODO] — trim kushd's own bounding
      set so it cannot mount/reboot even by accident.

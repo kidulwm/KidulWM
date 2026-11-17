@@ -1,5 +1,12 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-17, GSI) — STEP 4 CLEAN-CLOSE DONE + LIVE-PROVEN (kumount + kclean). kidulkey repo.
+#   kumount.zig = umount2(flags 0, NO MNT_DETACH — EBUSY fail-closes). kclean.zig = the Kleaner scrub:
+#   O_WRONLY + S_ISREG refuse-non-regular + overwrite-full-length-zeros + fsync + unlink, idempotent
+#   (ENOENT = clean). Exit sequence now kumount -> kclose -> kclean. Rig tools/test-klean.sh LIVE-PROVEN:
+#   umount success + bare-dir fail-closed; zeroize proven (hard-link alias reads all-zeros); missing-path
+#   idempotent; directory refused. NEXT: slice 4 = kushd cue plumbing (cue kopen->kmount on proof;
+#   kumount->kclose->kclean on exit), slice 5 = kushd self-trim (bounding-set cap mask).
 # BUILD (bobdotrix 2026-11-17, GSI) — STEP 4 LUKS VERBS DONE + LIVE-PROVEN (kopen/kclose). kidulkey repo.
 #   kopen.zig + kclose.zig: one-shot sealed verbs linking libcryptsetup (c_luks.h minimal shim — never
 #   reimplement LUKS). kopen <device> <name> <keyfile> = crypt_activate_by_keyfile (LUKS1/2 auto-detect,
