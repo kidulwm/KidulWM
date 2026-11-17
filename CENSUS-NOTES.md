@@ -21,6 +21,9 @@
 #   {face,audio} survive) + the entry slide shows the last frame as a frozen backdrop with the tap prompt
 #   overlaid (privacy guard: blank/blur on lock/re-auth). Socket = a NAMED convention (shared socket dir +
 #   seat group + absolute paths).
+# NOTE (Barticus 2026-11-17, carried): SIGN-IN IDENTITY PICKER — when a user holds >1 identity/account on
+#   a site, the tap sign-in must LIST them all and let the user pick which to use (e.g. personal vs work).
+#   Ties to kid-unlinkability (one key, many per-site identities). Fold into the browser credential-flow slice.
 # DESIGN (bobdotrix 2026-11-17, GSI) — BOOT-MODE TAXONOMY + DEFAULT-HOME + VAULT-SHAPE FORK (Barticus "wire it up").
 #   BOOT MODES (the "who boots to what" law — DESIGN for all, TEST the TV now): TV = auto-boot PUBLIC user, owner
 #   drops down + verifies (the ONLY surface with a public account); PC/Server/Router = NO public, auto-boot ->
