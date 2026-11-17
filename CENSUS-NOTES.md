@@ -16,8 +16,9 @@
 #   KIDULKEY (key-mode), not stored plain — a pulled disk must not reveal per-user volume keys (else the per-user
 #   LUKS is cosmetic). Interim (buildable now): plain keyfile; the rootfs is the at-rest layer. Law-compliant
 #   (needs firmware): kidulKey wraps the volume key at carve + unwraps at proof — firmware #2 does Ed25519 identity
-#   proof ONLY, no key-wrap, so that is a later firmware feature. RECOMMEND: ship the interim for the TV MVP (path
-#   of least resistance), keep kidulKey-wrap as cold-storage's hardening ticket. This fork gates the kushd cue arg.
+#   proof ONLY, no key-wrap, so that is a later firmware feature. RESOLVED (Barticus): ship the interim (plain 0600
+#   keyfile) NOW; kidulKey-wrap -> SE050 / secure-HW backlog. kushd cue-seq builds against the interim (keyfile path
+#   arg); the swap to unwrap is a one-arg change when the SE050 lands.
 # COURSE-CORRECTION (bobdotrix 2026-11-17, GSI) — DAD'S PARTITION = the APP's first carve, NOT host-side. REVERTED.
 #   Barticus: Dad's partition is the FIRST drive set up VIA the Homes slide claim flow (settings.md §provisioning):
 #   empty roster -> first key claims owner -> name + size fill-bar -> system carves -> mount on proof — "as a new
