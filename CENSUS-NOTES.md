@@ -19,6 +19,17 @@
 #   proof ONLY, no key-wrap, so that is a later firmware feature. RESOLVED (Barticus): ship the interim (plain 0600
 #   keyfile) NOW; kidulKey-wrap -> SE050 / secure-HW backlog. kushd cue-seq builds against the interim (keyfile path
 #   arg); the swap to unwrap is a one-arg change when the SE050 lands.
+# BUILD (bobdotrix 2026-11-17, GSI) — STEP 4 PROOF->MOUNT SEQUENCE DONE + LIVE-PROVEN (kushd b4ff2db). kushd repo.
+#   On a TRUSTED verdict kushd now orchestrates the proof->mount chain NON-BLOCKING (the gate's discipline): resolve
+#   (kalloc resolve -> token) -> open (kopen <by-partuuid/token> <token> <vault>/<key>.key) -> mount (kmount <key>
+#   /home/<key-id>, SAME map/sig/pub passed so resolve+mount can never disagree). Fail-closed each step + rollback
+#   (kclose on mount fail); crew ("none") no-ops. Rig-proven (tools/test-kushd-seq.sh fake verbs + test-kushd-seq-real.sh
+#   real verbs): TRUSTED parses key-id; resolve->kopen->kmount in order with token+key plumbed; real kopen OPENED a real
+#   LUKS2 as its token; kmount verified the map + resolved the mapper + mount(2) EINVAL on the empty (no-fs) container;
+#   rollback kclose removed the mapping. mount(2) SUCCESS is the one leg still mkfs-gated (the app's step at carve).
+#   Gotcha: kidulkey verbs print to STDERR (std.debug.print) — kushd captures BOTH fds for the resolve step. NEXT: the
+#   RE-SEAT (re-mint the session uid) — the hard half of step 4 — then the claim/carve sequence (kcarve -> kalloc sign)
+#   + the Homes provisioning UI (fill bar + name, step 6) + the defaultHome skeleton (the step AFTER carve).
 # COURSE-CORRECTION (bobdotrix 2026-11-17, GSI) — DAD'S PARTITION = the APP's first carve, NOT host-side. REVERTED.
 #   Barticus: Dad's partition is the FIRST drive set up VIA the Homes slide claim flow (settings.md §provisioning):
 #   empty roster -> first key claims owner -> name + size fill-bar -> system carves -> mount on proof — "as a new
