@@ -88,6 +88,8 @@ It never names a user on the box.
   public-seat.md  the floor — public nopasswd, nothing personal on it.
   verified-boot.md  fs-verity + IMA — the per-file enforcement (file-by-file).
   partitions.md  the key-gated personal layer the kID casts.
+  kid-unlinkability.md  the privacy law — WHO/WHAT/ENVELOPE, blind signatures,
+               zero-PII + unlinkable by construction (LOCKED 2026-11-17).
 
 ## Build status (honest)
 

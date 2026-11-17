@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# LAW (bobdotrix 2026-11-17, GSI) — kID UNLINKABILITY LOCKED (WHO/WHAT/ENVELOPE + blind sigs). Docket #63.
+#   New law docs/law/kid-unlinkability.md (LOCKED): the kID is zero-PII AND unlinkable by construction.
+#   Three axes: WHO (stable kID hash, never ratcheted) / WHAT (OMEMO double ratchet, content-only) /
+#   ENVELOPE (NEW, the unlinkability layer). ENVELOPE = (a) ephemeral per-session address off the kID
+#   (keyed derivation, stealth-address style) + (b) blind-signature credential (ROOT certifies "valid
+#   member/owner" WITHOUT seeing which member). Honest limit noted: a one-show blind cred is linkable on
+#   repeat -> upgrade = BBS+/anonymous credentials (multi-show unlinkable + selective disclosure) = the
+#   diamond. Barticus: blind sigs YES; the OMEMO double ratchet rides the kWeb ("a tailscale we control")
+#   — PARKED (its own docket later). Open-web hop stays parked (irreducible timing metadata). Cross-ref'd
+#   from kid.md + crypto.md. Docket #63 (cue: ksd, NOT 'next' yet — fires after OMEMO substrate + roster
+#   enforcement). Nothing committed yet this session until the law+docket land.
 # BUILD (bobdotrix 2026-11-17, GSI) — STEP 3 KUSHD ROUTE DONE + PUSHED. kushd a5e91ca + KidulWM b3c2825.
 #   kushd: cue verb "homes-gate" (reserved, never an act name) -> fork kidulkey-gate with stdout+stderr
 #   piped -> poll-loop drains the pipe -> writes the verdict line back on the SAME connection. Cue socket

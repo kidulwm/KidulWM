@@ -194,7 +194,9 @@ knows her.
 
 (The KID here is the kID — the kidul identification — now with its own law at
 kid.md: deny-by-default, one key, one roster, file-by-file. This section names
-the gate; kid.md is the umbrella.)
+the gate; kid.md is the umbrella. The privacy/unlinkability layer — the
+WHO/WHAT/ENVELOPE split + blind signatures — lives at kid-unlinkability.md,
+LOCKED 2026-11-17.)
 
 STATUS (honest): the architecture is frozen here; the MECHANISM is not yet
 built. Bench access TODAY is a plain ed25519 key on disk
