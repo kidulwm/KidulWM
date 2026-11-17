@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — RE-SEAT SLICE 1 (SOCKET CONVENTION) CODE LANDED (kushd 6b462b8, signed B&B, pushed).
+#   ONE shared session-socket dir /run/kushd/wayland (0770 root:seat, umask-proof chmod) + ABSOLUTE WAYLAND_DISPLAY
+#   (/run/kushd/wayland/wayland-1) + KIDULWM_WAYLAND_DISPLAY (kidulwm creates the socket there via addSocket, not
+#   addSocketAuto). NO kidulwm change — it already honors KIDULWM_WAYLAND_DISPLAY (main.zig:40). Runtime-proven on
+#   host: dir created 0770 root:seat (the smoke test caught + fixed a umask bug — mkdir(0770) came out 0750; the seat
+#   group needs WRITE to bind its socket; explicit chmod fixes it). Full boot-tower proof (face binds wayland-1 +
+#   ktty/media connect across the uid boundary) = NEXT, on ksd-boot (the kushd PID-1 tower VM — ksd-reset is systemd,
+#   no kushd). Barticus steer noted: the "control by design vs the bug controlling us" split (already locked re-seat.md
+#   v3 + settings.md + design-freeze skill) + "don't let things get in the way of the kidulFlow" (slice 1 is invisible
+#   infrastructure, no UI change — kidulFlow untouched). NEXT: slice 2 = the conductor account (face off class 'user'
+#   -> uid 990, groups {render video input seat tty}).
 # LAW (bobdotrix 2026-11-18, GSI) — RE-SEAT v3 SELF-DISMANTLING + RULINGS A-D LOCKED (re-seat.md v3 + settings.md amended; spec re-seat-entry.draft.md 1d0eb45, signed B&B, pushed).
 #   Barticus "yes to your recs" + a steer: the re-seat is MEANT TO TAKE OVER (controlling BY DESIGN, every detail
 #   CFC'd for Granny) — the OPPOSITE of the media player, which took over BY ACCIDENT and lingered (the "mother

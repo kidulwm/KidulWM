@@ -13,30 +13,29 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current attack (2026-11-18)
 
-  STEP 4 — RE-SEAT. The MOUNT half was DONE + LIVE-PROVEN (kushd b4ff2db; kcarve
-    d20a9db). The IDENTITY half is now SPEC'D: the build order lives in
-    docs/design/re-seat-entry.draft.md (480b1c2, pushed) — sibling to
-    re-seat-mount.draft.md. Design FROZEN (re-seat.md 67202f5): the FACE = a
-    CONDUCTOR uid (data-blind, never a user, never re-seats); sign-in re-mints
-    only the USER identity (public 1001 -> owner 1002) via kushd mintSession.
-    Owner PRE-PROVISIONED (uid 1002 = bee62e237cdd37a455eeafca, home-hash).
-    Reverses kid.md (home = random hash, not key-derived key-id).
+  STEP 4 — RE-SEAT. MOUNT half DONE + LIVE-PROVEN (kushd b4ff2db; kcarve d20a9db).
+    IDENTITY half SPEC'D (re-seat-entry.draft.md 480b1c2) + RULINGS A-D LOCKED
+    (foundation-first / conductor 990 / Homes-upgraded / /run/kushd/wayland) +
+    self-dismantling steer (re-seat.md v3). SLICE 1 (socket convention) CODE
+    LANDED (kushd 6b462b8): shared /run/kushd/wayland (0770 root:seat,
+    umask-proof) + absolute WAYLAND_DISPLAY + KIDULWM_WAYLAND_DISPLAY; no
+    kidulwm change. Dir-creation runtime-proven on host. Design FROZEN
+    (re-seat.md 67202f5 + v3): FACE = CONDUCTOR uid (data-blind, never re-seats);
+    sign-in re-mints only the USER identity (public 1001 -> owner 1002) via kushd
+    mintSession. Owner PRE-PROVISIONED (uid 1002 = bee62e237cdd37a455eeafca).
 
   CARRIED THREADS (do not lose):
-    - KSD NOT deployed: repos ahead of /mnt/ksd — /mnt/ksd mounted RO this session
-      (owner account verified); deploy is still ahead.
+    - KSD NOT deployed: repos ahead of /mnt/ksd — deploy is still ahead.
     - kboot + kslide-template CLEAN (committed).
 
-  NEXT SESSION: await Barticus's verdict on the spec's FOUR open questions, then
-    build slice 1 of the re-seat build order. The Qs: A sequencing
-    (foundation-first vs surface-first — rec foundation-first), B conductor uid
-    number, C entry slide = Homes upgraded vs a new slide kind (rec upgraded),
-    D socket dir path (rec /run/kushd/wayland). After the verdict, build in
-    order: (1) socket convention -> (2) conductor account -> (3) entry slide
-    freeze -> (4) key->home-hash resolution -> (5) kmount mount-point correction
-    -> (6) the re-mint wiring. Fire 'next' -> docket #59 resolves to the socket
-    convention. Handoff = CENSUS-NOTES top + re-seat.md (law) +
-    re-seat-entry.draft.md (build order) + kidulkey skill (the seq + stderr gotcha).
+  NEXT SESSION: full boot-tower proof of slice 1 (face binds wayland-1 in the
+    shared dir + ktty/media connect across the uid boundary) on ksd-boot (the
+    kushd PID-1 tower VM — ksd-reset is systemd, no kushd), then SLICE 2 = the
+    conductor account (bill.kush kidulwm act off class 'user' -> own data-blind
+    uid 990, groups {render video input seat tty}). Build order continues:
+    (3) entry slide freeze, (4) key->home-hash resolution, (5) kmount
+    mount-point correction, (6) the re-mint wiring. Handoff = CENSUS-NOTES top +
+    re-seat.md (law) + re-seat-entry.draft.md (build order).
 
 ## Trip wires / commands / secrets
 
