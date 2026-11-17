@@ -11,27 +11,31 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-16)
+## Current attack (2026-11-17)
 
-  THE APEX (attestation) — security law arc FROZEN this session, ZERO built.
-    - Commits 7f47732..7b7ac97: kidulkey-entry.md (claim vs sign-in, one key
-      many seats), logs.md (zero standing read, on-demand key-tap grant),
-      attestation.md (THE APEX: the kidulKey is the GATE — verifies the host,
-      refuses to unseal on a dirty one), kidulkey.md (GATE role added).
-    - The surgery (next build phase): partition/isolation + fTPM wiring +
-      key-hardware + sealed-secret release + kushd seat. All unbuilt; the law
-      is the spec the build must obey.
-    - Pill bar work (0f2559d + cfe2113) DONE + recorded, NOT deployed.
+  STEP 4 AUTH-STRUCTURE — the proof->mount sequence (MOUNT half) DONE + LIVE-PROVEN.
+    - kushd b4ff2db: on a TRUSTED verdict, drives resolve (kalloc resolve -> token)
+      -> open (kopen <by-partuuid/token> <token> <vault>/<key>.key) -> mount (kmount
+      <key> /home/<key-id>, same map/sig/pub passed), non-blocking, fail-closed +
+      rollback (kclose), crew ("none") no-op.
+    - kidulkey d20a9db: kcarve (the carve verb — partition + LUKS2 + keygen + vault
+      park; mkfs stays app-side). 7 verbs total (kalloc/kopen/kmount/kumount/kclose/
+      kclean/kcarve).
+    - vault-shape RESOLVED: interim plain 0600 keyfile now, kidulKey-wrap -> SE050
+      backlog. Boot-mode taxonomy + defaultHome step recorded in the census.
+    - Rig-proven fake + real verbs. mount(2) SUCCESS still mkfs-gated (the app's step).
 
   CARRIED THREADS (do not lose):
-    - kboot UNCOMMITTED: seed-users.sh + src/main.zig (mtime Nov 13).
-    - kslide-template dirty: zig-out/bin/kslide-template.
-    - KSD NOT deployed: repo ahead of /mnt/ksd (still ddd961c).
+    - KSD NOT deployed: repos ahead of /mnt/ksd — mount first, then deploy.
     - KSD DRIVE (nvme1) PRESENT BUT UNMOUNTED: /mnt/ksd empty — mount first.
+    - kboot + kslide-template now CLEAN (both committed; kslide stopped tracking
+      build artifacts).
 
-  NEXT SESSION: the surgery (partition/isolation first, then fTPM + key-hardware
-    + attestation), or fire 'next' for the top non-DONE docket. Law is frozen;
-    build starts from clean context on top of it.
+  NEXT SESSION: step 4b = RE-SEAT (re-mint the session public uid 1001 -> proved
+    owner — the HARD half; design-freeze-first), then claim/carve (kcarve -> kalloc
+    sign), the Homes provisioning UI (fill bar + name, step 6), defaultHome skeleton.
+    Fire 'next' -> docket #59 resolves to re-seat. Handoff = CENSUS-NOTES top +
+    kidulkey skill (the seq pattern + stderr gotcha).
 
 ## Trip wires / commands / secrets
 
