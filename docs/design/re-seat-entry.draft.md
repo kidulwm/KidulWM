@@ -1,8 +1,9 @@
 # DESIGN DRAFT — step 4: RE-SEAT (the entry slide + socket convention + re-mint)
 
-Status: DRAFT (bobdotrix 2026-11-18). NOT law — the architecture is RESOLVED into
-re-seat.md (LOCKED 2026-11-17, 67202f5 + v2 3443094). This file is the build
-order for the re-seat HALF; the law is the contract. Sibling to
+Status: DRAFT (bobdotrix 2026-11-18); rulings A-D + the self-dismantling steer
+LOCKED 2026-11-18 (Barticus, GSI). NOT law — the architecture is RESOLVED into
+re-seat.md (LOCKED 2026-11-17, 67202f5 + v2 3443094 + v3 self-dismantling). This
+file is the build order for the re-seat HALF; the law is the contract. Sibling to
 re-seat-mount.draft.md (the mount half — the verbs). What is NOT built is the
 one-pass wiring that ties proof -> freeze -> re-mint -> mount into a seamless
 transition. The entry slide is the SURFACE of that wiring; the socket convention
@@ -16,6 +17,12 @@ is its FOUNDATION.
     SIGSTOPs the data tentacles (only {face, audio} survive); the frozen
     tentacles' last frame is the backdrop; tap -> proof -> re-mint -> mount; the
     owner session replaces the frozen frame in the SAME slot. No blink.
+  - SELF-DISMANTLING (v3, Barticus 2026-11-18, GSI): the re-seat is MEANT TO
+    TAKE OVER — controlling BY DESIGN, every detail CFC'd for Granny — the
+    OPPOSITE of the media player, which took over BY ACCIDENT and lingered (the
+    "mother roach", slide-process.md). The guard: the transition is ONE cued
+    pass that tears itself down ASAP — kclose + kclean + kushd fire on the SAME
+    cue — process-death-is-the-kill, no lingering controlling state.
   - The socket convention (NAMED, not candidates): ONE group-owned socket dir
     (0770, group "seat"), ONE seat group every session uid + the conductor join,
     ABSOLUTE socket paths (a '/' in WAYLAND_DISPLAY = absolute to libwayland).
@@ -103,8 +110,13 @@ is its FOUNDATION.
        slot (surface-in-place, process-re-seats — a running process cannot
        change uid, so the process swaps, the surface does not). The face never
        re-mints; audio keeps playing.
+     - SELF-DISMANTLING TEARDOWN (same cue): the frozen public tentacles are
+       REPLACED (not unfrozen-and-kept); kclose + kclean + kushd reap the
+       transition state (gate verdict, keyfile, LUKS mapping) ASAP — nothing
+       lingers that could later control the deck the way the media player did.
      - GATE: sign-in -> owner session in the same slot; the last frame never
-       left the screen; the face pid + uid never changed.
+       left the screen; the face pid + uid never changed; no lingering
+       transition state (kclose/kclean/kushd all fired).
 
   Order note (SPEC BEFORE SURFACE): 1-2 are the infrastructure the surface
   stands on, 3 is the visible freeze, 4-6 are the resolution/mount/mint the
@@ -122,29 +134,23 @@ is its FOUNDATION.
   - kmount mounts at /home/<home-hash> (pw_dir), never /home/<key-id>.
   - No password field, no sudo binary anywhere in the path.
 
-## Open questions (Barticus's verdict)
+## Locked rulings (Barticus 2026-11-18, GSI — "yes to your recs")
 
-  A. Build sequencing — foundation-first vs surface-first.
-     Foundation-first: socket convention (1) + conductor account (2) BEFORE the
-     entry slide, because the re-mint (6) is impossible while the face IS uid
-     1001 — the freeze alone is not the re-seat. Surface-first: build the entry
-     slide freeze (3) now (demonstrable on the single-uid model) and land the
-     conductor account last (5d), accepting that "face never dies" is not true
-     until the last step. RECOMMEND foundation-first.
+  A. SEQUENCING: FOUNDATION-FIRST — socket convention (1) + conductor account (2)
+     BEFORE the entry slide, because the re-mint (6) is impossible while the face
+     IS uid 1001. [Barticus: yes]
+  B. CONDUCTOR UID: 990, name "conductor", groups {render video input seat tty}
+     only — no audio, no user group, no home (/var/lib/kidulwm). [Barticus: yes]
+  C. ENTRY SLIDE = the Homes slide UPGRADED (kind .homes gains freeze-on-focus),
+     not a new slide kind. [Barticus: yes]
+  D. SOCKET DIR: /run/kushd/wayland, root:seat 0770, recreated by kushd at boot
+     (tmpfs). [Barticus: yes]
 
-  B. The conductor uid number + group set.
-     RECOMMEND a dedicated system-range uid (e.g. 990, name "conductor"),
-     groups {render video input seat tty} only — NO audio, NO user group, no
-     home (or /var/lib/kidulwm). Confirm the number + whether it needs "audio".
-
-  C. Entry slide = the Homes slide upgraded, or a distinct slide kind?
-     RECOMMEND the Homes sign-in prompt (kind .homes) gains freeze-on-focus —
-     no new kind. The "entry slide" is the Homes sign-in surface in its
-     proof-request state, not a second slide.
-
-  D. Socket dir location /run/kushd/wayland (the law says "e.g.").
-     RECOMMEND /run/kushd/wayland, root:seat 0770, recreated by kushd at boot
-     (tmpfs). Confirm the path (vs /run/kidul/wayland) and the owner.
+  Plus the steer (Barticus 2026-11-18, GSI): the re-seat is MEANT TO TAKE OVER —
+  controlling by design, every detail CFC'd for Granny — but must NOT become a
+  media-player-style roach. The guard is SELF-DISMANTLING: kclose + kclean + kushd
+  fire to get it OUT ASAP, no lingering controlling state. Locked into re-seat.md
+  v3 + settings.md (amended). See step 6.
 
 ## What this does NOT touch
 

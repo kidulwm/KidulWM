@@ -56,6 +56,14 @@ Homes is a SLIDE, not a controlling feature. It must NOT grow into a
 media-player-style monster widget (media.zig). Thin surface; the gate, the
 re-seat and the mount are the mechanism, and they live in the organs
 (kushd / kidulkey / knetd) — not in the slide.
+AMENDED 2026-11-18 (Barticus present, GSI): the re-seat FEATURE (not the slide)
+IS meant to take over — central by design, the identity door, every detail CFC'd
+for Granny. That is the OPPOSITE of the media player, which took over BY ACCIDENT
+and lingered (slide-process.md "mother roach"). The anti-roach guard for a
+take-over-by-design feature is a SELF-DISMANTLING transition (re-seat.md): kclose
++ kclean + kushd fire to get it OUT ASAP — process-death-is-the-kill, no lingering
+controlling state to squash later. The slide stays thin; the take-over is bounded
+by its own teardown, not by thinness alone.
 
 ## Sub-admin = the delegation tree (consolidation, not a new ruling)
 

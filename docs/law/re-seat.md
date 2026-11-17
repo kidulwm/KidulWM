@@ -5,6 +5,11 @@ AMENDED 2026-11-17 (v2, Barticus present, GSI): the transition is FREEZE-not-kil
 the data tentacles are SIGSTOPped (only the face + audio survive), and the entry
 slide shows the last frame as a frozen backdrop with the tap prompt overlaid.
 See §The entry slide.
+AMENDED 2026-11-18 (v3, Barticus present, GSI): the re-seat is MEANT TO TAKE OVER —
+controlling BY DESIGN, the identity door, every detail CFC'd for Granny. The
+guard against a media-player-style roach is a SELF-DISMANTLING transition:
+kclose + kclean + kushd fire ASAP, nothing lingers. See §The transition is a
+transition.
 
 ## One line
 
@@ -74,6 +79,31 @@ On a TRUSTED proof (role + key-id from the gate):
 The freeze is the transition's muscle, NOT the security boundary — the mount +
   uid are the boundary. Every data-touching tentacle (browser/terminal/files)
   re-seats; nothing lingers that could touch owner data.
+
+## The transition is a transition (self-dismantling — no lingering control)
+
+AMENDED 2026-11-18 (Barticus present, GSI). The re-seat is MEANT TO TAKE OVER —
+it is central BY DESIGN, the identity door, and Granny sees every detail CFC'd on
+the entry slide. That is the OPPOSITE of the media player, which took over BY
+ACCIDENT: its model leaked into the conductor and lingered (the "mother roach",
+slide-process.md), leaving controlling bugs to squash later. So the re-seat is
+allowed to be central, but its control is BOUNDED and SELF-RELEASING:
+
+  - The re-seat is a TRANSITION, not a resident state. freeze -> proof -> re-mint
+    -> mount is ONE cued pass; when it completes, it is GONE.
+  - The teardown is PART of the transition, not a later cleanup: kclose (the LUKS
+    container), kclean (the Kleaner zeroize), and kushd (reap the frozen
+    tentacles + drop the gate verdict) all fire to get it OUT of there ASAP.
+  - PROCESS-DEATH IS THE KILL (SYSTEM.md §2.2): a frozen public tentacle is
+    REPLACED, not unfrozen-and-kept; nothing lingers that could later "control"
+    the deck the way the media player did.
+
+The slide stays THIN (settings.md: "Homes is a SLIDE, not a controlling
+feature") — the mechanism lives in the organs (kushd/kidulkey/knetd). Thinness
+was the media-era guard; for a feature that is meant to take over, the guard is
+SELF-DISMANTLING: the verbs that build the transition (kushd mintSession,
+kopen/kmount) are mirrored by the ones that tear it down (kumount -> kclose ->
+kclean), and they run on the SAME cue — never "when someone remembers".
 
 ## The safety spine (in order)
 
