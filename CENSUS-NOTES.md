@@ -1,5 +1,22 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# DESIGN (bobdotrix 2026-11-17, GSI) — RE-SEAT FROZEN TO LAW (re-seat.md, KidulWM 67202f5, signed B&B, pushed).
+#   THE FACE = A CONDUCTOR. kidulwm gets its own uid — data-blind, never public, never any user, NEVER re-seats.
+#   Sign-in RE-SEATS only the USER identity tentacles inherit (public 1001 -> proved owner 1002): a background
+#   re-mint through kushd mintSession (PROCESS-mount, NOT a sealed verb). Face never dies, no blink. SAFEST-first
+#   (in order): (1) face data-blind, (2) vault unlock = sealed verbs fail-closed (built b4ff2db), (3) uid
+#   separation / 0700 homes, (4) browser passwords inside the user's partition. VERDICTS: Q1=B conductor-split;
+#   Q4=moot (sign-in = focused app, only music, survives); Q2=owner PRE-PROVISIONED (disk verified: uid 1002 =
+#   bee62e237cdd37a455eeafca, random hash); Q3=random hash REVERSES kid.md "key-derived /home/$HASH"; Q5=browser
+#   profile swaps IN PLACE + auto-open (Granny: login -> light -> tap -> site opens); Q6=user personal stuff
+#   SEPARATE from cold vault (auto-provisioned at claim), the tap REPLACES all passwords.
+#   VOCAB (locked): key-id (base64url pubkey = resolution only) vs home-hash (random login+home) vs user-partition
+#   (the user's vault) vs cold-vault (kvaultd, key material only). /mnt/ksd mounted RO this session (owner verified).
+#   OPEN BUILD ITEMS (next slices): (1) Wayland socket crossing the uid boundary (conductor uid serves tentacles at
+#   user uid — candidates seat-group+symlink / absolute WAYLAND_DISPLAY / shared runtime dir); (2) key-id -> uid/home-
+#   hash resolution missing (roster=key->role, kalloc=key->partition); (3) MOUNT-POINT CORRECTION: kmount mounts
+#   /home/<key-id>, must mount /home/<home-hash> (pw_dir); (4) conductor account + bill.kush kidulwm act off class
+#   "user". NEXT = design the socket-crossing sub-slice (spec-first), then wire.
 # DESIGN (bobdotrix 2026-11-17, GSI) — BOOT-MODE TAXONOMY + DEFAULT-HOME + VAULT-SHAPE FORK (Barticus "wire it up").
 #   BOOT MODES (the "who boots to what" law — DESIGN for all, TEST the TV now): TV = auto-boot PUBLIC user, owner
 #   drops down + verifies (the ONLY surface with a public account); PC/Server/Router = NO public, auto-boot ->

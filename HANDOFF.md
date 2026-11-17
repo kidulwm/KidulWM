@@ -13,29 +13,25 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current attack (2026-11-17)
 
-  STEP 4 AUTH-STRUCTURE — the proof->mount sequence (MOUNT half) DONE + LIVE-PROVEN.
-    - kushd b4ff2db: on a TRUSTED verdict, drives resolve (kalloc resolve -> token)
-      -> open (kopen <by-partuuid/token> <token> <vault>/<key>.key) -> mount (kmount
-      <key> /home/<key-id>, same map/sig/pub passed), non-blocking, fail-closed +
-      rollback (kclose), crew ("none") no-op.
-    - kidulkey d20a9db: kcarve (the carve verb — partition + LUKS2 + keygen + vault
-      park; mkfs stays app-side). 7 verbs total (kalloc/kopen/kmount/kumount/kclose/
-      kclean/kcarve).
-    - vault-shape RESOLVED: interim plain 0600 keyfile now, kidulKey-wrap -> SE050
-      backlog. Boot-mode taxonomy + defaultHome step recorded in the census.
-    - Rig-proven fake + real verbs. mount(2) SUCCESS still mkfs-gated (the app's step).
+  STEP 4 — RE-SEAT DESIGN FROZEN TO LAW (re-seat.md, 67202f5, pushed). The MOUNT half
+    was already DONE + LIVE-PROVEN (kushd b4ff2db; kcarve d20a9db). Now the IDENTITY
+    half is specced: the FACE = a CONDUCTOR uid (data-blind, never a user, never
+    re-seats); sign-in re-mints only the USER identity (public 1001 -> owner 1002)
+    via kushd mintSession. Owner PRE-PROVISIONED (uid 1002 = bee62e237cdd37a455eeafca,
+    home-hash). Reverses kid.md (home = random hash, not key-derived key-id).
 
   CARRIED THREADS (do not lose):
-    - KSD NOT deployed: repos ahead of /mnt/ksd — mount first, then deploy.
-    - KSD DRIVE (nvme1) PRESENT BUT UNMOUNTED: /mnt/ksd empty — mount first.
-    - kboot + kslide-template now CLEAN (both committed; kslide stopped tracking
-      build artifacts).
+    - KSD NOT deployed: repos ahead of /mnt/ksd — /mnt/ksd mounted RO this session
+      (owner account verified); deploy is still ahead.
+    - kboot + kslide-template CLEAN (committed).
 
-  NEXT SESSION: step 4b = RE-SEAT (re-mint the session public uid 1001 -> proved
-    owner — the HARD half; design-freeze-first), then claim/carve (kcarve -> kalloc
-    sign), the Homes provisioning UI (fill bar + name, step 6), defaultHome skeleton.
-    Fire 'next' -> docket #59 resolves to re-seat. Handoff = CENSUS-NOTES top +
-    kidulkey skill (the seq pattern + stderr gotcha).
+  NEXT SESSION: step 5a = the SOCKET-CROSSING sub-slice (spec-first): the conductor
+    uid must serve the Wayland socket to tentacles at a DIFFERENT uid. Candidates
+    (seat-group socket+symlink / absolute WAYLAND_DISPLAY / shared runtime dir).
+    Then (5b) key->home-hash resolution, (5c) kmount mount-point correction
+    (/home/<key-id> -> /home/<home-hash>), (5d) conductor account + bill.kush act.
+    Fire 'next' -> docket #59 resolves to the socket-crossing sub-slice. Handoff =
+    CENSUS-NOTES top + re-seat.md (law) + kidulkey skill (the seq + stderr gotcha).
 
 ## Trip wires / commands / secrets
 
