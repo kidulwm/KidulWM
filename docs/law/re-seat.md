@@ -140,11 +140,18 @@ The mount resolves key-id -> role -> uid -> pw_dir, and mounts at pw_dir =
 One shared SESSION-SOCKET convention so a conductor and several user uids
 interleave on one seat:
 
-  - ONE group-owned socket dir (e.g. /run/kushd/wayland), 0770, group "seat";
+  - ONE group-owned socket dir (e.g. /run/kushd/wayland), 0770 SETGID, group
+    "seat" — the setgid bit makes every socket bound inside inherit group
+    "seat" (not the creator's own uid-group);
   - ONE seat group that every session uid (public/owner/residents) AND the
     conductor join;
   - ABSOLUTE socket paths — libwayland treats a name containing '/' as an
     absolute path, so WAYLAND_DISPLAY=/run/kushd/wayland/wayland-1.
+  - The socket FILE must be group-WRITABLE, not just the dir: connect() needs
+    WRITE on the socket file. A 0770 dir alone still yields a 0755 (owner-
+    write-only) socket that blocks every OTHER uid. So kushd sets the seat's
+    umask 0007 — kidulwm's wayland-1 then lands 0770 :seat and every seat uid
+    connects. (Locked 2026-11-18; proven on-host: a 0640 socket -> EACCES.)
 
 Every session service (Wayland, ksound, kplayd, ...) follows it. This convention
 IS the core of seamless re-seat — not a per-socket hack.

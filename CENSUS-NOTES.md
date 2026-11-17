@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — SLICE 1 SOCKET CONVENTION COMPLETE + PROVEN (kushd 8680b58, signed B&B, pushed).
+#   TWO bugs caught + fixed by runtime proofs: (1) mkdir(0770) masked by umask -> 0750 (seat group couldn't bind its
+#   socket); (2) connect() needs WRITE on the socket FILE, not just a traversable dir — a 0770 dir alone yields a
+#   0755 socket that blocks every OTHER uid. Final mechanism: /run/kushd/wayland = 2770 root:seat (SETGID so sockets
+#   inherit group "seat") + seat umask 0007 (socket lands 0770 :seat) + absolute WAYLAND_DISPLAY/KIDULWM_WAYLAND_
+#   DISPLAY. Proven on-host: dir 2770 root:seat, socket 0770 :seat, kidulwm binds the absolute path (headless, real
+#   compositor PID 2088 untouched). NO kidulwm change. Law (re-seat.md socket convention) + spec step 1 updated.
+#   NEXT: slice 2 = the conductor account (face off class 'user' -> uid 990); full boot-tower assembly proof (ksd-boot)
+#   rides with slice 2.
 # BUILD (bobdotrix 2026-11-18, GSI) — RE-SEAT SLICE 1 (SOCKET CONVENTION) CODE LANDED (kushd 6b462b8, signed B&B, pushed).
 #   ONE shared session-socket dir /run/kushd/wayland (0770 root:seat, umask-proof chmod) + ABSOLUTE WAYLAND_DISPLAY
 #   (/run/kushd/wayland/wayland-1) + KIDULWM_WAYLAND_DISPLAY (kidulwm creates the socket there via addSocket, not

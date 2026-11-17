@@ -51,14 +51,17 @@ is its FOUNDATION.
 
 ## Build order (incremental, testable each step)
 
-  1. THE SOCKET CONVENTION (infrastructure, invisible).
-     - kushd mintSession: create /run/kushd/wayland (0770, root:seat) at boot
-       (tmpfs, recreated each session); set WAYLAND_DISPLAY to the ABSOLUTE path
-       /run/kushd/wayland/wayland-1.
-     - kidulwm server.start(): addSocket(/run/kushd/wayland/wayland-1) — an
-       absolute path — instead of addSocketAuto. The "seat" group already rides
-       every mintSession's setgroups, so no new group is invented; the conductor
-       joins "seat" too.
+  1. THE SOCKET CONVENTION (infrastructure, invisible). DONE + PROVEN (kushd
+     8680b58; no kidulwm change — it already honors KIDULWM_WAYLAND_DISPLAY).
+     - kushd main(): create /run/kushd/wayland (2770 = SETGID + 0770, root:seat)
+       at boot — the setgid bit makes every socket bound inside inherit group
+       "seat". Umask-proof chmod (mkdir 0770 under umask 022 yields 0750).
+     - kushd mintSession: set WAYLAND_DISPLAY + KIDULWM_WAYLAND_DISPLAY to the
+       ABSOLUTE path /run/kushd/wayland/wayland-1, and umask 0007 — so the
+       socket kidulwm binds lands 0770 :seat (connect() needs WRITE on the
+       socket file, not just a traversable dir).
+     - kidulwm: NO change — KIDULWM_WAYLAND_DISPLAY already routes addSocket to
+       the absolute path (server.zig start()); addSocketAuto is skipped.
      - Session-service sockets (kmedia ksound.sock, kplay.sock, klip.sock —
        today hardcoded /run/user/<uid>/*.sock) follow the same shared-dir +
        absolute-path pattern. Wayland FIRST (the re-seat blocker); the rest

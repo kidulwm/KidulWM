@@ -16,10 +16,11 @@ sessions with session_search). Live state lives in the ledger, not here.
   STEP 4 — RE-SEAT. MOUNT half DONE + LIVE-PROVEN (kushd b4ff2db; kcarve d20a9db).
     IDENTITY half SPEC'D (re-seat-entry.draft.md 480b1c2) + RULINGS A-D LOCKED
     (foundation-first / conductor 990 / Homes-upgraded / /run/kushd/wayland) +
-    self-dismantling steer (re-seat.md v3). SLICE 1 (socket convention) CODE
-    LANDED (kushd 6b462b8): shared /run/kushd/wayland (0770 root:seat,
-    umask-proof) + absolute WAYLAND_DISPLAY + KIDULWM_WAYLAND_DISPLAY; no
-    kidulwm change. Dir-creation runtime-proven on host. Design FROZEN
+    self-dismantling steer (re-seat.md v3). SLICE 1 (socket convention) COMPLETE
+    + PROVEN (kushd 8680b58): /run/kushd/wayland (2770 root:seat SETGID) + seat
+    umask 0007 (socket 0770 :seat) + absolute WAYLAND_DISPLAY/KIDULWM_WAYLAND_
+    DISPLAY; no kidulwm change. Two bugs caught+fixed by runtime proofs. Design
+    FROZEN
     (re-seat.md 67202f5 + v3): FACE = CONDUCTOR uid (data-blind, never re-seats);
     sign-in re-mints only the USER identity (public 1001 -> owner 1002) via kushd
     mintSession. Owner PRE-PROVISIONED (uid 1002 = bee62e237cdd37a455eeafca).
