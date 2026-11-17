@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SPEC (bobdotrix 2026-11-18) — RE-SEAT ENTRY HALF BUILD ORDER SPEC'D (docs/design/re-seat-entry.draft.md, KidulWM 480b1c2, signed B&B, pushed).
+#   The re-seat HALF (sibling to re-seat-mount.draft.md = the mount half): a 6-step build order for the seamless
+#   sign-in — (1) socket convention (shared /run/kushd/wayland, 0770 root:seat, ABSOLUTE WAYLAND_DISPLAY), (2) the
+#   conductor account (face off bill.kush class 'user' -> own data-blind uid; public 1001 back to a plain tentacle),
+#   (3) the entry slide (freeze-not-kill: SIGSTOP data tentacles + frozen-frame backdrop + privacy guard blank/blur
+#   on lock/re-auth), (4) key-id -> home-hash resolution (roster key->role, kalloc key->partition; mount target needs
+#   key->uid), (5) kmount mount-point correction (/home/<key-id> -> /home/<home-hash> pw_dir), (6) the re-mint wiring
+#   (public 1001 -> proved uid; face never re-seats; frozen tentacles replaced in-slot by owner-uid processes).
+#   FOUR OPEN Qs await verdict: A sequencing foundation-first vs surface-first (rec foundation-first), B conductor uid,
+#   C entry slide = Homes upgraded vs new kind (rec upgraded), D socket dir path (rec /run/kushd/wayland). NOT built.
 # DESIGN (bobdotrix 2026-11-17, GSI) — RE-SEAT FROZEN TO LAW (re-seat.md, KidulWM 67202f5, signed B&B, pushed).
 #   THE FACE = A CONDUCTOR. kidulwm gets its own uid — data-blind, never public, never any user, NEVER re-seats.
 #   Sign-in RE-SEATS only the USER identity tentacles inherit (public 1001 -> proved owner 1002): a background
