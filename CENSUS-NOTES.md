@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# DESIGN (bobdotrix 2026-11-17, GSI) — STEP 4 SLICE 4 CUE-CHAIN FROZEN + kmount mapper-first. kidulkey + KidulWM.
+#   MAPPER LAW (frozen): the dm-crypt mapping name IS the kalloc token — kopen opens the partition AS its token
+#   (/dev/mapper/<token>); kmount mounts /dev/mapper/<token> when present, else the raw by-partuuid/by-uuid
+#   device. kmount NEVER takes a free-form device path (would reopen "mount what it is told"). The mapper name
+#   is DERIVED from the token, so "only what kalloc says" survives the LUKS layer. BUILD: kmount resolveMapper
+#   (mapper-first) — built + unit-tested. Sequences pinned: proof = kalloc resolve -> kopen <raw> <token>
+#   <keyfile> -> kmount <key> <mp>; exit = kumount -> kclose -> kclean (all one-shot, reaped, fail-closed).
+#   OPEN DEPENDENCY: the keyfile source (cold vault kvaultd / key-material-read verb, cold-storage.md) is UNBUILT
+#   — live proof->mount waits on it. NEXT: (a) key-material-read verb, (b) kushd cue-sequence wiring, (c) vault.
 # BUILD (bobdotrix 2026-11-17, GSI) — STEP 4 CLEAN-CLOSE DONE + LIVE-PROVEN (kumount + kclean). kidulkey repo.
 #   kumount.zig = umount2(flags 0, NO MNT_DETACH — EBUSY fail-closes). kclean.zig = the Kleaner scrub:
 #   O_WRONLY + S_ISREG refuse-non-regular + overwrite-full-length-zeros + fsync + unlink, idempotent

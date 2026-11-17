@@ -29,8 +29,9 @@ performs the mount". This file is the build order; the law is the contract.
      kidulkey commits eaf8be6 + b32ada8.
 
   2. The sealed mounter verb. [DONE] — kmount: one-shot, verifies kalloc,
-     resolves key-id -> token -> device (by-partuuid/by-uuid), mount(2)
-     nosuid+nodev, fstype=NULL autoprobe, fail-closed with strerror. mount(2)
+     resolves key-id -> token -> device (mapper /dev/mapper/<token> first, else
+     by-partuuid/by-uuid), mount(2) nosuid+nodev, fstype=NULL autoprobe,
+     fail-closed with strerror. mount(2)
      ONLY — luks open/close is a SEPARATE verb (one job per verb). Proven:
      sig-BAD/unknown-key/malformed-key/absent-partition all fail-closed; mount
      reached with correct marshalling. Success path still needs an auto-probe-
@@ -56,9 +57,32 @@ performs the mount". This file is the build order; the law is the contract.
      directory refused. kclean serves BOTH clean-open (entry) and clean-close
      (exit) — one idempotent scrub, one job.
 
-  4. kushd cue plumbing. [TODO] — on proof: cue kopen -> kmount (after kalloc
-     resolve); on sign-out/unplug/end-of-session: cue kumount -> kclose ->
-     kclean. All verbs on the existing cue-socket pattern.
+  4. kushd cue plumbing. [DESIGN FROZEN 2026-11-17; code gated on the vault] —
+     two sequences, every verb one-shot + reaped + fail-closed (a failed verb
+     stops the chain; kopen fail -> no kmount; kmount fail -> kclose rollback):
+
+       proof (entry):  kalloc resolve (key -> token) ->
+                       kopen <raw-device> <token> <keyfile>   # opens the LUKS
+                         container AS the token -> /dev/mapper/<token>
+                       kmount <key> <mountpoint>              # mounts
+                         /dev/mapper/<token> (2's mapper-first resolve)
+
+       exit (clean-close):  kumount <mountpoint> -> kclose <token> ->
+                       kclean <keyfile...>
+
+     MAPPER LAW (frozen): the dm-crypt mapping name IS the kalloc token. kopen
+     opens the partition AS its token; kmount mounts /dev/mapper/<token> when
+     present (the decrypted view), else the raw by-partuuid/by-uuid device (a
+     non-LUKS partition). kmount NEVER takes a free-form device path — that
+     would reopen "mount what it is told" (allocation-map.md §verification).
+     The mapper name is DERIVED from the token, so the "only what kalloc says"
+     guarantee survives the LUKS layer.
+
+     OPEN DEPENDENCY (blocks the live wiring): the KEYFILE source — the cold
+     vault (kvaultd / key-material-read verb, cold-storage.md) is NOT built. The
+     sequences are specced with <keyfile> as a parameter; the live proof->mount
+     cannot run end-to-end until the vault lands. Remaining build order: (a) the
+     key-material-read verb, (b) the kushd cue-sequence wiring, (c) the vault.
 
   5. kushd self-trim (the enforcement pass). [TODO] — trim kushd's own bounding
      set so it cannot mount/reboot even by accident.
