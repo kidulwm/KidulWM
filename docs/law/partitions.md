@@ -22,6 +22,31 @@ SYSTEM.md §7.3 (base vs user layer, key casts the layer).
            (identity.md); detached by default, so the public face sees
            nothing.
 
+## Who performs the mount (the sealed verb)
+
+Two distinct "mounts", never confused:
+
+  PROCESS-mount (seating)  = kushd. fork + mintSession + setuid + execve.
+                             NOT mount(2) at all — the usher's one core job.
+                             kushd seats the process; nobody else touches it.
+
+  DRIVE-mount (mount(2)/luks) = a sealed verb, NOT kushd. A small binary in
+                             the immutable root carrying its OWN file
+                             capability (CAP_SYS_ADMIN), kidulKey-signed,
+                             dm-verity + fs-verity verified. kushd CUES it
+                             (execs it on proof / drive-arrival); the verb's
+                             own capability does the mount, then exits.
+
+kboot mounts ONLY the boot floor (sealed root + verify + read class + spawn
+kushd), then radio silence. A USB drive arriving mid-session is a RUNTIME
+event kboot cannot pre-mount; the sealed verb handles it. The cold vault is
+likewise a runtime sealed verb (cold-storage.md), not a boot-time kboot mount.
+
+The mounter mounts exactly what the key's roster says (role -> partition) —
+never whatever it is told. Gate proves the role (input-trust-gate.md), roster
+maps role to partition, sealed mounter mounts exactly that. Three verbs, each
+sealed, each checking the next.
+
 ## True separation (the wall is structural, not advisory)
 
   - The SYSTEM partition is read-only at runtime (dm-verity); it changes only
