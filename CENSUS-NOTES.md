@@ -1,5 +1,23 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# DESIGN (bobdotrix 2026-11-17, GSI) — BOOT-MODE TAXONOMY + DEFAULT-HOME + VAULT-SHAPE FORK (Barticus "wire it up").
+#   BOOT MODES (the "who boots to what" law — DESIGN for all, TEST the TV now): TV = auto-boot PUBLIC user, owner
+#   drops down + verifies (the ONLY surface with a public account); PC/Server/Router = NO public, auto-boot ->
+#   owner verification (pre-selected owner, asking to verify — same surface as the TV owner dropdown but pre-picked);
+#   Laptop = single user (owner only, no family picker); homePC = family picker (like TV) but NO public. So boot is
+#   a MODE axis {public, owner-verify, family-picker, single-owner}, not TV-hardcoded. Design the boot flow
+#   mode-driven; the TV is just the first mode we test.
+#   DEFAULT-HOME (the step AFTER claim/carve, needs a home): after a valid sign-in creates a resident, the system
+#   instantiates the defaultHome skeleton (settings.md §defaultHome: standard pill layout + default theme + the
+#   apps that ride the pills) into the new partition. NOT built yet — the kslide-template repo is the seed. This
+#   is its own build slot AFTER the claim flow, not part of the carve verb.
+#   VAULT-SHAPE FORK (needs Barticus call — touches crypto law): kcarve (d20a9db) parks the volume key as a PLAIN
+#   0600 file in /etc/kushd/vault/<key-id>.key. cold-storage.md (LOCKED) says the volume key is WRAPPED BY THE
+#   KIDULKEY (key-mode), not stored plain — a pulled disk must not reveal per-user volume keys (else the per-user
+#   LUKS is cosmetic). Interim (buildable now): plain keyfile; the rootfs is the at-rest layer. Law-compliant
+#   (needs firmware): kidulKey wraps the volume key at carve + unwraps at proof — firmware #2 does Ed25519 identity
+#   proof ONLY, no key-wrap, so that is a later firmware feature. RECOMMEND: ship the interim for the TV MVP (path
+#   of least resistance), keep kidulKey-wrap as cold-storage's hardening ticket. This fork gates the kushd cue arg.
 # COURSE-CORRECTION (bobdotrix 2026-11-17, GSI) — DAD'S PARTITION = the APP's first carve, NOT host-side. REVERTED.
 #   Barticus: Dad's partition is the FIRST drive set up VIA the Homes slide claim flow (settings.md §provisioning):
 #   empty roster -> first key claims owner -> name + size fill-bar -> system carves -> mount on proof — "as a new
