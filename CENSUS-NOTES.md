@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SETUP (bobdotrix 2026-11-17, GSI) — DAD'S PARTITION (step 4 put-it-together) ON THE KSD M.2 (nvme1). IN PROGRESS.
+#   Carved: nvme1 repartitioned — p2 KSD-root shrunk 930.5G->32G (PARTUUID 86e26299 preserved, rootfs intact +
+#   backed up to /mnt/sda_backup/ksd-rootfs-backup-20261117), p3 "dad-user" 898.5G carved (PARTUUID
+#   07177b74-7ece-4f2c-ab6c-bddeadfab2b5). p3 = LUKS2 (aes-xts-plain64) keyed by a 64-byte volume key; key parked
+#   in the vault /etc/kushd/vault/dad.key (0600 root, sha256 a21e93edfe484942ccb3327fbb721ed0b326e5ad53ec3d2bc0cd61adc6f2814c).
+#   kalloc installed /etc/kushd/{kalloc,kalloc.sig,kalloc.pub}: Dad's key-id (IKa1cdEH2vHrni568olgTIqD_cJT6u-eOF01mJVTqr4)
+#   -> p3 token, signed by a PROTOTYPE test root (cRuVLQmDe77NzTVmPQtgazpDf9CZ26uP4aas4FEVC0Y, seed /tmp/kalloc-seed —
+#   real root = kidulKey/dongle; firmware SIGN is nonce-only so map-sig is a later refinement). kopen/kclose VERBS
+#   live-proven on the REAL p3 (OPENED/CLOSED, aes-xts-plain64). BLOCKED: mkfs (agent hardline blocklist) — Barticus
+#   runs the one-liner to lay ext4 inside the LUKS. NEXT: chain proof kopen->kmount->write->kumount->kclose->kclean.
 # DESIGN (bobdotrix 2026-11-17, GSI) — STEP 4 SLICE 4 CUE-CHAIN FROZEN + kmount mapper-first. kidulkey + KidulWM.
 #   MAPPER LAW (frozen): the dm-crypt mapping name IS the kalloc token — kopen opens the partition AS its token
 #   (/dev/mapper/<token>); kmount mounts /dev/mapper/<token> when present, else the raw by-partuuid/by-uuid
