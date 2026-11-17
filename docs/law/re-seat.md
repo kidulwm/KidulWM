@@ -1,14 +1,20 @@
 # LAW — re-seat (the conductor face + background identity re-mint)
 
 LOCKED 2026-11-17, Barticus present (GSI).
+AMENDED 2026-11-17 (v2, Barticus present, GSI): the transition is FREEZE-not-kill —
+the data tentacles are SIGSTOPped (only the face + audio survive), and the entry
+slide shows the last frame as a frozen backdrop with the tap prompt overlaid.
+See §The entry slide.
 
 ## One line
 
 The FACE is a CONDUCTOR — a fixed, data-blind process that never re-seats and
 never IS a user. Sign-in RE-SEATS only the USER identity that tentacles inherit:
-a background re-mint (proof -> re-mint -> mount), the face never dies, nothing
-blinks. SAFEST first, seamless second — and the two CONVERGE: the data-blind
-conductor is both the safest and the seamless shape.
+the data tentacles FREEZE (SIGSTOP), the tap proves, kushd re-mints the identity
+(public 1001 -> proved owner 1002) and the deck resumes in the same slot — the
+face never dies, the last frame never leaves the screen, nothing blinks. SAFEST
+first, seamless second, and the two converge: the freeze makes the swap invisible
+AND race-free.
 
 ## The conductor (the face, re-framed)
 
@@ -23,21 +29,51 @@ conductor is both the safest and the seamless shape.
   flows through kushd's mintSession; it is PROCESS-mount (kushd's hand), NOT a
   new sealed verb (privileged-verbs.md).
 
+## The entry slide (freeze, not kill — the seamless transition)
+
+Sign-in is a FIRST-CLASS SLIDE in the deck — not a modal, not a process kill.
+When a proof is requested:
+
+  1. the deck slides IN the entry slide; it gains focus and pushes the rest of
+     the deck out of focus.
+  2. gaining focus FREEZES the data tentacles — a true SIGSTOP, not backgrounding:
+     they go inert (no read, no write, no redraw). A deliberate new behavior,
+     narrow to this slide.
+  3. the frozen tentacles' LAST frame stays on screen as the slide's BACKGROUND
+     (dimmed for legibility); the face composites the LOGO + "tap your kidulKey"
+     prompt OVER it, live (the face is the conductor and never freezes).
+  4. on tap -> proof -> re-mint -> mount, the deck resumes: the owner's live
+     session replaces the frozen backdrop in the same slot. Granny's site opens
+     right where her login page was.
+
+The "snapshot" and the "freeze" are the SAME thing here: a SIGSTOPped tentacle's
+  last frame IS the frozen backdrop — no separate screenshot is needed (a literal
+  pixel copy only earns its keep if a frame must outlive a kill, and the browser
+  crossfade holds its frozen surface instead).
+
+PRIVACY GUARD: the frozen frame is the PRE-SIGN-IN frame. Public->owner: that is
+  the public browser (no personal data — safe). LOCK or RE-AUTH from a signed-in
+  owner: BLANK or BLUR the frame, never snapshot it — a sensitive owner frame
+  must not persist as a visible backdrop.
+
 ## What re-seat DOES (the background flip)
 
 On a TRUSTED proof (role + key-id from the gate):
 
-  1. kushd flips the seat's CURRENT-USER identity: public(1001) -> the proved
+  1. the deck freezes the data tentacles (the entry slide, above). The only live
+     things are the face (conductor) and public audio (ksound/kplayd — session-
+     scoped, reads public media only). ONLY {face, audio} survive.
+  2. kushd flips the seat's CURRENT-USER identity: public(1001) -> the proved
      user (owner uid 1002; residents later).
-  2. the face is CUED (never killed) to reveal the full roster (step 5 landing).
-  3. the mount half (already built) mounts the user's partition at THEIR home.
-  4. NEW tentacles seat under the proved uid (mintSession with the new uid);
-     RUNNING tentacles transition by policy — audio (ksound/kplayd) KEEPS
-     PLAYING (sign-in is the focused app; only music can be live, and it
-     survives), the browser swaps profile IN PLACE (auto-open for Granny).
+  3. the mount half (already built) mounts the user's partition at their home.
+  4. NEW tentacles seat under the proved uid (mintSession); the FROZEN public
+     data tentacles are REPLACED by owner-uid processes in the SAME slot —
+     surface-in-place, process-re-seats (a running process cannot change uid
+     1001->1002, so the process swaps, the surface does not). Audio keeps playing.
 
-The flip is NOT a blanket kill. It changes the identity NEW tentacles inherit
-and cues the face; each running tentacle transitions by its own policy.
+The freeze is the transition's muscle, NOT the security boundary — the mount +
+  uid are the boundary. Every data-touching tentacle (browser/terminal/files)
+  re-seats; nothing lingers that could touch owner data.
 
 ## The safety spine (in order)
 
@@ -48,6 +84,8 @@ and cues the face; each running tentacle transitions by its own policy.
      sees only its own mount; 0700 homes block cross-read.
   4. Browser passwords live INSIDE the user's key-gated partition, unreadable on
      disk until the tap mounts it; the public browser has NO persisted profile.
+  5. Freeze-before-flip: a SIGSTOPped tentacle cannot read, write, or race the
+     identity flip — defense-in-depth on top of the mount/uid boundary.
 
 ## The vocabulary (two splits, locked to kill "one word, N jobs")
 
@@ -67,14 +105,28 @@ and cues the face; each running tentacle transitions by its own policy.
 The mount resolves key-id -> role -> uid -> pw_dir, and mounts at pw_dir =
 /home/<home-hash>. The key-id never names a directory.
 
+## The socket convention (named, not candidates)
+
+One shared SESSION-SOCKET convention so a conductor and several user uids
+interleave on one seat:
+
+  - ONE group-owned socket dir (e.g. /run/kushd/wayland), 0770, group "seat";
+  - ONE seat group that every session uid (public/owner/residents) AND the
+    conductor join;
+  - ABSOLUTE socket paths — libwayland treats a name containing '/' as an
+    absolute path, so WAYLAND_DISPLAY=/run/kushd/wayland/wayland-1.
+
+Every session service (Wayland, ksound, kplayd, ...) follows it. This convention
+IS the core of seamless re-seat — not a per-socket hack.
+
 ## The aim (the tap replaces passwords)
 
 The kidulKey tap REPLACES every password restriction: one proof unlocks the
 user's home, their browser profile + saved logins, their files — no password
 entry anywhere, no sudo binary (public-seat.md; "owner = sudo" = kushd CLASS
-escalation). Granny: login page -> flashing light -> tap -> the site opens.
-Path of least resistance, no safety sacrificed — the tap is the WYSIWYS proof
-(kidulkey.md).
+escalation). Granny: login page -> flashing light -> tap -> the site opens, the
+last frame never having left the screen. Path of least resistance, no safety
+sacrificed — the tap is the WYSIWYS proof (kidulkey.md).
 
 ## Reversals (explicit — never silent)
 
@@ -90,16 +142,18 @@ Path of least resistance, no safety sacrificed — the tap is the WYSIWYS proof
 
 ## Open build items (not law — the next slices)
 
-  1. The Wayland socket crossing the uid boundary (face at conductor uid serves
-     tentacles at a DIFFERENT uid). Candidates: (a) seat-group socket + symlink,
-     (b) absolute WAYLAND_DISPLAY, (c) shared runtime dir. Resolve next slice.
-  2. key-id -> uid/home-hash resolution does not exist yet. Roster maps key->
+  1. the SOCKET CONVENTION (above) — implement the shared dir + seat group +
+     absolute paths across the Wayland socket and the session sockets.
+  2. the ENTRY SLIDE — the deck slide for sign-in + the freeze (SIGSTOP) on
+     focus + the frozen-frame backdrop + prompt overlay + the privacy guard
+     (blank/blur on lock/re-auth).
+  3. key-id -> uid/home-hash resolution does not exist yet. Roster maps key->
      role; kalloc maps key->partition. The mount target (pw_dir) needs key->
      uid (or kalloc extended to carry home-hash). Owner = fixed uid 1002.
-  3. MOUNT-POINT CORRECTION: kmount today mounts /home/<key-id> (built
+  4. MOUNT-POINT CORRECTION: kmount today mounts /home/<key-id> (built
      b4ff2db); it must mount /home/<home-hash> (pw_dir). A correction to
      already-built code, not a new design.
-  4. The conductor account + socket model: the boot refactor — the face gets a
+  5. the conductor account + socket model: the boot refactor — the face gets a
      conductor uid; bill.kush's kidulwm act moves off class "user".
 
 ## Relationship to existing law
@@ -107,6 +161,8 @@ Path of least resistance, no safety sacrificed — the tap is the WYSIWYS proof
   public-seat.md    owner escalation -> this law builds the re-seat it names.
   kid.md            the kID umbrella; this law reverses its "key-derived hash"
                     naming (the home name is a random home-hash).
+  kidulwm-layout.md the SlideDeck primitive — the entry slide rides the deck;
+                    "freeze on focus" is a new, narrow deck behavior.
   partitions.md     the mount half; this law fixes its mount POINT (home-hash).
   privileged-verbs.md  PROCESS-mount vs DRIVE-mount; re-seat is PROCESS-mount.
   settings.md       Homes build order step 4 (RE-SEAT + MOUNT) -> this is the

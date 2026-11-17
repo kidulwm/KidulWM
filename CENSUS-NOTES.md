@@ -16,7 +16,11 @@
 #   user uid — candidates seat-group+symlink / absolute WAYLAND_DISPLAY / shared runtime dir); (2) key-id -> uid/home-
 #   hash resolution missing (roster=key->role, kalloc=key->partition); (3) MOUNT-POINT CORRECTION: kmount mounts
 #   /home/<key-id>, must mount /home/<home-hash> (pw_dir); (4) conductor account + bill.kush kidulwm act off class
-#   "user". NEXT = design the socket-crossing sub-slice (spec-first), then wire.
+#   "user". NEXT = design the socket convention + the entry-slide freeze/snapshot (spec-first), then wire.
+# AMENDED v2 (Barticus present, GSI): transition is FREEZE-not-kill (SIGSTOP the data tentacles; only
+#   {face,audio} survive) + the entry slide shows the last frame as a frozen backdrop with the tap prompt
+#   overlaid (privacy guard: blank/blur on lock/re-auth). Socket = a NAMED convention (shared socket dir +
+#   seat group + absolute paths).
 # DESIGN (bobdotrix 2026-11-17, GSI) — BOOT-MODE TAXONOMY + DEFAULT-HOME + VAULT-SHAPE FORK (Barticus "wire it up").
 #   BOOT MODES (the "who boots to what" law — DESIGN for all, TEST the TV now): TV = auto-boot PUBLIC user, owner
 #   drops down + verifies (the ONLY surface with a public account); PC/Server/Router = NO public, auto-boot ->

@@ -25,13 +25,18 @@ sessions with session_search). Live state lives in the ledger, not here.
       (owner account verified); deploy is still ahead.
     - kboot + kslide-template CLEAN (committed).
 
-  NEXT SESSION: step 5a = the SOCKET-CROSSING sub-slice (spec-first): the conductor
-    uid must serve the Wayland socket to tentacles at a DIFFERENT uid. Candidates
-    (seat-group socket+symlink / absolute WAYLAND_DISPLAY / shared runtime dir).
-    Then (5b) key->home-hash resolution, (5c) kmount mount-point correction
-    (/home/<key-id> -> /home/<home-hash>), (5d) conductor account + bill.kush act.
-    Fire 'next' -> docket #59 resolves to the socket-crossing sub-slice. Handoff =
-    CENSUS-NOTES top + re-seat.md (law) + kidulkey skill (the seq + stderr gotcha).
+  NEXT SESSION: step 5a = the ENTRY SLIDE + the SOCKET CONVENTION (spec-first).
+    (i) the entry slide: sign-in as a deck slide; on focus, FREEZE the data
+    tentacles (SIGSTOP — only {face,audio} survive) and hold their last frame as
+    a dimmed backdrop with the tap prompt overlaid (privacy guard: blank/blur on
+    lock/re-auth). (ii) the socket convention: ONE shared socket dir (0770,
+    group "seat") + one seat group all session uids join + absolute socket paths
+    (WAYLAND_DISPLAY=/run/kushd/wayland/wayland-1), across Wayland + ksound +
+    kplayd. Then (5b) key->home-hash resolution, (5c) kmount mount-point
+    correction (/home/<key-id> -> /home/<home-hash>), (5d) conductor account +
+    bill.kush act. Fire 'next' -> docket #59 resolves to the entry slide +
+    socket convention. Handoff = CENSUS-NOTES top + re-seat.md (law) + kidulkey
+    skill (the seq + stderr gotcha).
 
 ## Trip wires / commands / secrets
 
