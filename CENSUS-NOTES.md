@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# LAW (bobdotrix 2026-11-18, GSI) — RE-SEAT v3 SELF-DISMANTLING + RULINGS A-D LOCKED (re-seat.md v3 + settings.md amended; spec re-seat-entry.draft.md 1d0eb45, signed B&B, pushed).
+#   Barticus "yes to your recs" + a steer: the re-seat is MEANT TO TAKE OVER (controlling BY DESIGN, every detail
+#   CFC'd for Granny) — the OPPOSITE of the media player, which took over BY ACCIDENT and lingered (the "mother
+#   roach", slide-process.md). The anti-roach guard for a take-over-by-design feature is SELF-DISMANTLING: kclose +
+#   kclean + kushd fire to get it OUT ASAP — process-death-is-the-kill, no lingering controlling state. Locked into
+#   re-seat.md v3 (new section "The transition is a transition") + settings.md ("Homes is a SLIDE" amended: the slide
+#   stays thin, the take-over is bounded by its own teardown, not thinness alone). RULINGS: A foundation-first
+#   (socket + conductor before entry slide), B conductor uid 990 {render video input seat tty} no audio/user-group/
+#   home, C entry slide = Homes upgraded (kind .homes gains freeze-on-focus, no new kind), D socket dir
+#   /run/kushd/wayland (root:seat 0770). NEXT BUILD: slice 1 = the socket convention (shared dir + absolute
+#   WAYLAND_DISPLAY).
 # SPEC (bobdotrix 2026-11-18) — RE-SEAT ENTRY HALF BUILD ORDER SPEC'D (docs/design/re-seat-entry.draft.md, KidulWM 480b1c2, signed B&B, pushed).
 #   The re-seat HALF (sibling to re-seat-mount.draft.md = the mount half): a 6-step build order for the seamless
 #   sign-in — (1) socket convention (shared /run/kushd/wayland, 0770 root:seat, ABSOLUTE WAYLAND_DISPLAY), (2) the
