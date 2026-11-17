@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-17, GSI) — STEP 4 LUKS VERBS DONE + LIVE-PROVEN (kopen/kclose). kidulkey repo.
+#   kopen.zig + kclose.zig: one-shot sealed verbs linking libcryptsetup (c_luks.h minimal shim — never
+#   reimplement LUKS). kopen <device> <name> <keyfile> = crypt_activate_by_keyfile (LUKS1/2 auto-detect,
+#   keyfile = passphrase bytes, whole file); kclose <name> = crypt_init_by_name + crypt_deactivate.
+#   Fail-closed both. Rig tools/test-luks.sh LIVE-PROVEN on a loop LUKS2 (aes-xts-plain64): open -> mapping
+#   exists; wrong-key -> fail-closed, no mapping; close -> gone; unknown-name -> fail-closed. NEXT (step 4
+#   continued): slice 3 = the Kleaner (kclean) — unmount + kclose + zeroize, cued on sign-out/unplug; then
+#   slice 4 = kushd cue plumbing (cue kopen after kalloc resolve; cue kclean on exit), slice 5 = kushd
+#   self-trim.
 # LAW (bobdotrix 2026-11-17, GSI) — REMOTE ATTESTATION + THE PACKAGE LOCKED. Docket #60 updated.
 #   input-trust.md §pairing AMENDED: pairing attests, not just authenticates. AUTHENTICATION ("holds
 #   the key", firmware #2, already proven) + ATTESTATION (device measures its firmware, signs the hash

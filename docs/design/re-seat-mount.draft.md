@@ -33,9 +33,17 @@ performs the mount". This file is the build order; the law is the contract.
      nosuid+nodev, fstype=NULL autoprobe, fail-closed with strerror. mount(2)
      ONLY — luks open/close is a SEPARATE verb (one job per verb). Proven:
      sig-BAD/unknown-key/malformed-key/absent-partition all fail-closed; mount
-     reached with correct marshalling. Success path NOT live-proven (needs an
-     auto-probe-able rw fs -> mkfs, hardline-blocked). Next: the luks verb
-     (kopen/kclose) does the decrypt BEFORE kmount.
+     reached with correct marshalling. Success path still needs an auto-probe-
+     able rw fs (mkfs, hardline-blocked); its gate — the luks decrypt — is now
+     built (2b).
+
+  2b. The luks verbs. [DONE] — kopen/kclose: one-shot verbs linking
+      libcryptsetup (never reimplement LUKS). kopen <device> <name> <keyfile>
+      = crypt_activate_by_keyfile (LUKS1/2 auto-detect, keyfile = passphrase
+      bytes); kclose <name> = crypt_init_by_name + crypt_deactivate. Live-
+      proven on a loop LUKS2 (aes-xts-plain64): open + wrong-key fail-closed +
+      close + unknown-name fail-closed (tools/test-luks.sh). The Kleaner (3)
+      cues kclose on exit.
 
   3. The Kleaner verb. [TODO] — one-shot, same sealing. Unmount + luks close +
      zeroize runtime footprint + key bytes. Fired on presence exit + end-of-session.
