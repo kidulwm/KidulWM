@@ -176,6 +176,18 @@ a hotel TV, and any screen becomes your system — same identity, same data, a
 different window. That is the kweb pitch, and it is what makes the key family
 the whole point: the kidulKey is the thing that makes any screen yours.
 
+## The package — remote, mobile, HD (LOCKED 2026-11-17, Barticus present)
+
+The personal shell is a TRAVEL KIT of three same-sized pieces that LOCK
+TOGETHER: the remote, the kweb mobile communicator (a no-SIM phone), and the
+HD — one chamfered-corner fidget-spinner body on all three, plus a keyboard
+where needed. That is the whole kit: no powerbank, no laptop. Each piece
+carries its own SE050 (the production secure element): remote = PERSONAL tier,
+communicator = its comms identity, HD = its wrap, key = ROOT/PERSONAL. The
+package IS the security boundary — one form factor, one secure element per
+piece, the shell that makes any screen yours and stays safe wherever it is
+used.
+
 ## The kidulKey is the GATE — it opens nothing on a dirty host (Barticus 2026-11-16)
 
 The key's boot role is OFFLINE verification (the IMA keyring + the signed golden
@@ -218,6 +230,32 @@ of a lab; production = clone-proof, full stop.
 Design backstop: a clone is worthless while its public half is not in the
 roster. Strike a compromised key (one line) and the clone dies everywhere at
 once.
+
+## Attestation at pairing — firmware integrity, not just identity (LOCKED 2026-11-17, Barticus present)
+
+Clone-resistance (above) proves the KEY is real. It does not prove the FIRMWARE
+is ours: a remote reflashed with trojan firmware that still holds the copied key
+passes the challenge and is trusted as a kidulKey carrier. Pairing therefore
+attests TWO things, both structural (input-trust.md §pairing, LOCKED 2026-11-17):
+
+  AUTHENTICATION  challenge/response against the burned pubkey — "does it hold
+                  the key" (firmware #2, already proven).
+  ATTESTATION     the device measures its own firmware, signs the hash with the
+                  on-die key, the host verifies it against the ROOT-signed
+                  manifest. "Is it the genuine device running the firmware we
+                  signed." NEW.
+
+The device runs a secure boot chain (immutable ROM -> signed firmware only) so
+tampered firmware cannot boot; the pairing-time attestation makes the verdict
+VISIBLE (wall before door): "remote verified — genuine" / "unrecognized device
+— do not trust as a kidulKey carrier." Remote AND keyboard, one ruling, two
+surfaces.
+
+Honest limit: attestation proves genuine + signed firmware, NOT "never opened
+by a state lab" — that is the SE050's tamper-responsive silicon (clone-
+resistance, above), closed in production. The bench dongle (signature-less
+bootloader) cannot do real measured boot; attestation lands on the SE050
+silicon, not the nRF52840.
 
 ## WYSIWYS — what does the key approve (revised)
 

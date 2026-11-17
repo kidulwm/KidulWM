@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# LAW (bobdotrix 2026-11-17, GSI) — REMOTE ATTESTATION + THE PACKAGE LOCKED. Docket #60 updated.
+#   input-trust.md §pairing AMENDED: pairing attests, not just authenticates. AUTHENTICATION ("holds
+#   the key", firmware #2, already proven) + ATTESTATION (device measures its firmware, signs the hash
+#   with the on-die key, host verifies against the ROOT-signed manifest). Secure boot on the device
+#   (immutable ROM -> signed firmware only) + visible verdict "remote verified / unrecognized device"
+#   (wall before door). Remote AND keyboard, one ruling two surfaces. Honest limits: SE050 closes
+#   lab-grade; bench dongle (signature-less bootloader) can't do measured boot. kidulkey.md: added the
+#   attestation section (firmware integrity, not just identity) + THE PACKAGE — remote + kweb mobile
+#   communicator (no-SIM) + HD share ONE chamfered fidget-spinner body, LOCK TOGETHER, SE050 per piece
+#   (remote=PERSONAL, communicator=comms, HD=wrap, key=ROOT/PERSONAL); travel kit = 3 pieces + keyboard,
+#   no powerbank, no laptop. Docket #60: attestation slice + package folded into the build order.
 # LAW (bobdotrix 2026-11-17, GSI) — kID UNLINKABILITY LOCKED (WHO/WHAT/ENVELOPE + blind sigs). Docket #63.
 #   New law docs/law/kid-unlinkability.md (LOCKED): the kID is zero-PII AND unlinkable by construction.
 #   Three axes: WHO (stable kID hash, never ratcheted) / WHAT (OMEMO double ratchet, content-only) /

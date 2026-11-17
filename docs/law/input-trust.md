@@ -50,6 +50,37 @@ is the trust anchor; the crypto proof travels with the remote on every connect
 (challenge/response against the burned-in public key). No crypto in the boot
 order, ever (crypto.md).
 
+## Pairing attests, not just authenticates (LOCKED 2026-11-17, Barticus present)
+
+Pairing proves IDENTITY — the remote holds the on-die key (clone-resistant).
+It has not proved INTEGRITY: a remote reflashed with trojan firmware that
+still holds the copied key passes the challenge and is trusted as a kidulKey
+carrier. So pairing attests TWO things, both structural, never diligence:
+
+  AUTHENTICATION  challenge/response against the burned pubkey — "does it
+                  hold the key" (firmware #2, already proven).
+  ATTESTATION     the device measures its own firmware, signs the hash with
+                  the on-die key, the host verifies it against the ROOT-signed
+                  manifest. "Is it the genuine device running the firmware we
+                  signed." NEW.
+
+The device runs a secure boot chain (immutable ROM -> signed firmware only) so
+tampered firmware cannot boot; the pairing-time attestation makes the verdict
+VISIBLE (wall before door, WYSIWYS): "remote verified — genuine" /
+"unrecognized device — do not trust as a kidulKey carrier." Remote AND
+keyboard — every device that carries a kidulKey tier or handles the key
+exchange — one ruling, two surfaces.
+
+Honest limits: attestation proves genuine + signed firmware, NOT "never opened
+by a state lab" (decapping/microprobing is the SE050's tamper-responsive job,
+closed in production). The bench dongle (signature-less bootloader) cannot do
+real measured boot — attestation lands on the SE050 silicon, not the nRF52840.
+
+Blast radius stays bounded by the tier design: the remote carries the PERSONAL
+tier, never the ROOT (crypto.md); approval is per-surface (kid.md). Attestation
+closes the firmware-tamper path that would let a trojan remote silently sign
+or exfiltrate the seed — the last open sec opening.
+
 ## Base keys are standard; the chord layer is a pre-settings FILE
 
 up/down/left/right/enter/esc are already standard HID keyboard usage codes. If
