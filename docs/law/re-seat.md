@@ -192,6 +192,14 @@ sacrificed — the tap is the WYSIWYS proof (kidulkey.md).
      handed).
   5. the conductor account + socket model: the boot refactor — the face gets a
      conductor uid; bill.kush's kidulwm act moves off class "user".
+  6. the RE-MINT WIRING DONE + PROVEN (step 6b): session_uid flips 0 -> proved
+     uid on mount success; userUid() = session_uid else seatUid(); both seat()
+     and dropToUser() consult it, so one flip covers the immediate re-seat AND
+     every later respawn. remintTentacles() SIGKILLs each seated user/
+     restricted child + re-seats it in the same slot; the face + organs are
+     untouched; idempotent (second proof skipped). Remaining: the
+     conductor-reconnect probe (kidulwm client-lifecycle across the swap) and
+     the privacy guard (blank/blur on lock/re-auth).
 
 ## Relationship to existing law
 
