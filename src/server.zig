@@ -733,9 +733,10 @@ pub const Server = struct {
                 return self.setStageKadence(p.output, p.width, p.height, p.refresh_mhz, p.scale);
             },
             .media_card_toggle => {
-                // C2 Phase 1: the media card is the kmedia CLIENT (app slide),
-                // spawned kill-then-spawn; it auto-seats via handleNewXdgToplevel.
-                self.mediaCardToggle();
+                // REVERT (2026-11-18): media card = the compositor MediaWidget
+                // (media.zig). C2 phase 1 pointed this at the kmedia CLIENT, but
+                // the client's 3-pill nav is presentation-only (no TV/music).
+                self.mediaSlideFocusOrSpawn();
                 return .{ .ok = true };
             },
             .media_play => |p| {

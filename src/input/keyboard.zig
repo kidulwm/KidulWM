@@ -426,9 +426,10 @@ const KeyboardDevice = struct {
                 return true;
             },
             .media_card_toggle => {
-                // C2 Phase 1: spawn the kmedia CLIENT (app slide); the
-                // compositor-rendered media slide is retired.
-                server.mediaCardToggle();
+                // REVERT (2026-11-18): media card = the compositor MediaWidget
+                // (media.zig). C2 phase 1 pointed this at the kmedia CLIENT, but
+                // the client's 3-pill nav is presentation-only (no TV/music).
+                server.mediaSlideFocusOrSpawn();
                 return true;
             },
             .signals_card_toggle => {
