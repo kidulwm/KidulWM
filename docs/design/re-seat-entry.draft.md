@@ -102,6 +102,15 @@ is its FOUNDATION.
      - FROZEN-FRAME BACKDROP: the face composites the frozen tentacles' last
        frame (dimmed) as the slide background; LOGO + "tap your kidulKey"
        overlaid live (the face is the conductor and never freezes).
+     - CINEMATIC SIGN-IN (locked): the freeze IS the cinema — no prior art, we
+       make it. SIGSTOP holds the tentacles' REAL last frame in the compositor's
+       buffers (no screenshot, no fake backdrop); the held frame is genuine
+       because the face never freezes and keeps compositing. The dim is the
+       HOUSE LIGHTS going down (the theatre — starship.md): a compositor-level
+       dim settles over the frozen deck. The prompt is the ONE LIVING ELEMENT —
+       the face animates LOGO + "tap your kidulKey" over a dead-still world.
+       Everything frozen, one thing breathing: that contrast is the effect. No
+       new slide kind (ruling C) — this is the Homes slide's freeze state.
      - PRIVACY GUARD: public->owner keeps the frozen frame (public = no
        personal data); LOCK or owner RE-AUTH blanks/blurs instead of
        snapshotting — a sensitive owner frame never persists as a backdrop.
