@@ -1,5 +1,10 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3c ENTRY-SLIDE DIM BUILT (kidulwm 9900812, signed B&B, pushed).
+#   Fullscreen translucent-black house-lights overlay (curtainEnsure recipe), 280ms smoothstep fade in on freeze /
+#   out on thaw, destroyed at rest. Z pinned every frame while frozen: deck < overlay_tree < dim < homes prompt.
+#   Builds + no-regression smoke test (bootcheck OK). Visual fade + full end-to-end (prompt -> freeze -> dim) needs
+#   Barticus's eyes on the live compositor. REMAINING slice 3: privacy guard (owner frames blank/blur, not snapshot).
 # BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3b FREEZE TRIGGER WIRED (kidulwm cd4956d, signed B&B, pushed).
 #   Homes key prompt .prompt entry fires "freeze" to kushd (transition-gated fire-and-forget, same KUSH_SOCK path
 #   as homes-gate); exit/close fires "thaw". Proven by construction (rides the proven homesGateCue .prompt branch +

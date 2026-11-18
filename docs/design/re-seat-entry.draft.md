@@ -102,10 +102,12 @@ is its FOUNDATION.
        cue) + a no-regression headless smoke test; the full trigger needs a live
        keyboard. Narrow and deliberate — not the park/resume four-step
        (session-and-deck-spec.md), just the freeze.
-     - THE DIM (house lights, NEXT): a full-output translucent black overlay
-       (curtainEnsure recipe) fading in on freeze, out on thaw, with the Homes
-       prompt raised above it — the one living element. Z-order is the delicate
-       part (dim above deck+peeks, prompt above dim).
+     - THE DIM (house lights) BUILT (kidulwm 9900812): a full-output translucent
+       black overlay (curtainEnsure recipe), 280ms smoothstep fade in on freeze,
+       out on thaw, then destroyed at rest (curtain law). Z-order pinned every
+       frame while frozen: deck < overlay_tree < dim < homes prompt (the one
+       living element). Builds + no-regression smoke test; the visual fade needs
+       Barticus's eyes on the live compositor (prompt entry -> freeze -> dim).
      - FROZEN-FRAME BACKDROP: the face composites the frozen tentacles' last
        frame (dimmed) as the slide background; LOGO + "tap your kidulKey"
        overlaid live (the face is the conductor and never freezes).

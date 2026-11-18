@@ -20,8 +20,9 @@ sessions with session_search). Live state lives in the ledger, not here.
     SETGID + seat umask 0007, socket 0770 :seat + absolute WAYLAND_DISPLAY) +
     slice 2 conductor account (kushd 7ac1efe: kidulwm seats as data-blind uid
     990, groups {render video input seat tty} NO audio) + slice 3a freeze/thaw
-    verb (kushd c0b9289) + slice 3b freeze trigger wired (kidulwm cd4956d: Homes
-    .prompt fires "freeze"/"thaw" to kushd). Design FROZEN
+    verb (kushd c0b9289) + slice 3b freeze trigger wired (kidulwm cd4956d) +
+    slice 3c entry-slide dim (kidulwm 9900812: house-lights overlay). Design
+    FROZEN
     (re-seat.md 67202f5 + v3): FACE = CONDUCTOR uid (data-blind, never re-seats);
     sign-in re-mints only the USER identity (public 1001 -> owner 1002) via kushd
     mintSession. Owner PRE-PROVISIONED (uid 1002 = bee62e237cdd37a455eeafca).
@@ -33,16 +34,17 @@ sessions with session_search). Live state lives in the ledger, not here.
       (not a device group — host gid 990 = "kvm"), home /nonexistent, binary at
       /usr/local/bin. Rides with the owner-1002 pre-provisioning.
 
-  NEXT SESSION: SLICE 3 VISUAL = the house-lights DIM (full-output translucent
-    black overlay, curtainEnsure recipe, fade in on freeze / out on thaw) + the
-    Homes prompt raised above it (the one living element). The freeze mechanism
-    (kushd c0b9289) + trigger (kidulwm cd4956d) are done; this is the first
-    thing you SEE. Then privacy guard, then (4) key->home-hash resolution, (5)
-    kmount mount-point correction, (6) the re-mint wiring. Full boot-tower
-    assembly proof (kboot->kushd->kidulwm on ksd-boot) rides once the bill ships
-    kidulwm as "conductor" — the kushd PID-1 tower, not ksd-reset (systemd).
-    Handoff = CENSUS-NOTES top + re-seat.md (law) + re-seat-entry.draft.md
-    (build order).
+  NEXT SESSION: VERIFY SLICE 3 END-TO-END on the live compositor (navigate to
+    Homes -> descend to the key prompt -> watch the freeze + house-lights dim
+    settle, prompt the one living element -> back out -> thaw + lights up), then
+    the PRIVACY GUARD (owner frames blank/blur, never a persisted snapshot).
+    The whole slice-3 mechanism is built (kushd c0b9289 verb + kidulwm cd4956d
+    trigger + kidulwm 9900812 dim); it needs eyes now. Then (4) key->home-hash
+    resolution, (5) kmount mount-point correction, (6) the re-mint wiring. Full
+    boot-tower assembly proof (kboot->kushd->kidulwm on ksd-boot) rides once the
+    bill ships kidulwm as "conductor" — the kushd PID-1 tower, not ksd-reset
+    (systemd). Handoff = CENSUS-NOTES top + re-seat.md (law) +
+    re-seat-entry.draft.md (build order).
 
 ## Trip wires / commands / secrets
 
