@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — STEP 6a (KEY->UID RESOLUTION) BUILT + PROVEN; 6b (RE-SEAT) SPEC-FIRST.
+#   kalloc now carries uid=<n> alongside home=<home-hash> (owner uid 1002); kalloc resolve emits
+#   "partition home=<hash> uid=<n>"; kushd parses BOTH fail-closed (no uid -> no mount). Resolution layer COMPLETE.
+#   PROVEN: fake-verb rig 5 scenarios (happy chain; kopen-fail; crew none; no-home; home-but-no-uid — all fail-closed
+#   correctly) + real-verb rig (signed kalloc home+uid, real kopen OPENED LUKS2 as clean token, kmount fired at
+#   /home/bee62e..., mount EINVAL expected, kclose rollback). 6b (re-seat: SIGKILL the frozen public tentacles +
+#   seatAs(act, seq_uid) on mount success; face/organs never re-seat; conductor-reconnect probe; kclose = failure-only)
+#   SPEC-FIRST in re-seat-entry.draft.md step 6 — BUILD NEXT.
+#
 # BUILD (bobdotrix 2026-11-18, GSI) — STEP 4 (KEY->HOME-HASH) + STEP 5 (MOUNT-POINT CORRECTION) BUILT + PROVEN.
 #   The allocation map (kalloc) entry now carries home=<home-hash> — the login name AND /home/<home-hash> leaf
 #   (owner = bee62e237cdd37a455eeafca). kalloc resolve emits "<partition> home=<hash>"; kushd parses it fail-closed
