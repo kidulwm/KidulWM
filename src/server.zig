@@ -38,6 +38,14 @@ pub const FullscreenPhase = enum {
     fade_from_black, // curtain 1->0: deck fades back in
 };
 
+/// Entry-slide dim (re-seat slice 3): the house-lights fade state.
+pub const DimPhase = enum {
+    off, // no dim on screen
+    fading_in, // dim 0->1: the frozen deck settles under the lights
+    on, // dim held at full; the prompt is the one living element
+    fading_out, // dim 1->0: lights back up on thaw
+};
+
 /// Pixel handoff from the wallpaper worker thread to the main thread.
 pub const WallpaperResult = struct {
     pixels: []u8, // page_allocator-owned ARGB32
@@ -323,6 +331,7 @@ pub const Output = struct {
         }
         self.server.tickWallpaperReveal(now_us);
         self.server.tickFullscreen(now_us);
+        self.server.tickDim(now_us);
 
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
@@ -505,6 +514,16 @@ pub const Server = struct {
         phase: FullscreenPhase = .idle,
         start_us: u64 = 0,
     } = .{},
+    /// Entry-slide dim (re-seat slice 3): a fullscreen 1x1 translucent-black
+    /// scene buffer, opacity-ramped (Fade-only law) — the "house lights down"
+    /// over the frozen deck. Created on freeze, destroyed at rest. Sits above
+    /// deck + peeks, below the Homes prompt (z: deck < overlay_tree < dim <
+    /// homes). Same recipe as curtain_buffer, but partial-alpha so the frozen
+    /// frame stays visible through it.
+    dim_buffer: ?*wlr.SceneBuffer = null,
+    dim_phase: DimPhase = .off,
+    dim_start_us: u64 = 0,
+    dim_output: ?*Output = null,
     /// Peek widget timer (right-peek clock painter + widget polls, on the
     /// minute).
     peek_widget_timer: ?*wl.EventSource = null,
@@ -2202,7 +2221,7 @@ pub const Server = struct {
         // A slide closed mid-proof leaves an orphaned cue — cancel it, and
         // release any entry-slide freeze (a prompt left by closing, not by ↑).
         self.homesGateCancel();
-        self.setTentaclesFrozen(false);
+        self.setTentaclesFrozen(output, false);
         std.log.info("KidulWM: Homes slide closed", .{});
     }
 
@@ -2277,10 +2296,10 @@ pub const Server = struct {
             }
             // Entry-slide freeze: entering "tap your kidulKey" freezes the data
             // tentacles (house lights down). Face + organs survive.
-            self.setTentaclesFrozen(true);
+            self.setTentaclesFrozen(out, true);
         } else {
             self.homesGateCancel();
-            self.setTentaclesFrozen(false);
+            self.setTentaclesFrozen(out, false);
             out.homes_slide.bar.resetVerdict();
         }
     }
@@ -2340,10 +2359,26 @@ pub const Server = struct {
     /// Entry-slide freeze (re-seat slice 3): transition-gated sender. Only the
     /// actual edge (prompt entered / left) hits the wire; kushd's SIGSTOP/SIGCONT
     /// are idempotent, so a duplicate would be harmless but noisy.
-    fn setTentaclesFrozen(self: *Server, on: bool) void {
+    fn setTentaclesFrozen(self: *Server, out: *Output, on: bool) void {
         if (self.tentacles_frozen == on) return;
         self.tentacles_frozen = on;
         self.sendFreezeCue(on);
+        if (on) {
+            // House lights down: fade the dim in over the frozen deck.
+            self.dimEnsure(out);
+            if (self.dim_buffer != null and self.dim_phase != .on) {
+                self.dim_phase = .fading_in;
+                self.dim_start_us = animation.nowUs();
+                out.wlr_output.scheduleFrame();
+            }
+        } else {
+            // Lights back up: fade the dim out, then destroy it at rest.
+            if (self.dim_buffer != null) {
+                self.dim_phase = .fading_out;
+                self.dim_start_us = animation.nowUs();
+                out.wlr_output.scheduleFrame();
+            }
+        }
     }
 
     /// Fire-and-forget "freeze"/"thaw" to kushd's cue socket. No verdict readback
@@ -2367,6 +2402,91 @@ pub const Server = struct {
             std.log.info("KidulWM: data tentacles frozen", .{});
         } else {
             std.log.info("KidulWM: data tentacles thawed", .{});
+        }
+    }
+
+    /// Entry-slide dim (re-seat slice 3): create the fullscreen translucent
+    /// black buffer (1x1 stretched, Fade-only law) above deck + peeks. Opacity
+    /// starts at 0; tickDim ramps it in.
+    fn dimEnsure(self: *Server, output: *Output) void {
+        if (self.dim_buffer != null) return;
+        var box: wlr.Box = undefined;
+        self.output_layout.getBox(output.wlr_output, &box);
+        if (box.width <= 0 or box.height <= 0) return;
+        const dim_px = [_]u8{ 0, 0, 0, 140 }; // ARGB32 LE: B,G,R,A — ~55% black
+        const buf = DataBuffer.create(&dim_px, 1, 1, 4) catch return;
+        const sb = self.scene.tree.createSceneBuffer(buf) catch {
+            wlr.Buffer.drop(buf);
+            return;
+        };
+        sb.setDestSize(box.width, box.height);
+        sb.node.setPosition(box.x, box.y);
+        sb.setOpacity(0.0);
+        self.dim_buffer = sb;
+        self.dim_output = output;
+        self.dimZOrder();
+    }
+
+    /// Remove the dim node. Curtain law: at rest the overlay is GONE, not parked.
+    fn dimDestroy(self: *Server) void {
+        if (self.dim_buffer) |sb| {
+            sb.node.destroy();
+            self.dim_buffer = null;
+        }
+    }
+
+    /// Re-assert entry-slide z-order: deck < overlay_tree(peeks) < dim < homes
+    /// prompt. The prompt is the one living element; the peeks + deck sit under
+    /// the dim. Called every frame while the dim is up (applyLayout re-raises
+    /// overlay_tree, so the freeze must pin the dim + prompt back above it).
+    fn dimZOrder(self: *Server) void {
+        if (self.dim_buffer) |sb| {
+            self.overlay_tree.node.raiseToTop();
+            sb.node.raiseToTop();
+            if (self.dim_output) |o| {
+                if (o.homes_slide.tree) |ht| ht.node.raiseToTop();
+            }
+        }
+    }
+
+    /// Smoothstepped 0..1 over ~280ms (house-lights settle). Mirrors the
+    /// fullscreen curtain's ramp (t*t*(3-2t)) so both fades share one language.
+    fn dimProgress(self: *Server, now_us: u64) f64 {
+        const duration_us: u64 = 280_000;
+        const elapsed = now_us -| self.dim_start_us;
+        var t: f64 = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(duration_us));
+        if (t >= 1.0) t = 1.0;
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    /// Per-frame entry-slide dim driver. Called from handleFrame. Re-arms
+    /// scheduleFrame while fading; at rest it only re-asserts z-order (a layout
+    /// may have fired mid-freeze).
+    fn tickDim(self: *Server, now_us: u64) void {
+        switch (self.dim_phase) {
+            .off => return,
+            .on => {
+                self.dimZOrder();
+                return;
+            },
+            .fading_in => {
+                self.dimZOrder();
+                const p = self.dimProgress(now_us);
+                if (self.dim_buffer) |sb| sb.setOpacity(@floatCast(p));
+                if (p >= 1.0) {
+                    self.dim_phase = .on;
+                } else if (self.dim_output) |o| o.wlr_output.scheduleFrame();
+            },
+            .fading_out => {
+                self.dimZOrder();
+                const p = self.dimProgress(now_us);
+                if (self.dim_buffer) |sb| sb.setOpacity(@floatCast(1.0 - p));
+                if (p >= 1.0) {
+                    self.dim_phase = .off;
+                    self.dimDestroy();
+                    self.dim_output = null;
+                } else if (self.dim_output) |o| o.wlr_output.scheduleFrame();
+            },
         }
     }
 
