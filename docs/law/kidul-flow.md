@@ -29,10 +29,14 @@ navigation law; no modes, no per-app exceptions to the direction meanings.
   The "up+1 / up+2 / the top / the bar / app top" vocabulary is RETIRED. Three
   homes, named by what they are: Kidul / User / App.
 
-  "GlobalPillsBar" ("gpb") is NOT retired — it stays as the COMPONENT name for
-  the pill bar that UserHome draws, to distinguish it from the library pill bar,
-  the browser hybrid search bar, and the other bars. UserHome = the slide name;
-  GlobalPillsBar = the bar itself.
+  "GlobalPillsBar" ("gpb") is RETIRED (REVERSAL of the 2026-11-14 "NOT retired"
+  line — Barticus, 2026-11-18). The bar is per-user, never "global", and there
+  are now MANY bars (browser hybrid bar, media player top bar, kfiles top bar,
+  the partition bar) — each is named by its OWNER in code, never a shared
+  "global" word. UserHome = the slide; the bar it draws is the usersBar
+  (src/ui/users_bar.zig). "Global pill bar" survives ONLY as a DESIGN phrase for
+  the shared pill look, and that look already has a name: THE PILL
+  (styles/pill-spec.md). Design word, never a code word.
 
 ## UserHome focus (session state)
 

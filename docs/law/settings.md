@@ -33,14 +33,14 @@ admin corner; they are two entities.
              HOME = reveal the deck"; kidul-flow.md). SINGULAR — where you are.
   userHome   a Linux home directory (/home/public, /home/$HASH — public-seat.md).
 
-The kidulKey/People pill on the GPB is renamed Homes: it names the BEHAVIOR
+The kidulKey/People pill on the usersBar is renamed Homes: it names the BEHAVIOR
 (enter your home), not the hardware (the key). The key is the means; the home
 is the end.
 
 ## KidulFlow is the door; Mod4+T is the shortcut
 
-The PRIMARY entry is the pill: the GPB's kidulKey pill is renamed Homes, and
-the flow is KidulHome -> down (UserHome / publicPillsBar) -> right (to Homes)
+The PRIMARY entry is the pill: the usersBar's kidulKey pill is renamed Homes, and
+the flow is KidulHome -> down (UserHome / public usersBar) -> right (to Homes)
 -> down (enter). Arrow-only, remote-native — no launcher. On the pill, the
 slide shows its TITLE below the bar (the same title reveal as every slide);
 the Residents / KidulCrew content appears once you are IN the slide, not
@@ -126,7 +126,7 @@ runs the SAME path. The user gives TWO things; the system does the rest.
   name   the alias (the face — kid.md). Residents check against the local roster
          (the /home symlink needs a unique name); Crew need no unique name
          (hash-keyed). Text entry is the hard remote problem — a letter pill-bar
-         (a second GPB of letters) or keyboard-only; TBD.
+         (a second pill bar, of letters) or keyboard-only; TBD.
   size   ONE fill bar (spec below). The default is set by the DEVICE CLASS, not
          the user: TV = 50% ("it's a TV, sharing is caring"), PC = full.
 
@@ -161,7 +161,7 @@ keyboard).
 
   1. HOMES SLIDE (DONE)       compositor-owned slide (kind .homes) + Mod4+T
      shortcut. Empty shell: title "Homes" + a placeholder row.
-  1b. KIDULFLOW DOOR          rename the GPB kidulKey pill -> Homes; Down on the
+  1b. KIDULFLOW DOOR          rename the usersBar kidulKey pill -> Homes; Down on the
      pill enters the slide (homesSlideFocusOrSpawn). Primary entry.
   2. TWO DOORS (DONE)         two CFC pills (Residents / KidulCrew). Residents =
      a name list + "+ VIP" (focus on Owner); KidulCrew = a sign-in only (no
@@ -194,7 +194,7 @@ keyboard).
 
 ## Deploy note (operational, not law)
 
-Deploy ALL AT ONCE — the built-but-undeployed GPB + kidul-flow + re-centred
+Deploy ALL AT ONCE — the built-but-undeployed usersBar + kidul-flow + re-centred
 pill bar, together with this Homes slice — then Barticus boots and inspects.
 No incremental partial deploys.
 

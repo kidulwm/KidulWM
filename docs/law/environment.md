@@ -79,9 +79,9 @@ The bar is a row of doors. An app's code does not execute until the user moves D
 into its button — a plank does not spin up a whole GNOME until you walk in. A door
 not entered has no process. Same discipline as process-death-is-the-kill.
 
-## UserHome (the pill bar) is the apps list
+## UserHome (the usersBar) is the apps list
 
-The global pill bar IS the apps list — one per seat, always the very top. Public
+The usersBar IS the apps list — one per seat, always the very top. Public
 user: AI / Games / Library / Search / kidulKey (Library centred, the landing pill).
 The owner: every installed app is its own pill. kidulKey = the whole key
 experience, not just a sign-in — the door for signing in with your key, attaching
@@ -93,7 +93,7 @@ Three homes, one deck (the up+1 / up+2 / "top" vocabulary retires — kidul-flow
   KidulHome = the system home ("our home"), the boot root. "Kidul TV" CFC'd + the
               three widget faces + navDots, drawn on the Top layer. The compositor
               lands here at boot, NOT on UserHome (kidul-flow.md).
-  UserHome  = the user's home — the apps list (the pill bar), its OWN SLIDE in the
+  UserHome  = the user's home — the apps list (the usersBar), its OWN SLIDE in the
               deck, NOT a global overlay. SUMMONED (not autostarted) via ↓ from
               KidulHome or the TL button. "Up" from any app returns to it; "up"
               from UserHome returns to KidulHome (kidul-flow.md).
