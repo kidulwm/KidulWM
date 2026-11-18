@@ -34,12 +34,16 @@ sessions with session_search). Live state lives in the ledger, not here.
       (not a device group — host gid 990 = "kvm"), home /nonexistent, binary at
       /usr/local/bin. Rides with the owner-1002 pre-provisioning.
 
-  NEXT SESSION: VERIFY SLICE 3 END-TO-END on the live compositor (navigate to
-    Homes -> descend to the key prompt -> watch the freeze + house-lights dim
-    settle, prompt the one living element -> back out -> thaw + lights up), then
-    the PRIVACY GUARD (owner frames blank/blur, never a persisted snapshot).
-    The whole slice-3 mechanism is built (kushd c0b9289 verb + kidulwm cd4956d
-    trigger + kidulwm 9900812 dim); it needs eyes now. Then (4) key->home-hash
+  NEXT SESSION: VERIFY SLICE 3 (split): (a) DAILY HOST — only the DIM is live
+    (kushd NOT running there: no /tmp/kushd.sock, no kidulkey-gate). Path: Homes
+    -> right-arrow (KidulCrew) -> down (key prompt) = the 55% house-lights dim
+    settles (alpha 140 in dimEnsure, tunable); up = lights back; tap does NOTHING
+    (no gate). (b) FULL freeze+gate+verdict needs the kushd tower
+    (kboot->kushd->kidulwm), NOT the daily host — that is the boot-tower proof.
+    Then the PRIVACY GUARD (owner frames blank/blur, never a persisted snapshot).
+    Whole slice-3 mechanism built (kushd c0b9289 verb + kidulwm cd4956d trigger +
+    kidulwm 9900812 dim): the dim is eye-checkable NOW, the freeze is tower-only.
+    Then (4) key->home-hash
     resolution, (5) kmount mount-point correction, (6) the re-mint wiring. Full
     boot-tower assembly proof (kboot->kushd->kidulwm on ksd-boot) rides once the
     bill ships kidulwm as "conductor" — the kushd PID-1 tower, not ksd-reset

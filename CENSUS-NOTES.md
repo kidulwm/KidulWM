@@ -3,8 +3,10 @@
 # BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3c ENTRY-SLIDE DIM BUILT (kidulwm 9900812, signed B&B, pushed).
 #   Fullscreen translucent-black house-lights overlay (curtainEnsure recipe), 280ms smoothstep fade in on freeze /
 #   out on thaw, destroyed at rest. Z pinned every frame while frozen: deck < overlay_tree < dim < homes prompt.
-#   Builds + no-regression smoke test (bootcheck OK). Visual fade + full end-to-end (prompt -> freeze -> dim) needs
-#   Barticus's eyes on the live compositor. REMAINING slice 3: privacy guard (owner frames blank/blur, not snapshot).
+#   Builds + no-regression smoke test (bootcheck OK). VERIFY split: (a) DAILY HOST — only the DIM fires (kushd NOT
+#   running there; no /tmp/kushd.sock, no kidulkey-gate): Homes -> right (KidulCrew) -> down = key prompt, watch the
+#   55% house-lights settle (alpha 140 in dimEnsure, tunable), up = lights back, tap does NOTHING. (b) FULL freeze +
+#   gate + verdict needs the kushd tower (rig/VM, not the daily host). REMAINING slice 3: privacy guard (blank/blur).
 # BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3b FREEZE TRIGGER WIRED (kidulwm cd4956d, signed B&B, pushed).
 #   Homes key prompt .prompt entry fires "freeze" to kushd (transition-gated fire-and-forget, same KUSH_SOCK path
 #   as homes-gate); exit/close fires "thaw". Proven by construction (rides the proven homesGateCue .prompt branch +
