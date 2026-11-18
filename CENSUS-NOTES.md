@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-18, GSI) — GPB RETIRED → usersBar (code) / THE PILL (design). DEPLOYED to host.
+#   "gpb" (globalPillsBar) was a bad CODE name — the bar is per-user, never global; many bars now (browser hybrid,
+#   media player top, kfiles top, partition) each named by OWNER. REVERSAL of kidul-flow.md "gpb NOT retired"
+#   (law a2e1a99): UserHome = the slide; usersBar = the bar it draws (src/ui/users_bar.zig). "Global pill bar"
+#   survives ONLY as a design phrase = THE PILL (styles/pill-spec.md). Code cut (e4754da): SlideKind .gpb →
+#   .user_home; GpbBar→UsersBar, GpbApp→UsersBarApp, GpbSlide→UserHomeSlide; gpb.zig→users_bar.zig; gpbSummon/
+#   gpbSlide*→userHome*; dead gpb_booted latch removed. Zero gpb in src. Build+test green. ReleaseSafe deployed
+#   to host /usr/local/bin/kidulwm (.bak = prior 4c6c025); relog = Barticus's call. KSD rootfs STILL stale (deploy
+#   ahead). Prior turn: Kidul Flow ↓ summon deployed to host — ↓ on landing summons UserHome.
+#
 # BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3c ENTRY-SLIDE DIM BUILT (kidulwm 9900812, signed B&B, pushed).
 #   Fullscreen translucent-black house-lights overlay (curtainEnsure recipe), 280ms smoothstep fade in on freeze /
 #   out on thaw, destroyed at rest. Z pinned every frame while frozen: deck < overlay_tree < dim < homes prompt.
