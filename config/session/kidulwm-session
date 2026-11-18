@@ -11,6 +11,13 @@
 export XDG_RUNTIME_DIR
 export KIDULWM_WAYLAND_DISPLAY=wayland-1
 
+# Input-trust bench override (docs/law/input-trust.md): the DAILY HOST runs
+# stock wlroots (no wlr_libinput_get_device_trust symbol) and no kushd gate,
+# so the per-device tier getter fail-closes to UNTRUSTED and every harmful
+# bind (spawn/close/reload/wm_reset) is silently blocked. The real KSD boot
+# never sets this — it relies on the patched libwlroots + kushd verdict.
+export KIDULWM_INPUT_GATE=off
+
 # stderr/stdout land in a persistent log — /tmp is tmpfs and dies with the
 # reboot, which is exactly when we need the post-mortem (5b64ba9 lesson).
 LOGDIR="$HOME/.local/state/kidulwm"
