@@ -143,19 +143,38 @@ is its FOUNDATION.
      - GATE: proof -> mount lands at /home/<home-hash>, never /home/<key-id>. (proven)
 
   6. THE RE-MINT WIRING (the flip — this IS the re-seat).
-     - On TRUSTED proof: kushd re-mints the USER identity public(1001) -> the
-       proved uid (mintSession with the proved uid, NOT seatUid()); the FROZEN
-       public data tentacles are REPLACED by owner-uid processes in the SAME
-       slot (surface-in-place, process-re-seats — a running process cannot
-       change uid, so the process swaps, the surface does not). The face never
-       re-mints; audio keeps playing.
-     - SELF-DISMANTLING TEARDOWN (same cue): the frozen public tentacles are
-       REPLACED (not unfrozen-and-kept); kclose + kclean + kushd reap the
-       transition state (gate verdict, keyfile, LUKS mapping) ASAP — nothing
-       lingers that could later control the deck the way the media player did.
+     6a. KEY-ID -> UID RESOLUTION. DONE + PROVEN (2026-11-18). The kalloc entry
+         now carries uid=<n> alongside home=<home-hash> (owner uid 1002). kalloc
+         resolve emits "partition home=<hash> uid=<n>"; kushd parses BOTH
+         fail-closed (a partition with no uid -> no mount). One map bump, both
+         fields — the resolution layer is COMPLETE.
+     6b. RE-SEAT AT THE PROVED UID. BUILD ORDER (spec-first — the HOW):
+         1. seatAs(act, uid) — a seat() variant that mints at a SPECIFIC uid
+            (mintSession(uid,false) + applyClass) instead of seatUid(). Reuses
+            the existing mint; only the uid argument changes.
+         2. RE-MINT TRIGGER: on mount success (seqChildExited step 2, the
+            "mounted" branch), iterate children and, for every "user"/"restricted"
+            act (the SAME set signalTentacles freezes), SIGKILL the old 1001
+            child + seatAs(act, seq_uid). SIGKILL, not SIGTERM — the tentacles
+            are SIGSTOP'd, so only SIGKILL is reliable. The re-seat IS the
+            resume: the new owner-uid processes are born running; there is no
+            thaw of the old public processes (they are gone).
+         3. WHAT DOES NOT RE-SEAT: the face (conductor) and the organs
+            (system/service: ksound/kplayd) — the face pid/uid never changes;
+            audio keeps playing.
+         4. CONDUCTOR RECONNECT (verify first): kidulwm must survive the client
+            swap (kill + reconnect) without tearing the surface — it holds the
+            last frame; the re-seated clients re-surface. OPEN: confirm kidulwm's
+            client-lifecycle handles a killed-then-replaced client (probe; may
+            need a small kidulwm change).
+         5. SELF-DISMANTLING: on mount success the LUKS mapping + mount STAY
+            (the owner's data is now live); the transition state is reaped —
+            gate verdict drained, keyfile scrubbed (kclean), seq buffers cleared.
+            kclose stays the FAILURE rollback only (forkSeqRollback).
      - GATE: sign-in -> owner session in the same slot; the last frame never
        left the screen; the face pid + uid never changed; no lingering
-       transition state (kclose/kclean/kushd all fired).
+       transition state (gate verdict/keyfile/seq all reaped; kclose only fired
+       on failure).
 
   Order note (SPEC BEFORE SURFACE): 1-2 are the infrastructure the surface
   stands on, 3 is the visible freeze, 4-6 are the resolution/mount/mint the
