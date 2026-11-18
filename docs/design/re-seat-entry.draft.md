@@ -95,10 +95,17 @@ is its FOUNDATION.
        ksound/kplayd) are spared. Proven on-host: freeze stopped a user act to
        T state while conductor + system acts stayed S; thaw resumed it. This is
        the mechanism; the surface below wires to it.
-     - The Homes sign-in prompt gains FREEZE-ON-FOCUS: entering "tap your
-       kidulKey" fires the freeze cue (kushd SIGSTOPs the tentacle pids it
-       seats; face + audio survive). Narrow and deliberate — not the
-       park/resume four-step (session-and-deck-spec.md), just the freeze.
+     - FREEZE-ON-FOCUS (kidulwm) WIRED (cd4956d): the Homes key prompt's .prompt
+       entry fires "freeze" to kushd (transition-gated, fire-and-forget, same
+       KUSH_SOCK path as homes-gate); exit/close fires "thaw". Proven by
+       construction (the .prompt branch already drives the proven homes-gate
+       cue) + a no-regression headless smoke test; the full trigger needs a live
+       keyboard. Narrow and deliberate — not the park/resume four-step
+       (session-and-deck-spec.md), just the freeze.
+     - THE DIM (house lights, NEXT): a full-output translucent black overlay
+       (curtainEnsure recipe) fading in on freeze, out on thaw, with the Homes
+       prompt raised above it — the one living element. Z-order is the delicate
+       part (dim above deck+peeks, prompt above dim).
      - FROZEN-FRAME BACKDROP: the face composites the frozen tentacles' last
        frame (dimmed) as the slide background; LOGO + "tap your kidulKey"
        overlaid live (the face is the conductor and never freezes).

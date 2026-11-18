@@ -1,5 +1,10 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3b FREEZE TRIGGER WIRED (kidulwm cd4956d, signed B&B, pushed).
+#   Homes key prompt .prompt entry fires "freeze" to kushd (transition-gated fire-and-forget, same KUSH_SOCK path
+#   as homes-gate); exit/close fires "thaw". Proven by construction (rides the proven homesGateCue .prompt branch +
+#   the slice 3a kushd verb) + a no-regression headless smoke test (bootcheck OK). Full trigger needs a live
+#   keyboard. NEXT: the DIM (house lights — full-output translucent black overlay + prompt raised above it).
 # BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3a FREEZE/THAW VERB COMPLETE + PROVEN (kushd c0b9289, signed B&B, pushed).
 #   cue "freeze" -> SIGSTOP, "thaw" -> SIGCONT, targeting ONLY the data tentacles (class user/restricted). Face
 #   (conductor) + organs (system/service: ksound/kplayd) survive. Proven on-host: freeze stopped a user act to T
