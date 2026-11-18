@@ -70,12 +70,21 @@ is its FOUNDATION.
        shared-dir absolute socket, zero visible change.
 
   2. THE CONDUCTOR ACCOUNT (the boot refactor — "face never dies" foundation).
-     - A dedicated conductor uid: groups {render video input seat tty}, NOT
-       audio, NOT any user group; 0700 homes block it (data-blind).
-     - bill.kush: kidulwm's act moves OFF class "user" onto a conductor grade;
-       kidulwm seats as the conductor uid, NOT public.
-     - public (1001) returns to a plain TENTACLE identity — browser/ktty/kfiles
-       seat as 1001; the face does not.
+     DONE + PROVEN (kushd 7ac1efe). kushd gains a "conductor" class: isKnownClass
+     + applyClass (dropToUid(conductorUid())) + mintSession(uid, conductor) that
+     skips "audio". conductorUid() = KUSH_CONDUCTOR_UID -> /etc/kushd/conductor
+     -> 990 (ruling B). kidulwm seats as conductor 990 with supplementary groups
+     {render video input seat tty} (NO audio, no user group); 0700 homes block it
+     (data-blind). public (1001) returns to a plain TENTACLE identity —
+     browser/ktty/kfiles seat as 1001; the face does not. Proven on-host: kidulwm
+     seated as uid 990, groups exactly {input render seat tty video}, socket 0770
+     conductor:seat, real compositor (uid 1000) untouched.
+     - PROVISIONING (rootfs build, alongside owner 1002): conductor uid 990 needs
+       its OWN primary group (gid 990), NOT a device group (host had gid 990 =
+       "kvm" — a collision the KSD rootfs must not repeat); home /nonexistent or
+       0700-empty (data-blind); binary at /usr/local/bin (world-traversable — a
+       user-home path is 0700 and the conductor cannot exec from it).
+     - bill.kush: kidulwm's act class "user" -> "conductor".
      - GATE: cold boot, face up as conductor uid; ktty + browser still work as
        public; face renders but cannot read /home/* (0700 + no user group).
 

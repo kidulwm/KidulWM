@@ -1,5 +1,12 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — SLICE 2 CONDUCTOR ACCOUNT COMPLETE + PROVEN (kushd 7ac1efe, signed B&B, pushed).
+#   conductor class in kushd: isKnownClass + applyClass dropToUid(conductorUid=990) + mintSession skips "audio".
+#   kidulwm seats as uid 990 with supplementary groups {render video input seat tty} (NO audio, no user group) — the
+#   data-blind FACE. public 1001 returns to a plain tentacle identity. Proven on-host: kidulwm seated as 990, groups
+#   exactly {input render seat tty video}, socket 0770 conductor:seat, real compositor (uid 1000) untouched. One
+#   test-setup gotcha: a user-home binary path is 0700 and the conductor cannot exec from it (real KSD = /usr/local/bin).
+#   NEXT: slice 3 = the entry slide (freeze-not-kill) — the visible surface.
 # BUILD (bobdotrix 2026-11-18, GSI) — SLICE 1 SOCKET CONVENTION COMPLETE + PROVEN (kushd 8680b58, signed B&B, pushed).
 #   TWO bugs caught + fixed by runtime proofs: (1) mkdir(0770) masked by umask -> 0750 (seat group couldn't bind its
 #   socket); (2) connect() needs WRITE on the socket FILE, not just a traversable dir — a 0770 dir alone yields a

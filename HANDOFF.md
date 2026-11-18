@@ -14,13 +14,12 @@ sessions with session_search). Live state lives in the ledger, not here.
 ## Current attack (2026-11-18)
 
   STEP 4 — RE-SEAT. MOUNT half DONE + LIVE-PROVEN (kushd b4ff2db; kcarve d20a9db).
-    IDENTITY half SPEC'D (re-seat-entry.draft.md 480b1c2) + RULINGS A-D LOCKED
-    (foundation-first / conductor 990 / Homes-upgraded / /run/kushd/wayland) +
-    self-dismantling steer (re-seat.md v3). SLICE 1 (socket convention) COMPLETE
-    + PROVEN (kushd 8680b58): /run/kushd/wayland (2770 root:seat SETGID) + seat
-    umask 0007 (socket 0770 :seat) + absolute WAYLAND_DISPLAY/KIDULWM_WAYLAND_
-    DISPLAY; no kidulwm change. Two bugs caught+fixed by runtime proofs. Design
-    FROZEN
+    IDENTITY half SPEC'D (re-seat-entry.draft.md) + RULINGS A-D LOCKED +
+    self-dismantling steer (re-seat.md v3). SLICES 1+2 BUILT + PROVEN:
+    slice 1 socket convention (kushd 8680b58: /run/kushd/wayland 2770 root:seat
+    SETGID + seat umask 0007, socket 0770 :seat + absolute WAYLAND_DISPLAY) +
+    slice 2 conductor account (kushd 7ac1efe: kidulwm seats as data-blind uid
+    990, groups {render video input seat tty} NO audio). Design FROZEN
     (re-seat.md 67202f5 + v3): FACE = CONDUCTOR uid (data-blind, never re-seats);
     sign-in re-mints only the USER identity (public 1001 -> owner 1002) via kushd
     mintSession. Owner PRE-PROVISIONED (uid 1002 = bee62e237cdd37a455eeafca).
@@ -28,15 +27,17 @@ sessions with session_search). Live state lives in the ledger, not here.
   CARRIED THREADS (do not lose):
     - KSD NOT deployed: repos ahead of /mnt/ksd — deploy is still ahead.
     - kboot + kslide-template CLEAN (committed).
+    - Conductor PROVISIONING (rootfs build): uid 990 needs its OWN primary group
+      (not a device group — host gid 990 = "kvm"), home /nonexistent, binary at
+      /usr/local/bin. Rides with the owner-1002 pre-provisioning.
 
-  NEXT SESSION: full boot-tower proof of slice 1 (face binds wayland-1 in the
-    shared dir + ktty/media connect across the uid boundary) on ksd-boot (the
-    kushd PID-1 tower VM — ksd-reset is systemd, no kushd), then SLICE 2 = the
-    conductor account (bill.kush kidulwm act off class 'user' -> own data-blind
-    uid 990, groups {render video input seat tty}). Build order continues:
-    (3) entry slide freeze, (4) key->home-hash resolution, (5) kmount
-    mount-point correction, (6) the re-mint wiring. Handoff = CENSUS-NOTES top +
-    re-seat.md (law) + re-seat-entry.draft.md (build order).
+  NEXT SESSION: SLICE 3 = the entry slide (freeze-not-kill — SIGSTOP data
+    tentacles + frozen-frame backdrop + privacy guard). Then (4) key->home-hash
+    resolution, (5) kmount mount-point correction, (6) the re-mint wiring. Full
+    boot-tower assembly proof (kboot->kushd->kidulwm on ksd-boot) rides once the
+    bill ships kidulwm as "conductor" — the kushd PID-1 tower, not ksd-reset
+    (systemd). Handoff = CENSUS-NOTES top + re-seat.md (law) +
+    re-seat-entry.draft.md (build order).
 
 ## Trip wires / commands / secrets
 
