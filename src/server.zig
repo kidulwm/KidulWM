@@ -403,6 +403,10 @@ pub const Server = struct {
     gate_buf: [256]u8 = undefined,
     gate_buf_len: usize = 0,
     gate_output: ?*Output = null,
+    /// Entry-slide freeze (re-seat slice 3): true while the Homes key prompt is
+    /// up and the data tentacles are SIGSTOPped by kushd. Transition-gated so
+    /// re-entering the prompt doesn't spam the cue socket.
+    tentacles_frozen: bool = false,
     /// Guards the wlroots scene graph against cross-thread mutation.
     /// (Phase 0 retires the IPC thread, so this is now uncontended on the
     /// main loop — kept as a no-op guard pending a dedicated removal card.)
@@ -2195,8 +2199,10 @@ pub const Server = struct {
         output.homes_slide.card_last_h = 0;
         output.homes_slide.card_last_gen = std.math.maxInt(u32);
         output.homes_slide.card_dirty = true;
-        // A slide closed mid-proof leaves an orphaned cue — cancel it.
+        // A slide closed mid-proof leaves an orphaned cue — cancel it, and
+        // release any entry-slide freeze (a prompt left by closing, not by ↑).
         self.homesGateCancel();
+        self.setTentaclesFrozen(false);
         std.log.info("KidulWM: Homes slide closed", .{});
     }
 
@@ -2269,8 +2275,12 @@ pub const Server = struct {
             if (out.homes_slide.bar.verdict == .waiting and self.gate_fd < 0) {
                 self.homesGateCue(out);
             }
+            // Entry-slide freeze: entering "tap your kidulKey" freezes the data
+            // tentacles (house lights down). Face + organs survive.
+            self.setTentaclesFrozen(true);
         } else {
             self.homesGateCancel();
+            self.setTentaclesFrozen(false);
             out.homes_slide.bar.resetVerdict();
         }
     }
@@ -2325,6 +2335,39 @@ pub const Server = struct {
         }
         self.gate_buf_len = 0;
         self.gate_output = null;
+    }
+
+    /// Entry-slide freeze (re-seat slice 3): transition-gated sender. Only the
+    /// actual edge (prompt entered / left) hits the wire; kushd's SIGSTOP/SIGCONT
+    /// are idempotent, so a duplicate would be harmless but noisy.
+    fn setTentaclesFrozen(self: *Server, on: bool) void {
+        if (self.tentacles_frozen == on) return;
+        self.tentacles_frozen = on;
+        self.sendFreezeCue(on);
+    }
+
+    /// Fire-and-forget "freeze"/"thaw" to kushd's cue socket. No verdict readback
+    /// (unlike the gate) — the freeze just needs to land. Fail-safe: kushd down
+    /// means nothing to freeze (the tentacles aren't seated yet).
+    fn sendFreezeCue(_: *Server, on: bool) void {
+        const path: []const u8 = blk: {
+            if (std.c.getenv("KUSH_SOCK")) |s| break :blk std.mem.span(s);
+            break :blk "/tmp/kushd.sock";
+        };
+        const fd: linux.fd_t = @intCast(linux.socket(linux.AF.UNIX, linux.SOCK.STREAM | linux.SOCK.CLOEXEC, 0));
+        if (fd < 0) return;
+        defer _ = linux.close(fd);
+        var addr: linux.sockaddr.un = .{ .family = linux.AF.UNIX, .path = @splat(0) };
+        if (path.len >= addr.path.len) return;
+        @memcpy(addr.path[0..path.len], path);
+        if (linux.connect(fd, @ptrCast(&addr), @sizeOf(linux.sockaddr.un)) != 0) return;
+        const cue: []const u8 = if (on) "freeze\n" else "thaw\n";
+        _ = linux.write(fd, cue.ptr, cue.len);
+        if (on) {
+            std.log.info("KidulWM: data tentacles frozen", .{});
+        } else {
+            std.log.info("KidulWM: data tentacles thawed", .{});
+        }
     }
 
     fn handleGateReadable(_fd: c_int, _mask: wl.EventMask, server: *Server) c_int {
