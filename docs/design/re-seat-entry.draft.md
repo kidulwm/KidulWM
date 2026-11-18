@@ -148,29 +148,24 @@ is its FOUNDATION.
          resolve emits "partition home=<hash> uid=<n>"; kushd parses BOTH
          fail-closed (a partition with no uid -> no mount). One map bump, both
          fields — the resolution layer is COMPLETE.
-     6b. RE-SEAT AT THE PROVED UID. BUILD ORDER (spec-first — the HOW):
-         1. seatAs(act, uid) — a seat() variant that mints at a SPECIFIC uid
-            (mintSession(uid,false) + applyClass) instead of seatUid(). Reuses
-            the existing mint; only the uid argument changes.
-         2. RE-MINT TRIGGER: on mount success (seqChildExited step 2, the
-            "mounted" branch), iterate children and, for every "user"/"restricted"
-            act (the SAME set signalTentacles freezes), SIGKILL the old 1001
-            child + seatAs(act, seq_uid). SIGKILL, not SIGTERM — the tentacles
-            are SIGSTOP'd, so only SIGKILL is reliable. The re-seat IS the
-            resume: the new owner-uid processes are born running; there is no
-            thaw of the old public processes (they are gone).
-         3. WHAT DOES NOT RE-SEAT: the face (conductor) and the organs
-            (system/service: ksound/kplayd) — the face pid/uid never changes;
-            audio keeps playing.
-         4. CONDUCTOR RECONNECT (verify first): kidulwm must survive the client
-            swap (kill + reconnect) without tearing the surface — it holds the
-            last frame; the re-seated clients re-surface. OPEN: confirm kidulwm's
-            client-lifecycle handles a killed-then-replaced client (probe; may
-            need a small kidulwm change).
-         5. SELF-DISMANTLING: on mount success the LUKS mapping + mount STAY
-            (the owner's data is now live); the transition state is reaped —
-            gate verdict drained, keyfile scrubbed (kclean), seq buffers cleared.
-            kclose stays the FAILURE rollback only (forkSeqRollback).
+     6b. RE-SEAT AT THE PROVED UID. DONE + PROVEN (2026-11-18). The mechanic is
+         CLEANER than the seatAs draft: a session_uid state flips 0 (public) ->
+         the proved uid on mount success; userUid() = session_uid if set else
+         seatUid(), and BOTH the mint (seat) and the drop (dropToUser) consult
+         userUid() — one flip covers the immediate re-seat AND every later
+         respawn. remintTentacles() then, for each seated user/restricted child
+         (the same set signalTentacles freezes), seats the replacement FIRST
+         (fail-safe) then SIGKILLs the old public pid (SIGSTOP'd, so SIGTERM
+         won't land) and updates the slot in place. The face (conductor) and
+         organs (system/service) are untouched. Idempotent: a second proof is
+         skipped ("already re-seated") so a re-sign-in never kills the live
+         owner session. PROVEN: rig seats a user act at public 1001 + a system
+         act at root, fires proof->mount, and verifies the user act re-seats at
+         uid 1002 (/proc/<pid>/status Uid=1002, old pid killed), the system act
+         is unchanged, and a second proof no-ops.
+         REMAINING (not this slice): the conductor-reconnect probe (kidulwm
+         client-lifecycle across the kill+reconnect swap — may need a small
+         kidulwm change) and the privacy guard (blank/blur on lock/re-auth).
      - GATE: sign-in -> owner session in the same slot; the last frame never
        left the screen; the face pid + uid never changed; no lingering
        transition state (gate verdict/keyfile/seq all reaped; kclose only fired
