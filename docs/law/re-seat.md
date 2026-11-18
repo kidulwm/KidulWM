@@ -180,10 +180,11 @@ sacrificed — the tap is the WYSIWYS proof (kidulkey.md).
 ## Open build items (not law — the next slices)
 
   1. the SOCKET CONVENTION (above) — implement the shared dir + seat group +
-     absolute paths across the Wayland socket and the session sockets.
+     absolute paths across the Wayland socket and the session sockets. DONE
+     (slice 1).
   2. the ENTRY SLIDE — the deck slide for sign-in + the freeze (SIGSTOP) on
-     focus + the frozen-frame backdrop + prompt overlay + the privacy guard
-     (blank/blur on lock/re-auth).
+     focus + the frozen-frame backdrop + prompt overlay. DONE (slices 3a/3b/3c).
+     The privacy guard (blank/blur on lock/re-auth) remains.
   3. key-id -> uid + home-hash resolution DONE + PROVEN (kalloc entry carries
      home=<home-hash> + uid=<n>; kalloc resolve emits both; kushd parses both
      fail-closed). The resolution layer is COMPLETE.
@@ -191,7 +192,8 @@ sacrificed — the tap is the WYSIWYS proof (kidulkey.md).
      the resolved home-hash (kmount unchanged — it mounts the mountpoint it is
      handed).
   5. the conductor account + socket model: the boot refactor — the face gets a
-     conductor uid; bill.kush's kidulwm act moves off class "user".
+     conductor uid; bill.kush's kidulwm act moves off class "user". DONE
+     (slice 2).
   6. the RE-MINT WIRING DONE + PROVEN (step 6b): session_uid flips 0 -> proved
      uid on mount success; userUid() = session_uid else seatUid(); both seat()
      and dropToUser() consult it, so one flip covers the immediate re-seat AND
