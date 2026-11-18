@@ -126,18 +126,21 @@ is its FOUNDATION.
      - GATE: enter sign-in -> tentacles frozen (ps shows T state), last frame
        stays on screen, prompt overlaid; tap -> proof -> resume.
 
-  4. KEY-ID -> HOME-HASH RESOLUTION.
-     - roster (kpax) maps key -> role; kalloc maps key -> partition. The mount
-       target (pw_dir) needs key -> uid (or kalloc extended to carry home-hash).
-       Owner = fixed uid 1002 (PRE-PROVISIONED: home-hash bee62e237cdd37a455eeafca).
-     - GATE: proof -> kushd resolves the proved key-id to uid + home-hash.
+  4. KEY-ID -> HOME-HASH RESOLUTION. DONE + PROVEN (kidulkey allocation map +
+     kushd seq-resolve, 2026-11-18). The allocation map (kalloc) entry now
+     carries home=<home-hash> — the login name AND /home/<home-hash> leaf
+     (owner = bee62e237cdd37a455eeafca). kalloc resolve emits
+     "<partition> home=<hash>"; kushd parses it fail-closed (a partition with
+     NO home-hash -> no mount). key-id -> uid rides step 6 (re-mint) so the
+     map format bumps ONCE.
+     - GATE: proof -> kushd resolves the proved key-id to home-hash (proven).
 
-  5. MOUNT-POINT CORRECTION.
-     - kmount mounts /home/<key-id> today (built b4ff2db); it must mount
-       /home/<home-hash> (pw_dir). A correction to already-built code, not a
-       new design. The map/sig/pub it already receives carries the key-id; the
-       resolution (step 4) supplies the home-hash.
-     - GATE: proof -> mount lands at /home/<home-hash>, never /home/<key-id>.
+  5. MOUNT-POINT CORRECTION. DONE + PROVEN. kmount is UNCHANGED — it mounts at
+     the mountpoint kushd hands it. kushd now builds that mountpoint from the
+     resolved home-hash (/home/<home-hash>), never /home/<key-id>. Proven with
+     the real LUKS2 chain: kmount lands at /home/bee62e237cdd37a455eeafca; the
+     LUKS token (mapper name) stays the clean kalloc token (no home-hash leak).
+     - GATE: proof -> mount lands at /home/<home-hash>, never /home/<key-id>. (proven)
 
   6. THE RE-MINT WIRING (the flip — this IS the re-seat).
      - On TRUSTED proof: kushd re-mints the USER identity public(1001) -> the
