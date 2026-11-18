@@ -1,5 +1,18 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — STEP 4 (KEY->HOME-HASH) + STEP 5 (MOUNT-POINT CORRECTION) BUILT + PROVEN.
+#   The allocation map (kalloc) entry now carries home=<home-hash> — the login name AND /home/<home-hash> leaf
+#   (owner = bee62e237cdd37a455eeafca). kalloc resolve emits "<partition> home=<hash>"; kushd parses it fail-closed
+#   (a partition with NO home-hash -> no mount). kmount is UNCHANGED — kushd builds the mountpoint from the resolved
+#   home-hash (/home/<home-hash>), never /home/<key-id>. PROVEN twice: (a) fake-verb rig — 4 scenarios (happy chain
+#   kopen->0 + kmount lands at home/<home-hash>; kopen-fail no-kmount; crew "none" no-op; partition-without-home
+#   fail-closed) — the rig caught + fixed a real bug (forkSeqOpen passed the full resolve line "token home=<hash>\n"
+#   as the kopen mapper name; now null-terminated in-place); (b) real-verb rig — signed kalloc (home=) + real kopen
+#   OPENED a real LUKS2 as its CLEAN token + kmount fired at /home/bee62e... + mount(2) EINVAL (no fs, mkfs = carve)
+#   + kclose rollback (mapper gone). NEXT: step 6 (re-mint: public 1001 -> proved uid; key-id->uid rides the map's
+#   NEXT bump — one format bump, not two) + privacy guard. Surface polish (fade repurpose / entryBar / arrow-quit)
+#   still awaits Barticus lock.
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-18, GSI) — RE-SEAT SLICE 3 EYES-VERIFIED (Barticus): entry slide freeze/dim
 #   goes in + out smoothly, no jank, "walks the app" — mechanism PROVEN by eyes. SURFACE FEEDBACK captured as a
 #   design DRAFT (docs/design/surface-polish.draft.md, NOT law — awaits lock): (1) FADE-TO-50% REPURPOSED as the
