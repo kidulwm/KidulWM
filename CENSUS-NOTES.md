@@ -1,5 +1,39 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-18, GSI) — RE-SEAT SLICE 3 EYES-VERIFIED (Barticus): entry slide freeze/dim
+#   goes in + out smoothly, no jank, "walks the app" — mechanism PROVEN by eyes. SURFACE FEEDBACK captured as a
+#   design DRAFT (docs/design/surface-polish.draft.md, NOT law — awaits lock): (1) FADE-TO-50% REPURPOSED as the
+#   general pillsBar-focus CFC treatment (kidulHome->usersHome + any focused bar dims its background) — "too good"
+#   to spend only on the key prompt; (2) key-prompt waiting = a FILLING entryBar + "insert key" text + bobs balls
+#   doing a waiting dance (line or circle), replacing the fade as the wait indicator; (3) ARROW-UP = QUIT app
+#   (kidulFlow: appTop+up1=usersHome, appTop+up2=kidulHome) — unifies the old top+2 into the arrows, ALL apps;
+#   (4) SIZING: pill text/pills too small -> ~91% width; names + outside-pill text miniscule (later); (5) NAMING
+#   (later): "Sign In"/"Crew"/"KidulCrew", +VIP->"add user", "Homes" button looks wrong; (6) BUG: key picture has a
+#   weird line top-right. NEXT BUILD (unchanged per 'next'): privacy guard -> key->home-hash resolution (step 4) ->
+#   kmount mount-point correction (step 5) -> re-mint (step 6).
+#
+# SESSION WRAP-UP (bobdotrix 2026-11-18, GSI) — KSD DEPLOYED (rename build). KSD-root = nvme0n1p2 (NOT nvme1 — the
+#   drives re-enumerated; labels KSD-ESP/KSD-root are the ground truth, old nvme0=host/nvme1=KSD note was stale).
+#   Deployed ReleaseSafe zig-out/bin/kidulwm (sha d9fc8d5d... = host-deployed, byte-identical) to
+#   /mnt/ksd/usr/local/bin/kidulwm (.bak-pre-rename-20261118 = prior Nov-15 gpb binary). KSD now carries the
+#   gpb->user_home rename (4 user_home strings, 0 gpb). KSD runs patched libwlroots (trust getter present) + kboot/kushd
+#   tower, so NO KIDULWM_INPUT_GATE=off there — the gate works as designed. Barticus verifies: reboot KSD, ↓ summons
+#   UserHome (the usersBar), app keys (Mod4+spawn) fire via the internal keyboard tier-0. Remounted ro, clean.
+#
+# SESSION WRAP-UP (bobdotrix 2026-11-18, GSI) — DAILY-HOST KEYBINDS FIXED: the input-trust tier gate was killing
+#   every spawn/close bind on the host. ROOT CAUSE: the host daily driver runs STOCK libwlroots
+#   (/usr/lib/libwlroots-0.20.so has ZERO wlr_libinput_get_device_trust symbols) and no kushd, so deviceHarmfulAllowed()
+#   fail-closes to UNTRUSTED → every harmful bind (spawn/close/reload/wm_reset) silently dropped ("blocked:tier").
+#   The gate reached the host binary TODAY with the re-seat deploy (12:00 = 4c6c025, 12:41 = e4754da); before that the
+#   host ran an Oct-24 binary with no gate — hence "keybinds just broke" reads like a fresh regression. NOT a keybind
+#   parse bug; NOT the gpb→user_home rename (that's mechanical + green). FIX: config/session/kidulwm-session now
+#   exports KIDULWM_INPUT_GATE=off (bench override, documented in input-trust.md) + deployed to /usr/local/bin/kidulwm-session
+#   (.bak-pre-gate-fix). Committed 4615784, signed B&B. niri is a SEPARATE compositor (zero kidulwm code) — "works in
+#   niri, broken in kidulwm+KSD" is exactly what a kidulwm-source bug looks like, not odd. KSD is unaffected by THIS fix
+#   (KSD runs patched libwlroots + kushd, gate works there); KSD's own "nothing opened / no ↓ UserHome" was the STALE
+#   rootfs (pre-rename gpb code) — deploy KSD ahead. Host needs a relog to pick up the override (session script reads env
+#   at SDDM launch).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-18, GSI) — GPB RETIRED → usersBar (code) / THE PILL (design). DEPLOYED to host.
 #   "gpb" (globalPillsBar) was a bad CODE name — the bar is per-user, never global; many bars now (browser hybrid,
 #   media player top, kfiles top, partition) each named by OWNER. REVERSAL of kidul-flow.md "gpb NOT retired"
