@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — STEP 6b (RE-MINT / RE-SEAT) BUILT + PROVEN — THE FLIP.
+#   session_uid flips 0 (public) -> proved uid on mount success; userUid() = session_uid else seatUid(); both
+#   seat() and dropToUser() consult it, so ONE flip covers the immediate re-seat AND every later respawn.
+#   remintTentacles(): seat replacement FIRST (fail-safe), then SIGKILL the old public pid (SIGSTOP'd), same slot;
+#   face (conductor) + organs (system/service) untouched; idempotent (second proof skipped). PROVEN: rig seats a
+#   user act at public 1001 + system act at root, fires proof->mount, verifies the user act re-seats at uid 1002
+#   (/proc/<pid>/status Uid=1002, old killed), system unchanged, second proof no-ops. RE-SEAT NOW END-TO-END:
+#   freeze -> proof -> resolve -> open -> mount -> re-mint. REMAINING: conductor-reconnect probe (kidulwm
+#   client-lifecycle across the swap) + privacy guard (blank/blur on lock/re-auth); then claim/carve + Homes UI.
+#
 # BUILD (bobdotrix 2026-11-18, GSI) — STEP 6a (KEY->UID RESOLUTION) BUILT + PROVEN; 6b (RE-SEAT) SPEC-FIRST.
 #   kalloc now carries uid=<n> alongside home=<home-hash> (owner uid 1002); kalloc resolve emits
 #   "partition home=<hash> uid=<n>"; kushd parses BOTH fail-closed (no uid -> no mount). Resolution layer COMPLETE.
