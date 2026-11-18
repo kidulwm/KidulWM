@@ -184,12 +184,12 @@ sacrificed — the tap is the WYSIWYS proof (kidulkey.md).
   2. the ENTRY SLIDE — the deck slide for sign-in + the freeze (SIGSTOP) on
      focus + the frozen-frame backdrop + prompt overlay + the privacy guard
      (blank/blur on lock/re-auth).
-  3. key-id -> uid/home-hash resolution does not exist yet. Roster maps key->
-     role; kalloc maps key->partition. The mount target (pw_dir) needs key->
-     uid (or kalloc extended to carry home-hash). Owner = fixed uid 1002.
-  4. MOUNT-POINT CORRECTION: kmount today mounts /home/<key-id> (built
-     b4ff2db); it must mount /home/<home-hash> (pw_dir). A correction to
-     already-built code, not a new design.
+  3. key-id -> home-hash resolution DONE + PROVEN (kalloc entry carries
+     home=<home-hash>; kalloc resolve emits it; kushd parses it fail-closed).
+     key-id -> uid remains for step 6 (re-mint) — one map bump, not two.
+  4. MOUNT-POINT CORRECTION DONE + PROVEN: kushd builds /home/<home-hash> from
+     the resolved home-hash (kmount unchanged — it mounts the mountpoint it is
+     handed).
   5. the conductor account + socket model: the boot refactor — the face gets a
      conductor uid; bill.kush's kidulwm act moves off class "user".
 
