@@ -184,9 +184,9 @@ sacrificed — the tap is the WYSIWYS proof (kidulkey.md).
   2. the ENTRY SLIDE — the deck slide for sign-in + the freeze (SIGSTOP) on
      focus + the frozen-frame backdrop + prompt overlay + the privacy guard
      (blank/blur on lock/re-auth).
-  3. key-id -> home-hash resolution DONE + PROVEN (kalloc entry carries
-     home=<home-hash>; kalloc resolve emits it; kushd parses it fail-closed).
-     key-id -> uid remains for step 6 (re-mint) — one map bump, not two.
+  3. key-id -> uid + home-hash resolution DONE + PROVEN (kalloc entry carries
+     home=<home-hash> + uid=<n>; kalloc resolve emits both; kushd parses both
+     fail-closed). The resolution layer is COMPLETE.
   4. MOUNT-POINT CORRECTION DONE + PROVEN: kushd builds /home/<home-hash> from
      the resolved home-hash (kmount unchanged — it mounts the mountpoint it is
      handed).
