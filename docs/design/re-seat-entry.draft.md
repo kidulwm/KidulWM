@@ -89,9 +89,15 @@ is its FOUNDATION.
        public; face renders but cannot read /home/* (0700 + no user group).
 
   3. THE ENTRY SLIDE (the visible surface — freeze, not kill).
+     - FREEZE/THAW VERB (kushd) DONE + PROVEN (c0b9289): cue "freeze" ->
+       SIGSTOP, "thaw" -> SIGCONT, targeting ONLY the data tentacles (class
+       "user"/"restricted"). The face (conductor) + organs (system/service:
+       ksound/kplayd) are spared. Proven on-host: freeze stopped a user act to
+       T state while conductor + system acts stayed S; thaw resumed it. This is
+       the mechanism; the surface below wires to it.
      - The Homes sign-in prompt gains FREEZE-ON-FOCUS: entering "tap your
-       kidulKey" SIGSTOPs the data tentacles (kushd SIGSTOPs the tentacle pids
-       it seats; face + audio survive). Narrow and deliberate — not the
+       kidulKey" fires the freeze cue (kushd SIGSTOPs the tentacle pids it
+       seats; face + audio survive). Narrow and deliberate — not the
        park/resume four-step (session-and-deck-spec.md), just the freeze.
      - FROZEN-FRAME BACKDROP: the face composites the frozen tentacles' last
        frame (dimmed) as the slide background; LOGO + "tap your kidulKey"

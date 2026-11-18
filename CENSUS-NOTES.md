@@ -1,5 +1,10 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-18, GSI) — SLICE 3a FREEZE/THAW VERB COMPLETE + PROVEN (kushd c0b9289, signed B&B, pushed).
+#   cue "freeze" -> SIGSTOP, "thaw" -> SIGCONT, targeting ONLY the data tentacles (class user/restricted). Face
+#   (conductor) + organs (system/service: ksound/kplayd) survive. Proven on-host: freeze stopped a user act to T
+#   while conductor + system stayed S; thaw resumed it. This is the mechanism; the surface (frozen-frame backdrop +
+#   Homes prompt freeze-on-focus + privacy guard) is next.
 # BUILD (bobdotrix 2026-11-18, GSI) — SLICE 2 CONDUCTOR ACCOUNT COMPLETE + PROVEN (kushd 7ac1efe, signed B&B, pushed).
 #   conductor class in kushd: isKnownClass + applyClass dropToUid(conductorUid=990) + mintSession skips "audio".
 #   kidulwm seats as uid 990 with supplementary groups {render video input seat tty} (NO audio, no user group) — the
