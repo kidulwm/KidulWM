@@ -157,20 +157,20 @@ const KeyboardDevice = struct {
         // keyGetOneSym with Ctrl held returns a control char (e.g. Ctrl+Q = 0x11), not the letter.
         // Map control chars back to their letter for keybind matching.
         var base_sym = sym;
-        const sym_val: u32 = @intFromEnum(sym);
+        const sym_val: u32 = @backingInt(sym);
         if (sym_val >= 0x01 and sym_val <= 0x1a) {
             // Ctrl+A..Z maps to 0x01..0x1a — convert back to letter keysym.
-            base_sym = @enumFromInt(@as(u32, @intCast('a')) + (sym_val - 0x01));
+            base_sym = @fromBackingInt(@intCast(@as(u32, @intCast('a')) + (sym_val - 0x01)));
         }
         const mod4_active = xkb.State.modNameIsActive(
             state,
             "Mod4",
-            @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
+            @as(xkb.State.Component, @fromBackingInt(@intCast(xkb.State.Component.mods_depressed))),
         ) > 0;
         const ctrl_active = xkb.State.modNameIsActive(
             state,
             "Control",
-            @as(xkb.State.Component, @enumFromInt(xkb.State.Component.mods_depressed)),
+            @as(xkb.State.Component, @fromBackingInt(@intCast(xkb.State.Component.mods_depressed))),
         ) > 0;
 
         // GRACE PERIOD (fadeOutOfExistence → fadeIntoExistence). While the
@@ -182,7 +182,7 @@ const KeyboardDevice = struct {
         // hear the result); a release never wakes.
         if (server.screens_off) {
             if (event.state == .pressed and !mod4_active and !ctrl_active and isBlindSafeKeysym(sym)) {
-                std.log.info("KidulWM: blind-first-press sym=0x{x} (screen stays off)", .{@intFromEnum(sym)});
+                std.log.info("KidulWM: blind-first-press sym=0x{x} (screen stays off)", .{@backingInt(sym)});
                 if (handleBlindSafeKeysym(server, sym)) return;
                 // fell through (no handler for that keysym) → wake below
             }
@@ -222,13 +222,13 @@ const KeyboardDevice = struct {
             const action = server.keybinds.match(mod4_active, ctrl_active, base_sym);
             if (action) |a| {
                 if (actionIsHarmful(a) and !deviceHarmfulAllowed(self.input_device)) {
-                    server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "blocked:tier");
+                    server.recordKeyEvent(@backingInt(base_sym), mod4_active, ctrl_active, "blocked:tier");
                     return;
                 }
-                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, @tagName(a));
+                server.recordKeyEvent(@backingInt(base_sym), mod4_active, ctrl_active, @tagName(a));
                 if (handleAction(server, a)) return;
             } else {
-                server.recordKeyEvent(@intFromEnum(base_sym), mod4_active, ctrl_active, "no_match");
+                server.recordKeyEvent(@backingInt(base_sym), mod4_active, ctrl_active, "no_match");
             }
         }
         // Overview slide owns Esc/Enter/arrows while open. Scan every
@@ -267,7 +267,7 @@ const KeyboardDevice = struct {
                     return;
                 },
                 else => {
-                    server.recordKeyEvent(@intFromEnum(sym), mod4_active, ctrl_active, "swallowed:overview");
+                    server.recordKeyEvent(@backingInt(sym), mod4_active, ctrl_active, "swallowed:overview");
                     return; // swallow all other keys while the grid is open
                 },
             }
@@ -280,24 +280,24 @@ const KeyboardDevice = struct {
             if (server.mediaSlideKey(sym)) return;
             // fall through — no swallow
         }
-        // GPB (apps list) owns arrows/enter while focused (environment.md).
-        if (server.currentDeckPub().findKind(.gpb) != null) {
-            if (server.gpbSlideKey(sym)) return;
+        // usersBar (apps list) owns arrows/enter while focused (environment.md).
+        if (server.currentDeckPub().findKind(.user_home) != null) {
+            if (server.userHomeKey(sym)) return;
             // fall through — no swallow
         }
         // Homes slide owns arrows/enter while focused (settings.md: Resident /
-        // Visitor seats). Mirrors the GPB route — no swallow.
+        // Visitor seats). Mirrors the usersBar route — no swallow.
         if (server.currentDeckPub().findKind(.homes) != null) {
             if (server.homesSlideKey(sym)) return;
             // fall through — no swallow
         }
-        // KidulHome (empty deck / empty slot) — ↓ summons UserHome (the GPB).
+        // KidulHome (empty deck / empty slot) — ↓ summons UserHome (the usersBar).
         // Kidul Flow: ↓ = deeper; the first deeper is into the apps list.
         {
             const home_deck = server.currentDeckPub();
             const at_home = home_deck.slides.items.len == 0 or home_deck.empty_slot != .none;
             if (at_home and sym == xkb.Keysym.Down) {
-                server.gpbSummon();
+                server.userHomeSummon();
                 return;
             }
         }
@@ -377,9 +377,7 @@ const KeyboardDevice = struct {
         // already guard inside focusNext()/focusPrev(); volume, screen-off, and
         // animation are NOT deck-mutating and stay put while the video plays.
         switch (action) {
-            .spawn, .close_focused, .overview_toggle, .signals_card_toggle,
-            .tray_toggle, .homes_toggle, .tray_activate, .focus_output_next,
-            .move_to_output_next, .park_toggle => {
+            .spawn, .close_focused, .overview_toggle, .signals_card_toggle, .tray_toggle, .homes_toggle, .tray_activate, .focus_output_next, .move_to_output_next, .park_toggle => {
                 if (server.video_fullscreen) server.videoFullscreenExit();
             },
             else => {},
@@ -467,7 +465,7 @@ const KeyboardDevice = struct {
                             server.mediaSlideClose();
                             return true;
                         },
-                        .app, .gpb => {},
+                        .app, .user_home => {},
                     }
                 }
                 if (server.focused_window) |win| {

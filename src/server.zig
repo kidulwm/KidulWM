@@ -61,7 +61,7 @@ const overview_slide_mod = @import("ui/overview_slide.zig");
 const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
 const homes_mod = @import("ui/homes.zig");
-const gpb_mod = @import("ui/gpb.zig");
+const users_bar_mod = @import("ui/users_bar.zig");
 const kplay_client_mod = @import("ipc/kplay_client.zig");
 const media_mod = @import("ui/media.zig");
 const peek_mod = @import("ui/peek.zig");
@@ -143,8 +143,8 @@ pub const Output = struct {
     home_slide: tray_slide_mod.TraySlide = .{},
     /// Media player slide content painter state (kind .media_player slide).
     media_slide: media_slide_mod.MediaSlide = .{},
-    /// Global pill bar (GPB) slide state — the apps list (environment.md).
-    gpb_slide: gpb_mod.GpbSlide = .{},
+    /// usersBar slide state — the apps list (environment.md).
+    user_home_slide: users_bar_mod.UserHomeSlide = .{},
     /// Homes slide content painter state (kind .homes slide) — settings.md.
     homes_slide: homes_mod.HomesSlide = .{},
     /// CARD 2b slice 2: the exported host toplevel (kplayd parents its video
@@ -180,7 +180,7 @@ pub const Output = struct {
             .overview = .{},
             .home_slide = .{},
             .media_slide = .{},
-            .gpb_slide = .{},
+            .user_home_slide = .{},
             .homes_slide = .{},
             .peek = peek_mod.Peek.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
@@ -315,10 +315,10 @@ pub const Output = struct {
         if (now_us -| self.server.ft_last_log_us >= 1_000_000) {
             self.server.ft_last_log_us = now_us;
             std.log.info("KidulWM: FRAMETRACE rendered={d} layout={d} peek={d} scale={d} reveal={d} notify={d} commit={d} ghostty={d} kplay={d} other={d}", .{
-                self.server.ft_rendered, self.server.ft_layout, self.server.ft_peek,
-                self.server.ft_scale, self.server.ft_reveal, self.server.ft_notify,
-                self.server.ft_commit,
-                self.server.ft_commit_ghostty, self.server.ft_commit_kplay, self.server.ft_commit_other,
+                self.server.ft_rendered,     self.server.ft_layout,         self.server.ft_peek,
+                self.server.ft_scale,        self.server.ft_reveal,         self.server.ft_notify,
+                self.server.ft_commit,       self.server.ft_commit_ghostty, self.server.ft_commit_kplay,
+                self.server.ft_commit_other,
             });
             var oit = self.server.outputs.iterator(.forward);
             while (oit.next()) |out| {
@@ -482,8 +482,6 @@ pub const Server = struct {
     /// A5 boot ladder latch: the media PLAYER slide is spawned once, on the
     /// first output to land.
     boot_player_spawned: bool = false,
-    /// Autostart the GPB (apps list) once the first layout runs.
-    gpb_booted: bool = false,
     /// Boot-target setting (boot-state.md LOCKED 2026-10-19): WHICH app the
     /// system seats as PRIMARY on cold boot. Read from boot.toml; `tv` maps
     /// to the in-process media player ladder below; the rest are post-#24.
@@ -2015,56 +2013,56 @@ pub const Server = struct {
         std.log.info("KidulWM: home slide closed", .{});
     }
 
-    /// Spawn the GPB (apps list) at index 0 — the boot home. Persistent (not
+    /// Spawn the UserHome slide (apps list) at index 0 — the boot home. Persistent (not
     /// ephemeral): "up ALWAYS = home" returns here. One per deck.
-    pub fn gpbSlideSpawn(self: *Server) void {
+    pub fn userHomeSpawn(self: *Server) void {
         const deck = self.spawnDeck();
-        if (deck.findKind(.gpb) != null) return;
+        if (deck.findKind(.user_home) != null) return;
         if (deck.overview_slide_open) {
             if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
             deck.overview_slide_open = false;
             deck.empty_slot = .none;
         }
         self.focusOutputForDeck(deck);
-        _ = deck.addCompositorSlide(.gpb, 0, false);
+        _ = deck.addCompositorSlide(.user_home, 0, false);
         if (self.outputForDeck(deck)) |output| {
-            self.gpbSlideOpen(output);
+            self.userHomeOpen(output);
         }
         self.clearFocus();
         self.requestLayout();
     }
 
-    pub fn gpbSummon(self: *Server) void {
+    pub fn userHomeSummon(self: *Server) void {
         const deck = self.currentDeck();
-        if (deck.findKind(.gpb)) |idx| {
-            // GPB already present (persistent) — just re-focus it. It is a
+        if (deck.findKind(.user_home)) |idx| {
+            // usersBar already present (persistent) — just re-focus it. It is a
             // compositor slide (no client window), so clearFocus is correct.
             deck.focusWindowByIndex(idx);
             self.clearFocus();
             self.requestLayout();
-            std.log.info("KidulWM: GPB summoned (KidulHome → UserHome)", .{});
+            std.log.info("KidulWM: UserHome summoned (KidulHome → UserHome)", .{});
         } else {
-            self.gpbSlideSpawn();
+            self.userHomeSpawn();
         }
     }
 
-    fn gpbSlideOpen(self: *Server, output: *Output) void {
-        if (output.gpb_slide.isOpen()) return;
+    fn userHomeOpen(self: *Server, output: *Output) void {
+        if (output.user_home_slide.isOpen()) return;
         const tree = self.scene.tree.createSceneTree() catch return;
-        output.gpb_slide.tree = tree;
+        output.user_home_slide.tree = tree;
         tree.node.raiseToTop();
         self.overlay_tree.node.raiseToTop();
-        self.gpbSlideRefresh(output);
-        std.log.info("KidulWM: GPB slide open on output", .{});
+        self.userHomeRefresh(output);
+        std.log.info("KidulWM: UserHome slide open on output", .{});
     }
 
-    /// Render the GPB bar into the slide's card buffer at the slide's stock
+    /// Render the usersBar into the slide's card buffer at the slide's stock
     /// deck rect (full output). Re-render guarded by geometry + state_generation.
-    pub fn gpbSlideRefresh(self: *Server, output: *Output) void {
-        const tree = output.gpb_slide.tree orelse return;
+    pub fn userHomeRefresh(self: *Server, output: *Output) void {
+        const tree = output.user_home_slide.tree orelse return;
         const deck = &output.deck;
-        const idx = deck.findKind(.gpb) orelse {
-            self.gpbSlideCloseOn(output);
+        const idx = deck.findKind(.user_home) orelse {
+            self.userHomeCloseOn(output);
             return;
         };
         const target = deck.targetForSlide(idx);
@@ -2076,46 +2074,46 @@ pub const Server = struct {
         const pos_x: i32 = target.x + box.x;
         const pos_y: i32 = target.y + box.y;
         if (buf_w <= 0 or buf_h <= 0) return;
-        const geom_same = (buf_w == output.gpb_slide.card_last_w and
-            buf_h == output.gpb_slide.card_last_h);
-        const gen_same = (output.gpb_slide.bar.state_generation == output.gpb_slide.card_last_gen);
-        if (geom_same and gen_same and !output.gpb_slide.card_dirty and output.gpb_slide.card_buffer != null) {
-            if (output.gpb_slide.card_buffer) |card| {
-                output.gpb_slide.tree.?.node.setPosition(pos_x, pos_y);
+        const geom_same = (buf_w == output.user_home_slide.card_last_w and
+            buf_h == output.user_home_slide.card_last_h);
+        const gen_same = (output.user_home_slide.bar.state_generation == output.user_home_slide.card_last_gen);
+        if (geom_same and gen_same and !output.user_home_slide.card_dirty and output.user_home_slide.card_buffer != null) {
+            if (output.user_home_slide.card_buffer) |card| {
+                output.user_home_slide.tree.?.node.setPosition(pos_x, pos_y);
                 card.node.raiseToTop();
             }
             self.overlay_tree.node.raiseToTop();
             return;
         }
-        output.gpb_slide.card_last_w = buf_w;
-        output.gpb_slide.card_last_h = buf_h;
-        output.gpb_slide.card_last_gen = output.gpb_slide.bar.state_generation;
-        output.gpb_slide.card_dirty = false;
-        const buffer = gpb_mod.renderToBuffer(&output.gpb_slide.bar, self.theme, buf_w, buf_h, scale) orelse return;
-        if (output.gpb_slide.card_buffer) |old| old.node.destroy();
+        output.user_home_slide.card_last_w = buf_w;
+        output.user_home_slide.card_last_h = buf_h;
+        output.user_home_slide.card_last_gen = output.user_home_slide.bar.state_generation;
+        output.user_home_slide.card_dirty = false;
+        const buffer = users_bar_mod.renderToBuffer(&output.user_home_slide.bar, self.theme, buf_w, buf_h, scale) orelse return;
+        if (output.user_home_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
             wlr.Buffer.drop(buffer);
             return;
         };
         wlr.Buffer.drop(buffer);
-        output.gpb_slide.card_buffer = card;
+        output.user_home_slide.card_buffer = card;
         card.setDestSize(buf_w, buf_h);
         tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
         self.overlay_tree.node.raiseToTop();
     }
 
-    fn gpbSlideCloseOn(self: *Server, output: *Output) void {
+    fn userHomeCloseOn(self: *Server, output: *Output) void {
         _ = self;
-        if (!output.gpb_slide.isOpen()) return;
-        output.gpb_slide.tree.?.node.destroy();
-        output.gpb_slide.tree = null;
-        output.gpb_slide.card_buffer = null;
-        output.gpb_slide.card_last_w = 0;
-        output.gpb_slide.card_last_h = 0;
-        output.gpb_slide.card_last_gen = std.math.maxInt(u32);
-        output.gpb_slide.card_dirty = true;
-        std.log.info("KidulWM: GPB slide closed", .{});
+        if (!output.user_home_slide.isOpen()) return;
+        output.user_home_slide.tree.?.node.destroy();
+        output.user_home_slide.tree = null;
+        output.user_home_slide.card_buffer = null;
+        output.user_home_slide.card_last_w = 0;
+        output.user_home_slide.card_last_h = 0;
+        output.user_home_slide.card_last_gen = std.math.maxInt(u32);
+        output.user_home_slide.card_dirty = true;
+        std.log.info("KidulWM: UserHome slide closed", .{});
     }
 
     /// Homes slide (settings.md): focus-or-spawn, like the home slide (A7).
@@ -2230,7 +2228,7 @@ pub const Server = struct {
     /// list: ↑↓ walks names, → consents (key prompt), ↑ at the top / ← / Esc
     /// ascend. KidulCrew: ↓ steps straight into the key prompt. Prompt: ↑ /
     /// ← / Esc back out — "dip your toe in", nothing commits until the key
-    /// does. Mirrors gpbSlideKey: keys reach the slide only while it is the
+    /// does. Mirrors userHomeKey: keys reach the slide only while it is the
     /// focused centre slide. Unconsumed keys fall through.
     pub fn homesSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
         const xkb = @import("xkbcommon");
@@ -2548,17 +2546,17 @@ pub const Server = struct {
         self.homesSlideRefresh(out);
     }
 
-    /// INPUT LAW (environment.md) on the GPB: ←→ move focus between the apps
+    /// INPUT LAW (environment.md) on the usersBar: ←→ move focus between the apps
     /// (HARD STOPS), ↓/Enter = lazy-open the focused app, Esc = hard stop at
-    /// the top. Mirrors mediaSlideKey: keys reach the GPB only while it is the
+    /// the top. Mirrors mediaSlideKey: keys reach the usersBar only while it is the
     /// focused centre slide. Unconsumed keys fall through — nothing swallowed.
-    pub fn gpbSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
+    pub fn userHomeKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
         const xkb = @import("xkbcommon");
         const deck = self.currentDeck();
-        if (deck.findKind(.gpb) == null) return false;
+        if (deck.findKind(.user_home) == null) return false;
         if (deck.empty_slot != .none) return false;
         if (deck.focused_index >= deck.slides.items.len) return false;
-        if (deck.slides.items[deck.focused_index].kind != .gpb) return false;
+        if (deck.slides.items[deck.focused_index].kind != .user_home) return false;
         var out_opt: ?*Output = null;
         {
             var it = self.outputs.iterator(.forward);
@@ -2570,24 +2568,24 @@ pub const Server = struct {
             }
         }
         const out = out_opt orelse return false;
-        if (!out.gpb_slide.isOpen()) return false;
+        if (!out.user_home_slide.isOpen()) return false;
 
         switch (sym) {
             xkb.Keysym.Left => {
-                _ = out.gpb_slide.bar.moveFocus(-1);
-                self.gpbSlideRefresh(out);
+                _ = out.user_home_slide.bar.moveFocus(-1);
+                self.userHomeRefresh(out);
             },
             xkb.Keysym.Right => {
-                _ = out.gpb_slide.bar.moveFocus(1);
-                self.gpbSlideRefresh(out);
+                _ = out.user_home_slide.bar.moveFocus(1);
+                self.userHomeRefresh(out);
             },
             xkb.Keysym.Down, xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
                 // LAZY-OPEN: Homes is a compositor slide (open it); the rest
                 // spawn an external app. AI / Games are not built yet — no-op.
-                if (out.gpb_slide.bar.focused == .homes) {
+                if (out.user_home_slide.bar.focused == .homes) {
                     self.homesSlideFocusOrSpawn();
                 } else {
-                    const cmd: ?[]const u8 = switch (out.gpb_slide.bar.focused) {
+                    const cmd: ?[]const u8 = switch (out.user_home_slide.bar.focused) {
                         .search => "/usr/local/bin/launch-kidul-browser.sh",
                         .library => "/usr/local/bin/kmedia",
                         else => null,
@@ -2597,7 +2595,7 @@ pub const Server = struct {
             },
             xkb.Keysym.Up => {
                 // Kidul Flow: ↑ from UserHome returns to KidulHome — the empty
-                // slot before the GPB. focusPrev from index 0 lands on
+                // slot before the usersBar. focusPrev from index 0 lands on
                 // .before_first and clears focus (no client window to focus).
                 self.focusPrev();
             },
@@ -3278,11 +3276,11 @@ pub const Server = struct {
     /// key was consumed. Widget state changes trigger a re-render.
     fn mediaPrintableChar(sym: @import("xkbcommon").Keysym) ?u8 {
         const xkb = @import("xkbcommon");
-        const v = @intFromEnum(sym);
-        if (v >= @intFromEnum(xkb.Keysym.a) and v <= @intFromEnum(xkb.Keysym.z))
-            return @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.a))) + 'a';
-        if (v >= @intFromEnum(xkb.Keysym.@"0") and v <= @intFromEnum(xkb.Keysym.@"9"))
-            return @as(u8, @intCast(v - @intFromEnum(xkb.Keysym.@"0"))) + '0';
+        const v = @backingInt(sym);
+        if (v >= @backingInt(xkb.Keysym.a) and v <= @backingInt(xkb.Keysym.z))
+            return @as(u8, @intCast(v - @backingInt(xkb.Keysym.a))) + 'a';
+        if (v >= @backingInt(xkb.Keysym.@"0") and v <= @backingInt(xkb.Keysym.@"9"))
+            return @as(u8, @intCast(v - @backingInt(xkb.Keysym.@"0"))) + '0';
         if (sym == xkb.Keysym.space) return ' ';
         if (sym == xkb.Keysym.minus) return '-';
         if (sym == xkb.Keysym.period) return '.';
@@ -4044,8 +4042,7 @@ pub const Server = struct {
     pub fn beginInputGrace(self: *Server) void {
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(.MONOTONIC, &ts);
-        self.input_grace_until_us = @as(u64, @intCast(ts.sec)) * 1_000_000
-            + @as(u64, @intCast(@divTrunc(ts.nsec, 1000))) + 2_000_000; // 2s gracePeriod
+        self.input_grace_until_us = @as(u64, @intCast(ts.sec)) * 1_000_000 + @as(u64, @intCast(@divTrunc(ts.nsec, 1000))) + 2_000_000; // 2s gracePeriod
     }
 
     /// True while inside the post-wake gracePeriod. Cheap in steady state:
@@ -4237,7 +4234,7 @@ pub const Server = struct {
                 const content_slide = output.deck.empty_slot == .none and
                     output.deck.focused_index < n_slides and
                     output.deck.slides.items[output.deck.focused_index].kind != .home and
-                        output.deck.slides.items[output.deck.focused_index].kind != .gpb;
+                    output.deck.slides.items[output.deck.focused_index].kind != .user_home;
                 output.peek.setHidden(content_slide);
                 const has_left = (output.deck.empty_slot == .none and output.deck.focused_index > 0) or
                     (output.deck.empty_slot == .after_last and n_slides > 0);
@@ -4351,9 +4348,9 @@ pub const Server = struct {
                 }
                 self.overlay_tree.node.raiseToTop();
             }
-            if (output.gpb_slide.isOpen()) {
-                self.gpbSlideRefresh(output);
-                if (output.gpb_slide.tree) |tree| {
+            if (output.user_home_slide.isOpen()) {
+                self.userHomeRefresh(output);
+                if (output.user_home_slide.tree) |tree| {
                     tree.node.raiseToTop();
                 }
                 self.overlay_tree.node.raiseToTop();
@@ -4426,9 +4423,9 @@ pub const Server = struct {
         }
 
         // KidulHome is the boot root (kidul-flow.md): the deck boots EMPTY; the
-        // GPB (UserHome) is summoned by ↓/TL, never autostarted. gpbSlideSpawn
-        // + the gpb_booted field are RETAINED for a future autostart need —
-        // re-enable by re-adding the latch below.
+        // UserHome (the usersBar) is summoned by ↓/TL, never autostarted.
+        // userHomeSpawn is retained for a future autostart need (re-add a
+        // boot latch if it is ever wanted).
 
         if (!any_slides or (active_deck.empty_slot != .none and !active_deck.overviewSlideOpen())) {
             self.clearFocus();

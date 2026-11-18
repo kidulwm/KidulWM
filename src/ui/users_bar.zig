@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The global pill bar (GPB) — the apps list: AI / Games / Library / Search /
+// The usersBar — the apps list: AI / Games / Library / Search /
 // Homes. A compositor-owned TOP BAR (one render per output), the deck slides
 // BELOW it. Follows the media_slide / media.zig render patterns.
 //
-// Law: environment.md ("the bar = the GPB ... its OWN SLIDE"), naming.md
+// Law: environment.md ("the usersBar IS the apps list"), naming.md
 // (title above = the product name, outline-only), styles (THE PILL spec).
 
 const std = @import("std");
@@ -12,14 +12,14 @@ const c = @import("dm").c;
 const Style = @import("../core/style.zig").Style;
 const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
-/// The five public apps on the GPB (naming.md + environment.md). Library is
+/// The five public apps on the usersBar (naming.md + environment.md). Library is
 /// centred (index 2) and is the fresh-boot default focus. The right-most pill
 /// is Homes — the immutable key-entry door (settings.md): sign in, attach a
 /// drive, the roster. The signed-in owner sees MORE pills later; the public
 /// seat sees these five.
-pub const GpbApp = enum { ai, games, library, search, homes };
+pub const UsersBarApp = enum { ai, games, library, search, homes };
 
-pub fn appLabel(app: GpbApp) [:0]const u8 {
+pub fn appLabel(app: UsersBarApp) [:0]const u8 {
     return switch (app) {
         .ai => "AI",
         .games => "Games",
@@ -29,7 +29,7 @@ pub fn appLabel(app: GpbApp) [:0]const u8 {
     };
 }
 
-fn displayIndex(app: GpbApp) usize {
+fn displayIndex(app: UsersBarApp) usize {
     return switch (app) {
         .ai => 0,
         .games => 1,
@@ -39,7 +39,7 @@ fn displayIndex(app: GpbApp) usize {
     };
 }
 
-fn appFromIndex(i: usize) GpbApp {
+fn appFromIndex(i: usize) UsersBarApp {
     return switch (i) {
         0 => .ai,
         1 => .games,
@@ -51,7 +51,7 @@ fn appFromIndex(i: usize) GpbApp {
 
 // ── THE PILL — brand-locked house spec (styles/pill-spec.md) ─────────────
 // Geometry per segment matches media.zig: track h=56, inset 5, full stadium
-// radius, 280px segments. The GPB uses FIVE segments, not three.
+// radius, 280px segments. The usersBar uses FIVE segments, not three.
 const PILL_SEG_W: f64 = 280.0;
 const PILL_TRACK_H: f64 = 56.0;
 const PILL_INSET: f64 = 5.0;
@@ -73,10 +73,10 @@ const PILL_GOLD = pc(0x948e7b);
 const PILL_TEXT_ACTIVE = pc(0xe8e6df);
 const PILL_TEXT_DIM = pc(0x6a6354);
 
-/// The system title above the GPB (naming.md) — the PRODUCT name, outline-only,
+/// The system title above the usersBar (naming.md) — the PRODUCT name, outline-only,
 /// no logo/sig. "Kidul TV" for the TV device; per-device later (Kidul PC,
 /// Router, Server). Configurable before long.
-const GPB_TITLE: [:0]const u8 = "Kidul TV";
+const USERS_BAR_TITLE: [:0]const u8 = "Kidul TV";
 
 fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
     const rr = @min(r, w * 0.5, h * 0.5);
@@ -93,19 +93,19 @@ fn roundedRect(cr: *c.cairo_t, x: f64, y: f64, w: f64, h: f64, r: f64) void {
     c.cairo_close_path(cr);
 }
 
-pub const GpbBar = struct {
+pub const UsersBar = struct {
     /// Focused app (the highlighted button). Boot focus = Library.
-    focused: GpbApp = .library,
+    focused: UsersBarApp = .library,
     /// Bumped on any state change; drives re-render (mirrors media widget).
     state_generation: u32 = 0,
 
-    pub fn bumpGeneration(self: *GpbBar) void {
+    pub fn bumpGeneration(self: *UsersBar) void {
         self.state_generation +%= 1;
     }
 
     /// Move focus left/right between the five apps (HARD STOPS — no wrap,
     /// INPUT LAW / styles). Returns true if the focus changed.
-    pub fn moveFocus(self: *GpbBar, step: i32) bool {
+    pub fn moveFocus(self: *UsersBar, step: i32) bool {
         const cur = displayIndex(self.focused);
         const target: i64 = @as(i64, @intCast(cur)) + @as(i64, @intCast(step));
         if (target < 0 or target >= PILL_COUNT) return false;
@@ -114,7 +114,7 @@ pub const GpbBar = struct {
         return true;
     }
 
-    pub fn renderCard(self: *GpbBar, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: Style, scale_f: f64) void {
+    pub fn renderCard(self: *UsersBar, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: Style, scale_f: f64) void {
         const pad_x: f64 = 22.0 * scale_f;
         const content_w = w_d - 2.0 * pad_x;
 
@@ -141,11 +141,11 @@ pub const GpbBar = struct {
         {
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_set_font_size(cr, title_font);
-            c.cairo_text_extents(cr, GPB_TITLE.ptr, &ext);
+            c.cairo_text_extents(cr, USERS_BAR_TITLE.ptr, &ext);
             const tx = pad_x + (content_w - ext.width) * 0.5;
             const ty = track_y - 26.0 * scale_f - ext.height;
             c.cairo_move_to(cr, tx, ty);
-            c.cairo_text_path(cr, GPB_TITLE.ptr);
+            c.cairo_text_path(cr, USERS_BAR_TITLE.ptr);
             c.cairo_set_line_width(cr, 1.5 * scale_f);
             c.cairo_set_source_rgba(cr, PILL_GOLD.r, PILL_GOLD.g, PILL_GOLD.b, 1.0);
             c.cairo_stroke(cr);
@@ -211,26 +211,26 @@ pub const GpbBar = struct {
     }
 };
 
-/// Per-output scene state for the GPB (mirrors MediaSlide): tree + buffer +
+/// Per-output scene state for the usersBar (mirrors MediaSlide): tree + buffer +
 /// the bar widget + repaint guards.
-pub const GpbSlide = struct {
+pub const UserHomeSlide = struct {
     tree: ?*wlr.SceneTree = null,
     card_buffer: ?*wlr.SceneBuffer = null,
-    bar: GpbBar = .{},
+    bar: UsersBar = .{},
     card_last_w: i32 = 0,
     card_last_h: i32 = 0,
     card_last_gen: u32 = std.math.maxInt(u32),
     card_dirty: bool = true,
 
-    pub fn isOpen(self: *const GpbSlide) bool {
+    pub fn isOpen(self: *const UserHomeSlide) bool {
         return self.tree != null;
     }
 };
 
-/// Render the GPB into a wlroots buffer (mirrors media_slide.renderToBuffer).
+/// Render the usersBar into a wlroots buffer (mirrors media_slide.renderToBuffer).
 /// Caller destroys the intermediate cairo surface.
 pub fn renderToBuffer(
-    bar: *GpbBar,
+    bar: *UsersBar,
     style_: Style,
     width: i32,
     height: i32,
@@ -269,5 +269,5 @@ pub fn renderToBuffer(
 // bar is wired into the render loop (they get called there anyway).
 comptime {
     _ = renderToBuffer;
-    _ = GpbBar.moveFocus;
+    _ = UsersBar.moveFocus;
 }

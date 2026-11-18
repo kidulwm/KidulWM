@@ -415,7 +415,7 @@ pub const HomesBar = struct {
     }
 };
 
-/// Per-output scene state for the Homes slide (mirrors GpbSlide): tree +
+/// Per-output scene state for the Homes slide (mirrors UserHomeSlide): tree +
 /// buffer + the bar widget + repaint guards.
 pub const HomesSlide = struct {
     tree: ?*wlr.SceneTree = null,
@@ -431,7 +431,7 @@ pub const HomesSlide = struct {
     }
 };
 
-/// Render the Homes slide into a wlroots buffer (mirrors gpb.renderToBuffer).
+/// Render the Homes slide into a wlroots buffer (mirrors users_bar.renderToBuffer).
 pub fn renderToBuffer(
     bar: *HomesBar,
     style_: Style,
