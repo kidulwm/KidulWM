@@ -1,5 +1,25 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-23, GSI) — PHASE A DEPLOYED TO PHYSICAL m.2 + BOOT-WATCH PREPPED (conductor-reconnect probe).
+#   Clean ReleaseSafe rebuild of all four (kidulkey/gate, kushd, kboot, KidulWM) on host; deployed to the PHYSICAL
+#   KSD m.2 (nvme1n1 — the second drive in THIS host, becomes the miniPC later; no separate miniPC exists yet):
+#   kboot/kushd/kidulwm/kidulwm-control fresh (old kept .pre-reseat-20261123.bak); full gate set kalloc kopen kmount
+#   kclose kidulkey-gate kpax kcarve kclean kumount (were ABSENT). bill.kush: kidulwm class user -> conductor (flip,
+#   backed up). NEW /etc/kushd/conductor = "990" (locked ruling B; raw setuid, no passwd row needed). Owner uid 1002
+#   (bee62e...) + public 1001 already pre-provisioned in passwd. ALL sha256 MATCH host builds. ESP untouched (Limine
+#   -> vmlinuz-ksd, init=/usr/local/bin/kboot, root=PARTUUID). KSD-root + ESP remounted ro then unmounted clean.
+#   PII SCAN CLEAN: no SSH keys / wifi-VPN creds / git identity / hardcoded secrets; hostname ksd-tv; public/.bash_history
+#   empty. (This is the PII watch Barticus flagged on the m.2 move — clean.)
+#   REMAINING for the probe: roster/roster.sig/roster.pub + kalloc map + vault MUST be minted by the kidulkey signing
+#   root (not shipped), dongle key inscribed + signed (deny-by-default). Carve does NOT run in the proof chain —
+#   kcarve is PROVISIONING-time (People app); proof->resolve->open->mount->re-mint is read/non-destructive, never
+#   makes user partitions (Barticus Q answered).
+#   BOOT-WATCH (prepped): tower boots on THIS host via Boot0001 "KSD" (Limine) or Boot0004 "KSD-direct". Boot trail
+#   persists on the m.2 /var/log/{kernel.log (kboot drains kmsg), kboot.log, kushd.log, kushd-*.log} + panics -> EFI
+#   pstore (17 old Nov-9 dumps already in NVRAM). Readback = tools/boot-watch.sh (ro-mount nvme1n1p2, dump logs, grep
+#   verdict). SUCCESS = "seated kidulwm" conductor/990 + /run/kushd/wayland bound + NO "died kidulwm"/panic/refused.
+#   (6a/6b already proven end-to-end via rig above; this is the FIRST real-hardware boot of the re-seat tower.)
+#
 # BUILD (bobdotrix 2026-11-18, GSI) — STEP 6b (RE-MINT / RE-SEAT) BUILT + PROVEN — THE FLIP.
 #   session_uid flips 0 (public) -> proved uid on mount success; userUid() = session_uid else seatUid(); both
 #   seat() and dropToUser() consult it, so ONE flip covers the immediate re-seat AND every later respawn.
