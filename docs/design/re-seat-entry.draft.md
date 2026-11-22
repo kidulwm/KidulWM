@@ -121,8 +121,12 @@ is its FOUNDATION.
        Everything frozen, one thing breathing: that contrast is the effect. No
        new slide kind (ruling C) — this is the Homes slide's freeze state.
      - PRIVACY GUARD: public->owner keeps the frozen frame (public = no
-       personal data); LOCK or owner RE-AUTH blanks/blurs instead of
-       snapshotting — a sensitive owner frame never persists as a backdrop.
+       personal data); LOCK or owner RE-AUTH BLURS instead of snapshotting
+       (LOCKED 2026-11-23, Barticus — heavy house-glass blur; a sensitive owner
+       frame never persists as a readable backdrop). Blank stays the cheap
+       fail-safe only. Watch the blur's per-frame CPU/GPU cost as we build — it
+       is the candidate for a LATER richer system-lock screen, NOT today
+       (smartLock's blank is unchanged).
      - GATE: enter sign-in -> tentacles frozen (ps shows T state), last frame
        stays on screen, prompt overlaid; tap -> proof -> resume.
 
@@ -165,7 +169,9 @@ is its FOUNDATION.
          is unchanged, and a second proof no-ops.
          REMAINING (not this slice): the conductor-reconnect probe (kidulwm
          client-lifecycle across the kill+reconnect swap — may need a small
-         kidulwm change) and the privacy guard (blank/blur on lock/re-auth).
+         kidulwm change) and the privacy guard (BLUR on lock/re-auth). ORDER
+         LOCKED 2026-11-23 (Barticus): probe FIRST, blur second — the probe
+         proves 6b is genuinely closed before we decorate the door.
      - GATE: sign-in -> owner session in the same slot; the last frame never
        left the screen; the face pid + uid never changed; no lingering
        transition state (gate verdict/keyfile/seq all reaped; kclose only fired
@@ -174,6 +180,34 @@ is its FOUNDATION.
   Order note (SPEC BEFORE SURFACE): 1-2 are the infrastructure the surface
   stands on, 3 is the visible freeze, 4-6 are the resolution/mount/mint the
   freeze guards. Build 1 -> 2 -> 3 -> 4 -> 5 -> 6; each lands green first.
+
+## Conductor-reconnect probe — done-when (NEXT cut, probe-first)
+
+6b's kill+reconnect is proven at the kushd side (rig); the open half is
+kidulwm's Wayland client lifecycle across the swap. This probe closes it.
+
+WHAT: in the ksd-boot tower (kboot -> kushd -> kidulwm, kushd as PID-1), seat a
+tentacle (ktty) at public 1001, fire the real chain (proof -> resolve -> open ->
+mount -> re-mint), and watch kidulwm across (a) the SIGKILL of the old public
+client and (b) the fresh owner-uid client's reconnect + first map.
+
+ACCEPTANCE (all four; a miss names + cuts a small kidulwm change):
+  1. CLEAN TEARDOWN: kidulwm logs "toplevel destroy fired" + "detachListeners"
+     for the killed ktty; its scene tree is destroyed; no orphaned node renders
+     the dead client's last buffer (no ghost).
+  2. CLEAN MAP: the fresh owner ktty reconnects and logs "added window id=N to
+     deck" with a valid slide; it renders and takes input.
+  3. NO CRASH / NO FOCUS WEDGE / NO STALE SURFACE across the whole pass; the
+     face's own pid + uid never change (conductor never re-seats).
+  4. "SAME SLOT, NO BLINK" holds: the owner session surfaces where the frozen
+     frame sat, no compositor restart, no visible re-layout glitch. If the
+     replacement lands on a NEW slide instead of re-occupying the slot, record
+     it and decide (likely a small kidulwm slide-slot reclaim).
+
+WHERE: ksd-boot (kushd PID-1 tower) — NOT ksd-reset (systemd, no kushd): the
+latter proves only headless kidulwm kill+reconnect in isolation, not the full
+re-mint. Confirm which VM the docket names before deploying (kidulwm-vm-access
+skill).
 
 ## done-when
 
