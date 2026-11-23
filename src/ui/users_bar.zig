@@ -14,10 +14,11 @@ const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
 /// The five public apps on the usersBar (naming.md + environment.md). Library is
 /// centred (index 2) and is the fresh-boot default focus. The right-most pill
-/// is Homes — the immutable key-entry door (settings.md): sign in, attach a
-/// drive, the roster. The signed-in owner sees MORE pills later; the public
-/// seat sees these five.
-pub const UsersBarApp = enum { ai, games, library, search, homes };
+/// is Sign In — the immutable key-entry door (settings.md, kid.md §The entry
+/// face): sign in as a resident or a visitor. Nothing else lives on it — no
+/// add-user, no roster management (that is the owner's own settings). The
+/// signed-in owner sees MORE pills later; the public seat sees these five.
+pub const UsersBarApp = enum { ai, games, library, search, signin };
 
 pub fn appLabel(app: UsersBarApp) [:0]const u8 {
     return switch (app) {
@@ -25,7 +26,7 @@ pub fn appLabel(app: UsersBarApp) [:0]const u8 {
         .games => "Games",
         .library => "Library",
         .search => "Search",
-        .homes => "Homes",
+        .signin => "Sign In",
     };
 }
 
@@ -35,7 +36,7 @@ fn displayIndex(app: UsersBarApp) usize {
         .games => 1,
         .library => 2,
         .search => 3,
-        .homes => 4,
+        .signin => 4,
     };
 }
 
@@ -45,7 +46,7 @@ fn appFromIndex(i: usize) UsersBarApp {
         1 => .games,
         2 => .library,
         3 => .search,
-        else => .homes,
+        else => .signin,
     };
 }
 

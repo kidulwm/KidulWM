@@ -1,4 +1,4 @@
-# LAW — settings architecture: Homes (immutable) vs Settings (transportable)
+# LAW — settings architecture: Sign In (immutable) vs Settings (transportable)
 
 LOCKED 2026-11-16, Barticus present (GSI). AMENDED same day (Barticus): the
 immutable entity is named HOMES, not "Admin" — the door that switches
@@ -6,56 +6,65 @@ publicHome -> privateHome, where the userHomes live. Supersedes the
 key-entry.draft.md framing (folded below; the draft is marked superseded,
 not deleted — archive).
 AMENDED 2026-11-23 (Barticus present, GSI): the add-a-key/add-a-user verb has
-exactly TWO homes — the initial claim ceremony and the owner-only People door —
-and NEVER the standard sign-in walk. See §Adding a key.
+exactly TWO homes — the initial claim ceremony and the owner's own settings —
+and NEVER the sign-in walk. See §Adding a key.
+AMENDED 2026-11-23 (Barticus present, GSI): the surface is RENAMED "Homes" →
+"Sign In". It is ONLY sign-in (residents list + visitor). The add-user/extra-key
+verb and the roster move OUT of the sign-in surface into the owner's own
+settings. The "+ VIP" pill is removed. See §The naming + §Adding a key.
 
 ## The split (the ruling)
 
 Two settings surfaces, architecturally separated. They are NOT one app with an
 admin corner; they are two entities.
 
-  Homes      standalone, IMMUTABLE, root-owned, system-adherent. The door that
+  Sign In    standalone, IMMUTABLE, root-owned, system-adherent. The door that
              switches publicHome -> privateHome (claim/sign-in,
-             kidulkey-entry.md) and where the userHomes are managed: the
-             user/kidulKey roster (People, delegation.md) + allocations. "Out
-             of touch" by design: your identity + access layer is not a
-             personal preference you edit. Opened by a KEYBIND (Mod4+T) — a
-             SECONDARY shortcut; the primary entry is the kidulFlow pill. This
-             is THE WALL (#57) — docket #59 step (3).
+             kidulkey-entry.md). ONLY sign-in — the residents list + the
+             visitor door. "Out of touch" by design: your identity + access is
+             not a personal preference you edit. RENAMED from "Homes"
+             2026-11-23; the roster (People, delegation.md) + allocations +
+             add-user/extra-key moved INTO the owner's own settings. Opened by
+             a KEYBIND (Mod4+T) — a SECONDARY shortcut; the primary entry is
+             the kidulFlow pill. This is THE WALL (#57) — docket #59 step (3).
   Settings   the user's PERSONAL, transportable surface — themes, brightness,
              presets. Travels with the user, never the machine. Per-app
              openings ("each app takes you to its part of the settings") + a
              Settings button on the non-public userHome. A LATER slice
              (kidul-flow.md: "Settings app (a later slice)").
 
-## The naming (Homes vs Home vs userHome — the disambiguation)
+## The naming (Sign In vs Home vs userHome — the disambiguation)
 
-  Homes      the entity: the door + the roster + the allocations. PLURAL — the
-             place where the homes ARE, and the switch between them.
+  Sign In    the door — the ONE place you prove WHO you are (claim / sign-in,
+             kidulkey-entry.md). Named for the BEHAVIOR, not the hardware. It
+             is ONLY sign-in: no add-user, no roster management, nothing else.
+             (RENAMED from "Homes" 2026-11-23 — see the amendment note at top;
+             the roster + allocations moved into the owner's own settings.)
   Home       the deck / back-home navigation surface (back-home.md: "QUIT /
              HOME = reveal the deck"; kidul-flow.md). SINGULAR — where you are.
   userHome   a Linux home directory (/home/public, /home/$HASH — public-seat.md).
 
-The kidulKey/People pill on the usersBar is renamed Homes: it names the BEHAVIOR
-(enter your home), not the hardware (the key). The key is the means; the home
-is the end.
+The kidulKey/People pill on the usersBar is renamed Sign In: it names the
+BEHAVIOR (prove who you are), not the hardware (the key) and not a management
+surface (that lives in the owner's settings). The key is the means; the sign-in
+is the act.
 
 ## KidulFlow is the door; Mod4+T is the shortcut
 
-The PRIMARY entry is the pill: the usersBar's kidulKey pill is renamed Homes, and
-the flow is KidulHome -> down (UserHome / public usersBar) -> right (to Homes)
--> down (enter). Arrow-only, remote-native — no launcher. On the pill, the
-slide shows its TITLE below the bar (the same title reveal as every slide);
+The PRIMARY entry is the pill: the usersBar's kidulKey pill is renamed Sign In,
+and the flow is KidulHome -> down (UserHome / public usersBar) -> right (to
+Sign In) -> down (enter). Arrow-only, remote-native — no launcher. On the pill,
+the slide shows its TITLE below the bar (the same title reveal as every slide);
 the Residents / KidulCrew content appears once you are IN the slide, not
 before.
 
 Mod4+t was the retired "tray toggle" — the old launcher that became the tray,
 and the tray was designed out by the deck (Home). That code is dead; Mod4+T is
-re-bound to open the SAME Homes slide as a SECONDARY shortcut. Keycombos stay
+re-bound to open the SAME Sign In slide as a SECONDARY shortcut. Keycombos stay
 available for testing and laptops — kidulFlow reduces the need for them, it
 does not delete them.
 
-Homes is a SLIDE, not a controlling feature. It must NOT grow into a
+Sign In is a SLIDE, not a controlling feature. It must NOT grow into a
 media-player-style monster widget (media.zig). Thin surface; the gate, the
 re-seat and the mount are the mechanism, and they live in the organs
 (kushd / kidulkey / knetd) — not in the slide.
@@ -77,7 +86,7 @@ allocates WITHIN the space the owner granted at creation (expandable on
 request) — never more. Screens around the building all seat off the one
 authoritative box (ktv native networking, machine-classes.md) — no
 remote-desktop middleman. Nothing new: the ruling lives in delegation.md; the
-Homes surface is where those verbs are CAST.
+owner's settings surface is where those verbs are CAST.
 
 ## Adding a key — the verb has TWO homes, sign-in has none
 
@@ -86,29 +95,30 @@ Homes surface is where those verbs are CAST.
 verb — a CREATOR act on the delegation tree (delegation.md: a grant descends
 from the owner), never something a walk-up or a crew member invents.
 
-  two homes  (1) the INITIAL CLAIM CEREMONY, and (2) the OWNER-ONLY People /
-             admin surface. Nowhere else.
+  two homes  (1) the INITIAL CLAIM CEREMONY, and (2) the OWNER-ONLY settings
+             (the owner's own account). Nowhere else.
   ceremony   claim = first key seeds owner, THEN the same walk asks "who else
              lives here?" and adds the family's keys up front (each: name +
              size -> carve + roster entry). Setup is the ONE moment adding is
-             front-and-center. After it, the verb retreats to the owner-only
-             People door (delegation.md) — never the sign-in walk again.
-  sign-in    the standard sign-in (the "waiting for tap" prompt, the KidulCrew
-             door, the Residents list on a NON-owner) shows NO add verb. A
-             walk-up or crew member SIGNS IN, never creates. Granny never
-             meets "add user" by accident — she meets "Welcome, Granny."
+             front-and-center. After it, the verb retreats into the owner's
+             own settings (delegation.md People) — never the sign-in walk.
+  sign-in    the Sign In surface is ONLY that — sign in as a resident or a
+             visitor. The Residents list shows the owner's name + any users the
+             owner has added, and NOTHING else: no "+ VIP", no add-user, no
+             roster management. A walk-up or crew member SIGNS IN, never
+             creates. Granny meets "Welcome, Granny." — never an add verb.
   seat, not  the verb's presence is a WHO question (owner sees it), NEVER a
   disk       FREE-SPACE question. It is not hidden when the disk is full and
              shown when empty — that would make "add user" flicker on a
              transient condition and read as broken. The verb is ALWAYS in the
-             owner's People door; when the disk IS full, the carve step (the
+             owner's settings; when the disk IS full, the carve step (the
              one thing that can eat the system) answers honestly in Granny's
              terms — "no room — ask the owner to make space" — instead of
              vanishing the option.
 
 ## Residents / KidulCrew (the two doors)
 
-The Homes slide opens on two CFC pills — Residents and KidulCrew — and the
+The Sign In slide opens on two CFC pills — Residents and KidulCrew — and the
 two doors are deliberately NOT symmetric. Roles (owner / adult / child / tv /
 nas / ...) are ATTRIBUTES of a resident name, not pills. "Family you live
 with -> Crew you hang with."
@@ -230,13 +240,14 @@ No incremental partial deploys.
 
 ## Reversals / naming
 
-  - "Homes" (new name) resolves the surface kid.md / kidulkey-entry.md call
-    "settings / person" and delegation.md calls "People / the admin door":
-    one name for the identity door (Homes), one name for the personal app
-    (Settings).
+  - "Sign In" (2026-11-23) is the surface's CURRENT name — RENAMED from
+    "Homes": the surface is ONLY sign-in now; the roster/People + add-user
+    moved into the owner's own settings. See §The naming + §Adding a key.
+  - "Homes" (2026-11-16) named the identity door when it STILL carried the
+    roster + allocations. Superseded by "Sign In" once those verbs moved out.
   - "Admin" RETIRED as an entity name — it survives ONLY as the delegation
-    ROLE (delegation.md: "owner = admin"; "sub-admin"). Homes (surface) and
-    admin (role) no longer share a word.
+    ROLE (delegation.md: "owner = admin"; "sub-admin"). The sign-in surface
+    and admin (role) no longer share a word.
   - "Visitor" RETIRED -> "KidulCrew": the crew you hang with (non-residents,
     sign-in only), distinct from the OwnersFam (Residents) and the SystemFam
     (the gear). Locked in naming.md.
@@ -244,15 +255,16 @@ No incremental partial deploys.
     ksignals = the HOST's v1 settings surface (daily-driver.md, host-side,
     not KSD); kfiles "SETTINGS" = a kfiles nav element (app-local); "advanced
     settings" (environment.md / theme.md) = the geek granular-control tier.
-    Each stays app-local; none of them is Homes.
+    Each stays app-local; none of them is Sign In.
 
 ## Relationship to existing law
 
-  delegation.md     sub-admin tree (consolidated above); People = Homes' door.
+  delegation.md     sub-admin tree (consolidated above); People = the owner's
+                    settings door (add-user / extra-key live there, not Sign In).
   public-seat.md    owner escalation -> the re-seat this slice builds (step 4).
-  kidulkey-entry.md claim vs sign-in -> the Homes key-entry flow (steps 2-6).
-  kid.md            "settings / person" access = Homes (renamed).
-  environment.md    no profiles; environment per-app (unchanged — Homes is a
+  kidulkey-entry.md claim vs sign-in -> the Sign In key-entry flow (steps 2-6).
+  kid.md            "settings / person" access = Sign In (renamed from Homes).
+  environment.md    no profiles; environment per-app (unchanged — Sign In is a
                     surface, not a profile).
   kidul-flow.md     keycombos secondary to flow; Settings app = the later slice.
-  back-home.md      Home (singular) = the deck; Homes (plural) = the door.
+  back-home.md      Home (singular) = the deck; Sign In = the door.

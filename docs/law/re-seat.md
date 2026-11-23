@@ -98,7 +98,7 @@ allowed to be central, but its control is BOUNDED and SELF-RELEASING:
     REPLACED, not unfrozen-and-kept; nothing lingers that could later "control"
     the deck the way the media player did.
 
-The slide stays THIN (settings.md: "Homes is a SLIDE, not a controlling
+The slide stays THIN (settings.md: "Sign In is a SLIDE, not a controlling
 feature") — the mechanism lives in the organs (kushd/kidulkey/knetd). Thinness
 was the media-era guard; for a feature that is meant to take over, the guard is
 SELF-DISMANTLING: the verbs that build the transition (kushd mintSession,

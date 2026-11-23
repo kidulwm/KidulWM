@@ -6,7 +6,7 @@ const style_mod = @import("../core/style.zig");
 const Style = style_mod.Style;
 const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 
-/// Compositor-owned Homes slide (docs/law/settings.md): the immutable door.
+/// Compositor-owned Sign In slide (docs/law/settings.md): the immutable door.
 /// Two doors, deliberately asymmetric:
 ///   - Residents (OwnersFam): a name LIST — who LIVES here. → consents on a
 ///     name -> the key prompt -> local + external + networked.
@@ -16,12 +16,12 @@ const DataBuffer = @import("../render/buffer.zig").DataBuffer;
 /// surface for both; only the drive scoping differs (step 4). "Dip your toe
 /// in": ↓ steps in, ↑ steps back out, nothing commits until the key does.
 /// Sample roster is a placeholder until step 3 (gate proof) / 6 (claim). Thin
-/// by design — must NOT grow media.zig-style.
+/// by design — must NOT grow media.zig-style. No add-user/+VIP: the roster is
+/// managed from the owner's own settings, never this surface (settings.md).
 ///
 /// Law: settings.md (two doors), styles (THE PILL, CFC, INPUT LAW), naming.md
 /// (SystemFam / OwnersFam / KidulCrew).
 const RESIDENT_NAMES = [_][:0]const u8{ "Owner", "Kid 1", "Kid 2" };
-const ADD_VIP_LABEL: [:0]const u8 = "+ VIP";
 
 const PILL_SEG_W: f64 = 280.0;
 const PILL_TRACK_H: f64 = 56.0;
@@ -95,13 +95,12 @@ pub const HomesBar = struct {
 
     fn nameCount(self: *const HomesBar) usize {
         _ = self; // roster is a compile-time sample until step 3
-        return RESIDENT_NAMES.len + 1; // +1 = "+ VIP"
+        return RESIDENT_NAMES.len;
     }
 
     fn listLabel(self: *const HomesBar, i: usize) [:0]const u8 {
         _ = self; // roster is a compile-time sample until step 3
-        if (i < RESIDENT_NAMES.len) return RESIDENT_NAMES[i];
-        return ADD_VIP_LABEL;
+        return RESIDENT_NAMES[i];
     }
 
     fn descend(self: *HomesBar) bool {

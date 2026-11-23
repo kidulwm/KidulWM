@@ -2583,7 +2583,7 @@ pub const Server = struct {
             xkb.Keysym.Down, xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
                 // LAZY-OPEN: Homes is a compositor slide (open it); the rest
                 // spawn an external app. AI / Games are not built yet — no-op.
-                if (out.user_home_slide.bar.focused == .homes) {
+                if (out.user_home_slide.bar.focused == .signin) {
                     self.homesSlideFocusOrSpawn();
                 } else {
                     const cmd: ?[]const u8 = switch (out.user_home_slide.bar.focused) {

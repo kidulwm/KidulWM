@@ -24,10 +24,10 @@ buckets, kept apart on purpose:
   SystemFam   = the GEAR. TV / router / server — "the family of systems"
                 (kidulSystems' hardware: one system, many roles).
   OwnersFam   = the RESIDENTS. Dad / Mum / kid — the family you LIVE with.
-                The Homes "Residents" list.
+                The Sign In "Residents" list.
   KidulCrew   = the non-residents. The crew you HANG with — like-minded
                 people who drop by, key in, and their external drive rides
-                in. The Homes "KidulCrew" door (sign-in, no list).
+                in. The Sign In "KidulCrew" door (sign-in, no list).
 
 "Family you live with → Crew you hang with." The Systems family and the
 Owners family are never conflated: the gear is SystemFam, the household is
@@ -88,13 +88,15 @@ up and sees one honest word for the thing in her hands. The app names ("Search",
 a second, separate title. Two titles, two jobs: the system names itself above,
 the app names itself below.
 
-The public pill bar is AI · Games · Library · Search · kidulKey, Library centred
+The public pill bar is AI · Games · Library · Search · Sign In, Library centred
 as the landing pill (environment.md, kidul-flow.md). "Search" is the pill name
 for the browser app — the code name "Browser" / kidul-browser survives,
-internal-only. "kidulKey" is the pill for the whole key experience — sign in
-with your key, attach your own drive (a "rando" sign in), and the roster of
-granted users ("People", delegation.md) — identity, not just a sign-in, and not
-a profile switcher. "AI" is the slimmed BobPI for now, renamed later.
+internal-only. "Sign In" is the pill for the key experience: prove who you are
+and get seated. Nothing else lives on it — attach-your-own-drive (a "rando"
+sign in) and the roster of granted users ("People", delegation.md) are the
+OWNER's settings, never the sign-in surface (settings.md §The naming +
+§Adding a key). Not a profile switcher. "AI" is the slimmed BobPI for now,
+renamed later.
 
 ## The domains (three, one each)
 
