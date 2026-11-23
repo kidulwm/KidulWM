@@ -13,8 +13,7 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current attack (2026-11-23)
 
-  STEP 4 — RE-SEAT + PRIVACY GUARD. Conductor-reconnect probe PASSED on hardware
-    (2026-11-23); privacy guard BUILT (KidulWM 6fa75cb, signed B&B, pushed both).
+  STEP 4 — RE-SEAT + PRIVACY GUARD BUILT; CLAIM/CARVE SPEC LOCKED.
 
   PRIVACY GUARD: signed-in freeze now black-frosts. seat_signed_in (monotonic)
     set on any TRUSTED verdict on kidulwm's own gate connection; dimEnsure picks
@@ -26,6 +25,15 @@ sessions with session_search). Live state lives in the ledger, not here.
     Spec: docs/design/privacy-guard.draft.md (Q A "verdict not verb" + Q B "black
     frost not shader", both RESOLVED).
 
+  CLAIM/CARVE: spec LOCKED, BUILD AUTHORIZED (docs/design/claim-carve.draft.md,
+    KidulWM 0a81af9). Spec-first: partitioning is FATAL. 7-step build order.
+    Four rulings LOCKED (Barticus, GSI): A = letter pill-bar PRIMARY + keyboard
+    PARALLEL (one name field, two surfaces; fold-out remote keyboard + separate
+    keyboards drop in with zero rework); B = kushd owns claim, sign with proved
+    owner key via gate (NEVER kalloc's TEST seed sign); C = TV -> 50% fill-bar
+    default; D = carve KSD drive by LABEL (~771 GiB FREE POOL, partitions.md:120,
+    fixed-config, no "biggest disk" probe).
+
   CARRIED THREADS (do not lose):
     - NOT deployed to KSD this cut — eyes-on the live freeze (public dim, then
       post-sign-in re-freeze frost) waits on the next deploy.
@@ -33,10 +41,11 @@ sessions with session_search). Live state lives in the ledger, not here.
       current is a DISPOSABLE dev root, test-namespaced, TEST-ONLY).
     - Vault keyfile still 0 (no carve yet).
 
-  NEXT SESSION: claim/carve (kcarve -> kalloc sign) -> Homes provisioning UI
-    (fill bar + name) -> defaultHome skeleton. Full design frozen (re-seat.md +
-    re-seat-mount.draft.md + re-seat-entry.draft.md, all 6 steps built + proven;
-    privacy-guard.draft.md built). Handoff = CENSUS-NOTES top + re-seat.md (law).
+  NEXT SESSION: build claim/carve step 1 (claim detection — empty-roster = the
+    ONLY unclaimed state) -> ceremony cues -> name+size input -> carve -> seed+
+    sign -> defaultHome skeleton -> mount-on-proof. Then Homes provisioning UI.
+    Handoff = CENSUS-NOTES top + claim-carve.draft.md (build order) + re-seat.md
+    (law).
 
 ## Trip wires / commands / secrets
 
