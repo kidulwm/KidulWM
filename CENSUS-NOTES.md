@@ -1,5 +1,18 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-23, GSI) — PROBE FIRING: conductor-reconnect boot-watch + surface rename deployed.
+#   Two things this cut: (1) the "Homes" -> "Sign In" surface rename (settings.md §Code naming — surface sweeps,
+#   gate "homes*" stays as the kushd wire verb) is committed kidulwm ecf2440 (GPG B&B, pushed Codeberg+GitHub) and
+#   deployed to the m.2 as a SINGLE-binary swap (verified: m.2 pre-rename strings had 0 "Sign In" -> now 4, host
+#   zig-out/bin/kidulwm 8478720 bytes, byte-identical build). NO kushd/kboot/kidulkey-gate change — rename is
+#   surface-only, gate/wire verb untouched (byte-verified against kushd GATE_CUE "homes-gate"). (2) the
+#   conductor-reconnect probe is FIRING now — the acceptance log lines ALREADY exist in kidulwm (window.zig:
+#   "added window id={d} to deck" 584 / "detachListeners" 612 / "toplevel destroy fired" 627), so the probe is a
+#   BOOT-AND-WATCH, no code cut owed. ktty ON the m.2 is byte-identical to host HEAD (sha256 ea40153f... both
+#   sides) — tentacle current. BOOT-WATCH verdict wanted: "seated kidulwm" conductor/990 + /run/kushd/wayland
+#   bound + NO "died kidulwm"/panic/refused. Readback = sudo tools/boot-watch.sh after reboot-back.
+#   (previously: DEV ROOT minted + roster/kalloc signed + installed; Phase A deployed to m.2; boot-watch prepped.)
+#
 # BUILD (bobdotrix 2026-11-23, GSI) — DEV ROOT MINTED + ROSTER/KALLOC SIGNED + INSTALLED (the ceremony, Barticus present).
 #   Signing-ROOT was blocked on NO physical ROOT device (only the input-trust dongle, a ROSTER ENTRY, not a signer).
 #   Barticus ruled: this is a disposable TEST drive -> mint a DISPOSABLE DEV ROOT now (key on disk, test-namespaced),
