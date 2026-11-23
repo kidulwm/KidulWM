@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD AUTHORIZED (bobdotrix 2026-11-23, GSI) — CLAIM/CARVE SPEC LOCKED, all four rulings in (KidulWM 0a81af9).
+#   A = letter pill-bar PRIMARY + keyboard path PARALLEL (one name field, two surfaces; fold-out remote keyboard +
+#   separate keyboards drop in with zero rework — product note recorded). B = kushd owns claim, sign with proved
+#   owner key via gate (NEVER kalloc TEST seed). C = TV -> 50% fill-bar default. D = carve KSD drive by LABEL,
+#   ~771 GiB FREE POOL (partitions.md:120), fixed-config, no "biggest disk" probe. 7-step build order frozen:
+#   claim detection -> ceremony cues -> name+size input -> carve via proven kcarve -> seed+sign roster+allocation
+#   -> defaultHome skeleton -> mount-on-proof closes loop. SPEC-FIRST: partitioning is FATAL (settings.md). Next
+#   session = build step 1 (claim detection: empty-roster = the ONLY unclaimed state). GO CHECK THE FROST (blur =
+#   heavier alpha, leaf-done, awaits deploy/eyes-on).
+#
 # BUILD (bobdotrix 2026-11-23, GSI) — CLAIM/CARVE SPEC WRITTEN (KidulWM 5966ff9). Spec-first: partitioning is
 #   FATAL (settings.md). Build order on the real seams: (1) claim detection = empty-roster ONLY unclaimed state, no
 #   flag; (2) ceremony cues on the existing homes-gate channel; (3) name+size input via the no-slider fill bar; (4)
