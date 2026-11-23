@@ -1,5 +1,17 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-23, GSI) — DEV ROOT MINTED + ROSTER/KALLOC SIGNED + INSTALLED (the ceremony, Barticus present).
+#   Signing-ROOT was blocked on NO physical ROOT device (only the input-trust dongle, a ROSTER ENTRY, not a signer).
+#   Barticus ruled: this is a disposable TEST drive -> mint a DISPOSABLE DEV ROOT now (key on disk, test-namespaced),
+#   keep the password-backup SAFETY RULE, re-do the real two-key cold SE050 ceremony when production hardware lands.
+#   Minted ed25519 dev root (seed 0600 /home/dad/dev/devroot/root-dev.seed, TEST-ONLY never-ship); root pub hex
+#   75a362ea42086fbe9e3890317b558cd0d5bed8148878dd9ecb46b64d10821660; root key-id (b64url)
+#   daNi6kIIb76eOJAxe1WM0NW-2BSIeN2ey0a2TRCCFmA = root=#1. Signed roster v1 (dongle IKa1cdEH...VTqr4 -> owner) + kalloc
+#   v1 (EMPTY map — no carve yet, new-TV free-pool; owner entry lands at carve). BOTH verify OK. INSTALLED to KSD m.2
+#   /etc/kushd/{roster,roster.sig,roster.pub,kalloc,kalloc.sig,kalloc.pub} (sha256 MATCH, remounted ro, clean unmount).
+#   REMAINING for the probe: BOOT the tower (Boot0001 "KSD") + boot-watch readback for "seated kidulwm" conductor/990 +
+#   /run/kushd/wayland + no died/panic/refused. Vault keyfile still 0 (no carve). 2nd dongle still to order (real ceremony).
+#
 # BUILD (bobdotrix 2026-11-23, GSI) — PHASE A DEPLOYED TO PHYSICAL m.2 + BOOT-WATCH PREPPED (conductor-reconnect probe).
 #   Clean ReleaseSafe rebuild of all four (kidulkey/gate, kushd, kboot, KidulWM) on host; deployed to the PHYSICAL
 #   KSD m.2 (nvme1n1 — the second drive in THIS host, becomes the miniPC later; no separate miniPC exists yet):
