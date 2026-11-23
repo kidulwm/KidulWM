@@ -60,37 +60,34 @@ conductor-reconnect probe (step 6b) had to land first and has now PASSED
 
 ## Build order (mark each green before the next)
 
-  1. THE SEAT-STATE SIGNAL (kushd -> kidulwm). kushd already owns session_uid;
-     it must TELL kidulwm when the seat flips. Recommended (open Q A): on a
-     successful re-seat (seq mount success), kushd writes a STATUS line to the
-     cue socket ("seated role=<role>") and kidulwm stores a `seat_is_owner`
-     flag (server.zig Server state). Fail-safe default = owner (blur) so a
-     missing/unknown signal errs toward privacy, never toward leaking a frame.
-     - GATE: after a re-seat on the tower, kidulwm's flag flips true; a cold
-       boot (public) starts false; log line confirms the flip.
+  1. THE SEAT-STATE SIGNAL (kushd -> kidulwm). LOCKED + BUILT (2026-11-23,
+     Barticus, GSI): NO new kushd verb — kidulwm reuses the crypto-gated
+     "TRUSTED role=<r>" verdict it already receives on its own gate connection
+     (unspoofable; the 0666 cue socket is not a trust boundary). kidulwm sets
+     seat_signed_in=true once any verdict lands; monotonic per boot. Fail-safe
+     posture: once personal data has appeared, every later freeze frosts.
+     - GATE (verified): flag flips only in homesGateApply; cold boot starts
+       false (public); no other writer.
 
-  2. THE GUARD STATE + DIM-VS-BLUR BRANCH (kidulwm). Add a guard selector to
-     the freeze path: on .prompt entry, if seat_is_owner -> BLUR (or its
-     fail-safe), else -> DIM (today's 55% black, unchanged for public->owner).
-     Selected at freeze START and held until thaw — no live re-decision
-     mid-freeze.
-     - GATE: public->owner freeze still renders today's dim, byte-identical
-       behaviour; owner lock/re-auth freeze takes the guard branch instead.
+  2. THE GUARD STATE + DIM-VS-BLUR BRANCH (kidulwm). LOCKED + BUILT: dimEnsure
+     picks the black weight from seat_signed_in at freeze START — public 140
+     (~55%, unchanged dim), signed-in 235 (~92% black frost, unreadable). Held
+     until thaw, no live re-decision mid-freeze.
+     - GATE (verified): public->owner freeze still renders today's dim; a
+       signed-in lock/re-auth renders the frost.
 
-  3. THE BLUR (or fail-safe), per open Q B. The house-glass treatment, however
-     B settles it. If B = true blur: a full-screen blur pass behind the dim
-     (renderer shader); if B = layered frost: no shader, a stacked translucent
-     overlay. Blank remains the fallback when the chosen blur is unavailable.
-     - GATE: an owner frame through the guard is unreadable (blurred or blank),
-       never sharp behind 55% black.
+  3. THE FROST (Q B settled). LOCKED + BUILT: BLACK frost, not white (off-theme;
+     black fading in/out is the house specialty, least cost). One heavier black
+     overlay — no shader, no layer stack (layered translucent black only adds
+     darkening, not frost). Blank (255) remains the fail-safe floor.
+     - GATE (verified): an owner frame through the guard is unreadable, never
+       legible through 55% black.
 
-  4. COST PROOF (locked-in requirement). Measure the blur's per-frame cost on
-     the TV panel (FRAMETRACE already logs per-source rates from handleFrame).
-     If the blur pushes rendered/s or commit/s outside the house budget, fall
-     back to blank and record the price as the reason — the ruling explicitly
-     ranks "cheap + private" above "pretty + expensive".
-     - GATE: FRAMETRACE shows the blur cost explicitly; a cost call (blur vs
-       blank) is made and recorded in the census.
+  4. COST PROOF. The frost adds ZERO new per-frame cost (same 1x1 stretched
+     buffer + 280ms smoothstep as the dim — only the alpha constant differs).
+     True shader blur (B1) stays parked for the later richer lock screen.
+     - GATE (verified): no new renderer path; FRAMETRACE unaffected by
+       construction.
 
 ## done-when
 
@@ -100,29 +97,20 @@ conductor-reconnect probe (step 6b) had to land first and has now PASSED
     fallback), never legible through the dim; no pixel snapshot persists.
   - smartLock blanking, the gate proof, and the re-seat flip are all untouched.
 
-## Open questions (lettered, one recommendation each — "yes to your recs" locks)
+## Open questions — RESOLVED (Barticus 2026-11-23, GSI: "yes to your recs")
 
-  A. WHO-IS-SEATED SIGNAL. How does kidulwm learn the seat is owner (blur) vs
-     public (dim)?
-     REC(kushd status line on re-seat; fail-safe defaults to owner/blur) — kushd
-     is I1 ONE SESSION AUTHORITY; it owns session_uid and already seeds/mints
-     the seat. kidulwm should not re-derive identity from its own uid (it can't
-     — conductor 990 never changes) nor infer it from a transient per-tap
-     verdict. Alternative: seed the flag from the last gate verdict
-     (weaker — dies on relog, no re-seat awareness).
+  A. WHO-IS-SEATED SIGNAL. RESOLVED: no new kushd verb — kidulwm reuses the
+     crypto-gated TRUSTED verdict on its own gate connection. Security audit
+     (bobdotrix 2026-11-23): kushd already OWNS the seat state (session_uid);
+     the only new surface is disclosure, and a "seated role=" verb on the 0666
+     cue socket would be spoofable by a public tentacle (uid 1001) to defeat
+     the frost. The verdict-as-signal avoids that entirely — a third party
+     cannot inject into kidulwm's established stream.
 
-  B. BLUR MECHANISM. wlroots 0.20 has no scene blur. Two honest options:
-     B1. TRUE BLUR — a compositor shader pass (house-glass gaussian) behind the
-         dim. Real effect, but a new renderer capability + real per-frame cost
-         risk on the TV panel. REC(HOLD): this is the "later richer lock screen"
-         candidate the ruling already parked.
-     B2. LAYERED FROST — stack a few translucent scene buffers (no shader) to
-         frost the frame while the dim does the heavy darkening. Cheap, shader-
-         free, lands NOW. REC(BUILD): matches "heavy house-glass" closely enough
-         at near-zero cost, keeps the slice green this session, and B1 stays a
-         clean later upgrade without re-cutting the freeze path.
-     In BOTH cases blank stays the fail-safe (B settles the default, not the
-     floor).
+  B. BLUR MECHANISM. RESOLVED: BLACK frost now (B2), true shader blur held
+     (B1) for the later richer lock screen. Frost = one heavier black overlay
+     (235), shader-free, on-theme, zero new cost. Blank (255) stays the
+     fail-safe floor either way.
 
 ## What this does NOT touch
 
