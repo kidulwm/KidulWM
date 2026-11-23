@@ -1,6 +1,7 @@
 # DESIGN DRAFT — claim/carve (the initial claim ceremony + per-user carve)
 
-Status: DRAFT (bobdotrix 2026-11-23). Builds on settings.md (LOCKED) + re-seat.md
+Status: BUILD AUTHORIZED (all four rulings LOCKED, Barticus 2026-11-23, GSI:
+"yes that's brilliant, go for it"). Builds on settings.md (LOCKED) + re-seat.md
 (LOCKED; re-seat-entry.draft.md built+proven through the privacy guard). The law
 is the contract; this file is the BUILD ORDER for the claim/carve slice — the
 "initial claim ceremony" + "per-resident carve" (settings.md §provisioning),
@@ -55,19 +56,15 @@ sibling to re-seat-entry.draft.md. Spec-first because PARTITIONING IS FATAL
     carried thread). The vault keyfile is still 0 (nothing carved yet). A REAL
     claim has never run — this slice is the thing that first exercises it.
 
-## The three open decisions (resolve before code — see Open questions)
+## The three open decisions (ALL LOCKED — Barticus 2026-11-23, GSI: "BC&D your recs; A yes + keyboard parallel")
 
-  1. NAME-ENTRY MECHANISM (settings.md literally says "TBD"): how the user enters
-     the alias at claim. A letter pill-bar (a second pill bar, of letters) vs
-     keyboard-only vs the hard remote problem deferred.
-  2. WHERE THE CEREMONY FIRES FROM: kushd on first-proof (claim is a kushd-owned
-     transition, single-session-authority I1) vs a new "People" app stub. The law
-     says the real ceremony signs with the owner's key — but the People app does
-     not exist yet (delegation.md is a later slice). The claim must not silently
-     use kalloc's TEST `sign` (plain seed) as its production path.
-  3. DEVICE CLASS for the KSD this boots: is StarShipKidul TV-class (default 50%)
-     or full? The DEV TV is the Kogan 4K (CENSUS) — class determines the fill-bar
-     default, which drives the carve percent. Trivial to flip but must be stated.
+  A. NAME-ENTRY: letter pill-bar PRIMARY + full keyboard path PARALLEL (one name
+     field, two surfaces — pill-walk + keyboard). LOCKED below.
+  B. CEREMONY + SIGNING: kushd owns claim; sign with the proven owner key via
+     the gate (NEVER kalloc's TEST seed sign). LOCKED below.
+  C. DEVICE CLASS: TV -> 50% fill-bar default. LOCKED below.
+  D. CARVE DEVICE: KSD drive by LABEL, ~771 GiB FREE POOL tail, fixed-config
+     (never "biggest disk" probe). LOCKED below.
 
 ## Build order (each lands green before the next)
 
@@ -142,37 +139,50 @@ sibling to re-seat-entry.draft.md. Spec-first because PARTITIONING IS FATAL
 ## Open questions (lettered, one recommendation each — "yes to your recs" locks)
 
   A. NAME-ENTRY MECHANISM. settings.md leaves it TBD.
-     REC(letter pill-bar now) — a second pill bar of letters, arrow-native like
-     the resident list, keeps the whole ceremony remote+navigation-drivable
-     (Granny's terms: no keyboard assumed). Keyboard stays the escape hatch the
-     fill bar already reserves. Alternative (keyboard-only) is faster to cut but
-     breaks the "no keyboard assumed" promise on the surface where Granny does
-     the ONE setup that matters.
+     LOCKED (Barticus 2026-11-23, GSI): BOTH — letter pill-bar PRIMARY + a full
+     keyboard path in PARALLEL. The letter pill-bar is the remote-native default
+     (a second pill row over the name field: A B C ... Z ⌫ done, `<`/`>`
+     walking, `enter` drops the letter, `⌫` backspaces, `done` commits); scroll
+     MUST run at a good sideways speed so it reads as one smooth walk, not 26
+     stops. The keyboard path is NOT an afterthought — it is an EQUAL input that
+     writes into the same name field, so a fold-out minimal remote keyboard
+     (letters + space + shift + enter, the "what the TV needs" set) or a
+     separate keyboard drops in with ZERO rework. Rule: ONE name field, TWO
+     input surfaces (pill-walk + keyboard), whichever is used last wins that
+     keystroke. The keyboard stack (from the fill bar's reserved escape hatch)
+     is already built; the pill bar is the new surface this cut adds.
+     PRODUCT NOTE (Barticus, hardware, for the remotes lead): fold-out keyboard
+     on the back of the remote — minimal, letters/space/shift/enter only, for
+     exactly this "onscreen keyboards take ages from a remote" reason. Software
+     side of that decision (both paths live) is what this law locks; the
+     physical-board design is a hardware slice, not this one.
 
   B. WHERE THE CEREMONY FIRES FROM + WHO SIGNS.
-     REC(kushd owns the claim transition; sign with the proved owner key) — kushd
-     is I1 single-session-authority and already runs/resolves everything; the
-     claim is a privileged transition, not app UI. The SIGNING must use the
-     key material the proof establishes (the owner's key, via the gate), NOT
-     kalloc's TEST seed sign. The People-app ceremony (delegation.md) stays a
-     LATER slice; this cut does a minimal kushd-owned claim, and the People app
-     later re-homes the delegates. If the owner-key signing is not reachable
-     this cut, we STOP and say so (a test-seed-signed production map is worse
-     than no map — it looks real and isn't).
+     LOCKED (Barticus 2026-11-23, GSI): kushd owns the claim transition; sign
+     with the proved owner key. kushd is I1 single-session-authority and already
+     runs/resolves everything; the claim is a privileged transition, not app UI.
+     The SIGNING must use the key material the proof establishes (the owner's
+     key, via the gate), NOT kalloc's TEST seed sign. The People-app ceremony
+     (delegation.md) stays a LATER slice; this cut does a minimal kushd-owned
+     claim, and the People app later re-homes the delegates. If the owner-key
+     signing is not reachable this cut, we STOP and say so (a test-seed-signed
+     production map is worse than no map — it looks real and isn't).
 
   C. DEVICE CLASS (fill-bar default). StarShipKidul boot drive class?
-     REC(TV -> 50% default) — the KSD is the StarShipKidul TV per starship.md;
-     "sharing is caring", and it leaves the other 50% of the free pool for the
-     residents that follow. Full stays one tap away (+ the extra consent beat).
+     LOCKED (Barticus 2026-11-23, GSI): TV -> 50% default. The KSD is the
+     StarShipKidul TV per starship.md; "sharing is caring", and it leaves the
+     other 50% of the free pool for the residents that follow. Full stays one
+     tap away (+ the extra consent beat).
 
   D. WHICH DEVICE does kcarve target? kcarve takes `<device>` (e.g. /dev/nvme1n1).
-     REC(the KSD drive by LABEL, per CENSUS: KSD-ESP + KSD-root on the nvme; the
-     FREE POOL is the unallocated tail of that same disc — partitions.md:120,
-     ~771 GiB "not pre-carved, the People app carves on demand") — guard the
-     device path in kushd (a fixed-by-config target, never a probe of "biggest
-     disk"), so a semi-hostile re-enumeration (nvme numbering shifts) cannot
-     redirect a carve onto the wrong drive. partitions.md is the pool authority
-     and is consistent with kcarve's READ of `sgdisk -p` free-space.
+     LOCKED (Barticus 2026-11-23, GSI): the KSD drive by LABEL, per CENSUS:
+     KSD-ESP + KSD-root on the nvme; the FREE POOL is the unallocated tail of
+     that same disc — partitions.md:120, ~771 GiB "not pre-carved, the People app
+     carves on demand". Guard the device path in kushd (a fixed-by-config target,
+     never a probe of "biggest disk"), so a semi-hostile re-enumeration (nvme
+     numbering shifts) cannot redirect a carve onto the wrong drive.
+     partitions.md is the pool authority and is consistent with kcarve's READ of
+     `sgdisk -p` free-space.
 
 ## What this does NOT touch
 
