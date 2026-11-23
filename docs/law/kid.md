@@ -3,6 +3,9 @@
 LOCKED 2026-11-13, Barticus present (GSI).
 AMENDED 2026-11-17 (Barticus present, GSI): the home/login name is a RANDOM hash
 (home-hash), NOT the key-derived key-id — see re-seat.md §Reversals.
+AMENDED 2026-11-23 (Barticus present, GSI): the entry/sign-in FACE shows the
+alias and nothing else — never the key-id, never a key ordinal, never the
+home-hash. See §The entry face.
 
 ## One line
 
@@ -83,6 +86,36 @@ kidulName is NOT local. It is the store's domain name (the friendly address on
 the mesh), a separate concern parked for the KidulVerse doc (store +
 OwnedProductList = storage without storage; the kID hash is the account key).
 It never names a user on the box.
+
+## The entry face (what the surface renders on a successful proof)
+
+Sounds like the alias again. It IS the alias — this section pins what the
+sign-in/key-entry slide actually DRAWS when a tap proves, because the face is
+where Granny meets the system and she meets exactly one name.
+
+  shows  = the alias. "Welcome, Granny." / "G'day, Dave." The slide renders
+           the display name and NOTHING else. No key-id, no key ordinal
+           ("key 1" / "key 226"), no home-hash, no "Approved by key #N".
+  why    = the key-id and the key ordinal are for US (owner, service-bobs,
+           logs), not for the user. Granny's question is "is it me, am I
+           safe?" — and "Welcome, Granny" answers it. The string/ordinal is
+           noise to her eye and a lie to the uninitiated. grannyize.md: the
+           depth is HIDDEN, never shown — the machine identity is hidden depth.
+  name   = the alias IS the account name the user picks at provisioning
+           (settings.md: name + size). No separate "name your key" step, no
+           auto-generated name. The first-proof "Owner" placeholder is
+           REPLACED by the named account — the placeholder disappears, the
+           name appears. If a system wants a rename, it lives in the
+           owner-only People/settings, never in the sign-in walk.
+  fallback = an UNNAMED, unprovisioned, or unknown key on its first tap shows
+             a bare "new key" (or the role) — it must NEVER silently borrow an
+             existing alias, because "Welcome, Mum" in a stranger's mouth is a
+             lie. Deny-by-default still governs WHO seats; the face only
+             labels what already proved.
+
+The key-id, the key ordinal, and the home-hash move OUT of the surface and into
+the owner-only People/admin layer (delegation.md) and the logs — that is where
+"key 226" belongs, if it belongs anywhere.
 
 ## Relationship to existing law (this doc is the umbrella, not a rewrite)
 
