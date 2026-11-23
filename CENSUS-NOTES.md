@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-23, GSI) — CLAIM/CARVE SPEC WRITTEN (KidulWM 5966ff9). Spec-first: partitioning is
+#   FATAL (settings.md). Build order on the real seams: (1) claim detection = empty-roster ONLY unclaimed state, no
+#   flag; (2) ceremony cues on the existing homes-gate channel; (3) name+size input via the no-slider fill bar; (4)
+#   wire the PROVEN kcarve verb through kushd (block-device only, mkfs stays app-side); (5) seed + SIGN both roster
+#   (kpax) and allocation map (kalloc) with the REAL owner key — NEVER kalloc's TEST seed sign (a test-signed prod
+#   map looks real and isn't); (6) defaultHome skeleton (artifact, not ad hoc); (7) mount-on-proof closes the loop.
+#   4 OPEN QUESTIONS for verdict: A name-entry (rec letter pill-bar, arrow-native); B ceremony owner+signing (rec
+#   kushd owns claim, sign with proved owner key via gate); C device class (rec TV=50%); D carve device (rec by
+#   LABEL, partitions.md free-pool ~771GiB, fixed-by-config never "biggest disk" probe). next = build, pending
+#   Barticus's verdict on A-D. GO CHECK THE FROST on hardware (blur = heavier alpha, leaf-done, awaits deploy/eyes-on).
+#
 # BUILD (bobdotrix 2026-11-23, GSI) — PRIVACY GUARD BUILT: SIGNED-IN FREEZE NOW BLACK-FROSTS (KidulWM 6fa75cb).
 #   The owner lock/re-auth had a leak: the frozen frame (a sensitive owner screen) sat SHARP behind the 55% dim —
 #   legible through 140-alpha black. Fixed with a monotonic seat_signed_in flag + a two-weight dim. kidulwm sets
