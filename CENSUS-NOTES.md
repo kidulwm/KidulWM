@@ -1,5 +1,25 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-23, GSI) — CONDUCTOR-RECONNECT PROBE READ BACK — VERDICT: PASS (the flip WORKED).
+#   Boot-watch verdict, read from the m.2 trail (this host booted Boot0001 "KSD", ran, rebooted back — logs dated
+#   2026-11-23 17:47-17:50). THE PROBE SUCCEEDED: the three MOST RECENT boot cycles all seat kidulwm
+#   class=conductor (bill.kush line 23 "kidulwm body conductor"), /etc/kushd/conductor = "990", and the CURRENT
+#   boot has ZERO "died kidulwm"/panic/refused. The crash-loop in the trail (died kidulwm status=6 SIGABRT AND
+#   status=256 exit-1) is ENTIRELY PRE-FLIP HISTORY — every one of those cycles is a class=user seat from before
+#   the conductor flip deployed; the flip FIXED the loop, not introduced it. Surface rename CONFIRMED LIVE in the
+#   act log: "UserHome summoned (KidulHome → UserHome)". homes-gate chain verified end-to-end on hardware:
+#   freeze -> verdict relayed (TRUSTED role=owner key=IKa1cdEH...) + UNTRUSTED + busy paths all correct ->
+#   resolve fired -> "seq: no local partition (crew or unprovisioned)" -> thaw. NO fresh pstore panic (17 dumps
+#   = Nov 9 #54, all 1794196213/214, none new). NO /run/kushd binding trace persisted (runtime tmpfs — but the
+#   FRAMETRACE-OUT eDP-1/DP-3 rendering proves kidulwm reached present, so the seat held).
+#   FIX LANDED WHILE READ-BACKING (bobdotrix 2026-11-23, KidulWM b0dc01b, signed B&B, pushed Codeberg+GitHub):
+#   boot-watch.sh was blind — kushd.log carries NUL padding so grep read it as BINARY and silently suppressed ALL
+#   matches (conductor + verdict sections reported empty on a PASSING boot); AND its "990" grep looked in the log
+#   when 990 lives in /etc/kushd/conductor. Now: strips NULs (tr -d '\000'), slices only the LAST bill: boot block
+#   (the current seat) so pre-flip status=6/256 respawn noise can't false-positive the verdict, reads 990 from the
+#   conductor file. REMAINING on #59 (unchanged): privacy guard -> claim/carve -> Homes provisioning UI ->
+#   defaultHome skeleton. NEXT BUILD = privacy guard (blank/blur on lock/re-auth). 2nd dongle still to order.
+#
 # BUILD (bobdotrix 2026-11-23, GSI) — PROBE FIRING: conductor-reconnect boot-watch + surface rename deployed.
 #   Two things this cut: (1) the "Homes" -> "Sign In" surface rename (settings.md §Code naming — surface sweeps,
 #   gate "homes*" stays as the kushd wire verb) is committed kidulwm ecf2440 (GPG B&B, pushed Codeberg+GitHub) and
