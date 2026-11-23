@@ -160,8 +160,14 @@ sibling to re-seat-entry.draft.md. Spec-first because PARTITIONING IS FATAL
      (letters + space + shift + enter, the "what the TV needs" set) or a
      separate keyboard drops in with ZERO rework. Rule: ONE name field, TWO
      input surfaces (pill-walk + keyboard), whichever is used last wins that
-     keystroke. The keyboard stack (from the fill bar's reserved escape hatch)
-     is already built; the pill bar is the new surface this cut adds.
+     keystroke.
+     SCOPE NOTE (correction, bobdotrix 2026-11-23): the earlier draft claimed
+     "the keyboard stack (from the fill bar's reserved escape hatch) is already
+     built" and "the pill bar is the new surface this cut adds." That is FALSE —
+     verified against src/: there is NO fill bar, NO name pill bar, and NO
+     keyboard escape hatch anywhere in KidulWM/src (no branch, stash, or reflog
+     entry carries one). BOTH surfaces (pill-walk + keyboard) AND the fill bar
+     are built from scratch in claim-carve step 3. Nothing was ready-made.
      PRODUCT NOTE (Barticus, hardware, for the remotes lead): fold-out keyboard
      on the back of the remote — minimal, letters/space/shift/enter only, for
      exactly this "onscreen keyboards take ages from a remote" reason. Software
