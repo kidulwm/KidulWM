@@ -49,9 +49,10 @@ const Level = enum { pill, list, prompt };
 
 /// The proof verdict, surfaced in the key prompt (settings.md step 3 KUSHD
 /// ROUTE). The slide never owns the gate — it cues kushd and renders whatever
-/// verdict comes back: waiting (tap pending), trusted (the resolved role), or
-/// untrusted ("no access").
-pub const Verdict = enum { waiting, trusted, untrusted };
+/// verdict comes back: waiting (tap pending), trusted (the resolved role),
+/// claim (empty-roster first-tap — the claim ceremony entry), or untrusted
+/// ("no access").
+pub const Verdict = enum { waiting, trusted, claim, untrusted };
 
 const ROLE_BUF_LEN = 32;
 
@@ -359,6 +360,7 @@ pub const SignInBar = struct {
                     status_buf[s.len] = 0;
                     break :blk status_buf[0..s.len :0];
                 },
+                .claim => "welcome — claim your home",
                 .untrusted => "no access",
             };
             var ext2: c.cairo_text_extents_t = undefined;
@@ -366,6 +368,7 @@ pub const SignInBar = struct {
             const stat_col: PillColor = switch (self.verdict) {
                 .waiting => PILL_GOLD,
                 .trusted => PILL_TEXT_ACTIVE,
+                .claim => PILL_GOLD,
                 .untrusted => PILL_TEXT_DIM,
             };
             c.cairo_set_source_rgba(cr, stat_col.r, stat_col.g, stat_col.b, 1.0);

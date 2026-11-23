@@ -2545,6 +2545,13 @@ pub const Server = struct {
             // fires from the crypto-gated verdict on our own connection.
             self.seat_signed_in = true;
             self.homesGateFinish(.trusted, role);
+        } else if (std.mem.startsWith(u8, line, "CLAIM key=")) {
+            // Empty-roster first-tap (claim-carve ruling E): the slide renders
+            // the claim ceremony entry ("welcome — claim your home"). NOT a
+            // sign-in — the claimant has no home yet, no personal data is on
+            // screen, so seat_signed_in must stay false until a real trusted
+            // verdict (the post-claim proof, build order step 7) lands.
+            self.homesGateFinish(.claim, "");
         } else {
             // "UNTRUSTED", "busy" (a proof already in flight), or anything else
             // -> no access this tap. Re-entering the prompt re-cues.
