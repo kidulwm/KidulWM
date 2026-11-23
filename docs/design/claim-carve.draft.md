@@ -97,13 +97,36 @@ sibling to re-seat-entry.draft.md. Spec-first because PARTITIONING IS FATAL
      - GATE: virgin boot renders the claim surface; a claimed boot routes straight
        to the two doors; no new socket verb for identity.
 
-  3. NAME + SIZE INPUT (kidulwm Sign In slide). The claim surface collects the two
+  3. NAME + SIZE INPUT (kidulWM Sign In slide). The claim surface collects the two
      things (name + size) using the mechanism Q 1 decides. Size = the no-slider
      fill bar already specced (settings.md:182-203): quarter-jump taps, hold-to-
      fine, keyboard escape hatch, consent-on-consent with cancel-default. Name =
      whatever Q 1 locks.
      - GATE: claim surface collects name + size; the fill bar enforces its hard
        stops; consent defaults to cancel.
+
+     BUILD RECON (bobdotrix 2026-11-23, before cutting — durable, do not re-derive):
+       * BOTH surfaces are from scratch (see scope note in Q A) — no fill bar, no
+         letter walk, no keyboard path existed anywhere.
+       * Claim-mode is a NEW SignInBar sub-state, entered on verdict == .claim
+         (the "welcome — claim your home" verdict already relays). It is NOT a
+         reuse of the two-door pill/list/prompt levels.
+       * INPUT PATH FACTS (verified in code): keyboard.zig:197 drops every
+         non-pressed event (`event.state != .pressed` returns), so signinSlideKey
+         sees ONLY pressed events — a "hold" arrives as repeated presses ONLY if
+         wlroots auto-repeat is on. KidulWM has NO setRepeatInfo call anywhere
+         (zero repeat config). THEREFORE hold-to-fine-tune has no event source
+         until setRepeatInfo is wired into the keyboard init. Tap-jump
+         (quarter-steps) and the keyboard exact-% path work WITHOUT repeat.
+       * Char keysyms (a-z, 0-9) already flow to signinSlideKey via the
+         keyboard.zig:291 route (findKind(.signin) != null) — the switch just
+         has no arms for them today. The keyboard path for name + size is a
+         matter of adding keysym arms, not new plumbing.
+       * Build order within step 3: (a) repeat wiring (setRepeatInfo) so hold
+         exists; (b) claim-mode state machine (name -> size -> consent); (c) the
+         letter pill-walk (THE PILL chrome, sorted walk not 26 stops); (d) the
+         fill bar (quarter-tap + hold-to-fine + exact-%); (e) consent-on-consent
+         nag, cancel-default, "full" extra beat. Each sub-slab lands green.
 
   4. THE CARVE (wire kcarve through kushd). On consent, kushd runs the SEALED
      kcarve verb (it already exists + is proven) with the chosen percent + the
