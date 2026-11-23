@@ -416,6 +416,13 @@ pub const Server = struct {
     /// up and the data tentacles are SIGSTOPped by kushd. Transition-gated so
     /// re-entering the prompt doesn't spam the cue socket.
     tentacles_frozen: bool = false,
+    /// Entry-slide state (privacy guard): true once ANY user has proved in
+    /// (a TRUSTED role=<r> verdict landed). Monotonic within a boot — no
+    /// sign-out / park this slice, so once personal data has appeared, every
+    /// later freeze blurs/frosts. The flag comes from the crypto-gated gate
+    /// verdict on kidulwm's OWN connection (unspoofable), NOT a kushd-pushed
+    /// or client-cueable verb (the cue socket is 0666, not a trust boundary).
+    seat_signed_in: bool = false,
     /// Guards the wlroots scene graph against cross-thread mutation.
     /// (Phase 0 retires the IPC thread, so this is now uncontended on the
     /// main loop — kept as a no-op guard pending a dedicated removal card.)
@@ -2404,15 +2411,24 @@ pub const Server = struct {
         }
     }
 
-    /// Entry-slide dim (re-seat slice 3): create the fullscreen translucent
-    /// black buffer (1x1 stretched, Fade-only law) above deck + peeks. Opacity
-    /// starts at 0; tickDim ramps it in.
+    /// Entry-slide dim / frost (re-seat slice 3 + privacy guard): create the
+    /// fullscreen translucent-black buffer (1x1 stretched, Fade-only law) above
+    /// deck + peeks. Opacity starts at 0; tickDim ramps it in. TWO weights:
+    ///   - public (not signed in)  -> 140/~55% black: the public frame is
+    ///     safe to show dimmed (re-seat.md: "public = no personal data").
+    ///   - signed-in (seat_signed_in) -> 235/~92% black FROST: heavy house-black,
+    ///     the sensitive frame is unreadable through it, never legible.
+    ///   The frost is BLACK (Barticus 2026-11-23, GSI: white is off-theme; black
+    ///   fading in/out is the house specialty, least cost). No shader, no layer
+    ///   stack — a heavier black IS the frost. Blank (255) remains the fail-safe
+    ///   floor if cost ever demands it.
     fn dimEnsure(self: *Server, output: *Output) void {
         if (self.dim_buffer != null) return;
         var box: wlr.Box = undefined;
         self.output_layout.getBox(output.wlr_output, &box);
         if (box.width <= 0 or box.height <= 0) return;
-        const dim_px = [_]u8{ 0, 0, 0, 140 }; // ARGB32 LE: B,G,R,A — ~55% black
+        const a: u8 = if (self.seat_signed_in) 235 else 140;
+        const dim_px = [_]u8{ 0, 0, 0, a }; // ARGB32 LE: B,G,R,A
         const buf = DataBuffer.create(&dim_px, 1, 1, 4) catch return;
         const sb = self.scene.tree.createSceneBuffer(buf) catch {
             wlr.Buffer.drop(buf);
@@ -2523,6 +2539,11 @@ pub const Server = struct {
     fn homesGateApply(self: *Server, line: []const u8) void {
         if (std.mem.startsWith(u8, line, "TRUSTED role=")) {
             const role = line["TRUSTED role=".len..];
+            // Privacy guard: any proved user means the seat is now signed-in.
+            // Monotonic — once set, every later freeze frosts (personal data
+            // may be on screen). This is the ONLY writer of the flag, and it
+            // fires from the crypto-gated verdict on our own connection.
+            self.seat_signed_in = true;
             self.homesGateFinish(.trusted, role);
         } else {
             // "UNTRUSTED", "busy" (a proof already in flight), or anything else
