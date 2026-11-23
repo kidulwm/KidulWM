@@ -5,6 +5,9 @@ immutable entity is named HOMES, not "Admin" — the door that switches
 publicHome -> privateHome, where the userHomes live. Supersedes the
 key-entry.draft.md framing (folded below; the draft is marked superseded,
 not deleted — archive).
+AMENDED 2026-11-23 (Barticus present, GSI): the add-a-key/add-a-user verb has
+exactly TWO homes — the initial claim ceremony and the owner-only People door —
+and NEVER the standard sign-in walk. See §Adding a key.
 
 ## The split (the ruling)
 
@@ -75,6 +78,33 @@ request) — never more. Screens around the building all seat off the one
 authoritative box (ktv native networking, machine-classes.md) — no
 remote-desktop middleman. Nothing new: the ruling lives in delegation.md; the
 Homes surface is where those verbs are CAST.
+
+## Adding a key — the verb has TWO homes, sign-in has none
+
+"Add a user" and "add a key" are the SAME verb in this house (kid.md: one key
+= one identity). Where that verb may APPEAR is pinned here, and it is an OWNER
+verb — a CREATOR act on the delegation tree (delegation.md: a grant descends
+from the owner), never something a walk-up or a crew member invents.
+
+  two homes  (1) the INITIAL CLAIM CEREMONY, and (2) the OWNER-ONLY People /
+             admin surface. Nowhere else.
+  ceremony   claim = first key seeds owner, THEN the same walk asks "who else
+             lives here?" and adds the family's keys up front (each: name +
+             size -> carve + roster entry). Setup is the ONE moment adding is
+             front-and-center. After it, the verb retreats to the owner-only
+             People door (delegation.md) — never the sign-in walk again.
+  sign-in    the standard sign-in (the "waiting for tap" prompt, the KidulCrew
+             door, the Residents list on a NON-owner) shows NO add verb. A
+             walk-up or crew member SIGNS IN, never creates. Granny never
+             meets "add user" by accident — she meets "Welcome, Granny."
+  seat, not  the verb's presence is a WHO question (owner sees it), NEVER a
+  disk       FREE-SPACE question. It is not hidden when the disk is full and
+             shown when empty — that would make "add user" flicker on a
+             transient condition and read as broken. The verb is ALWAYS in the
+             owner's People door; when the disk IS full, the carve step (the
+             one thing that can eat the system) answers honestly in Granny's
+             terms — "no room — ask the owner to make space" — instead of
+             vanishing the option.
 
 ## Residents / KidulCrew (the two doors)
 
