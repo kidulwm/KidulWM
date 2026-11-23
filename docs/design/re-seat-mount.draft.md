@@ -89,7 +89,7 @@ performs the mount". This file is the build order; the law is the contract.
 
 ## What this does NOT touch
 
-  - The slide (Homes) stays a cue, nothing more (step 3 contract holds).
+  - The slide (Sign In) stays a cue, nothing more (step 3 contract holds).
   - kboot stays untouched: ~100 lines, sleeps after boot.
   - No new resident daemons. Mounter and Kleaner are one-shot verbs.
 

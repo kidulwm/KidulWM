@@ -95,7 +95,7 @@ is its FOUNDATION.
        ksound/kplayd) are spared. Proven on-host: freeze stopped a user act to
        T state while conductor + system acts stayed S; thaw resumed it. This is
        the mechanism; the surface below wires to it.
-     - FREEZE-ON-FOCUS (kidulwm) WIRED (cd4956d): the Homes key prompt's .prompt
+     - FREEZE-ON-FOCUS (kidulwm) WIRED (cd4956d): the Sign In key prompt's .prompt
        entry fires "freeze" to kushd (transition-gated, fire-and-forget, same
        KUSH_SOCK path as homes-gate); exit/close fires "thaw". Proven by
        construction (the .prompt branch already drives the proven homes-gate
@@ -119,7 +119,7 @@ is its FOUNDATION.
        dim settles over the frozen deck. The prompt is the ONE LIVING ELEMENT —
        the face animates LOGO + "tap your kidulKey" over a dead-still world.
        Everything frozen, one thing breathing: that contrast is the effect. No
-       new slide kind (ruling C) — this is the Homes slide's freeze state.
+       new slide kind (ruling C) — this is the Sign In slide.s freeze state.
      - PRIVACY GUARD: public->owner keeps the frozen frame (public = no
        personal data); LOCK or owner RE-AUTH BLURS instead of snapshotting
        (LOCKED 2026-11-23, Barticus — heavy house-glass blur; a sensitive owner
@@ -211,7 +211,7 @@ skill).
 
 ## done-when
 
-  - A tap on the Homes sign-in freezes the data tentacles (SIGSTOP), holds the
+  - A tap on the Sign In slide freezes the data tentacles (SIGSTOP), holds the
     last frame as a dimmed backdrop with "tap your kidulKey" overlaid, then
     proof -> re-mint -> mount swaps the owner session into the SAME slot with
     no blink — the face's pid/uid never moved.
@@ -228,7 +228,7 @@ skill).
      IS uid 1001. [Barticus: yes]
   B. CONDUCTOR UID: 990, name "conductor", groups {render video input seat tty}
      only — no audio, no user group, no home (/var/lib/kidulwm). [Barticus: yes]
-  C. ENTRY SLIDE = the Homes slide UPGRADED (kind .homes gains freeze-on-focus),
+  C. ENTRY SLIDE = the Sign In slide UPGRADED (kind .signin gains freeze-on-focus),
      not a new slide kind. [Barticus: yes]
   D. SOCKET DIR: /run/kushd/wayland, root:seat 0770, recreated by kushd at boot
      (tmpfs). [Barticus: yes]
@@ -245,9 +245,9 @@ skill).
     proven; only the mount POINT (step 5) changes.
   - kboot — stays ~100 lines, sleeps after boot. The conductor uid is a kushd
     seating change, not a kboot change.
-  - The Homes slide's door flow (Residents/KidulCrew, two doors) — the freeze
+  - The Sign In slide.s door flow (Residents/KidulCrew, two doors) — the freeze
     attaches to the existing sign-in prompt; the flow itself is unchanged.
-  - claim/carve + the Homes provisioning UI (fill bar + name) + defaultHome
+  - claim/carve + the Sign In provisioning UI (fill bar + name) + defaultHome
     skeleton — the slices AFTER this one (settings.md steps 5-6).
 
 ## Open (non-blocking, for later)

@@ -23,7 +23,7 @@ pops and the CFC is emphasized. The canonical case is the kidulHome -> usersHome
 transition — the fade shows off the pills bar and dims the background behind what
 is meant to be focused.
 
-  - This GENERALIZES slice 3c's dim from "Homes key prompt" to "any focused
+  - This GENERALIZES slice 3c's dim from "Sign In key prompt" to "any focused
     pillsBar". The curtainEnsure recipe (the house lights) is the mechanism.
   - Focus-driven (Barticus: "when any pillsBar is in focus -> fade").
 
@@ -34,7 +34,7 @@ entryBar that FILLS (progress), with "insert key" text inside, and bobs balls
 (the dot-motif) doing a "waiting dance" along a line or circle — a live
 "we are waiting for you to put in your key" affordance.
 
-  - NEW surface for the Homes key prompt's waiting state (slice 3's one living
+  - NEW surface for the Sign In key prompt.s waiting state (slice 3's one living
     element), replacing the fade-as-waiting.
   - Balls dance = animation; shape (line vs circle) = OPEN ("along a line or
     circle, something with your balls").
@@ -45,7 +45,7 @@ entryBar that FILLS (progress), with "insert key" text inside, and bobs balls
 The up arrow at the top of each app should QUIT the app: it goes back up into
 the usersBar, and up again = kidulHome. appTop+up1 = usersHome, appTop+up2 =
 kidulHome. This unifies the old "top+2" into the arrow flow and applies to ALL
-apps (today Barticus had to quit the media player + Homes apps manually to get
+apps (today Barticus had to quit the media player + Sign In apps manually to get
 back to the usersBar).
 
   - Replaces the current top+2 with the arrow flow; the arrows carry the flow.
@@ -55,14 +55,16 @@ back to the usersBar).
   - Pill text + pills too small -> bigger. "91% of the width will probably be OK".
   - Text OUTSIDE the pills is "miniature" (later job — "it's just a pic & some
     text").
-  - The names text (sign-in / Homes app) is miniscule.
+  - The names text (sign-in / Sign In app) is miniscule.
 
-## 5. NAMING (later, non-important)
+## 5. NAMING (DECIDED 2026-11-23, settings.md §Code naming)
 
-  - "Homes" button looks wrong (later, non-important job).
-  - The sign-in / login app: "log in" / "Sign In" (fits alphabetical — Si after
-    Se of Search) / "Crew" / "KidulCrew" — UNDECIDED.
-  - "+VIP" -> "add user" (or "add user to system" / drive).
+  - "Homes" -> "Sign In" (DONE, committed ecf2440 + deployed): surface sweep only;
+    the kushd gate verb stays "homes*" (see settings.md — SURFACE vs GATE split).
+  - "Sign In" is the surface's current name (fits alphabetical — Si after Se of
+    Search). "Crew" / "KidulCrew" as alternate labels: SUPERSEDED unless re-litigated.
+  - "+VIP" -> "add user" (or "add user to system" / drive) — still OPEN, ownership
+    slice (moved off the sign-in surface per settings.md; see §6).
 
 ## 6. BUG
 
