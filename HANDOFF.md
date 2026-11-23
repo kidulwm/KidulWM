@@ -13,30 +13,30 @@ sessions with session_search). Live state lives in the ledger, not here.
 
 ## Current attack (2026-11-23)
 
-  STEP 4 — RE-SEAT + CONDUCTOR-RECONNECT PROBE: PASSED ON REAL HARDWARE.
-    The tower booted Boot0001 "KSD" and ran clean. The three most recent boots
-    seat kidulwm class=conductor uid 990 (bill.kush), /etc/kushd/conductor = "990",
-    current boot has ZERO died-kidulwm / panic / refused. Surface rename live:
-    "UserHome summoned (KidulHome → UserHome)". homes-gate end-to-end correct
-    (freeze → TRUSTED role=owner / UNTRUSTED / busy → resolve → "no local
-    partition" → thaw). The crash-loop in the trail (status=6/256) was ALL
-    pre-conductor-flip class=user history — the flip FIXED it. Also fixed
-    boot-watch.sh blindness (NUL padding + wrong 990 lookup) — KidulWM b0dc01b,
-    signed B&B, pushed Codeberg+GitHub.
+  STEP 4 — RE-SEAT + PRIVACY GUARD. Conductor-reconnect probe PASSED on hardware
+    (2026-11-23); privacy guard BUILT (KidulWM 6fa75cb, signed B&B, pushed both).
+
+  PRIVACY GUARD: signed-in freeze now black-frosts. seat_signed_in (monotonic)
+    set on any TRUSTED verdict on kidulwm's own gate connection; dimEnsure picks
+    public=140 (~55% dim) vs signed-in=235 (~92% black frost, unreadable). No new
+    kushd verb (the 0666 cue socket is NOT a trust boundary — a public tentacle
+    could spoof "seated role=public" and defeat the guard; verdict-as-signal
+    can't be injected into an established stream). BLACK frost (not white),
+    shader-free, zero new per-frame cost; 255 blank stays the fail-safe floor.
+    Spec: docs/design/privacy-guard.draft.md (Q A "verdict not verb" + Q B "black
+    frost not shader", both RESOLVED).
 
   CARRIED THREADS (do not lose):
-    - KidulWM is the ONLY repo touched this slice (tools/boot-watch.sh) — committed
-      + pushed clean. kushd/kboot/kidulkey all clean (only build.log untracked).
+    - NOT deployed to KSD this cut — eyes-on the live freeze (public dim, then
+      post-sign-in re-freeze frost) waits on the next deploy.
     - 2nd dongle still to order (real two-key cold SE050 ceremony deferred —
       current is a DISPOSABLE dev root, test-namespaced, TEST-ONLY).
     - Vault keyfile still 0 (no carve yet).
 
-  NEXT SESSION: PRIVACY GUARD — owner frames blank/blur on lock/re-auth, never a
-    persisted snapshot. Then claim/carve (kcarve -> kalloc sign) -> Homes
-    provisioning UI (fill bar + name) -> defaultHome skeleton. Full design frozen
-    (re-seat.md + re-seat-mount.draft.md + re-seat-entry.draft.md, all 6 steps
-    built + proven). Handoff = CENSUS-NOTES top + re-seat.md (law) +
-    re-seat-entry.draft.md (build order).
+  NEXT SESSION: claim/carve (kcarve -> kalloc sign) -> Homes provisioning UI
+    (fill bar + name) -> defaultHome skeleton. Full design frozen (re-seat.md +
+    re-seat-mount.draft.md + re-seat-entry.draft.md, all 6 steps built + proven;
+    privacy-guard.draft.md built). Handoff = CENSUS-NOTES top + re-seat.md (law).
 
 ## Trip wires / commands / secrets
 

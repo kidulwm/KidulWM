@@ -1,5 +1,21 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-23, GSI) — PRIVACY GUARD BUILT: SIGNED-IN FREEZE NOW BLACK-FROSTS (KidulWM 6fa75cb).
+#   The owner lock/re-auth had a leak: the frozen frame (a sensitive owner screen) sat SHARP behind the 55% dim —
+#   legible through 140-alpha black. Fixed with a monotonic seat_signed_in flag + a two-weight dim. kidulwm sets
+#   seat_signed_in=true once ANY "TRUSTED role=<r>" verdict lands on its OWN gate connection (homesGateApply), so
+#   no new kushd verb + no spoofable "seated role=" on the 0666 cue socket (a public uid-1001 tentacle could send
+#   that and defeat the guard — the verdict-as-signal avoids it; a third party cannot inject into an established
+#   stream). dimEnsure now picks the black: public=140 (~55%, today's dim, unchanged), signed-in=235 (~92% black
+#   frost, unreadable). BLACK not white (Barticus GSI: on-theme; black fade is the house specialty, least cost).
+#   Shader-free (layered translucent black only adds darkening, not frost) — zero new per-frame cost; 255-blank
+#   stays the fail-safe floor. Spec: docs/design/privacy-guard.draft.md (Q A+B RESOLVED). Builds + layout/boot-
+#   config tests green. NEVER DEPLOYED to KSD this cut — eyes-on the live freeze (public dim, then post-sign-in
+#   re-freeze frost) waits on the next deploy. SECURITY AUDIT (bobdotrix, asked + answered): kushd already OWNS
+#   seat state (session_uid, src/main.zig:672-673, FLIPPED+FROZEN in law) — no new kushd authority this slice.
+#   REMAINING on #59 (unchanged): claim/carve -> Homes provisioning UI (fill bar + name) -> defaultHome skeleton.
+#   NEXT BUILD = claim/carve (kcarve -> kalloc sign). 2nd dongle still to order.
+#
 # BUILD (bobdotrix 2026-11-23, GSI) — CONDUCTOR-RECONNECT PROBE READ BACK — VERDICT: PASS (the flip WORKED).
 #   Boot-watch verdict, read from the m.2 trail (this host booted Boot0001 "KSD", ran, rebooted back — logs dated
 #   2026-11-23 17:47-17:50). THE PROBE SUCCEEDED: the three MOST RECENT boot cycles all seat kidulwm
