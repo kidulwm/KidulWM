@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The usersBar — the apps list: AI / Games / Library / Search /
-// Homes. A compositor-owned TOP BAR (one render per output), the deck slides
+// Sign In. A compositor-owned TOP BAR (one render per output), the deck slides
 // BELOW it. Follows the media_slide / media.zig render patterns.
 //
 // Law: environment.md ("the usersBar IS the apps list"), naming.md

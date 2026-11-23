@@ -60,7 +60,7 @@ const overview_card = @import("render/overview_card.zig");
 const overview_slide_mod = @import("ui/overview_slide.zig");
 const tray_slide_mod = @import("ui/tray_slide.zig");
 const media_slide_mod = @import("ui/media_slide.zig");
-const homes_mod = @import("ui/homes.zig");
+const signin_mod = @import("ui/signin.zig");
 const users_bar_mod = @import("ui/users_bar.zig");
 const kplay_client_mod = @import("ipc/kplay_client.zig");
 const media_mod = @import("ui/media.zig");
@@ -145,8 +145,8 @@ pub const Output = struct {
     media_slide: media_slide_mod.MediaSlide = .{},
     /// usersBar slide state — the apps list (environment.md).
     user_home_slide: users_bar_mod.UserHomeSlide = .{},
-    /// Homes slide content painter state (kind .homes slide) — settings.md.
-    homes_slide: homes_mod.HomesSlide = .{},
+    /// Sign In slide content painter state (kind .signin slide) — settings.md.
+    signin_slide: signin_mod.SignInSlide = .{},
     /// CARD 2b slice 2: the exported host toplevel (kplayd parents its video
     /// surface to this via xdg-foreign). One per fullscreen session — lives
     /// on the output that owns the media card, NOT a deck slide.
@@ -181,7 +181,7 @@ pub const Output = struct {
             .home_slide = .{},
             .media_slide = .{},
             .user_home_slide = .{},
-            .homes_slide = .{},
+            .signin_slide = .{},
             .peek = peek_mod.Peek.init(server.overlay_tree, server.theme),
             .wallpaper_scene_buffer = null,
             .wallpaper_reveal_buffer = null,
@@ -294,10 +294,10 @@ pub const Output = struct {
             self.home_slide.card_buffer = null;
             self.home_slide.chrome_buffer = null;
         }
-        if (self.homes_slide.tree) |tree| {
+        if (self.signin_slide.tree) |tree| {
             tree.node.destroy();
-            self.homes_slide.tree = null;
-            self.homes_slide.card_buffer = null;
+            self.signin_slide.tree = null;
+            self.signin_slide.card_buffer = null;
         }
         self.peek.deinit();
     }
@@ -402,7 +402,7 @@ pub const Server = struct {
     /// its real app_id. -1 = not connected (klipd is kushd-cued, starts after
     /// us; reconnects lazily on the next relay).
     klip_fd: linux.fd_t = -1,
-    /// KUSHD ROUTE (settings.md step 3): the Homes slide's client line to
+    /// KUSHD ROUTE (settings.md step 3): the Sign In slide's client line to
     /// kushd's cue socket. When the key prompt ("waiting for tap") is entered,
     /// kidulwm writes "homes-gate" and reads the proof verdict kushd relays back
     /// on the same connection. The slide never owns the gate — it only cues the
@@ -412,7 +412,7 @@ pub const Server = struct {
     gate_buf: [256]u8 = undefined,
     gate_buf_len: usize = 0,
     gate_output: ?*Output = null,
-    /// Entry-slide freeze (re-seat slice 3): true while the Homes key prompt is
+    /// Entry-slide freeze (re-seat slice 3): true while the Sign In key prompt is
     /// up and the data tentacles are SIGSTOPped by kushd. Transition-gated so
     /// re-entering the prompt doesn't spam the cue socket.
     tentacles_frozen: bool = false,
@@ -515,7 +515,7 @@ pub const Server = struct {
     /// Entry-slide dim (re-seat slice 3): a fullscreen 1x1 translucent-black
     /// scene buffer, opacity-ramped (Fade-only law) — the "house lights down"
     /// over the frozen deck. Created on freeze, destroyed at rest. Sits above
-    /// deck + peeks, below the Homes prompt (z: deck < overlay_tree < dim <
+    /// deck + peeks, below the Sign In prompt (z: deck < overlay_tree < dim <
     /// homes). Same recipe as curtain_buffer, but partial-alpha so the frozen
     /// frame stays visible through it.
     dim_buffer: ?*wlr.SceneBuffer = null,
@@ -2117,9 +2117,9 @@ pub const Server = struct {
         std.log.info("KidulWM: UserHome slide closed", .{});
     }
 
-    /// Homes slide (settings.md): focus-or-spawn, like the home slide (A7).
+    /// Sign In slide (settings.md): focus-or-spawn, like the home slide (A7).
     /// At most one per row; never auto-respawned; standard quit destroys it.
-    pub fn homesSlideFocusOrSpawn(self: *Server) void {
+    pub fn signinSlideFocusOrSpawn(self: *Server) void {
         const deck = self.spawnDeck();
         if (deck.overview_slide_open) {
             if (self.outputForDeck(deck)) |output| self.overviewSlideClose(output);
@@ -2127,47 +2127,47 @@ pub const Server = struct {
             deck.empty_slot = .none;
         }
         self.focusOutputForDeck(deck);
-        if (deck.findKind(.homes)) |idx| {
+        if (deck.findKind(.signin)) |idx| {
             deck.focusWindowByIndex(idx);
         } else {
-            _ = deck.addCompositorSlide(.homes, 0, true);
+            _ = deck.addCompositorSlide(.signin, 0, true);
             if (self.outputForDeck(deck)) |output| {
-                self.homesSlideOpen(output);
+                self.signinSlideOpen(output);
             }
         }
         self.clearFocus();
         self.requestLayout();
     }
 
-    /// Standard quit on the Homes slide (A7): destroy it like any slide.
-    pub fn homesSlideClose(self: *Server) void {
+    /// Standard quit on the Sign In slide (A7): destroy it like any slide.
+    pub fn signinSlideClose(self: *Server) void {
         const deck = self.currentDeck();
-        if (deck.findKind(.homes) == null) return;
+        if (deck.findKind(.signin) == null) return;
         if (self.outputForDeck(deck)) |output| {
-            self.homesSlideCloseOn(output);
+            self.signinSlideCloseOn(output);
         }
-        _ = deck.removeCompositorSlide(.homes);
+        _ = deck.removeCompositorSlide(.signin);
         self.requestLayout();
     }
 
-    /// Create the Homes slide's scene tree on the output. Deck entry is
+    /// Create the Sign In slide's scene tree on the output. Deck entry is
     /// created by the caller.
-    fn homesSlideOpen(self: *Server, output: *Output) void {
-        if (output.homes_slide.isOpen()) return;
+    fn signinSlideOpen(self: *Server, output: *Output) void {
+        if (output.signin_slide.isOpen()) return;
         const tree = self.scene.tree.createSceneTree() catch return;
-        output.homes_slide.tree = tree;
+        output.signin_slide.tree = tree;
         tree.node.raiseToTop();
-        self.homesSlideRefresh(output);
-        std.log.info("KidulWM: Homes slide open on output", .{});
+        self.signinSlideRefresh(output);
+        std.log.info("KidulWM: Sign In slide open on output", .{});
     }
 
-    /// Render the Homes shell into the slide's card buffer at the slide's
+    /// Render the Sign In shell into the slide's card buffer at the slide's
     /// stock deck rect. Re-render guarded by geometry.
-    pub fn homesSlideRefresh(self: *Server, output: *Output) void {
-        const tree = output.homes_slide.tree orelse return;
+    pub fn signinSlideRefresh(self: *Server, output: *Output) void {
+        const tree = output.signin_slide.tree orelse return;
         const deck = &output.deck;
-        const idx = deck.findKind(.homes) orelse {
-            self.homesSlideCloseOn(output);
+        const idx = deck.findKind(.signin) orelse {
+            self.signinSlideCloseOn(output);
             return;
         };
         const target = deck.targetForSlide(idx);
@@ -2179,65 +2179,65 @@ pub const Server = struct {
         const pos_x: i32 = target.x + box.x;
         const pos_y: i32 = target.y + box.y;
         if (buf_w <= 0 or buf_h <= 0) return;
-        const geom_same = (buf_w == output.homes_slide.card_last_w and
-            buf_h == output.homes_slide.card_last_h);
-        const gen_same = (output.homes_slide.bar.state_generation == output.homes_slide.card_last_gen);
-        if (geom_same and gen_same and !output.homes_slide.card_dirty and output.homes_slide.card_buffer != null) {
-            if (output.homes_slide.card_buffer) |card| {
-                output.homes_slide.tree.?.node.setPosition(pos_x, pos_y);
+        const geom_same = (buf_w == output.signin_slide.card_last_w and
+            buf_h == output.signin_slide.card_last_h);
+        const gen_same = (output.signin_slide.bar.state_generation == output.signin_slide.card_last_gen);
+        if (geom_same and gen_same and !output.signin_slide.card_dirty and output.signin_slide.card_buffer != null) {
+            if (output.signin_slide.card_buffer) |card| {
+                output.signin_slide.tree.?.node.setPosition(pos_x, pos_y);
                 card.node.raiseToTop();
             }
             self.overlay_tree.node.raiseToTop();
             return;
         }
-        output.homes_slide.card_last_w = buf_w;
-        output.homes_slide.card_last_h = buf_h;
-        output.homes_slide.card_last_gen = output.homes_slide.bar.state_generation;
-        output.homes_slide.card_dirty = false;
-        const buffer = homes_mod.renderToBuffer(&output.homes_slide.bar, self.theme, buf_w, buf_h, scale) orelse return;
-        if (output.homes_slide.card_buffer) |old| old.node.destroy();
+        output.signin_slide.card_last_w = buf_w;
+        output.signin_slide.card_last_h = buf_h;
+        output.signin_slide.card_last_gen = output.signin_slide.bar.state_generation;
+        output.signin_slide.card_dirty = false;
+        const buffer = signin_mod.renderToBuffer(&output.signin_slide.bar, self.theme, buf_w, buf_h, scale) orelse return;
+        if (output.signin_slide.card_buffer) |old| old.node.destroy();
         const card = tree.createSceneBuffer(buffer) catch {
             wlr.Buffer.drop(buffer);
             return;
         };
         wlr.Buffer.drop(buffer);
-        output.homes_slide.card_buffer = card;
+        output.signin_slide.card_buffer = card;
         card.setDestSize(buf_w, buf_h);
         tree.node.setPosition(pos_x, pos_y);
         card.node.raiseToTop();
         self.overlay_tree.node.raiseToTop();
     }
 
-    fn homesSlideCloseOn(self: *Server, output: *Output) void {
-        if (!output.homes_slide.isOpen()) return;
-        output.homes_slide.tree.?.node.destroy();
-        output.homes_slide.tree = null;
-        output.homes_slide.card_buffer = null;
-        output.homes_slide.card_last_w = 0;
-        output.homes_slide.card_last_h = 0;
-        output.homes_slide.card_last_gen = std.math.maxInt(u32);
-        output.homes_slide.card_dirty = true;
+    fn signinSlideCloseOn(self: *Server, output: *Output) void {
+        if (!output.signin_slide.isOpen()) return;
+        output.signin_slide.tree.?.node.destroy();
+        output.signin_slide.tree = null;
+        output.signin_slide.card_buffer = null;
+        output.signin_slide.card_last_w = 0;
+        output.signin_slide.card_last_h = 0;
+        output.signin_slide.card_last_gen = std.math.maxInt(u32);
+        output.signin_slide.card_dirty = true;
         // A slide closed mid-proof leaves an orphaned cue — cancel it, and
         // release any entry-slide freeze (a prompt left by closing, not by ↑).
         self.homesGateCancel();
         self.setTentaclesFrozen(output, false);
-        std.log.info("KidulWM: Homes slide closed", .{});
+        std.log.info("KidulWM: Sign In slide closed", .{});
     }
 
-    /// INPUT LAW (settings.md) on the Homes slide, two doors. Pill level: ←→
+    /// INPUT LAW (settings.md) on the Sign In slide, two doors. Pill level: ←→
     /// switches Residents / KidulCrew (HARD STOPS), ↓ descends. Residents
     /// list: ↑↓ walks names, → consents (key prompt), ↑ at the top / ← / Esc
     /// ascend. KidulCrew: ↓ steps straight into the key prompt. Prompt: ↑ /
     /// ← / Esc back out — "dip your toe in", nothing commits until the key
     /// does. Mirrors userHomeKey: keys reach the slide only while it is the
     /// focused centre slide. Unconsumed keys fall through.
-    pub fn homesSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
+    pub fn signinSlideKey(self: *Server, sym: @import("xkbcommon").Keysym) bool {
         const xkb = @import("xkbcommon");
         const deck = self.currentDeck();
-        if (deck.findKind(.homes) == null) return false;
+        if (deck.findKind(.signin) == null) return false;
         if (deck.empty_slot != .none) return false;
         if (deck.focused_index >= deck.slides.items.len) return false;
-        if (deck.slides.items[deck.focused_index].kind != .homes) return false;
+        if (deck.slides.items[deck.focused_index].kind != .signin) return false;
         var out_opt: ?*Output = null;
         {
             var it = self.outputs.iterator(.forward);
@@ -2249,32 +2249,32 @@ pub const Server = struct {
             }
         }
         const out = out_opt orelse return false;
-        if (!out.homes_slide.isOpen()) return false;
+        if (!out.signin_slide.isOpen()) return false;
 
         switch (sym) {
             xkb.Keysym.Left => {
-                _ = out.homes_slide.bar.moveLeft();
-                self.homesSlideRefresh(out);
+                _ = out.signin_slide.bar.moveLeft();
+                self.signinSlideRefresh(out);
             },
             xkb.Keysym.Right => {
-                _ = out.homes_slide.bar.moveRight();
-                self.homesSlideRefresh(out);
+                _ = out.signin_slide.bar.moveRight();
+                self.signinSlideRefresh(out);
             },
             xkb.Keysym.Up => {
-                _ = out.homes_slide.bar.moveUp();
-                self.homesSlideRefresh(out);
+                _ = out.signin_slide.bar.moveUp();
+                self.signinSlideRefresh(out);
             },
             xkb.Keysym.Down => {
-                _ = out.homes_slide.bar.moveDown();
-                self.homesSlideRefresh(out);
+                _ = out.signin_slide.bar.moveDown();
+                self.signinSlideRefresh(out);
             },
             xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
-                _ = out.homes_slide.bar.confirm();
-                self.homesSlideRefresh(out);
+                _ = out.signin_slide.bar.confirm();
+                self.signinSlideRefresh(out);
             },
             xkb.Keysym.Escape => {
-                _ = out.homes_slide.bar.back();
-                self.homesSlideRefresh(out);
+                _ = out.signin_slide.bar.back();
+                self.signinSlideRefresh(out);
             },
             else => return false,
         }
@@ -2284,13 +2284,13 @@ pub const Server = struct {
         return true;
     }
 
-    /// KUSHD ROUTE (settings.md step 3): reconcile the gate cue with the Homes
+    /// KUSHD ROUTE (settings.md step 3): reconcile the gate cue with the Sign In
     /// bar's level. The slide never owns the gate — on .prompt entry it cues
     /// kushd ("homes-gate") and reads the verdict back on the same connection;
     /// on exit it cancels any in-flight proof and resets to "waiting".
     fn homesSyncGate(self: *Server, out: *Output) void {
-        if (out.homes_slide.bar.level == .prompt) {
-            if (out.homes_slide.bar.verdict == .waiting and self.gate_fd < 0) {
+        if (out.signin_slide.bar.level == .prompt) {
+            if (out.signin_slide.bar.verdict == .waiting and self.gate_fd < 0) {
                 self.homesGateCue(out);
             }
             // Entry-slide freeze: entering "tap your kidulKey" freezes the data
@@ -2299,7 +2299,7 @@ pub const Server = struct {
         } else {
             self.homesGateCancel();
             self.setTentaclesFrozen(out, false);
-            out.homes_slide.bar.resetVerdict();
+            out.signin_slide.bar.resetVerdict();
         }
     }
 
@@ -2338,7 +2338,7 @@ pub const Server = struct {
         self.gate_fd = fd;
         self.gate_buf_len = 0;
         self.gate_output = out;
-        std.log.info("KidulWM: Homes gate cued to kushd", .{});
+        std.log.info("KidulWM: Sign In gate cued to kushd", .{});
     }
 
     /// Cancel an in-flight proof (slide backed out / closed before the verdict).
@@ -2443,7 +2443,7 @@ pub const Server = struct {
             self.overlay_tree.node.raiseToTop();
             sb.node.raiseToTop();
             if (self.dim_output) |o| {
-                if (o.homes_slide.tree) |ht| ht.node.raiseToTop();
+                if (o.signin_slide.tree) |ht| ht.node.raiseToTop();
             }
         }
     }
@@ -2531,7 +2531,7 @@ pub const Server = struct {
         }
     }
 
-    fn homesGateFinish(self: *Server, v: homes_mod.Verdict, role: []const u8) void {
+    fn homesGateFinish(self: *Server, v: signin_mod.Verdict, role: []const u8) void {
         if (self.gate_source) |s| {
             s.remove();
             self.gate_source = null;
@@ -2543,8 +2543,8 @@ pub const Server = struct {
         self.gate_buf_len = 0;
         const out = self.gate_output orelse return;
         self.gate_output = null;
-        out.homes_slide.bar.setVerdict(v, role);
-        self.homesSlideRefresh(out);
+        out.signin_slide.bar.setVerdict(v, role);
+        self.signinSlideRefresh(out);
     }
 
     /// INPUT LAW (environment.md) on the usersBar: ←→ move focus between the apps
@@ -2581,10 +2581,10 @@ pub const Server = struct {
                 self.userHomeRefresh(out);
             },
             xkb.Keysym.Down, xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
-                // LAZY-OPEN: Homes is a compositor slide (open it); the rest
+                // LAZY-OPEN: Sign In is a compositor slide (open it); the rest
                 // spawn an external app. AI / Games are not built yet — no-op.
                 if (out.user_home_slide.bar.focused == .signin) {
-                    self.homesSlideFocusOrSpawn();
+                    self.signinSlideFocusOrSpawn();
                 } else {
                     const cmd: ?[]const u8 = switch (out.user_home_slide.bar.focused) {
                         .search => "/usr/local/bin/launch-kidul-browser.sh",
@@ -4356,9 +4356,9 @@ pub const Server = struct {
                 }
                 self.overlay_tree.node.raiseToTop();
             }
-            if (output.homes_slide.isOpen()) {
-                self.homesSlideRefresh(output);
-                if (output.homes_slide.tree) |tree| {
+            if (output.signin_slide.isOpen()) {
+                self.signinSlideRefresh(output);
+                if (output.signin_slide.tree) |tree| {
                     tree.node.raiseToTop();
                 }
                 self.overlay_tree.node.raiseToTop();

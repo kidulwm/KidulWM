@@ -45,7 +45,7 @@ pub const Split = struct {
 /// video is NOT a slide kind: it is a MODE the media card enters and leaves
 /// (fullscreen.md). `window_id` holds a compositor-generated id that never
 /// collides with a client window id (see SlideDeck.compositor_id_base).
-pub const SlideKind = enum { app, home, media_player, user_home, homes };
+pub const SlideKind = enum { app, home, media_player, user_home, signin };
 
 pub const Slide = struct {
     window_id: u32,

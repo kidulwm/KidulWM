@@ -7,7 +7,7 @@ pub const Action = union(enum) {
     focus_next,
     focus_prev,
     tray_toggle,
-    homes_toggle,
+    signin_toggle,
     media_card_toggle,
     signals_card_toggle,
     next_animation,
@@ -62,7 +62,7 @@ fn defaultKeybinds(allocator: std.mem.Allocator) std.ArrayList(Keybind) {
     };
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.j, .action = .focus_next }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.k, .action = .focus_prev }) catch {};
-    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.t, .action = .homes_toggle }) catch {};
+    list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.t, .action = .signin_toggle }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.a, .action = .next_animation }) catch {};
     list.append(allocator, .{ .mod4 = true, .sym = xkb.Keysym.m, .action = .media_card_toggle }) catch {};
     list.append(allocator, .{ .mod4 = false, .ctrl = true, .sym = xkb.Keysym.m, .action = .signals_card_toggle }) catch {};
@@ -392,7 +392,7 @@ pub const Keybinds = struct {
         if (std.mem.eql(u8, str, "focus_next")) return .focus_next;
         if (std.mem.eql(u8, str, "focus_prev")) return .focus_prev;
         if (std.mem.eql(u8, str, "tray_toggle")) return .tray_toggle;
-        if (std.mem.eql(u8, str, "homes_toggle")) return .homes_toggle;
+        if (std.mem.eql(u8, str, "signin_toggle")) return .signin_toggle;
         if (std.mem.eql(u8, str, "tray_select_next")) return .tray_select_next;
         if (std.mem.eql(u8, str, "tray_select_prev")) return .tray_select_prev;
         if (std.mem.eql(u8, str, "tray_activate")) return .tray_activate;

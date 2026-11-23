@@ -55,11 +55,11 @@ pub const Verdict = enum { waiting, trusted, untrusted };
 
 const ROLE_BUF_LEN = 32;
 
-/// The Homes slide's in-slide widget: the Residents / KidulCrew pill bar and
+/// The Sign In slide's in-slide widget: the Residents / KidulCrew pill bar and
 /// the focused door's content (a name list for Residents, a sign-in for
 /// KidulCrew, or the shared key prompt). Render state + focus only (the roster
 /// is a sample until step 3).
-pub const HomesBar = struct {
+pub const SignInBar = struct {
     seat: Seat = .residents,
     level: Level = .pill,
     name_index: usize = 0,
@@ -73,7 +73,7 @@ pub const HomesBar = struct {
     /// Record the proof verdict kushd relayed back. `role` is the roster role
     /// ("owner", "child-1", ...) on TRUSTED; ignored otherwise. Bumps the
     /// generation so the slide repaints.
-    pub fn setVerdict(self: *HomesBar, v: Verdict, role: []const u8) void {
+    pub fn setVerdict(self: *SignInBar, v: Verdict, role: []const u8) void {
         self.verdict = v;
         self.role_len = @min(role.len, ROLE_BUF_LEN);
         if (self.role_len > 0) @memcpy(self.role[0..self.role_len], role[0..self.role_len]);
@@ -82,28 +82,28 @@ pub const HomesBar = struct {
 
     /// Reset to "waiting" — called when the slide backs out of the prompt so a
     /// re-entry starts a fresh proof.
-    pub fn resetVerdict(self: *HomesBar) void {
+    pub fn resetVerdict(self: *SignInBar) void {
         if (self.verdict == .waiting and self.role_len == 0) return;
         self.verdict = .waiting;
         self.role_len = 0;
         self.bump();
     }
 
-    fn bump(self: *HomesBar) void {
+    fn bump(self: *SignInBar) void {
         self.state_generation +%= 1;
     }
 
-    fn nameCount(self: *const HomesBar) usize {
+    fn nameCount(self: *const SignInBar) usize {
         _ = self; // roster is a compile-time sample until step 3
         return RESIDENT_NAMES.len;
     }
 
-    fn listLabel(self: *const HomesBar, i: usize) [:0]const u8 {
+    fn listLabel(self: *const SignInBar, i: usize) [:0]const u8 {
         _ = self; // roster is a compile-time sample until step 3
         return RESIDENT_NAMES[i];
     }
 
-    fn descend(self: *HomesBar) bool {
+    fn descend(self: *SignInBar) bool {
         // .pill -> .list (Residents) or .prompt (KidulCrew).
         if (self.level != .pill) return false;
         if (self.seat == .residents) {
@@ -116,7 +116,7 @@ pub const HomesBar = struct {
         return true;
     }
 
-    fn consent(self: *HomesBar) bool {
+    fn consent(self: *SignInBar) bool {
         // .list -> .prompt (right arrow on a name).
         if (self.level != .list) return false;
         self.level = .prompt;
@@ -124,7 +124,7 @@ pub const HomesBar = struct {
         return true;
     }
 
-    fn ascend(self: *HomesBar) bool {
+    fn ascend(self: *SignInBar) bool {
         switch (self.level) {
             .pill => return false, // hard stop at the root
             .list => {
@@ -142,7 +142,7 @@ pub const HomesBar = struct {
 
     /// ← : at the pill level, move the seat left (hard stop at the left edge);
     /// below the pill, step back up one level.
-    pub fn moveLeft(self: *HomesBar) bool {
+    pub fn moveLeft(self: *SignInBar) bool {
         switch (self.level) {
             .pill => {
                 if (self.seat == .kidulcrew) {
@@ -158,7 +158,7 @@ pub const HomesBar = struct {
 
     /// → : at the pill level, move the seat right (hard stop at the right
     /// edge); in the Residents list, consent (open the key prompt).
-    pub fn moveRight(self: *HomesBar) bool {
+    pub fn moveRight(self: *SignInBar) bool {
         switch (self.level) {
             .pill => {
                 if (self.seat == .residents) {
@@ -175,7 +175,7 @@ pub const HomesBar = struct {
 
     /// ↑ : walk the list up (ascend at the top); back out of the prompt; hard
     /// stop at the pill.
-    pub fn moveUp(self: *HomesBar) bool {
+    pub fn moveUp(self: *SignInBar) bool {
         switch (self.level) {
             .pill => return false,
             .list => {
@@ -190,7 +190,7 @@ pub const HomesBar = struct {
 
     /// ↓ : descend (pill -> list/prompt); walk the list down (hard stop at the
     /// bottom); no-op while waiting for the tap.
-    pub fn moveDown(self: *HomesBar) bool {
+    pub fn moveDown(self: *SignInBar) bool {
         switch (self.level) {
             .pill => return self.descend(),
             .list => {
@@ -204,7 +204,7 @@ pub const HomesBar = struct {
     }
 
     /// Enter : keyboard alias — descend at the pill, consent in the list.
-    pub fn confirm(self: *HomesBar) bool {
+    pub fn confirm(self: *SignInBar) bool {
         switch (self.level) {
             .pill => return self.descend(),
             .list => return self.consent(),
@@ -213,7 +213,7 @@ pub const HomesBar = struct {
     }
 
     /// Esc : step back up one level, hard stop at the pill (back-home.md).
-    pub fn back(self: *HomesBar) bool {
+    pub fn back(self: *SignInBar) bool {
         return self.ascend();
     }
 
@@ -247,7 +247,7 @@ pub const HomesBar = struct {
         c.cairo_stroke(cr);
     }
 
-    pub fn renderCard(self: *HomesBar, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: Style, scale_f: f64) void {
+    pub fn renderCard(self: *SignInBar, cr: *c.cairo_t, w_d: f64, h_d: f64, style_: Style, scale_f: f64) void {
         const pad_x: f64 = 22.0 * scale_f;
         const content_w = w_d - 2.0 * pad_x;
 
@@ -274,11 +274,11 @@ pub const HomesBar = struct {
             var ext: c.cairo_text_extents_t = undefined;
             c.cairo_set_font_size(cr, title_font);
             c.cairo_set_source_rgba(cr, PILL_GOLD.r, PILL_GOLD.g, PILL_GOLD.b, 1.0);
-            c.cairo_text_extents(cr, "Homes", &ext);
+            c.cairo_text_extents(cr, "Sign In", &ext);
             const tx = pad_x + (content_w - ext.width) * 0.5;
             const ty = track_y - 26.0 * scale_f - ext.height;
             c.cairo_move_to(cr, tx, ty);
-            c.cairo_show_text(cr, "Homes");
+            c.cairo_show_text(cr, "Sign In");
         }
 
         // ---- The pill track (2 segments: Residents | KidulCrew). ----
@@ -414,25 +414,25 @@ pub const HomesBar = struct {
     }
 };
 
-/// Per-output scene state for the Homes slide (mirrors UserHomeSlide): tree +
+/// Per-output scene state for the Sign In slide (mirrors UserHomeSlide): tree +
 /// buffer + the bar widget + repaint guards.
-pub const HomesSlide = struct {
+pub const SignInSlide = struct {
     tree: ?*wlr.SceneTree = null,
     card_buffer: ?*wlr.SceneBuffer = null,
-    bar: HomesBar = .{},
+    bar: SignInBar = .{},
     card_last_w: i32 = 0,
     card_last_h: i32 = 0,
     card_last_gen: u32 = std.math.maxInt(u32),
     card_dirty: bool = true,
 
-    pub fn isOpen(self: *const HomesSlide) bool {
+    pub fn isOpen(self: *const SignInSlide) bool {
         return self.tree != null;
     }
 };
 
-/// Render the Homes slide into a wlroots buffer (mirrors users_bar.renderToBuffer).
+/// Render the Sign In slide into a wlroots buffer (mirrors users_bar.renderToBuffer).
 pub fn renderToBuffer(
-    bar: *HomesBar,
+    bar: *SignInBar,
     style_: Style,
     width: i32,
     height: i32,
@@ -470,5 +470,5 @@ pub fn renderToBuffer(
 // renderToBuffer fails the build, not the first runtime frame.
 comptime {
     _ = renderToBuffer;
-    _ = HomesBar.moveDown;
+    _ = SignInBar.moveDown;
 }

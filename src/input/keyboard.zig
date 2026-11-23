@@ -285,10 +285,10 @@ const KeyboardDevice = struct {
             if (server.userHomeKey(sym)) return;
             // fall through — no swallow
         }
-        // Homes slide owns arrows/enter while focused (settings.md: Resident /
+        // Sign In slide owns arrows/enter while focused (settings.md: Resident /
         // Visitor seats). Mirrors the usersBar route — no swallow.
-        if (server.currentDeckPub().findKind(.homes) != null) {
-            if (server.homesSlideKey(sym)) return;
+        if (server.currentDeckPub().findKind(.signin) != null) {
+            if (server.signinSlideKey(sym)) return;
             // fall through — no swallow
         }
         // KidulHome (empty deck / empty slot) — ↓ summons UserHome (the usersBar).
@@ -377,7 +377,7 @@ const KeyboardDevice = struct {
         // already guard inside focusNext()/focusPrev(); volume, screen-off, and
         // animation are NOT deck-mutating and stay put while the video plays.
         switch (action) {
-            .spawn, .close_focused, .overview_toggle, .signals_card_toggle, .tray_toggle, .homes_toggle, .tray_activate, .focus_output_next, .move_to_output_next, .park_toggle => {
+            .spawn, .close_focused, .overview_toggle, .signals_card_toggle, .tray_toggle, .signin_toggle, .tray_activate, .focus_output_next, .move_to_output_next, .park_toggle => {
                 if (server.video_fullscreen) server.videoFullscreenExit();
             },
             else => {},
@@ -404,11 +404,11 @@ const KeyboardDevice = struct {
                 server.homeSlideFocusOrSpawn();
                 return true;
             },
-            .homes_toggle => {
-                // Homes (settings.md): the immutable key-entry door — focus it
+            .signin_toggle => {
+                // Sign In (settings.md): the immutable key-entry door — focus it
                 // or spawn an empty shell (step 1; the "person" tap wires the
                 // gate in step 2).
-                server.homesSlideFocusOrSpawn();
+                server.signinSlideFocusOrSpawn();
                 return true;
             },
             .tray_select_next => {
@@ -454,8 +454,8 @@ const KeyboardDevice = struct {
                             server.homeSlideClose();
                             return true;
                         },
-                        .homes => {
-                            server.homesSlideClose();
+                        .signin => {
+                            server.signinSlideClose();
                             return true;
                         },
                         .media_player => {

@@ -12,6 +12,11 @@ AMENDED 2026-11-23 (Barticus present, GSI): the surface is RENAMED "Homes" →
 "Sign In". It is ONLY sign-in (residents list + visitor). The add-user/extra-key
 verb and the roster move OUT of the sign-in surface into the owner's own
 settings. The "+ VIP" pill is removed. See §The naming + §Adding a key.
+AMENDED 2026-11-23 (Barticus present, GSI): the INTERNAL code name is also
+swept — the slide identifiers follow the surface. "Homes" → "Sign In" across
+SlideKind.signin, signin.zig (was homes.zig), SignInSlide/SignInBar,
+signin_slide, signinSlide*, signin_toggle. ONE deliberate exception, recorded
+in §Code naming below.
 
 ## The split (the ruling)
 
@@ -237,6 +242,31 @@ keyboard).
 Deploy ALL AT ONCE — the built-but-undeployed usersBar + kidul-flow + re-centred
 pill bar, together with this Homes slice — then Barticus boots and inspects.
 No incremental partial deploys.
+
+## Code naming — surface vs gate (the ONE exception)
+
+Internal identifiers follow the surface: the sign-in SLIDE is `signin` everywhere
+(SlideKind.signin, signin.zig, SignInSlide/SignInBar, signin_slide,
+signinSlide*, signin_toggle). ONE deliberate exception, and it is not
+accidental drift:
+
+  homes-gate  the KUSHD ROUTE proof verb is STILL named "homes*" — homesGateCue,
+              homesGateCancel, homesGateDrain, homesGateFinish, homesGateApply,
+              homesSyncGate, and the wire string "homes-gate" itself. These are
+              the GATE that seats you into your home (a re-seat to
+              /home/<home-hash>, re-seat.md) — not the slide surface. The word
+              "homes" is CORRECT there: it names the destination (the user
+              homes being entered), not the button.
+
+Why not sweep it too: "homes-gate" is a WIRE CONTRACT — kidulwm writes it,
+kushd reads it (kushd GATE_CUE = "homes-gate"). Renaming the verb is a
+cross-repo coordinated change (kidulwm + kushd must ship in lock-step) that
+buys Granny nothing — she never sees it. Renaming the gate identifiers to
+"signin-gate" would also be a MISNAME: the gate does not sign you in, it seats
+you into a home. So the split is: SIGN IN (surface, what you tap) vs HOMES
+(gate, where you end up). Two words, two jobs — same rule as Home/HomeS at the
+surface level. Do not "clean up" homesGate* to signinGate* without re-litigating
+the wire verb across both repos.
 
 ## Reversals / naming
 
