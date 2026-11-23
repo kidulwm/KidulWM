@@ -46,17 +46,22 @@ echo "   other act logs present:"; ls "$L"/kushd-*.log 2>/dev/null | sed 's#.*/#
 
 echo
 echo "===================== VERDICT ====================="
-echo "-- CONDUCTOR SEATING (want: seated kidulwm / conductor / 990): --"
-sudo grep -niE 'conductor|seated kidulwm|\b990\b' "$L"/kushd.log 2>/dev/null | tail -25 \
-  || echo "   (no conductor/990 lines — seating may have failed or log missing)"
+echo "-- CONDUCTOR SEATING (want: seated kidulwm / conductor; uid in /etc/kushd/conductor): --"
+# kushd.log has NUL padding -> grep sees it as binary and suppresses matches. -a forces text.
+sudo tr -d '\000' < "$L"/kushd.log 2>/dev/null | grep -niE 'conductor|seated kidulwm' | tail -25 \
+  || echo "   (no conductor/seated lines — seating may have failed or log missing)"
+echo "   conductor uid (want: 990): $(sudo cat "$MNT"/etc/kushd/conductor 2>/dev/null | tr -d '\n')"
 
 echo
-echo "-- CRASH / PANIC / REFUSED (want: NONE): --"
-if sudo grep -niE 'died kidulwm|kernel panic|not syncing|segfault|refused|crash-loop' \
-      "$L"/kernel.log "$L"/kboot.log "$L"/kushd.log "$L"/kushd-*.log 2>/dev/null | tail -25; then
-  echo "   ^^^ crash/panic markers above (investigate)"
+echo "-- CRASH / PANIC / REFUSED (want: NONE in the current boot): --"
+# Only the LAST boot cycle matters (the current seat). History before the last
+# "bill:" line is pre-conductor-flip respawn noise. Use awk to slice from the
+# final boot-start line; NUL padding stripped so grep won't read it as binary.
+if sudo tr -d '\000' < "$L"/kushd.log 2>/dev/null | awk '/bill: .* acts/{cur=""} {cur=cur $0 ORS} END{print cur}' \
+     | grep -niE 'died kidulwm|kernel panic|not syncing|segfault|refused|crash-loop' | tail -25; then
+  echo "   ^^^ crash/panic markers in the CURRENT boot (investigate)"
 else
-  echo "   (clean — no crash/panic/refused lines)"
+  echo "   (clean — current boot has no died/panic/refused; earlier cycles were pre-conductor-flip respawns)"
 fi
 
 echo
