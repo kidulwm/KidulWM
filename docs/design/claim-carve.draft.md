@@ -66,6 +66,17 @@ sibling to re-seat-entry.draft.md. Spec-first because PARTITIONING IS FATAL
   D. CARVE DEVICE: KSD drive by LABEL, ~771 GiB FREE POOL tail, fixed-config
      (never "biggest disk" probe). LOCKED below.
 
+  E. EMPTY-ROSTER SIGNAL (claim detection). LOCKED (Barticus 2026-11-23, GSI:
+     "yes all good"): a MISSING / corrupt / bad-sig roster stays UNTRUSTED (never
+     claim) — deny-by-default is the floor (kid.md). Claim is signalled ONLY by a
+     ROOT-signed roster with ZERO entries (a seeded-empty virgin artifact baked into
+     the golden image). A live roster with entries but NOT your key is still
+     UNTRUSTED (not claim). The gate emits "CLAIM key=<id>" for a proven key on an
+     empty roster (exit 0), "TRUSTED role=..." for a resolved role, exit 1
+     "UNTRUSTED" otherwise. The existing TEST key is stripped from the roster and
+     re-added FRESH through the ceremony (it stays a test key, but its entry is
+     re-proven through the real first claim, never carried over verbatim).
+
 ## Build order (each lands green before the next)
 
   1. CLAIM DETECTION (kushd). Empty-roster is the ONLY unclaimed state (no flag).
