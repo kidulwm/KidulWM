@@ -100,6 +100,15 @@ const KeyboardDevice = struct {
         keyboard.events.modifiers.add(&device.modifiers);
         input_device.events.destroy.add(&device.device_destroy);
 
+        // Key auto-repeat (claim-carve step 3, the fill bar's "press & hold to
+        // fine-tune"): wlroots synthesizes repeat PRESSES into our own handleKey
+        // stream, which is exactly what a hold needs (keyboard.zig drops bare
+        // releases at :197, so a raw keyDown timer never reaches the slide).
+        // 30/s + 250ms initial dwell (settings.md "tuning knobs": ~250ms
+        // threshold). The repeat carries a `.pressed` state, so downstream
+        // handlers that only act on press get the repeat for free — no rework.
+        keyboard.setRepeatInfo(30, 250);
+
         manager.devices.append(device);
         return device;
     }
