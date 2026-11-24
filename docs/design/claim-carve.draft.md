@@ -127,6 +127,16 @@ sibling to re-seat-entry.draft.md. Spec-first because PARTITIONING IS FATAL
          letter pill-walk (THE PILL chrome, sorted walk not 26 stops); (d) the
          fill bar (quarter-tap + hold-to-fine + exact-%); (e) consent-on-consent
          nag, cancel-default, "full" extra beat. Each sub-slab lands green.
+         STATUS (bobdotrix 2026-11-23): BUILT — all five sub-slabs. signin.zig
+         gained ClaimStage(name/size/consent) + ClaimCommit + the state fields +
+         renderClaim{Name,Size,Consent}; server.zig gained signinClaimKey (the
+         claim ladder key router, inClaim()-gated) + the .claim verdict branch in
+         homesGateApply; keyboard.zig gained setRepeatInfo(30, 250ms) for hold.
+         GATE NOT YET EXERCISED: built green + fmt-clean, but the claim surface
+         has never rendered on real hardware (a REAL claim has never run — the
+         current roster is a test owner, not empty). The commit seam in
+         signinClaimKey logs "claim commit" and backs out; the carve wiring is
+         step 4.
 
   4. THE CARVE (wire kcarve through kushd). On consent, kushd runs the SEALED
      kcarve verb (it already exists + is proven) with the chosen percent + the
