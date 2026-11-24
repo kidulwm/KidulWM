@@ -1,6 +1,9 @@
 # DESIGN DRAFT — carve-subvolume (the btrfs-subvolume carve re-cut)
 
-Status: DRAFT — presented for Barticus's lock. Builds on disk-guard.md (LOCKED
+Status: LOCKED 2026-11-25, Barticus present (GSI). Rulings A–D [Barticus: yes];
+E DEFERRED — PUBLIC stays a separate partition this cut; production folds it to
+one shared @public SUBVOLUME + link-in (its own docket — see §Open non-blocking,
+and the pool-commissioning step keeps room for it). Builds on disk-guard.md (LOCKED
 2026-11-23, ruling A = btrfs SUBVOLUME is the production carve unit). The law is
 the contract; this file is the BUILD ORDER for reconciling claim/carve step 4's
 carve mechanism against that ruling. Sibling to claim-carve.draft.md (this does
@@ -181,9 +184,13 @@ kushd carve cue — kushd/src/main.zig (CARVE_CUE "homes-carve", KCARVE_PATH,
 
   E. PUBLIC FOLD — does the PUBLIC partition (128 GiB shared floor,
      partitions.md) fold INTO the pool (as a subvolume) or stay a separate
-     partition? REC: leave PUBLIC as-is this cut — folding it is a partitions.md
-     amendment, not a carve-mechanism re-cut; surface it as its own docket later
-     rather than widen this slice.
+     partition? DEFERRED (Barticus, GSI): leave PUBLIC as-is this cut. Production
+     shape (recorded, not built): PUBLIC and the shared media library become ONE
+     @public SUBVOLUME in the pool, mounted into every home at /public — NOT a
+     per-user /public folder, and NOT a symlink across partitions (a subvolume
+     mount IS the wall). The trigger is install sizing (a 32 GiB drive has no
+     room for a 128 GiB PUBLIC partition + per-user homes) — a partitions.md /
+     sizing amendment and its own docket, orthogonal to the carve primitive.
 
 ## What this does NOT touch
 
@@ -197,7 +204,10 @@ kushd carve cue — kushd/src/main.zig (CARVE_CUE "homes-carve", KCARVE_PATH,
 
 ## Open (non-blocking, for later)
 
-  - PUBLIC-fold-into-pool (Q E).
+  - PUBLIC-fold-into-pool (Q E, DEFERRED): fold PUBLIC + shared media into one
+    @public subvolume in the pool, mounted into every home at /public; trigger =
+    install sizing (32 GiB drive). Own docket — partitions.md sizing amendment,
+    not a carve-mechanism change.
   - defaultHome skeleton's exact pill layout (claim/carve §Open already carries
     this — its own design pass before step 6 lands).
   - kalloc/kpax `sign` TEST-helper retirement (already flagged in claim/carve).
