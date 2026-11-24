@@ -105,9 +105,13 @@ END of resolution so the resident path is untouched:
        partition at /home/<home-hash>, uid minted ad hoc (no roster entry)
     3. deny                              -> UNTRUSTED, nothing mounts
 
-The roamer's home-hash is generated at PROVISIONING (stored in the manifest),
-so the SAME drive mounts at the SAME /home/<home-hash> on every TV it visits —
-the crossing-over is portable.
+The roamer's home-hash is generated at PROVISIONING and sealed INSIDE the
+encrypted Home region (LOCKED 2026-11-23, key-id-public / home-hash-sealed
+split — see below). It is NOT in the plaintext manifest: a passive reader of
+the drive sees a key-id (public anyway), never a traversable login. The host
+learns the home-hash only AFTER a successful unlock, so the SAME drive mounts
+at the SAME /home/<home-hash> on every TV it visits, and only for the genuine
+holder — the crossing-over is portable AND unlinkable to a reader.
 
 ## The manifest (shape mirrors kpax/kalloc, one format family)
 
@@ -115,12 +119,17 @@ the crossing-over is portable.
 canonical text + detached Ed25519 sig (roster-format.md §shape, reused):
 
   header          manifest version=<n> root=<kidulworks-key-id> prev=<hash>
-  entry           <drive-key-id> <home-hash> <partition-uuid> <envelope-id>
+  entry           <drive-key-id> <partition-uuid> <envelope-id>
 
   <drive-key-id>   the drive's proof key (self-generated at provisioning)
-  <home-hash>      random, generated at provisioning, the roamer's login+home
   <partition-uuid> the drive's Home partition UUID (token, never /dev)
   <envelope-id>    which wrapped-key envelope on the drive unlocks it
+
+The HOME-HASH is deliberately ABSENT from the manifest (LOCKED 2026-11-23): the
+key-id is already public (re-seat.md "broadcast in the clear during proof"), so
+it stays plaintext and is what lets a host verify the remote pre-open; the
+home-hash is the roamer's unlinkable login (kid-unlinkability.md), so it lives
+INSIDE the encrypted Home region and is revealed only to a successful unlocker.
 
 Signed by the KidulWorks provisioning root (NOT the box's owner, NOT the
 drive's own key — a self-sign would let a hostile drive mint its own

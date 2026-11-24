@@ -208,19 +208,19 @@ alternative is exactly the "one signal for all" broadcast we refuse.
 Putting the operator's key-id AND home-hash in a PLAINTEXT manifest means every
 host the drive merely touches can READ them — the traveler becomes LINKABLE
 across TVs before they even open the drive. That collides with
-kid-unlinkability.md (home-hash exists to be the unlinkable login). The fix is
-a split the lock can encode but should not be assumed:
+kid-unlinkability.md (home-hash exists to be the unlinkable login). LOCKED
+2026-11-23 (Barticus, GSI): the split is decided —
 
   key-id (pubkey)       -> plaintext manifest (PUBLIC anyway by re-seat.md;
                           it is what lets the host verify the remote pre-open)
-  home-hash             -> INSIDE the encrypted region, revealed only AFTER the
-                          unlock succeeds (the host learns the mount point only
-                          for a genuine unlocker — a passive reader sees a key-id,
-                          not a traversable identity)
+  home-hash             -> SEALED inside the encrypted Home region, revealed
+                          only AFTER the unlock succeeds (the host learns the
+                          mount point only for a genuine unlocker — a passive
+                          reader sees a key-id, not a traversable identity)
 
-This is a RULING for Barticus (where home-hash lives), not a wave-through. The
-deadlock above does NOT depend on it — key-id alone is enough to verify the
-remote. But unlinkability does.
+Applied to portable-homes.md §The manifest (home-hash removed from the plaintext
+entry; sealed in the Home region). Barticus's verdict: "the pub key is already
+public so a non-issue, and the home-hash encrypted makes the split look nice."
 
 ## Relationship to existing law
 
