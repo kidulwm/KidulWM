@@ -28,7 +28,9 @@ sessions with session_search). Live state lives in the ledger, not here.
     - STEP 4 RECONCILIATION (the live divergence): kcarve + homes-carve carve a
       raw PARTITION (sgdisk -n + LUKS2), but disk-guard ruling A made the
       production carve unit a btrfs SUBVOLUME. Reconcile the carve mechanism
-      against ruling A before step 5, or rule it explicitly deferred.
+      against ruling A (settled, not optional) — kcarve re-cut to btrfs subvolume
+      create + qgroup quota on the btrfs-on-LUKS pool; per-user LUKS2 retired;
+      per-home encryption = fscrypt's own docket.
     - step 5 = allocation + roster seed, SIGNED with the PROVED owner key via
       the gate (NEVER kalloc's TEST seed) — the signing boundary.
     - steps 6 (defaultHome skeleton) + 7 (mount-on-proof close) follow.

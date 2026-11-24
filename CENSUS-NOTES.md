@@ -16,8 +16,9 @@
 #                            deferred to its own docket, C = drive-class per-deployment commissioning.
 #   OPEN / NEXT — STEP 4 RECONCILIATION (the live divergence): kcarve + homes-carve carve a raw PARTITION (sgdisk -n
 #   + LUKS2), but disk-guard ruling A made the production carve unit a btrfs SUBVOLUME (btrfs-on-LUKS). The carve
-#   mechanism (step 4) must be reconciled against ruling A BEFORE step 5, or the divergence must be explicitly ruled
-#   deferred. THEN step 5 = allocation + roster seed, SIGNED with the PROVED owner key via the gate (NEVER kalloc's
+#   mechanism (step 4) reconciles against ruling A (firm, settled — not optional): kcarve re-cut from
+#   per-user LUKS2 partition (sgdisk -n + luksFormat) to btrfs subvolume create + qgroup quota on the btrfs-on-LUKS
+#   pool (per-home encryption = fscrypt's docket, deferred). THEN step 5 = allocation + roster seed, SIGNED with the PROVED owner key via the gate (NEVER kalloc's
 #   TEST seed) — the signing boundary. Steps 6 (defaultHome skeleton) + 7 (mount-on-proof close) follow. NOT deployed
 #   to KSD this cut; 2nd dongle still to order; vault keyfile still 0 (no real carve has run).
 #
