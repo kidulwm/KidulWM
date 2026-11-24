@@ -50,6 +50,33 @@ key genuinely opens the door alone. Two models, both safe, different footing:
   resident (internal)  proof -> resolve key-id -> role + partition -> one open
   roamer (portable)    proof -> unwrap the drive's own envelope -> mount
 
+## The three-door surface (NewUser / Resident / Visitor)
+
+Barticus 2026-11-23 (GSI): the Sign In slide is THREE buttons, not two doors,
+not a name list. The buttons declare INTENT; the key tap then resolves IDENTITY
+(the key proves WHO — no name list, tap-first). Names come AFTER proof as the
+greeting, never as a pre-proof menu.
+
+  Resident    tap the key. Home lives ON this box (the internal carve). The key
+              resolves to role + partition and the seat greets you. No list, no
+              consent-to-a-name.
+  Visitor     "plug in your drive" -> tap the key. Home lives ON the drive you
+              brought (the roamer/portable path). The drive carries its own
+              manifest; the key opens it; guest authority, never host. The
+              visitor door stays THIN — it is NOT saddled with any further
+              detail or a create verb; the drive IS the detail.
+  NewUser     the create door. Nothing to prove yet — this is where a home is
+              BORN: either the internal claim (empty roster -> first owner ->
+              carve the KSD) or the portable prepare (blank drive -> carve it
+              -> self-sovereign manifest). The two are the SAME ceremony, two
+              targets (portable-homes §one ceremony, two targets).
+
+Naming of the third button is NOT settled ("NewUser" / "CreateNew") — the
+FUNCTION is what is locked, the word later (naming law: name the behavior).
+What MUST hold: Visitor is never contaminated by the create verb, and the
+create door is the ONE place a home is born — it maps 1:1 onto "Add a user"
+(owner, internal) and "Prepare drive" (self, portable) being distinct verbs.
+
 ## What the slide becomes
 
   Old: two doors (Residents name list / KidulCrew) -> pick/consent -> tap.
