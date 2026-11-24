@@ -2258,6 +2258,12 @@ pub const Server = struct {
         const out = out_opt orelse return false;
         if (!out.signin_slide.isOpen()) return false;
 
+        // Claim ceremony (build order 3): while a claim candidate is up, the
+        // claim ladder owns the keys — the two-door ladder is inert (empty roster).
+        if (out.signin_slide.bar.inClaim()) {
+            return self.signinClaimKey(out, sym);
+        }
+
         switch (sym) {
             xkb.Keysym.Left => {
                 _ = out.signin_slide.bar.moveLeft();
@@ -2288,6 +2294,83 @@ pub const Server = struct {
         // KUSHD ROUTE: reconcile the cue with the bar level after every move.
         // Entering .prompt arms the proof; backing out cancels it.
         self.homesSyncGate(out);
+        return true;
+    }
+
+    /// INPUT LAW (build order 3) on the claim ceremony. The claim ladder owns
+    /// ←→ (walk letters / step the fill bar / flip the consent ball), Enter
+    /// (drop a letter / advance / commit-or-cancel), Esc (step back a stage),
+    /// and letter/digit keysyms (the keyboard path, writing the SAME name field
+    /// / setting an exact %). Mirrors signinSlideKey: entries route here only
+    /// while inClaim() is true and the slide is the focused centre slide.
+    fn signinClaimKey(self: *Server, out: *Output, sym: @import("xkbcommon").Keysym) bool {
+        const xkb = @import("xkbcommon");
+        const bar = &out.signin_slide.bar;
+
+        switch (sym) {
+            xkb.Keysym.Left => {
+                _ = bar.claimMove(-1);
+                self.signinSlideRefresh(out);
+            },
+            xkb.Keysym.Right => {
+                _ = bar.claimMove(1);
+                self.signinSlideRefresh(out);
+            },
+            xkb.Keysym.Return, xkb.Keysym.KP_Enter => {
+                switch (bar.claimConfirm()) {
+                    .none => {},
+                    .cancel => {
+                        // consent default-cancel: back to the size stage, no carve.
+                        _ = bar.claimBack();
+                    },
+                    .commit => {
+                        // Fire the carve (build order step 4) — wired next cut.
+                        // For now the surface has no consumer; this is the seam.
+                        std.log.info("KidulWM: claim commit — name={s} size={d}% (carve wiring is step 4)", .{ bar.name_buf[0..bar.name_len], bar.size_pct });
+                        _ = bar.claimBack();
+                    },
+                }
+                self.signinSlideRefresh(out);
+            },
+            xkb.Keysym.Escape, xkb.Keysym.Up => {
+                _ = bar.claimBack();
+                self.signinSlideRefresh(out);
+            },
+            xkb.Keysym.BackSpace => {
+                if (bar.claim_stage == .name and bar.nameBackspace()) {
+                    self.signinSlideRefresh(out);
+                }
+                // else: fall through to no-op (not swallowed elsewhere)
+                return false;
+            },
+            else => {
+                // The keyboard path: letters/space append to the name field,
+                // digits on the size stage type an exact %.
+                const v: u32 = @backingInt(sym);
+                if (bar.claim_stage == .name) {
+                    if ((v >= @as(u32, 'a') and v <= @as(u32, 'z')) or
+                        (v >= @as(u32, 'A') and v <= @as(u32, 'Z')) or
+                        v == @as(u32, ' '))
+                    {
+                        if (bar.nameChar(@intCast(v & 0xff))) {
+                            self.signinSlideRefresh(out);
+                            return true;
+                        }
+                        return false;
+                    }
+                } else if (bar.claim_stage == .size) {
+                    if (v >= @as(u32, '0') and v <= @as(u32, '9')) {
+                        const digit: u8 = @intCast(v - @as(u32, '0'));
+                        if (bar.pctDigit(digit)) {
+                            self.signinSlideRefresh(out);
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+                return false;
+            },
+        }
         return true;
     }
 
