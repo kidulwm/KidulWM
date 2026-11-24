@@ -146,6 +146,44 @@ sibling to re-seat-entry.draft.md. Spec-first because PARTITIONING IS FATAL
      - GATE: a consented claim carves a real LUKS2 partition on the target device,
        key parked cold, PARTUUID captured; a cancelled claim carves nothing.
 
+     STEP 4 WIRING — pinned (bobdotrix 2026-11-23, wrong-drive guard = the crux):
+
+       DEVICE RESOLUTION (the fatal line). kcarve takes `<device>` = the WHOLE
+       disk. Ruling D says "by LABEL, fixed-config, never a probe of biggest
+       disk." Mechanism: kushd resolves LABEL=KSD-root -> its PARENT disk, and
+       passes THAT (e.g. /dev/nvme1n1) to kcarve. Resolution is FAIL-CLOSED:
+       a missing label, a label that resolves to zero or MORE THAN ONE parent
+       disk, or a parent disk that is a loop/ram device = NO carve, logged,
+       the ceremony says "no room / can't find the disc" in Granny terms. No
+       `lsblk`-by-size, no "first disk", no nvme-numbered guess — the numbering
+       re-enumerates across boots (CENSUS), so a hardcoded /dev/nvme1n1 is a
+       wrong-drive bomb. The label is the pin; the parent is derived from it,
+       never assumed.
+
+       KUSHD RETAINS THE CLAIM KEY-ID. Today drainGateVerdict relays the CLAIM
+       verdict to the slide but does NOT remember the key-id (it logs "claim
+       candidate" and forgets). The carve happens AFTER the ceremony (name +
+       size + consent run on the slide in between), so kushd must RETAIN the
+       claimed key-id from the CLAIM verdict and hold it until the carve cue
+       arrives. One claimant at a time; a second CLAIM before the first carve
+       completes is REJECTED (busy), never interleaved.
+
+       THE CARVE CUE VERB. New kushd verb `homes-carve <percent>` (a reserved
+       wire verb, sibling of homes-gate). kidulwm cues it on the consent commit
+       (the .commit arm of signinClaimKey, currently a log-and-back-out seam),
+       passing ONLY the percent (1-100). kushd pairs it with the RETAINED
+       key-id, resolves the device by label, runs kcarve, and relays the result
+       back on the same connection: `CARVED <PARTUUID> <keyfile>` on success,
+       or a fail-closed line on error (carve/LUKS/resolution failure). kushd
+       then CLEARS the retained key-id (consumed). kidulwm renders the result
+       and routes to step 5 (seed + sign) only on CARVED.
+
+       The key-id flows gate -> kushd (CLAIM verdict, retained) and percent
+       flows slide -> kushd (homes-carve). They meet in kushd, never on the
+       0666 cue socket in a trust-bearing way (the socket is the TRANSPORT, not
+       the trust boundary — the proof already happened; the carve only fires on
+       a key-id the gate proved + retained).
+
   5. THE ALLOCATION + ROSTER SEED (the signing boundary — Q 2 decides WHO signs).
      After carve: append the allocation-map entry (partition + home-hash + uid)
      AND the roster entry (the WHO), and SIGN each with the real owner key. This
