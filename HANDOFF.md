@@ -11,41 +11,33 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-23)
+## Current attack (2026-11-25)
 
-  STEP 4 — RE-SEAT + PRIVACY GUARD BUILT; CLAIM/CARVE SPEC LOCKED.
+  CLAIM/CARVE — STEPS 1+3+4 BUILT + PUSHED; DISK-GUARD LAW LOCKED (d25a228).
 
-  PRIVACY GUARD: signed-in freeze now black-frosts. seat_signed_in (monotonic)
-    set on any TRUSTED verdict on kidulwm's own gate connection; dimEnsure picks
-    public=140 (~55% dim) vs signed-in=235 (~92% black frost, unreadable). No new
-    kushd verb (the 0666 cue socket is NOT a trust boundary — a public tentacle
-    could spoof "seated role=public" and defeat the guard; verdict-as-signal
-    can't be injected into an established stream). BLACK frost (not white),
-    shader-free, zero new per-frame cost; 255 blank stays the fail-safe floor.
-    Spec: docs/design/privacy-guard.draft.md (Q A "verdict not verb" + Q B "black
-    frost not shader", both RESOLVED).
-
-  CLAIM/CARVE: spec LOCKED, BUILD AUTHORIZED (docs/design/claim-carve.draft.md,
-    KidulWM 0a81af9). Spec-first: partitioning is FATAL. 7-step build order.
-    Four rulings LOCKED (Barticus, GSI): A = letter pill-bar PRIMARY + keyboard
-    PARALLEL (one name field, two surfaces; fold-out remote keyboard + separate
-    keyboards drop in with zero rework); B = kushd owns claim, sign with proved
-    owner key via gate (NEVER kalloc's TEST seed sign); C = TV -> 50% fill-bar
-    default; D = carve KSD drive by LABEL (~771 GiB FREE POOL, partitions.md:120,
-    fixed-config, no "biggest disk" probe).
+  The claim/carve slice (docs/design/claim-carve.draft.md) has landed through
+  step 4 in three trees: claim detection (kushd e424f21 route CLAIM verdict +
+  gate c934fea three-way split), the ceremony surface (KidulWM 613e280 name
+  letter-walk + fill bar + consent nag, both input surfaces from scratch, +
+  d9256a6 hold-to-fine repeat), and the carve wiring (kushd cf7fab9 retain
+  claim key-id + 096c021 homes-carve verb — label->parent-disk resolution
+  fail-closed, fork kcarve, relay CARVED). Disk-guard LAW LOCKED (d25a228,
+  btrfs SUBVOLUME carve unit / fscrypt deferred / drive-class per-deployment).
 
   CARRIED THREADS (do not lose):
-    - NOT deployed to KSD this cut — eyes-on the live freeze (public dim, then
-      post-sign-in re-freeze frost) waits on the next deploy.
-    - 2nd dongle still to order (real two-key cold SE050 ceremony deferred —
-      current is a DISPOSABLE dev root, test-namespaced, TEST-ONLY).
-    - Vault keyfile still 0 (no carve yet).
+    - STEP 4 RECONCILIATION (the live divergence): kcarve + homes-carve carve a
+      raw PARTITION (sgdisk -n + LUKS2), but disk-guard ruling A made the
+      production carve unit a btrfs SUBVOLUME. Reconcile the carve mechanism
+      against ruling A before step 5, or rule it explicitly deferred.
+    - step 5 = allocation + roster seed, SIGNED with the PROVED owner key via
+      the gate (NEVER kalloc's TEST seed) — the signing boundary.
+    - steps 6 (defaultHome skeleton) + 7 (mount-on-proof close) follow.
+    - NOT deployed to KSD this cut; 2nd dongle still to order; vault keyfile
+      still 0 (no real carve has run).
 
-  NEXT SESSION: build claim/carve step 1 (claim detection — empty-roster = the
-    ONLY unclaimed state) -> ceremony cues -> name+size input -> carve -> seed+
-    sign -> defaultHome skeleton -> mount-on-proof. Then Homes provisioning UI.
-    Handoff = CENSUS-NOTES top + claim-carve.draft.md (build order) + re-seat.md
-    (law).
+  NEXT SESSION: reconcile step 4 carve unit (subvolume vs partition), then
+    build step 5 (seed + sign with proved owner key). Handoff = CENSUS-NOTES
+    top + claim-carve.draft.md (build order) + disk-guard.md (law).
 
 ## Trip wires / commands / secrets
 

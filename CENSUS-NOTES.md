@@ -1,5 +1,26 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-24, GSI, reconciled 11-25) — CLAIM/CARVE STEPS 1+3+4 BUILT + PUSHED; DISK-GUARD LAW LOCKED.
+#   A full build day landed the claim/carve slice through step 4, plus the disk-guard law. The gate's claim-detection
+#   commit was the ONE relog-risk file: kidulkey was ahead-1 with c934fea UNPUSHED — pushed to codeberg this session
+#   (good B&B EDDSA sig). Reconstructed state (all other trees clean + in-sync):
+#     STEP 1 CLAIM DETECTION  kushd e424f21 routes a CLAIM verdict to the ceremony (never the mount seq, ruling E)
+#                            + gate c934fea three-way split (CLAIM key=<id> for proven-key-on-empty-roster / TRUSTED
+#                            role=<r> / UNTRUSTED exit-1). Empty-roster is the ONLY unclaimed state; no flag.
+#     STEPS 2+3 CEREMONY     KidulWM 613e280 (claim surface — name letter-walk + fill bar + consent nag, rulings A+C,
+#                            BOTH input surfaces from scratch) + d9256a6 (setRepeatInfo 30/s 250ms, hold-to-fine).
+#     STEP 4 CARVE WIRING    kushd cf7fab9 (retain claim key-id, one claimant, busy-reject) + 096c021 (homes-carve
+#                            verb: label->parent-disk resolution FAIL-CLOSED, fork kcarve, relay CARVED, consume key)
+#                            + KidulWM 9dd8b9f (pin the wiring). kcarve (d20a9db) itself = raw PARTITION + LUKS2.
+#     disk-guard LAW LOCKED  KidulWM d25a228 (rulings A/B/C): A = btrfs SUBVOLUME carve unit, B = fscrypt-per-home
+#                            deferred to its own docket, C = drive-class per-deployment commissioning.
+#   OPEN / NEXT — STEP 4 RECONCILIATION (the live divergence): kcarve + homes-carve carve a raw PARTITION (sgdisk -n
+#   + LUKS2), but disk-guard ruling A made the production carve unit a btrfs SUBVOLUME (btrfs-on-LUKS). The carve
+#   mechanism (step 4) must be reconciled against ruling A BEFORE step 5, or the divergence must be explicitly ruled
+#   deferred. THEN step 5 = allocation + roster seed, SIGNED with the PROVED owner key via the gate (NEVER kalloc's
+#   TEST seed) — the signing boundary. Steps 6 (defaultHome skeleton) + 7 (mount-on-proof close) follow. NOT deployed
+#   to KSD this cut; 2nd dongle still to order; vault keyfile still 0 (no real carve has run).
+#
 # SESSION WRAP-UP (bobdotrix 2026-11-23, GSI) — DISK-GUARD LAW LOCKED (docs/law/disk-guard.md, KidulWM commit this session).
 #   One physical identity (PTUUID/PARTUUID), many consumers; two observers cross-check at carve+mount. Rulings A/B/C
 #   all [Barticus: yes]: A = btrfs SUBVOLUME is the production carve unit (reverses the carve-half of partitions.md/
