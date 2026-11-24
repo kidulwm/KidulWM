@@ -1,5 +1,16 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-23, GSI) — DISK-GUARD LAW LOCKED (docs/law/disk-guard.md, KidulWM commit this session).
+#   One physical identity (PTUUID/PARTUUID), many consumers; two observers cross-check at carve+mount. Rulings A/B/C
+#   all [Barticus: yes]: A = btrfs SUBVOLUME is the production carve unit (reverses the carve-half of partitions.md/
+#   allocation-map.md "partition = token"); B = fscrypt-per-home DEFERRED to its own docket with a full verification
+#   pass ("must get right", never folded unproven into a carve cut); C = drive class of KSD m.2 is a per-deployment
+#   commissioning assignment (PLAYGROUND on dev bench, SYSTEM on shipped TV), never baked. Also built this session
+#   (UNCOMMITTED, agent-side): tools/disk_guard.py + one hook in tools/approval_detection.py + config security.disk_guard
+#   — agent mkfs of the host disk now hardline-blocked-by-category, KSD/playground downgrades to prompt, fail-closed;
+#   takes effect on next Hermes restart (approval loads at startup). Tests: 22 unit + 80 approval suite green.
+#   Handoff to next: agent-side guard is DONE; the KSD btrfs-subvolume carve is the NEXT build docket (not started).
+#
 # BUILD AUTHORIZED (bobdotrix 2026-11-23, GSI) — CLAIM/CARVE SPEC LOCKED, all four rulings in (KidulWM 0a81af9).
 #   A = letter pill-bar PRIMARY + keyboard path PARALLEL (one name field, two surfaces; fold-out remote keyboard +
 #   separate keyboards drop in with zero rework — product note recorded). B = kushd owns claim, sign with proved
