@@ -8,7 +8,9 @@
 #   "Free (estimated)" at the global reserve (never exact 0), so the ==0 reject is a pathological backstop; min() is the live guard.
 #   ALL 6 carve-subvolume steps DONE + rig-proven: kopen POOL (dbe009a) / kcarve (62b6c50) / kalloc collapse (30461fe) /
 #   kmount (deba36a) / kushd (99c2d90) / free-space (c49c724). The subvolume carve is the production carve unit.
-#   NEXT = claim/carve steps 5-7 (seed+sign + defaultHome skeleton + mount-on-proof) re-cut onto the subvolume token.
+#   NEXT = END-TO-END CEREMONY PROOF (pool->carve->resolve->mount run as ONE flow — each of the six seams is rig-proven
+#   ALONE but the full chain has never been run together; the joints are where architecture holds or silently fails), THEN
+#   claim/carve steps 5-7 (seed+sign + defaultHome skeleton + mount-on-proof) re-cut onto the subvolume token.
 # BUILD (bobdotrix 2026-11-25, GSI) — STEP 5 kushd MOUNT-SEQ + CARVE RE-CUT BUILT + RIG-PROVEN (kushd 99c2d90, B&B, codeberg).
 #   chain = resolve -> kmount(subvolume) -> re-mint. Per-user kopen + kclose rollback RETIRED (pool opens once at boot).
 #   resolve parse = '<subvolume> uid=<n>' (token IS home-hash, step 3 collapse). carve cue now MINTS a random home-hash
