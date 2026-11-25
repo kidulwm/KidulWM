@@ -1,5 +1,18 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — STEP 1 POOL COMMISSIONING: kopen POOL VERB BUILT + RIG-PROVEN (kidulkey dbe009a, B&B, codeberg).
+#   `kopen POOL <keyfile>` opens the FREE POOL btrfs-on-LUKS container as the fixed mapping "ksd-pool", resolving the
+#   pool device by STABLE PARTUUID (/etc/kboot/pool -> /dev/disk/by-partuuid/<id>; disk-guard "resolve per box"), key =
+#   cast-supplied keyfile (cold-storage: key material in the cold vault, never kalloc). Success line moved to STDOUT
+#   (libc.printf) to match kcarve's CARVED convention (caller drains stdout; failures stay stderr) — latent bug fixed same cut.
+#   Rig-proven: gate/tools/pool-rig.sh stages a loop btrfs-on-LUKS pool; asserts open + re-open + btrfs filesystem show +
+#   subvolume list/create + fail-closed (no config). TOPOLOGY RULING LOCKED (Barticus, GSI): pool LUKS = storage-at-rest
+#   (allowed, like dm-verity); crypto.md bans connection/identity crypto at boot, NOT at-rest open. Key arrives via key-cast
+#   at the seam (first proof), NOT a resident boot fetch. Pool opens ONCE, first cast, stays open — no per-home LUKS re-enters.
+#   OPEN / NEXT — step 1 remaining half: the CUE + FIXED MOUNT (/mnt/ksd-pool). Rides the first-cast wiring (cold-storage
+#   "key-cast mounts layers"), NOT the boot floor (partitions.md: kboot mounts only boot floor, then radio silence);
+#   entangled with steps 4-5 (mount-sequence re-cut). Hardware still walls real commissioning (vault keyfile 0, no carve run,
+#   2nd dongle to order). Also this session: kboot build.log gitignored + pushed (96de3e4).
 # SPEC LOCKED (bobdotrix 2026-11-25, GSI) — CARVE-SUBVOLUME RECONCILIATION SPEC LOCKED; NEXT = BUILD STEP 1 (POOL COMMISSIONING).
 #   The step-4 reconciliation is SPEC'D + LOCKED: docs/design/carve-subvolume.draft.md (KidulWM da9fcc1, signed B&B).
 #   Rulings A-D [Barticus: yes]; E DEFERRED (PUBLIC stays a partition this cut; production folds it to ONE @public
