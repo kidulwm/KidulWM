@@ -1,5 +1,12 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — STEP 4 kmount RE-CUT BUILT + RIG-PROVEN (kidulkey deba36a, B&B, codeberg).
+#   kmount now does a proper `mount -o subvol=@home/<hash>` on the ONE pool device, resolved via /proc/self/mountinfo
+#   (the source backing the fixed commissioning mount /mnt/ksd-pool); no by-partuuid walk, no per-user LUKS (the pool
+#   opens once at boot, step 1). MOUNTED <mnt> subvolume=<hash> -> STDOUT (matches kcarve's c.printf CARVED contract;
+#   errors stay stderr). kalloc gains key-id/pub dev helpers (STDOUT, so $(kalloc ..) captures them). Rig-proven
+#   tools/kmount-rig.sh (subvol= mount + nosuid/nodev, clean unmount, absent-key deny-by-default). NEXT = step 5 kushd
+#   MOUNT-SEQUENCE RE-CUT (drop the per-user kopen leg + fix the stale resolve-output parser — resolve emits <subvol> now).
 # BUILD (bobdotrix 2026-11-25, GSI) — STEP 3 kalloc TOKEN COLLAPSE BUILT (kidulkey 30461fe, B&B, codeberg).
 #   allocation.zig Entry collapses partition+home into one `subvolume` field = home-hash (ruling C).
 #   resolve() returns the subvolume name. Signed map format: `<key-id> <subvolume> [uid=...]` (no home=
