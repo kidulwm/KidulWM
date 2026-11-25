@@ -16,6 +16,15 @@ the repo; Granny sees only "Kidul".
 Three names, three jobs, zero overlap: owner = RatuKidulTech, products =
 Kidul Systems, code = KidulWorks.
 
+AMENDED 2026-11-26 (Barticus): KidulWorks is B&B's SIGNATURE, distinct from
+the individual systems (which carry the keyhole mark). It is "our sig" — a
+maker-mark that may be snuck into a few places, may get its own future
+bootsplash ("KidulWorks", never as a title, never part of any ONE system), and
+could sign non-software things too (children's books) under the same sig. If
+B&B ever need a signature, they get a nice logo that is PURELY "B&B's
+KidulWorks" — separate from Kidul Systems (the products) and from the keyhole
+mark (the systems).
+
 ## The families (SystemFam / OwnersFam / KidulCrew)
 
 "Family" is a loaded word — it must never mean two things at once. Three

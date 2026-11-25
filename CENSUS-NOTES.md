@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION NOTE (bobdotrix 2026-11-26, GSI): three Barticus intakes banked — (1) KidulWorks = B&B's
+#   SIGNATURE (naming.md amended): separate from the systems; a maker-mark sneaked into a few places,
+#   maybe a future bootsplash, could sign children's books — a nice logo "purely B&B's KidulWorks" if
+#   ever needed, NEVER a title / part of any one system. (2) FRONT-END CONFIRMED + skill corrected: the
+#   daily-driver media card is the MediaWidget (46d3cd5 revert 2026-11-18 re-pointed IPC .media_card_toggle
+#   + Mod4+m to mediaSlideFocusOrSpawn; mediaCardToggle() = dead function, ZERO callers, client unreachable).
+#   The kmedia skill's "CLIENT is live today" was STALE — patched with a CURRENT STATE note. (3) BLACK-VIDEO
+#   REGRESSION (Barticus): host MediaWidget renders wall/pills/titles + SOUND, but video/TV = BLACK SCREEN
+#   (cut last week, quick-fix didn't cure vision) — recorded in the kmedia skill + DOCKETS BITE 2: do NOT
+#   copy the host render path as reference; diagnose decode->dmabuf->texture->surface for the "vision" half.
 # RE-CUT v2 (bobdotrix 2026-11-26, GSI, same session): BITE 1 mark = a TEXTLESS SYMBOL, KEYHOLE at
 #   centre (NOT the wordmark) — Barticus's steer ("apple class", the mark says it all, the keyhole echoes
 #   'the key is the identity'). Keyless = CFC'd dead centre + Time top-right + Weather left + navDots;
