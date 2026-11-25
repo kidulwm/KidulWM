@@ -1,5 +1,19 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — END-TO-END CEREMONY PROOF COMPLETE — pool->carve->resolve->mount run as ONE FLOW (kushd df79178, B&B, codeberg).
+#   The six carve-subvolume seams were each rig-proven ALONE; the JOINTS had never run together. NEW RIG
+#   kushd/tools/test-ceremony-e2e.sh chains the full ceremony on one loop btrfs-on-LUKS pool and proves the four
+#   joints green on the first run: (1) kopen POOL's PARTUUID -> ksd-pool IS the same device kmount's mountinfo probe
+#   resolves as /mnt/ksd-pool's source (the "one pool" invariant); (2) the home-hash kushd MINTS is the one kcarve
+#   CARVES and the map AUTHORS, so resolve->mount lands the SAME subvolume (no token drift — minted 70feef3a1bacfb40b36fee
+#   flowed carve->map->mount byte-identical); (3) the CLAIM(key) verdict's key-id is one consent latch bound to one
+#   identity (retained at claim, consumed at carve, bound to the carved hash in the signed map); (4) NO per-user
+#   kopen/kclose in the mount seq (pool opens ONCE at boot). Full chain: kopen POOL -> mkfs+mount+quota boot step ->
+#   CLAIM retains key -> homes-carve 50 mints + real kcarve (qgroup limit 83,351,552 = 50% of free) -> signed kalloc
+#   (owner->home-hash uid=1002) -> TRUSTED -> real kalloc resolve -> real kmount subvol=-mount (nosuid+nodev) ->
+#   re-mint (0 acts = no-op). mkfs.btrfs lives INSIDE the committed rig (the sanctioned exception). Real /etc/kboot/pool
+#   restored after (944d0a02). NEXT = claim/carve steps 5-7 re-cut onto the subvolume token (seed+sign with the PROVED
+#   owner key via the gate — the signing boundary, defaultHome skeleton, mount-on-proof close). 2nd dongle still to order.
 # BUILD (bobdotrix 2026-11-25, GSI) — STEP 6 FREE-SPACE SECOND OPINION — carve-subvolume RE-CUT COMPLETE (kidulkey c49c724, B&B).
 #   kcarve now reads BOTH data free ("Free (estimated)") AND metadata headroom (Metadata Size/Used + Device unallocated) from
 #   'btrfs filesystem usage'; quota = percent% of min(data, metadata) — never "Free (estimated)" alone (df lies, §two observers).
