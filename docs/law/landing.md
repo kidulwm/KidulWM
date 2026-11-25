@@ -13,6 +13,10 @@ REVERSING "the sig retires". One mark, two presentations keyed to seat (see "The
 Kidul mark" below), theme-immune, art-is-data. The space above the bar is no
 longer empty — the mark fills it. Content below the bar is a transparent depth
 ladder, NEVER above the bar.
+RE-CUT v2 (same day): the mark is a TEXTLESS SYMBOL, keyhole at centre — no
+"Kidul Systems" wordmark (the mark says it all, apple-class). Keyless = CFC'd
+dead centre + Time top-right + Weather left; authenticated = top-centre + the
+alias under it, weather/time still shown.
 
 Lane: cross-app (kfiles, kidul-browser, kmedia).
 Related: styles (CFC law, THE PILL, corner language, whispy icons, Granny test),
@@ -78,31 +82,34 @@ disappears; a KISS title tells her what the app does.
    files/browser/media. Only the title and the content swap. Freeze once, build
    three times to match.
 
-6. THE KIDUL MARK (was the "Kidul Systems name"; AMENDED 2026-11-26). The
-   mark is the brand element at the top — a wordmark "Kidul Systems" in purple
-   & blue (the B&B colours), theme-immune. It REPLACES the older "small name
-   above the pill" AND the outline system title: one mark, no double-name.
-   Two presentations keyed to seat — see "The Kidul mark" below. NOT big when
-   authenticated; the hero when keyless.
+6. THE KIDUL MARK (was the "Kidul Systems name"; AMENDED 2026-11-26, RE-CUT v2).
+   The mark is a TEXTLESS SYMBOL with a KEYHOLE at its centre — the mark says it
+   all, no word, no "Kidul Systems" lockup. Theme-immune (purple+blue/trident).
+   It REPLACES the outline system title AND the old name text: one mark, no
+   text. Two placements keyed to seat — see "The Kidul mark" below. Hero,
+   dead-centre, when keyless; top-centre with the alias under it when signed in.
 
-## The Kidul mark — two presentations + depth ladder (LOCKED 2026-11-26)
+## The Kidul mark — the keyhole symbol, two placements (LOCKED 2026-11-26, RE-CUT v2)
 
-The mark is the brand element at the top, with exactly two presentation states
-gated by seat identity (public-seat.md):
+The mark is the brand element at the top: a TEXTLESS SYMBOL with a KEYHOLE at
+its centre ("apple class" — the mark says it all, the user reads nothing). Two
+placements keyed to seat identity (public-seat.md):
 
-  KEYLESS (public seat) — the mark is BIG, the hero. Centred on the landing CFC
-  at h/2, honour-sized (~1/4 viewport height), with the widget faces + navDots.
-  NO pill bar (keyless has no apps). Nothing competes with the mark.
+  KEYLESS (public seat) — the mark is the hero, CFC'd dead centre at h/2,
+  honour-sized (~1/4 viewport). Time top-right, Weather top-left; navDots as the
+  nav affordance. NO pill bar (keyless has no apps). Nothing competes with it.
 
-  AUTHENTICATED (signed in, deck in the usersBar) — the mark SHRINKS into a
-  centred top band (~top 1/3 of the userBar height), one motion (<200ms, no
-  fade), then static. It never moves while pills are walked.
+  AUTHENTICATED (signed in, deck in the usersBar) — the SAME symbol MOVES UP from
+  the CFC'd centre into the TOP-CENTRE position, smaller, one motion (<200ms, no
+  fade), with the user's NAME (the alias — "Mum"/"Granny", the display name,
+  never the key-id) displayed under it. Weather + Time still show (left/right).
+  The mark and the name stay static while pills are walked.
 
   DEPTH LADDER — the authenticated UserHome landing (Library = the first
-  focused pill). Below the shrunk mark, from focus outward — full opacity down
-  to transparent; NOTHING above the bar:
+  focused pill). Top-centre down, from focus outward — full opacity to
+  transparent; NOTHING above the mark/name:
 
-    mark            (top band)    brand constant, full opacity, static
+    mark + name     (top centre)  symbol, full opacity, static; alias under it
     usersBar                      FULL opacity — the CFC'd focus
     category bar    (Movies·TV·Music, the library's internal filter)   TRANSPARENT
     media peeks     (top ~2/3 of the top media tiles, recognisable)    TRANSPARENT,
@@ -123,16 +130,16 @@ gated by seat identity (public-seat.md):
   completes this law's own Q.D ("tiles below the bar, never above").
 
   ART IS DATA, NOT CODE: the mark is a data asset in the mark registry (with the
-  Batik corners, §3); two sizes (hero / band) are the only layout facts the code
-  knows. The mark's own ART (the wave/crab drawing) ships as data later — a
-  placeholder wordmark carries the slot first.
+  Batik corners, §3); the two placements (dead-centre hero / top-centre) are the
+  only layout facts the code knows. The mark's own ART (the keyhole symbol
+  drawing) ships as data later — a placeholder symbol carries the slot first.
 
   RENDER SITES (correcting the docket's pointer): the mark renders on the two
   compositor slides — `.home` (KidulHome, keyless hero) and `.user_home`
-  (usersBar, shrunk band) — server.zig + src/ui/users_bar.zig. NOT media.zig
-  (its LANDING/THE UP/THE DOWN/STANDARD are the media WALL's movement states, a
+  (usersBar, top-centre) — server.zig + src/ui/users_bar.zig. NOT media.zig (its
+  LANDING/THE UP/THE DOWN/STANDARD are the media WALL's movement states, a
   different axis). The media wall is untouched by this cut. Full spec:
-  docs/design/logo-landing-amendment.draft.md (LOCKED).
+  docs/design/logo-landing-amendment.draft.md (LOCKED, v2).
 
 ## Relationship to existing law
 
@@ -178,13 +185,15 @@ gated by seat identity (public-seat.md):
   The media library's movement (down into tiles, back up to the bar) is exactly
   the resting position every app should open on.
 - THE KIDUL MARK (2026-11-26, BITE 1, "yes to your recs" + transparency
-  correction): mark shape = No.2 wave/crab wordmark "Kidul Systems", crab-dot the
-  separable symbol, motion = intro/outro GIF only [Q.A]; keyless hero at h/2,
-  ~1/4 viewport, widgets + navDots, no pill bar [Q.B]; shrink = centred top band
-  ~top 1/3 of the userBar, one motion <200ms no fade, static while app-tops slide
-  [Q.C]; the mark absorbs the text title, no double-name [Q.D]; theme-immunity =
-  constant brand asset, never re-derived from theme [Q.E]; this cut freezes the
-  presentation + brand, and the mark's own ART ships as data later [Q.F].
+  correction; RE-CUT v2 same day): mark shape = textless SYMBOL, keyhole at
+  centre (v2 supersedes the No.2 wordmark), motion = intro/outro only [Q.A];
+  keyless hero at h/2, ~1/4 viewport, Time top-right + Weather left + navDots,
+  no pill bar [Q.B]; authenticated = the symbol moves up to top-centre with the
+  alias under it, weather/time still shown, one motion <200ms no fade, static
+  while app-tops slide [Q.C]; the mark replaces the text title, no word at all
+  [Q.D]; theme-immunity = constant brand asset, never re-derived from theme
+  [Q.E]; this cut freezes the presentation + brand, and the mark's own ART ships
+  as data later [Q.F].
   TRANSPARENCY-NOT-FADE [Barticus's correction]: the ladder below the CFC is
   percentage ALPHA transparency, never fade/dim/blur — usersBar full opacity,
   category bar + media peeks transparent (peeks a touch more). NOTHING above the

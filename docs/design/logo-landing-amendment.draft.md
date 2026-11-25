@@ -1,9 +1,13 @@
-# THE KIDUL MARK — logo/landing amendment (LOCKED)
+# THE KIDUL MARK — logo/landing amendment (LOCKED, v2)
 
-LOCKED 2026-11-26, Barticus present, GSI. Folded into `landing.md` (§The Kidul
-mark, §6, Reversals, Rulings) and `naming.md` (§The Kidul mark). This file is the
-full spec the laws point at. Verdict: "yes to your recs" on A–F, plus one
-correction recorded as the DEPTH LADDER below.
+LOCKED 2026-11-26, Barticus present, GSI; RE-CUT v2 same day (Barticus's steer:
+symbol, not wordmark). Folded into `landing.md` (§The Kidul mark, §6, Reversals,
+Rulings) and `naming.md` (§The Kidul mark). This file is the full spec the laws
+point at. v2 = the mark is a TEXTLESS SYMBOL with a KEYHOLE at its centre — no
+"Kidul Systems" wordmark; keyless = CFC'd dead centre + Time top-right + Weather
+left + navDots; authenticated = top-centre + the alias under it, weather/time
+still shown. The depth ladder (transparency-not-fade, nothing above the bar,
+Library first) is unchanged from v1.
 
 ## The steer (why now)
 
@@ -99,6 +103,11 @@ render sites for `.home` / `.user_home` before the code cut (do not chase
 media.zig).
 
 ## Verdict (2026-11-26, Barticus present, GSI)
+
+v2 SUPERSEDES Q.A: the mark is a textless SYMBOL (keyhole at centre), not the
+No.2 wordmark — see the "The steer" above restated as the v2 shape. Q.B/C/D
+re-ruled for the symbol: keyless = dead-centre hero + Time top-right + Weather
+left; authenticated = top-centre + alias under it, weather/time still shown.
 
 A–F locked "yes to your recs". PLUS the depth-ladder correction (Barticus):
 

@@ -114,22 +114,28 @@ is REVERSED on surface — the mark returns, first-class, see §The Kidul mark.
 The trident / purple+blue colour carries INTO the mark as the brand identity,
 not just bare colour.)
 
-## The Kidul mark (LOCKED 2026-11-26, Barticus present — was "logo — later job")
+## The Kidul mark (LOCKED 2026-11-26; RE-CUT v2 same day — symbol, not wordmark)
 
-The mark is now a first-class brand element, NOT a deferred "later job" and NOT
-a retired sig. One mark, two presentations keyed to seat (landing.md: the mark).
-Reverses the earlier "no logo, no sig, just the plain name" ruling ON SURFACE:
-the mark IS the name — a wordmark, not bare outline text.
+The mark is a first-class brand element — and in v2 it is a SYMBOL ONLY: no
+word, no lockup ("apple class" — the mark says it all; the user reads nothing,
+she just knows it is her TV). Reverses the "no logo, just the plain name"
+ruling ON SURFACE, and goes further than the v1 wordmark: there is NO text at
+all, so the "Kidul Systems vs KidulWorks on the mark" question DISSOLVES (both
+words leave the mark; they keep their split everywhere else — domains, app_id
+com.kidulworks.* = the code).
 
-  WORD = "Kidul Systems" (the product brand), NEVER "KidulWorks" (the code).
-  The concept sketches below originally stamped "KidulWorks"; that word flips to
-  "Kidul Systems" wherever the mark surfaces as type.
+  THE KEYHOLE — the motif (v2, locked). The symbol's centre is a KEYHOLE: the
+  house's visual echo of "the key is the identity" (kid.md, kidulKey) — prove
+  who you are, the door opens to your space. The keyhole in the middle is what
+  the logo "says". ONE WORD ONE MEANING: the mark's motif is the keyhole;
+  "kidulKey" stays the internal signing / identity ROOT — the mark is the
+  SURFACE symbol, kidulKey is the mechanism. Distinct, no collision.
 
-  SHAPE (Q.A, locked): realize No.2 — wave over sand, crab-as-the-i-dot,
-  Flotsam & Jetsam — as the wordmark; the crab dot is the separable symbol.
+  SHAPE (v2, locked): a minimal, Apple-class SYMBOL with the keyhole at its
+  centre. Textless. The exact geometry (roundel / cut / proportion) is the ART
+  (a data asset) — this cut freezes the MOTIF (the keyhole), not the drawing.
 
-  MOTION (locked): crab/seagull is ONLY the intro/outro GIF — never a permanent
-  moving mark. The static wordmark is the norm.
+  MOTION (locked): static symbol is the norm; any motion is intro/outro only.
 
   THEME-IMMUNE (locked): the mark wears the house identity (the purple+blue /
   trident colour ramp) baked into the asset; no user theme repaints it (the same
@@ -138,13 +144,9 @@ the mark IS the name — a wordmark, not bare outline text.
 
   ART IS DATA, NOT CODE (locked): the mark is a data asset in the mark registry
   (with the Batik corners, landing.md §3); it evolves without touching nav
-  layout. The mark's own ART (the wave/crab drawing, No.2) ships as data when
-  ready — a placeholder wordmark carries the presentation slot first (Q.F).
+  layout. The keyhole symbol ships as data; a placeholder symbol carries the
+  slot first (Q.F).
 
-  Two original visions (kept as the art direction):
-    No.1  an iron hammer stamping "Kidul Systems" into a metal plate (grinding).
-    No.2  a wave washes over the sand and leaves "Kidul Systems" written in it,
-          with Flotsam & Jetsam (the ocean critters), and the dot of the "i" is
-          a crab that moves — maybe hiding from a swooping seagull.
-    LEAN = No.2 — alive, on-theme; the crab-as-the-dot is the memorable detail.
-    Design the mark around the LOOK of the Flotsam (the ocean critter).
+  (The earlier No.1/No.2 WORDMARK sketches — hammer / wave-crab-flotsam — are
+  SUPERSEDED: they were wordmark concepts, and the mark is now textless. Kept
+  here only as design lineage, not the direction.)
