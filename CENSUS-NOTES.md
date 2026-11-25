@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# AUDIO SEAT FREEZE (bobdotrix 2026-11-26, GSI, Barticus): audio is a BODY ORGAN — always-on staples
+#   (pipewire -> wireplumber -> pipewire-pulse + ksound), the answer to "the sound issues of Linux" (one
+#   governor, ksound). CLASS-GATED: tv/pc (full-theatre) carry it; server (headless-organs — a FILE server
+#   pipes raw) + router (empty — a packet mover) OMIT audio + playback entirely, the router most of all.
+#   Frozen in machine-classes.md (Axis F: 3 pipewire acts -> body; ruling 8 added) + kushd bill.kush (3 acts
+#   promoted cued->body). Seat order = bill order (VERIFIED kushd main.zig:1347-1350). Resolves the BITE-2
+#   audio-seat gap ("no pipewire" / pw_stream_connect "Host is down" — census ~898): pulse/native now binds
+#   at boot, ksound connects, kplayd pa_simple_new can anchor. NEXT (build): deploy bill to KSD + prove
+#   pulse/native + ksound + a pa_simple_new probe all connect live, THEN the vision (silk present) half.
 # BITE 2 VISION LANE OPEN (bobdotrix 2026-11-26, GSI): "silky/butter" good code FOUND in git — NOT a missing
 #   feature, a REGRESSION. Known-good: kmedia/docs/design/silk.md §7 (SILK TIMING LAW, video = own timing source)
 #   + zero-copy tiers §4; M1 display-sync present path (kmedia 6efc7a9+d06517e); present-rides-vblank fix (39510de,

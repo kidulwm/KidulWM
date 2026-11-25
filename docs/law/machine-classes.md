@@ -94,15 +94,19 @@ installer; a new box type is a new NAMED class, reviewed like a law change.
                        reachable surface.
 
   F  THE BILL (kushd acts)
-       full-theatre    tv, pc — seatd + kidulwm + ksound (body); kmedia /
-                       kplayd / pipewire / kbrain / kfiles / browser (cued).
+       full-theatre    tv, pc — seatd + kidulwm + ksound + pipewire +
+                       wireplumber + pipewire-pulse (body); kmedia / kplayd /
+                       kbrain / kfiles / browser (cued). AUDIO IS A BODY ORGAN
+                       (always-on staples), NOT a cued tentacle.
        headless-organs server — knetd (foundation) + workload acts as cued
                        tentacles: file-serving, service-bobs (named on
                        landing), the COMPUTE act (local model / ollama on the
                        H200). The bill is per-instance, not a class fork;
-                       vault stays COLD.
+                       vault stays COLD. NO audio organ — it file-serves (pipes
+                       raw), never decodes or presents.
        empty           router — knetd (foundation, router stance) + a
-                       near-empty bill; kushd present, nothing cued.
+                       near-empty bill; kushd present, nothing cued. NO audio
+                       organ, NO playback — the network authority never sounds.
 
   G  TRUST / IMMUTABILITY (verified-boot + dom0)
        golden          tv, router — dm-verity sealed, kidulKey-signed, no
@@ -186,6 +190,18 @@ unattended); HOW a door opens is kidulkey.md's one ladder, everywhere.
   7. THE CLASS IS NOT AN ENVIRONMENT. environment.md = CELL confinement (pen/brig/
      plank — what walls a foreign process gets). The class = the MACHINE (what
      kind of box). Orthogonal; do not merge the words.
+
+  8. AUDIO IS A BODY ORGAN — AND A CLASS-SPECIFIC ONE. The full-theatre class
+     (tv, pc) carries the audio body (pipewire + wireplumber + pipewire-pulse +
+     ksound) as always-on staples: sound is infrastructure, not an on-demand
+     app, and it is the one owned stack that answers the sound issues of Linux
+     (one governor, ksound: hardware at unity, software governs DOWN). The
+     server and the router OMIT it entirely: our design pipes raw and plays
+     back zero-copy, so a server is a FILE server and a router is a packet
+     mover — neither decodes nor presents, so no playback and no sound, the
+     router most of all. Axis A already loads no sound driver on server/router;
+     Axis F carries no audio acts for them. Do NOT make audio a universal body
+     part.
 
 ## 8. The KWEB access graph (who reaches whom)
 
