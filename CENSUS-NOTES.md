@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# AUDIO SEAT DEPLOYED (bobdotrix 2026-11-26, GSI): corrected bill landed on physical m.2 (nvme1n1 KSD-root) —
+#   pipewire/wireplumber/pipewire-pulse cued->body; kidulwm synced to conductor /usr/local/bin/kidulwm (the repo
+#   bill was STALE pre-re-seat "user /kidulwm-seat"). Deployed bill VERIFIED byte-correct: BODY = seatd +
+#   kidulwm(conductor) + ksound + pipewire + wireplumber + pipewire-pulse; CUED = kmedia/kplayd/kweather/kbrain/
+#   ksignals/kfiles/kidul-browser. Backup bill.kush.bak-preaudio-seat left on drive. Drive unmounted, clean.
+#   LIVE PROOF PENDING: boot KSD (host reboot into m.2, UEFI Boot0001 "KSD") -> verify kushd seats the 3 audio
+#   acts as body, pulse/native binds, ksound has no "no pipewire", kplayd cue -> pa_simple_new connects + DAC
+#   anchors. Needs a boot + a terminal in KSD to observe. Repos: kushd b37198b + ed09682; KidulWM f97de5c.
 # AUDIO SEAT FREEZE (bobdotrix 2026-11-26, GSI, Barticus): audio is a BODY ORGAN — always-on staples
 #   (pipewire -> wireplumber -> pipewire-pulse + ksound), the answer to "the sound issues of Linux" (one
 #   governor, ksound). CLASS-GATED: tv/pc (full-theatre) carry it; server (headless-organs — a FILE server
