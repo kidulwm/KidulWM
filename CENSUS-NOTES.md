@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — STEP 2 kcarve RE-CUT BUILT + RIG-PROVEN (kidulkey 62b6c50, B&B, codeberg).
+#   kcarve drops sgdisk+luksFormat per part: `kcarve <pool> <percent> <home-hash>` creates a btrfs subvolume
+#   @home/<home-hash> + sets a qgroup limit = percent% of FREE (data+metadata, `btrfs filesystem usage -b`
+#   Free-(estimated)); 100% = full = no quota (ruling D). Per-home LUKS + keyfile park RETIRED (pool = the one
+#   btrfs-on-LUKS; per-home crypto = fscrypt, deferred ruling B). Output CARVED <home-hash>. Fail-closed with
+#   subvolume-delete rollback (duplicate / bad home-hash / quota-off). quota-enable is a COMMISSIONING step-1
+#   prerequisite, NOT the carve's job (one job per verb). Rig-proven tools/carve-rig.sh (create+limit, full
+#   no-limit, duplicate fail, bad-name fail, rollback). NEXT = step 3 kalloc TOKEN COLLAPSE (partition+home ->
+#   subvolume=home-hash; ruling C LOCKED).
 # BUILD (bobdotrix 2026-11-25, GSI) — STEP 1 POOL COMMISSIONING: kopen POOL VERB BUILT + RIG-PROVEN (kidulkey dbe009a, B&B, codeberg).
 #   `kopen POOL <keyfile>` opens the FREE POOL btrfs-on-LUKS container as the fixed mapping "ksd-pool", resolving the
 #   pool device by STABLE PARTUUID (/etc/kboot/pool -> /dev/disk/by-partuuid/<id>; disk-guard "resolve per box"), key =
