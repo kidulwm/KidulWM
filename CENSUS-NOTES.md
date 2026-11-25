@@ -1,5 +1,24 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — CLAIM/CARVE STEPS 5-6 BUILT + RIG-PROVEN; STEP 7 ALREADY PROVEN. THE SIGNING BOUNDARY NAMED.
+#   TWO new one-job sealed verbs in kidulkey/gate (pushed codeberg, B&B):
+#   kskel (step 6, d9b5774) = the defaultHome skeleton: `kskel <pool> <home-hash> [src]` lays the TRACKED
+#     template tree gate/skeleton/ (house theme.toml + keybinds.conf) INTO the carved subvolume @home/<hash>.
+#     The standard pill layout is compositor-internal, deliberately absent. Rig kskel-rig.sh: carve->lay->mount,
+#     skeleton present at the home root; fail-closed missing-subvolume + missing-source.
+#   kseed (step 5, 6dcab97) = seed+sign: `kseed <roster> <alloc> <key-id> <role> <home-hash> <uid> <root-seed-hex>` appends
+#     the resident to BOTH signed artifacts (roster=WHO, allocation=WHAT), version-bumps, chains prev, re-signs with
+#     the ROOT, verifies both. Signer DERIVED from the seed so header root= IS the actual signer. Rig kseed-rig.sh:
+#     virgin->owner v2->second resident v3 (owner preserved, prev chained)->duplicate fail-closed->signer attribution.
+#     The rig caught a REAL bug: entries must sort by key-id BEFORE canonicalize or parse re-sorts and verify fails — fixed.
+#   STEP 7 (mount-on-proof) was already PROVEN this session by ceremony-e2e (kushd df79178): resolve->kmount->re-mint.
+#   THE SIGNING BOUNDARY (kidulkey.md LOCKED + claim-carve ruling B): production signer = the cold SE050 ROOT via the claim
+#     ceremony, NEVER the test seed. kseed/kskel/ceremony-e2e all exercise the MECHANISM against the DISPOSABLE dev root;
+#     the production ROOT is the PARKED question (what dongle / build-our-own SE050) — that IS step 5's naming boundary.
+#     When the signer lands: the claim ceremony supplies the ROOT seed to kseed; the disposable dev root retires.
+#   NEXT = (a) dongle/SE050 decision (the signing root — unblocks step 5 production), (b) wire kskel+kseed INTO the claim
+#     ceremony sequence (kushd homes-carve -> kcarve -> kskel -> kseed -> mount-on-proof), (c) `sign` TEST-helper retirement
+#     flagged (kidulkey.md Open).
 # BUILD (bobdotrix 2026-11-25, GSI) — END-TO-END CEREMONY PROOF COMPLETE — pool->carve->resolve->mount run as ONE FLOW (kushd df79178, B&B, codeberg).
 #   The six carve-subvolume seams were each rig-proven ALONE; the JOINTS had never run together. NEW RIG
 #   kushd/tools/test-ceremony-e2e.sh chains the full ceremony on one loop btrfs-on-LUKS pool and proves the four
