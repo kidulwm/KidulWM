@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — THE SIGNER SEAM LOCKED. docs/design/signer.draft.md (KidulWM 20d9a0f)
+#   freezes ONE verb ksign <source> <canon> [sig] over two sources: dev-root:<seed> (disposable RFC-8032,
+#   rigs) | se050:<device> (production APDU to cold silicon). LOCKED A-D (Barticus, "yes to your recs"):
+#   kseed arg -> <source> (raw-seed back door GONE), kpax/kalloc `sign` TEST helper retires on landing,
+#   se050 backend stubbed fail-closed, attestation out of this cut. THE FILED HARDWARE FORK: SE050E2HQ1
+#   ($6, in stock, days) is the signing-root substrate; SE051 = updatable variant, REJECTED for a cold ROOT
+#   (fixed > updatable); the $115 OM-SE050ARD-E eval board is OPTIONAL (open-source breakout +
+#   own carrier replace it); bare chip has NO USB (I2C co-processor — USB lives on OUR host MCU); NFC is a
+#   side-door, not used. NEXT = BUILD ksign (pure software, dev-root now, se050 stubbed).
 # BUILD (bobdotrix 2026-11-25, GSI) — CLAIM/CARVE STEPS 5-6 BUILT + RIG-PROVEN; STEP 7 ALREADY PROVEN. THE SIGNING BOUNDARY NAMED.
 #   TWO new one-job sealed verbs in kidulkey/gate (pushed codeberg, B&B):
 #   kskel (step 6, d9b5774) = the defaultHome skeleton: `kskel <pool> <home-hash> [src]` lays the TRACKED
