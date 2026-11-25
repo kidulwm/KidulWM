@@ -1,5 +1,15 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SPEC LOCKED (bobdotrix 2026-11-25, GSI) — CARVE-SUBVOLUME RECONCILIATION SPEC LOCKED; NEXT = BUILD STEP 1 (POOL COMMISSIONING).
+#   The step-4 reconciliation is SPEC'D + LOCKED: docs/design/carve-subvolume.draft.md (KidulWM da9fcc1, signed B&B).
+#   Rulings A-D [Barticus: yes]; E DEFERRED (PUBLIC stays a partition this cut; production folds it to ONE @public
+#   subvolume / media mount later — its own docket, install-sizing trigger). BUILD ORDER (6 steps, green-before-next):
+#     (1) POOL COMMISSIONING — one btrfs-on-LUKS pool for the FREE POOL, boot-open by sealed verb (kboot cues kopen POOL),
+#         key in cold vault; (2) kcarve RE-CUT -> `btrfs subvolume create` + qgroup quota (drop sgdisk/luksFormat/keyfile);
+#     (3) kalloc TOKEN COLLAPSE — partition+home merge to one subvolume = home-hash (drop PARTUUID resolution);
+#     (4) kmount RE-CUT -> `mount -o subvol=`; (5) kushd re-seat chain drops per-user kopen leg;
+#     (6) free-space second opinion via `btrfs filesystem usage` (data+metadata; df lies). Per-user LUKS2 RETIRED;
+#     per-home crypto = fscrypt's own docket. PTUUID bottom-wall guard UNCHANGED. Steps 1-3 + 5-7 of claim/carve stand.
 # BUILD (bobdotrix 2026-11-24, GSI, reconciled 11-25) — CLAIM/CARVE STEPS 1+3+4 BUILT + PUSHED; DISK-GUARD LAW LOCKED.
 #   A full build day landed the claim/carve slice through step 4, plus the disk-guard law. The gate's claim-detection
 #   commit was the ONE relog-risk file: kidulkey was ahead-1 with c934fea UNPUSHED — pushed to codeberg this session
