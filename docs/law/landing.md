@@ -8,6 +8,11 @@ content centred + ZERO crumbs + empty space above.
 AMENDED 2026-11-14 (GSI): the brand is KIDUL SYSTEMS (was KidulWorks); the sig
 LOGO retires in favour of the plain name (naming.md — no logo, no sig, just the
 name). The system title ABOVE UserHome = "Kidul TV" (naming.md).
+AMENDED 2026-11-26 (GSI, BITE 1): the mark returns as a first-class LOGO —
+REVERSING "the sig retires". One mark, two presentations keyed to seat (see "The
+Kidul mark" below), theme-immune, art-is-data. The space above the bar is no
+longer empty — the mark fills it. Content below the bar is a transparent depth
+ladder, NEVER above the bar.
 
 Lane: cross-app (kfiles, kidul-browser, kmedia).
 Related: styles (CFC law, THE PILL, corner language, whispy icons, Granny test),
@@ -73,11 +78,61 @@ disappears; a KISS title tells her what the app does.
    files/browser/media. Only the title and the content swap. Freeze once, build
    three times to match.
 
-6. KIDUL SYSTEMS NAME. A small "Kidul Systems" name in purple & blue — the
-   B&B signature colours, timeless — sits just above the focused pill, small
-   enough that the colour never distracts from the pill's focus, but placed so it
-   walks the eye up and down the line: title -> name -> focused pill. NOT big,
-   wisely placed, our mark on every surface.
+6. THE KIDUL MARK (was the "Kidul Systems name"; AMENDED 2026-11-26). The
+   mark is the brand element at the top — a wordmark "Kidul Systems" in purple
+   & blue (the B&B colours), theme-immune. It REPLACES the older "small name
+   above the pill" AND the outline system title: one mark, no double-name.
+   Two presentations keyed to seat — see "The Kidul mark" below. NOT big when
+   authenticated; the hero when keyless.
+
+## The Kidul mark — two presentations + depth ladder (LOCKED 2026-11-26)
+
+The mark is the brand element at the top, with exactly two presentation states
+gated by seat identity (public-seat.md):
+
+  KEYLESS (public seat) — the mark is BIG, the hero. Centred on the landing CFC
+  at h/2, honour-sized (~1/4 viewport height), with the widget faces + navDots.
+  NO pill bar (keyless has no apps). Nothing competes with the mark.
+
+  AUTHENTICATED (signed in, deck in the usersBar) — the mark SHRINKS into a
+  centred top band (~top 1/3 of the userBar height), one motion (<200ms, no
+  fade), then static. It never moves while pills are walked.
+
+  DEPTH LADDER — the authenticated UserHome landing (Library = the first
+  focused pill). Below the shrunk mark, from focus outward — full opacity down
+  to transparent; NOTHING above the bar:
+
+    mark            (top band)    brand constant, full opacity, static
+    usersBar                      FULL opacity — the CFC'd focus
+    category bar    (Movies·TV·Music, the library's internal filter)   TRANSPARENT
+    media peeks     (top ~2/3 of the top media tiles, recognisable)    TRANSPARENT,
+                                                                       a touch more
+
+  Only the usersBar is full-opacity focus; everything below it is PERCENTAGE
+  TRANSPARENT (alpha), just enough to show the next step if you moved down —
+  never enough to steal the CFC focus.
+
+  TRANSPARENCY, NOT FADE (locked, Barticus's correction): the diminished
+  objects are rendered at reduced ALPHA (see-through), NEVER faded / dimmed /
+  blurred. The usersBar is full opacity; the objects below are a % transparent.
+  No blur, no dim shader, no "black frost".
+
+  NOTHING ABOVE THE BAR (locked): the media wall's old "top row above the pill
+  bar" (the top 5 tiles rendered above the library category bar) is REMOVED.
+  Content sits BELOW the bar only — the mark owns everything above it. This
+  completes this law's own Q.D ("tiles below the bar, never above").
+
+  ART IS DATA, NOT CODE: the mark is a data asset in the mark registry (with the
+  Batik corners, §3); two sizes (hero / band) are the only layout facts the code
+  knows. The mark's own ART (the wave/crab drawing) ships as data later — a
+  placeholder wordmark carries the slot first.
+
+  RENDER SITES (correcting the docket's pointer): the mark renders on the two
+  compositor slides — `.home` (KidulHome, keyless hero) and `.user_home`
+  (usersBar, shrunk band) — server.zig + src/ui/users_bar.zig. NOT media.zig
+  (its LANDING/THE UP/THE DOWN/STANDARD are the media WALL's movement states, a
+  different axis). The media wall is untouched by this cut. Full spec:
+  docs/design/logo-landing-amendment.draft.md (LOCKED).
 
 ## Relationship to existing law
 
@@ -101,6 +156,12 @@ disappears; a KISS title tells her what the app does.
   context (docket #35), and show ZERO crumbs on the Landing.
 - Reverses the earlier "goddess picture" framing of the corner art in favour of
   Batik pattern.
+- Reverses the "no logo, no sig, just the plain name" ruling (naming.md + this
+  file's 2026-11-14 amendment): the mark returns, first-class, AS a logo.
+- Reverses "the space above the bar is EMPTY, awaiting design": the mark fills it.
+- Realizes naming.md's "logo — later job": now. The mark's own ART stays a later
+  data drop (placeholder wordmark first).
+- Word fix: the mark says "Kidul Systems", never "KidulWorks".
 - Reverses nothing else against locked law.
 
 ## Rulings (this lock)
@@ -116,3 +177,15 @@ disappears; a KISS title tells her what the app does.
   tiles-above-the-bar landing is corrected to match (title above, tiles below).
   The media library's movement (down into tiles, back up to the bar) is exactly
   the resting position every app should open on.
+- THE KIDUL MARK (2026-11-26, BITE 1, "yes to your recs" + transparency
+  correction): mark shape = No.2 wave/crab wordmark "Kidul Systems", crab-dot the
+  separable symbol, motion = intro/outro GIF only [Q.A]; keyless hero at h/2,
+  ~1/4 viewport, widgets + navDots, no pill bar [Q.B]; shrink = centred top band
+  ~top 1/3 of the userBar, one motion <200ms no fade, static while app-tops slide
+  [Q.C]; the mark absorbs the text title, no double-name [Q.D]; theme-immunity =
+  constant brand asset, never re-derived from theme [Q.E]; this cut freezes the
+  presentation + brand, and the mark's own ART ships as data later [Q.F].
+  TRANSPARENCY-NOT-FADE [Barticus's correction]: the ladder below the CFC is
+  percentage ALPHA transparency, never fade/dim/blur — usersBar full opacity,
+  category bar + media peeks transparent (peeks a touch more). NOTHING above the
+  bar. Library = the first focused pill on the authenticated UserHome landing.

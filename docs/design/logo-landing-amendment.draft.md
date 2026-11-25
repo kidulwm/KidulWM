@@ -1,8 +1,9 @@
-# DRAFT — the Kidul mark on the landing (logo/landing amendment)
+# THE KIDUL MARK — logo/landing amendment (LOCKED)
 
-PROPOSED 2026-11-26, bobdotrix. Presented for Barticus to lock.
-On lock this amends `landing.md` (LOCKED) and realizes `naming.md`
-§"The KidulWorks mark (logo — later job)". Not law until Barticus rules.
+LOCKED 2026-11-26, Barticus present, GSI. Folded into `landing.md` (§The Kidul
+mark, §6, Reversals, Rulings) and `naming.md` (§The Kidul mark). This file is the
+full spec the laws point at. Verdict: "yes to your recs" on A–F, plus one
+correction recorded as the DEPTH LADDER below.
 
 ## The steer (why now)
 
@@ -96,6 +97,22 @@ on TWO compositor slides:
 The media wall (media.zig PILL_*) is untouched by this bite. Census the actual
 render sites for `.home` / `.user_home` before the code cut (do not chase
 media.zig).
+
+## Verdict (2026-11-26, Barticus present, GSI)
+
+A–F locked "yes to your recs". PLUS the depth-ladder correction (Barticus):
+
+  On the AUTHENTICATED UserHome landing, Library = the FIRST focused pill:
+    usersBar CFC'd, FULL opacity — the focus.
+    below it, the library's category pill bar (Movies·TV·Music), TRANSPARENT.
+    below that, the tops of the top media cards (~2/3 of the tile), recognisable,
+    TRANSPARENT — the same as the category bar, or a touch more.
+  Nothing sits ABOVE the bar: the media wall's old "top row / top 5" tiles above
+  the category bar are REMOVED. The mark owns everything above the bar.
+  Mechanism = PERCENTAGE ALPHA transparency, NOT fade/dim/blur ("transparency
+  not fade — my bad"). usersBar full opacity; below it the objects are a %
+  transparent so they never steal the CFC focus, just show what the next step
+  would be if you moved down.
 
 ## Open questions (lettered, with recommendations)
 

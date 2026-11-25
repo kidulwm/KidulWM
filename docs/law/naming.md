@@ -82,7 +82,10 @@ category. One ramp, one meaning, everywhere.
 ## The system title (above UserHome)
 
 The word shown above UserHome is the PRODUCT name — "Kidul TV",
-"Kidul PC", ... — large, outline-only, no logo, no sig, no branding. Granny looks
+"Kidul PC", ... — large. (AMENDED 2026-11-26: where the mark is present, the
+mark is the identity — the outline title yields to the mark, no double-name;
+see §The Kidul mark. The bare outline form survives only on surfaces the mark
+does not reach.) Granny looks
 up and sees one honest word for the thing in her hands. The app names ("Search",
 "Library") live BELOW UserHome and above the AppHome (landing.md) —
 a second, separate title. Two titles, two jobs: the system names itself above,
@@ -106,21 +109,42 @@ renamed later.
 
 The app_id root com.kidulworks.* STAYS — KidulWorks IS the code, so the code
 namespace is named for the code layer (app-id-namespace.md). No rename, no
-ripple. The landing's "KidulWorks sig" retires in favour of the plain name (no
-logo, no sig — the title ruling, environment.md); the trident / purple+blue
-colour carries over as COLOUR, not a logo.
+ripple. (AMENDED 2026-11-26: the "no logo, no sig — just the plain name" ruling
+is REVERSED on surface — the mark returns, first-class, see §The Kidul mark.
+The trident / purple+blue colour carries INTO the mark as the brand identity,
+not just bare colour.)
 
-## The KidulWorks mark (logo — later job)
+## The Kidul mark (LOCKED 2026-11-26, Barticus present — was "logo — later job")
 
-Two visions; Barticus's lean is No.2:
+The mark is now a first-class brand element, NOT a deferred "later job" and NOT
+a retired sig. One mark, two presentations keyed to seat (landing.md: the mark).
+Reverses the earlier "no logo, no sig, just the plain name" ruling ON SURFACE:
+the mark IS the name — a wordmark, not bare outline text.
 
-  No.1  an iron hammer stamping "KidulWorks" into a metal plate (grinding).
-  No.2  a wave washes over the sand and leaves "KidulWorks" written in it, with
-        Flotsam & Jetsam (the ocean critters), and the dot of the "i" is a crab
-        that moves — maybe hiding from a swooping seagull.
+  WORD = "Kidul Systems" (the product brand), NEVER "KidulWorks" (the code).
+  The concept sketches below originally stamped "KidulWorks"; that word flips to
+  "Kidul Systems" wherever the mark surfaces as type.
 
-LEAN = No.2 — alive, on-theme; the crab-as-the-dot is the memorable detail. The
-moving crab/seagull is ONLY a GIF — the boot/ready splash + intro/outro, NEVER a
-permanent moving logo. The static wordmark is the norm; the coding mark lives
-only on intro/outro anyway. Design the logo around the LOOK of the Flotsam (the
-ocean critter). MUCH later — art is data, not code (landing.md).
+  SHAPE (Q.A, locked): realize No.2 — wave over sand, crab-as-the-i-dot,
+  Flotsam & Jetsam — as the wordmark; the crab dot is the separable symbol.
+
+  MOTION (locked): crab/seagull is ONLY the intro/outro GIF — never a permanent
+  moving mark. The static wordmark is the norm.
+
+  THEME-IMMUNE (locked): the mark wears the house identity (the purple+blue /
+  trident colour ramp) baked into the asset; no user theme repaints it (the same
+  rule THE PILL holds). A theme may recolour everything else; the mark is a
+  constant.
+
+  ART IS DATA, NOT CODE (locked): the mark is a data asset in the mark registry
+  (with the Batik corners, landing.md §3); it evolves without touching nav
+  layout. The mark's own ART (the wave/crab drawing, No.2) ships as data when
+  ready — a placeholder wordmark carries the presentation slot first (Q.F).
+
+  Two original visions (kept as the art direction):
+    No.1  an iron hammer stamping "Kidul Systems" into a metal plate (grinding).
+    No.2  a wave washes over the sand and leaves "Kidul Systems" written in it,
+          with Flotsam & Jetsam (the ocean critters), and the dot of the "i" is
+          a crab that moves — maybe hiding from a swooping seagull.
+    LEAN = No.2 — alive, on-theme; the crab-as-the-dot is the memorable detail.
+    Design the mark around the LOOK of the Flotsam (the ocean critter).
