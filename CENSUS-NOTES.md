@@ -1,5 +1,25 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-26, GSI) — KSD PRESENTATION PIVOT FIRED; BITE 1 = THE KIDUL MARK LOCKED.
+#   The pivot's first bite is a design-freeze, not a build: the LOGO / LANDING amendment. One mark, two
+#   presentations keyed to seat. KEYLESS (public) = BIG hero centred at h/2 on KidulHome (~1/4 viewport),
+#   widgets + navDots, no pill bar. AUTHENTICATED (deck in the usersBar) = the mark SHRINKS into a centred
+#   top band (~top 1/3 of the userBar), one motion <200ms no fade, static while pills walk. VERDICT A-F
+#   "yes to your recs" + Barticus's depth-ladder correction: on the authenticated UserHome landing Library
+#   = the FIRST focused pill — usersBar CFC'd FULL opacity (the focus), below it the library's category bar
+#   (Movies·TV·Music) TRANSPARENT, below that the tops of the top media tiles (~2/3, recognisable) TRANSPARENT
+#   a touch more. Mechanism = PERCENTAGE-ALPHA transparency, NEVER fade/dim/blur ("transparency not fade — my
+#   bad"). NOTHING above the bar (the media wall's old top-5-above-the-bar is REMOVED — completes landing.md
+#   Q.D "tiles below the bar"). BRAND = theme-immune + art-is-data (mark = registry asset; placeholder wordmark
+#   first, the wave/crab ART ships as a later data drop). REVERSALS named: "no logo, just the plain name"
+#   (naming.md + landing.md) -> the mark returns first-class; "space above bar EMPTY" -> filled; naming.md
+#   "logo — later job" -> now. WORD FIX: the mark says "Kidul Systems", never "KidulWorks" (the code layer;
+#   app_id com.kidulworks.* stays). RENDER SITES (correcting the docket's canonical-impl pointer): the mark
+#   renders .home (KidulHome) + .user_home (usersBar) — server.zig + src/ui/users_bar.zig, NOT media.zig (its
+#   LANDING/UP/DOWN/STANDARD are the media WALL's movement states, another axis). Commits: draft 3d0a881, law
+#   9b326a2 (landing.md + naming.md + logo-landing-amendment.draft.md), pushed codeberg. NEXT = BITE 2 (prove
+#   sound + vision on KSD — audio seat / content mount / front-end fingerprint; root causes already NAMED in
+#   the kmedia skill).
 # BUILD (bobdotrix 2026-11-25, GSI) — THE PERSONAL-FACTOR LANE LOCKED. docs/design/resident-factors.draft.md (KidulWM)
 #   freezes FIDO2/CTAP2 OPEN interop (not "YubiKey"): every security key (YubiKey/Titan/SoloKeys/Nitrokey/our kidulKey)
 #   is the SAME thing to the system. LOCKED A-D (Barticus, "yes to your recs"): personal factor = WITNESS (presence+
