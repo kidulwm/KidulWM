@@ -1,5 +1,12 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — STEP 3 kalloc TOKEN COLLAPSE BUILT (kidulkey 30461fe, B&B, codeberg).
+#   allocation.zig Entry collapses partition+home into one `subvolume` field = home-hash (ruling C).
+#   resolve() returns the subvolume name. Signed map format: `<key-id> <subvolume> [uid=...]` (no home=
+#   field — the subvolume IS the home-hash). kmount drops resolveToken/resolveMapper (dead code;
+#   no /dev/disk/by-partuuid walk) and bind-mounts the pool's @home/<home-hash> subtree. Tests green;
+#   kalloc resolve output: `<subvolume> uid=<uid>`. Note: kushd's resolve-output parser is temporarily
+#   stale (post-step-3 format; re-cut in step 5). NEXT = step 4 kmount RE-CUT (proper subvol= mount).
 # BUILD (bobdotrix 2026-11-25, GSI) — STEP 2 kcarve RE-CUT BUILT + RIG-PROVEN (kidulkey 62b6c50, B&B, codeberg).
 #   kcarve drops sgdisk+luksFormat per part: `kcarve <pool> <percent> <home-hash>` creates a btrfs subvolume
 #   @home/<home-hash> + sets a qgroup limit = percent% of FREE (data+metadata, `btrfs filesystem usage -b`
