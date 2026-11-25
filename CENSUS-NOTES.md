@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — STEP 5 kushd MOUNT-SEQ + CARVE RE-CUT BUILT + RIG-PROVEN (kushd 99c2d90, B&B, codeberg).
+#   chain = resolve -> kmount(subvolume) -> re-mint. Per-user kopen + kclose rollback RETIRED (pool opens once at boot).
+#   resolve parse = '<subvolume> uid=<n>' (token IS home-hash, step 3 collapse). carve cue now MINTS a random home-hash
+#   (11 CSPRNG bytes -> 22 hex, matches pre-provisioned owner) + forks `kcarve <pool> <percent> <home-hash>`; no LABEL
+#   resolution (pool = fixed /mnt/ksd-pool; the wrong-drive bomb lives in kopen POOL, step 1). Retained CLAIM key-id = the
+#   consent latch, not a kcarve argv. Rigs: fake-seq + real-seq (subvol= mount SUCCEEDS, findmnt confirms, NO kopen) + remint.
+#   FLAG (to Barticus): home-hash generation now lives in kushd's carve cue (was implicitly 'seed+sign'/app) — ruling-worthy.
+#   NEXT = step 6 free-space second opinion (btrfs usage data+metadata double-check; verify metadata-exhausted reject).
 # BUILD (bobdotrix 2026-11-25, GSI) — STEP 4 kmount RE-CUT BUILT + RIG-PROVEN (kidulkey deba36a, B&B, codeberg).
 #   kmount now does a proper `mount -o subvol=@home/<hash>` on the ONE pool device, resolved via /proc/self/mountinfo
 #   (the source backing the fixed commissioning mount /mnt/ksd-pool); no by-partuuid walk, no per-user LUKS (the pool
