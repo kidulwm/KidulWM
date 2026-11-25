@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BITE 2 VISION LANE OPEN (bobdotrix 2026-11-26, GSI): "silky/butter" good code FOUND in git — NOT a missing
+#   feature, a REGRESSION. Known-good: kmedia/docs/design/silk.md §7 (SILK TIMING LAW, video = own timing source)
+#   + zero-copy tiers §4; M1 display-sync present path (kmedia 6efc7a9+d06517e); present-rides-vblank fix (39510de,
+#   HANDOFF session 52). kmedia repo DORMANT since late Oct -> the "cut last week" is in KidulWM (46d3cd5 revert
+#   boundary + privacy-guard black-frost overlay commits ced30ff/9900812/76f07f7). KEY: black != decode — sound
+#   working proves demux+decode+audio healthy (same packet ring); black = present/placement (z-order burial under
+#   an overlay / blank-inhibit / fullscreen-video routing retired). Banked in the kmedia skill; port the known-good
+#   silky present path for BITE 2's vision half, never copy the current black state.
 # SESSION NOTE (bobdotrix 2026-11-26, GSI): three Barticus intakes banked — (1) KidulWorks = B&B's
 #   SIGNATURE (naming.md amended): separate from the systems; a maker-mark sneaked into a few places,
 #   maybe a future bootsplash, could sign children's books — a nice logo "purely B&B's KidulWorks" if
