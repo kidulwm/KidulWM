@@ -1,5 +1,10 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# RE-CUT v2 (bobdotrix 2026-11-26, GSI, same session): BITE 1 mark = a TEXTLESS SYMBOL, KEYHOLE at
+#   centre (NOT the wordmark) — Barticus's steer ("apple class", the mark says it all, the keyhole echoes
+#   'the key is the identity'). Keyless = CFC'd dead centre + Time top-right + Weather left + navDots;
+#   authenticated = the symbol moves up to top-centre + the alias under it, weather/time still shown.
+#   Depth ladder + transparency-not-fade unchanged. Commits: law 5c19d58 (naming.md + landing.md + spec v2).
 # BUILD (bobdotrix 2026-11-26, GSI) — KSD PRESENTATION PIVOT FIRED; BITE 1 = THE KIDUL MARK LOCKED.
 #   The pivot's first bite is a design-freeze, not a build: the LOGO / LANDING amendment. One mark, two
 #   presentations keyed to seat. KEYLESS (public) = BIG hero centred at h/2 on KidulHome (~1/4 viewport),
