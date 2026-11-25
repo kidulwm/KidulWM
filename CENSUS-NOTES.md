@@ -1,5 +1,14 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — STEP 6 FREE-SPACE SECOND OPINION — carve-subvolume RE-CUT COMPLETE (kidulkey c49c724, B&B).
+#   kcarve now reads BOTH data free ("Free (estimated)") AND metadata headroom (Metadata Size/Used + Device unallocated) from
+#   'btrfs filesystem usage'; quota = percent% of min(data, metadata) — never "Free (estimated)" alone (df lies, §two observers).
+#   Reject on 0. src/usage.zig (pure parser + effectiveFree; unit-tested gate: metadata full + zero unallocated -> reject).
+#   step6-rig.sh proves no over-commit (healthy=50% of free; full pool -> ~96KiB quota, tracked reality). FOUND: btrfs floors
+#   "Free (estimated)" at the global reserve (never exact 0), so the ==0 reject is a pathological backstop; min() is the live guard.
+#   ALL 6 carve-subvolume steps DONE + rig-proven: kopen POOL (dbe009a) / kcarve (62b6c50) / kalloc collapse (30461fe) /
+#   kmount (deba36a) / kushd (99c2d90) / free-space (c49c724). The subvolume carve is the production carve unit.
+#   NEXT = claim/carve steps 5-7 (seed+sign + defaultHome skeleton + mount-on-proof) re-cut onto the subvolume token.
 # BUILD (bobdotrix 2026-11-25, GSI) — STEP 5 kushd MOUNT-SEQ + CARVE RE-CUT BUILT + RIG-PROVEN (kushd 99c2d90, B&B, codeberg).
 #   chain = resolve -> kmount(subvolume) -> re-mint. Per-user kopen + kclose rollback RETIRED (pool opens once at boot).
 #   resolve parse = '<subvolume> uid=<n>' (token IS home-hash, step 3 collapse). carve cue now MINTS a random home-hash
