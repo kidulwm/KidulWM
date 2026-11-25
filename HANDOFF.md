@@ -37,9 +37,12 @@ sessions with session_search). Live state lives in the ledger, not here.
     - NOT deployed to KSD this cut; 2nd dongle still to order; vault keyfile
       still 0 (no real carve has run).
 
-  NEXT SESSION: reconcile step 4 carve unit (subvolume vs partition), then
-    build step 5 (seed + sign with proved owner key). Handoff = CENSUS-NOTES
-    top + claim-carve.draft.md (build order) + disk-guard.md (law).
+  NEXT SESSION: build carve-subvolume step 1 (pool commissioning) per the
+    LOCKED spec docs/design/carve-subvolume.draft.md (rulings A-D yes + E
+    deferred). Then kcarve re-cut, kalloc token collapse, kmount subvol-mount,
+    kushd re-seat re-cut, btrfs-usage second opinion (steps 2-6). Handoff =
+    CENSUS-NOTES top + carve-subvolume.draft.md (build order) + disk-guard.md
+    (law).
 
 ## Trip wires / commands / secrets
 
