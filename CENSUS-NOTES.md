@@ -1,5 +1,13 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# BUILD (bobdotrix 2026-11-25, GSI) — THE PERSONAL-FACTOR LANE LOCKED. docs/design/resident-factors.draft.md (KidulWM)
+#   freezes FIDO2/CTAP2 OPEN interop (not "YubiKey"): every security key (YubiKey/Titan/SoloKeys/Nitrokey/our kidulKey)
+#   is the SAME thing to the system. LOCKED A-D (Barticus, "yes to your recs"): personal factor = WITNESS (presence+
+#   consent) NEVER a NOTARY (no roster/map sign, no device-proof, no attest); first cut = CTAP2 client + roster
+#   enrollment only (no badge machinery); endorsement ("Approved for Kidul TV" = opt-in token fee for our vetting TIME,
+#   NOT a paywall/nego) parked under licensing.md; presence+consent never a password field; FIDO2 enrolls via OWNER.
+#   Rationale: early adopters (YubiKey owners = our no1 users, YT), source resilience (supply backup), honest hardware upsell.
+#   Consumes roster; does NOT touch ksign seam / SE050 signing root / device-proof / attestation. NEXT-B (queued).
 # BUILD (bobdotrix 2026-11-25, GSI) — THE SIGNER SEAM LOCKED. docs/design/signer.draft.md (KidulWM 20d9a0f)
 #   freezes ONE verb ksign <source> <canon> [sig] over two sources: dev-root:<seed> (disposable RFC-8032,
 #   rigs) | se050:<device> (production APDU to cold silicon). LOCKED A-D (Barticus, "yes to your recs"):
