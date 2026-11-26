@@ -1,5 +1,54 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# VISION RESTORED — STALE APP_ID TWO-WEEK BLACK (bobdotrix 2026-11-26, GSI): the media player
+#   had been black-with-sound since a stale binary drift, NOT a code bug. The reverse-DNS sweep
+#   (kmedia cec1c0d, 2026-11-11) renamed kplayd's surface app_id "com.kidul.kplay" ->
+#   "com.kidulworks.kplay"; the COMPOSITOR (kidulwm) was rebuilt+redeployed with the new match
+#   (24883ed), but kplayd was NOT — it sat on an Oct-24 fossil speaking the OLD name for two
+#   weeks. classifyKplay never matched -> kplay_window null -> tickFullscreen reveal never fired
+#   -> video rendered invisibly behind the opaque black curtain (sound fine; audio skips the
+#   handshake). Proven: fullscreen enter 3x, "fullscreen video revealed" 0x, exited 3x.
+#   FIX (deploy-only, zero source edit — source was already correct): backed up fossil to
+#   /usr/local/bin/kplayd.bak.2026-11-26, rebuilt kplayd HEAD (cec1c0d, ReleaseSafe 4.4MB,
+#   sha 76c7f21b...), redeployed, restarted. Post-fix chain fires in order: enter -> "classified
+#   id=11" -> "revealed". Running exe sha == on-disk sha. Vision restored, no renderD assert on quit.
+#   LESSON (in kmedia skill): a namespace/app_id sweep changes BOTH binary halves independently —
+#   rebuild+redeploy kplayd AND kidulwm AND the client in the SAME pass; never assume a rename is
+#   binary-compatible. Diagnose black-with-sound by REVEAL-COUNT first, then STRING-DIFF deployed
+#   binaries against the compositor's expected string.
+# C2 CLIENT-IFY — R1+R2+A DONE (bobdotrix 2026-11-26, GSI, long session):
+#   R1 WAS ALREADY COMPLETE in kmedia repo — the quit session had committed all the client wiring
+#   (KMEDIA_ROOTS env override, per-pill category wiring 154910e, channel/music Enter d06d622,
+#   fix stop-flag 7d6180c). Confirmed: walltest with full bench roots = 86 items (Movies 3 / TV 3 /
+#   Music 11), all pills, art/expansion/lazy-decode passing. Client has open_live for zero-latency
+#   live-TV startup.
+#   DEPLOY: the ~/.local/bin/kmedia and /usr/local/bin/kmedia on host were Oct 24 FOSSILS (zero
+#   open_live calls). Backed up (*.bak.c2-2026-11-26), fresh HEAD deployed to both paths,
+#   fingerprints match source. VM ksd-reset client also updated (was Oct 21). R2 UN-REVERT
+#   (0cd0d0b): both IPC .media_card_toggle + Mod4+m now point at mediaCardToggle() — the client
+#   owner, NOT the in-process MediaWidget. BUILD GREEN.
+#   WIRE A (b520a78): the client reads its library from KMEDIA_ROOTS env; spawnCommand forks
+#   inheriting the WM's env, so kidulwm-session sources ~/.config/kidulwm/media.env (git-ignored,
+#   personal path never in repo). KMEDIA_ROOTS + KMEDIA_MUSIC_ROOT exported at login. Repo
+#   session script synced to deployed truth (WLR_DRM_DEVICES + KMEDIA_TIMING were deploy-only
+#   since Sep/Oct — now committed). KSD AND HOST ARE BOTH WORKBENCHES (Barticus ruling this
+#   session): bench freedoms (env-file paths) sanctioned; production = auto-drive-search later.
+#   VM GATE PASSED (ksd-reset, pixman, empty library): toggle spawns kmedia client (pid 1210),
+#   3-pill shell renders (MOVIES·TV·MUSIC), TV pill centred green 0x6b9e75, 5 empty placecards
+#   above + 5 below. Clean quit (ESC) and abrupt kill -9 BOTH leave compositor pid unchanged
+#   (1084→1084 and 1084→1084) — ownership law holds. Frametrace alive after client exit.
+#   NOT YET LIVE ON HOST: running kidulwm is pid 2854, the Nov 18 fossil (zero mediaCardToggle
+#   strings, still on mediaSlideFocusOrSpawn). Session predates media.env source. Going live =
+#   host relog (picks up R2 binary + env). Relog kills this bobdotrix session (handoff rule) —
+#   CENSUS+HANDOFF updated first.
+#   R3 NEXT SESSION: retire media.zig (2125L) + media_slide.zig (91L) + core/kmedia.zig (480L)
+#   + LibraryEntry bridge — 106 ref sites in server.zig. The fullscreen-video machinery STAYS
+#   (kplay_window/placeKplayWindow/curtain — client's video presentation path). The media.play
+#   door currently guards on o.media_slide.isOpen() → must re-point at client fullscreen request
+#   instead. This is the one surgery that can kill the daily driver if over-deleted; deserves
+#   a fresh focused pass AFTER the host parity eyeball (relog, confirm client shows 86-item wall
+#   with posters on the TV). BUILD.G.ZIG drops kmedia_lib import (libkmedia only consumed by
+#   media.zig now; media_play door = kplay_client, separate).
 # SESSION WRAP-UP (bobdotrix 2026-11-26, GSI): MEDIA PLAYER REBUILD DIRECTION LOCKED.
 #   Barticus wants ONE working library/media player, NOT the test card nor the kmedia client shells.
 #   Architecturally the "buttery" playback is SEALED in kmedia src/player/ (Player.zig 3366L + MpvPlayer) exposed

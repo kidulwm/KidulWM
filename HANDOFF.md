@@ -11,38 +11,41 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-25)
+## Current attack (2026-11-26)
 
-  CLAIM/CARVE — STEPS 1+3+4 BUILT + PUSHED; DISK-GUARD LAW LOCKED (d25a228).
+  C2 CLIENT-IFY — R1+R2+A DONE, R3 GATED ON RELOG.
 
-  The claim/carve slice (docs/design/claim-carve.draft.md) has landed through
-  step 4 in three trees: claim detection (kushd e424f21 route CLAIM verdict +
-  gate c934fea three-way split), the ceremony surface (KidulWM 613e280 name
-  letter-walk + fill bar + consent nag, both input surfaces from scratch, +
-  d9256a6 hold-to-fine repeat), and the carve wiring (kushd cf7fab9 retain
-  claim key-id + 096c021 homes-carve verb — label->parent-disk resolution
-  fail-closed, fork kcarve, relay CARVED). Disk-guard LAW LOCKED (d25a228,
-  btrfs SUBVOLUME carve unit / fscrypt deferred / drive-class per-deployment).
+  C2 makes the kmedia Wayland CLIENT the one media front-end (scanner →
+  wall → kplay). R1 (env-roots + per-pill wiring + channel/music Enter)
+  was already committed in kmedia repo. R2 (0cd0d0b) un-reverts the
+  toggle → mediaCardToggle(), spawning the client instead of MediaWidget.
+  Wire A (b520a78) sources ~/.config/kidulwm/media.env at login (git-ignored,
+  personal bench paths only). Client deployed fresh to both host paths
+  (was Oct 24 fossil). VM ksd-reset verified: client spawns, 3-pill shell
+  renders, teardown (clean + kill -9) leaves compositor alive.
 
-  CARRIED THREADS (do not lose):
-    - STEP 4 RECONCILIATION (the live divergence): kcarve + homes-carve carve a
-      raw PARTITION (sgdisk -n + LUKS2), but disk-guard ruling A made the
-      production carve unit a btrfs SUBVOLUME. Reconcile the carve mechanism
-      against ruling A (settled, not optional) — kcarve re-cut to btrfs subvolume
-      create + qgroup quota on the btrfs-on-LUKS pool; per-user LUKS2 retired;
-      per-home encryption = fscrypt's own docket.
-    - step 5 = allocation + roster seed, SIGNED with the PROVED owner key via
-      the gate (NEVER kalloc's TEST seed) — the signing boundary.
-    - steps 6 (defaultHome skeleton) + 7 (mount-on-proof close) follow.
-    - NOT deployed to KSD this cut; 2nd dongle still to order; vault keyfile
-      still 0 (no real carve has run).
+  LIVE ON HOST: NOT YET. Running kidulwm is pid 2854, Nov 18 fossil (no
+  mediaCardToggle string). Session predates media.env source. A host RELOG
+  picks up both — that is the parity gate: eyeball the client showing the
+  86-item library (posters + expansion) BEFORE proceeding to R3. Relog
+  kills this bobdotrix session; CENSUS-NOTES + HANDOFF updated first.
 
-  NEXT SESSION: build carve-subvolume step 1 (pool commissioning) per the
-    LOCKED spec docs/design/carve-subvolume.draft.md (rulings A-D yes + E
-    deferred). Then kcarve re-cut, kalloc token collapse, kmount subvol-mount,
-    kushd re-seat re-cut, btrfs-usage second opinion (steps 2-6). Handoff =
-    CENSUS-NOTES top + carve-subvolume.draft.md (build order) + disk-guard.md
-    (law).
+  R3 (NEXT SESSION, POST-RELOG PARITY EYEBALL): retire media.zig (2125L) +
+  media_slide.zig (91L) + core/kmedia.zig (480L) + LibraryEntry bridge —
+  106 ref sites in server.zig. Fullscreen-video machinery (kplay_window,
+  placeKplayWindow, curtain) STAYS — client's video presentation path.
+  The media.play door guards on o.media_slide.isOpen() → must re-point
+  at client fullscreen request. build.zig drops kmedia_lib import.
+  This is the one surgery that can kill the daily driver; fresh focused
+  pass required.
+
+  R4 after: landing shell re-cut v3 per law 4942892 (arc'd outline banner,
+  identity-only, no 5-above row).
+
+  CARRIED (claim/carve, frozen): carve-subvolume step 1 per
+  docs/design/carve-subvolume.draft.md. Disk-guard law d25a228.
+  Claim surface (613e280) + gate (c934fea) landed. Step 4 reconciliation
+  (partition→subvolume) + step 5 (signed allocation) deferred.
 
 ## Trip wires / commands / secrets
 
