@@ -1,5 +1,21 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# KSD FIRST-BOOT LOG DIAGNOSIS + KPLAYD SEATING FIX (bobdotrix 2026-11-26, GSI): Barticus
+#   booted KSD, tested library. Wall R4 landing VERIFIED (channel cards below pillsBar,
+#   instantly cleaner). TV channels displayed, looked like they opened, but ZERO playback
+#   (blank screen). Movies/Music pills empty. ksound/pipewire visible in htop, kplayd NOT.
+#   ROOT CAUSE: kplayd was CUED in bill.kush, never cued — nobody told kushd to start it.
+#   FIX (deployed to KSD m.2): bill.kush:38 cued→BODY always-on. + /etc/kidulwm/media.env
+#   created (KMEDIA_ROOTS including /home/kidul/.local/share/kmedia for IPTV; Movies/Music
+#   paths to /mnt/sda_backup/Jelly). Content mount NOT LANDED — KSD miniPC sda1 is empty;
+#   Jelly drive is on HOST sda1. Movies/Music blocked until drive connected or NFS'd.
+#   SECONDARY: kidulwm cb643e7 segfaulted in Environ.zig:634 (null env) → respawn-looped;
+#   bafe895 stabilised. pipewire-pulse crash-looped on boot but stabilised (htop confirms).
+#   wireplumber modules empty. libinput quirks path mismatch. Nav: ball highlights from
+#   test card leaked into wall (random tiles); needs CFC alignment (vertical+horizontal
+#   tile-to-centre). FanArt deferred. NEXT: reboot KSD → verify kplayd in htop → open
+#   TV channel → check sound+vision. BITE 2 lanes (1) audio seat and (2) content mount
+#   still open; (3) front-end fingerprint parked.
 # MEDIA WALL R4 LANDS + CHANNELS SHIPPED (bobdotrix 2026-11-26, GSI): the "content above the
 #   pillsBar / empty wall" bug is CLOSED. Wall.zig 9b6fa05 (kmedia): landing is now the
 #   up_plus_one state — content renders BELOW the bar, nothing above; leaveGrid returns to the
