@@ -740,10 +740,10 @@ pub const Server = struct {
                 return self.setStageKadence(p.output, p.width, p.height, p.refresh_mhz, p.scale);
             },
             .media_card_toggle => {
-                // REVERT (2026-11-18): media card = the compositor MediaWidget
-                // (media.zig). C2 phase 1 pointed this at the kmedia CLIENT, but
-                // the client's 3-pill nav is presentation-only (no TV/music).
-                self.mediaSlideFocusOrSpawn();
+                // C2 R2 (2026-11-26): media card = the kmedia CLIENT (an .app
+                // slide). R1 landed the client's per-category wiring (TV +
+                // music live, not presentation-only), un-reverting 46d3cd5.
+                self.mediaCardToggle();
                 return .{ .ok = true };
             },
             .media_play => |p| {
