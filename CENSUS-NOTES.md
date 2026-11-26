@@ -1,5 +1,72 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 (bobdotrix): KSD first-live-TV-attempt post-re-slice. CODE VERIFIED
+#   ABOARD (deployed kmedia sha f96982bd == git HEAD 9b6fa05 byte-identical; kidulwm has
+#   mediaCardToggle=3 = client-spawn build; kidulwm-session + media.env + bill.kush kplayd=body
+#   all present). Library SCAN WORKS (86 items — the R4 wall + env seam is alive on KSD, a
+#   big step forward from "0 items"). Barticus attempt = black + silent. DIAGNOSED:
+#   1. kplayd crash-looped on libOpenCL.so.1 ~25x at boot (status=32512=exit 127), then
+#      "listening on /run/user/1001/kplay.sock" 3x at end; kushd final state = seated
+#      kplayd pid=236 stable. libOpenCL.so.1 IS present on m.2 (ocl-icd, 233KB, Jul-28 mtime)
+#      + in ld.so.cache (regenerated 00:18). chroot ldd NOW clean (0 "not found"). The crash-
+#      loop lines may be stale appends from pre-re-slice boot — kplayd IS up now (listening).
+#      Audio stack STATUS: PROBABLY UP (kplayd seated, listening; pipewire-pulse crash-loop
+#      also resolved in tail — last kushd seat shows ALL stable. Wireplumber module tree
+#      present). VERIFY at next boot: grep kushd-kplayd.log for "listening" at END = OK.
+#   2. kmedia CLIENT CRASH — TWO live bugs in git HEAD (9b6fa05/R4):
+#      (a) INTEGER OVERFLOW at Wall.zig:493 + 505: enterGrid/exitUpPlusOne use
+#          `if (target < n) target else n - 1` — when n=0 (empty pill category), n-1
+#          underflows usize → panic. FIXED (a5b8add): n-1 → n-|1 (saturating subtract).
+#          DEPLOYED to /mnt/ksd/usr/local/bin/kmedia sha 74e3adcf (old → .bak-20261127-004134).
+#      (b) SEGFAULT at address 0x40 in buildMediaCards (line 275) called from movePillLeft
+#          (line 454) on LEFT-arrow from TV pill → Movies. NOT fully diagnosed — walltest
+#          headless path (sort/card-build/section-rank) passes clean. May be Cairo/font-
+#          config interaction or a transient. Fresh crash log from the new binary will
+#          narrow it. Watch the spawn.log for "Segmentation fault" with new binary.
+#   FRAMETRACE: kplay=0 entire session, fullscreen enter=0, video revealed=0 — NO playback
+#   was ever initiated (client crashed before sending open_live to kplayd). Sound = none
+#   for same reason (kplayd never received a play command).
+#   NEXT: Barticus boots KSD, opens media wall, navigates pills. If client survives nav,
+#   test TV channel → sound+vision. The integer overflow fix should stop the grid-entry
+#   panic; the segfault may still be present. Read FRESH logs after.
+#   LESSON (deploy verification): the m.2-time-barometer trick (compare m.2 log mtimes to
+#   "now" while m.2 is ro) definitively answers "are these the latest logs" — no guessing.
+#   LESSON (ld.so.cache): regenerating the cache (ldconfig) AFTER copying libs is critical;
+#   the previous re-slice added libOpenCL + avahi + wireplumber tree but the CACHE date
+#   (00:18) being 2min BEFORE boot (00:20) means the re-slice land was tight — verify
+#   the cache lists every needed lib with `strings <cache> | grep <libname>`.
+#   kmedia repo: ahead 2 (9b6fa05 + a5b8add fix), not pushed. KidulWM: ahead 2, CENSUS
+#   dirty (this entry).
+#
+# AUDIO STACK COHERENT RE-SLICE (bobdotrix 2026-11-26, GSI): Barticus rebooted KSD.
+#   still no kplayd, no pipewire-pulse, no movies/music, TV=black. THIS TIME THE BILL
+#   WAS CORRECT (kplayd=body). kushd seated everything (log proof: seated kplayd pid=232,
+#   seated pipewire-pulse pid=231) — they crash-looped on MISSING SHARED LIBRARIES.
+#   Seating was NEVER the problem; rootfs assembly gap was. Three crash loops:
+#   1. kplayd → exit 127, libOpenCL.so.1 missing (transitive via VA-API/ffmpeg chain)
+#   2. pipewire-pulse → exit 254, libavahi-client.so.3 + libavahi-common.so.3 missing
+#      (protocol-pulse module's transitive deps; the module .so WAS present)
+#   3. wireplumber → exit 78, /usr/lib/wireplumber-0.5/ ENTIRE tree missing
+#   FIX: full coherent re-slice of audio stack at host versions (pipewire 1.6.9 +
+#   wireplumber 0.5.17 + lua 5.5 + avahi + ocl-icd). Replaced core libs (pipewire-0.3,
+#   wireplumber-0.5, pulse, pulse-simple — old Nov-1 versions had drifted), replaced
+#   all module trees (pipewire-0.3/ wireplumber-0.5/ spa-0.2/ pulseaudio/), replaced
+#   share dirs, added /etc/pipewire config, replaced binaries, copied 48 individual
+#   missing .so files. chroot ldd VERIFIED: pipewire + wireplumber + pipewire-pulse +
+#   kplayd + ksound ALL RESOLVED (0 "not found"). 32 pipewire modules, 17 wireplumber
+#   modules, 35 spa plugins present. m.2 remounted ro.
+#   NEXT: REBOOT KSD → verify kplayd + pipewire-pulse + wireplumber in htop → test
+#   TV channel playback (sound+vision). Movies/Music still BLOCKED by content mount
+#   (miniPC sda1 is empty; Jelly drive on host — not yet connected/NFS'd). Audio fix is
+#   COMPLETE per chroot ldd; only a live boot eyeball gates.
+#   LESSON: the "seating" intuition pointed at kboot vs kushd but the real gap was
+#   rootfs-assembly: the ldd-based .so step misses (a) whole MODULE TREES that are
+#   runtime-dlopen'd (wireplumber-0.5, spa-0.2), (b) TRANSITIVE DEPS of shipped
+#   modules (avahi needed by protocol-pulse, OpenCL needed by VA-API chain), and
+#   (c) VERSION DRIFT between assembly date and current host. See kidul-system-daemons
+#   skill pitfalls. kboot NEVER seats organs — locked architecture: kboot forks only
+#   knetd+kushd; every organ is kushd's killable child.
+#
 # KSD FIRST-BOOT LOG DIAGNOSIS + KPLAYD SEATING FIX (bobdotrix 2026-11-26, GSI): Barticus
 #   booted KSD, tested library. Wall R4 landing VERIFIED (channel cards below pillsBar,
 #   instantly cleaner). TV channels displayed, looked like they opened, but ZERO playback

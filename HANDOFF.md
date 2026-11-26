@@ -11,46 +11,53 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-26)
+## Current attack (2026-11-27)
 
-  C2 CLIENT-IFY — R1+R2+A DONE, R3 GATED ON RELOG.
+  BITE 2 — PROVE SOUND + VISION ON KSD. Session 2026-11-27 (bobdotrix) diagnosed
+  the first live-TV-attempt post-re-slice.
 
-  C2 makes the kmedia Wayland CLIENT the one media front-end (scanner →
-  wall → kplay). R1 (env-roots + per-pill wiring + channel/music Enter)
-  was already committed in kmedia repo. R2 (0cd0d0b) un-reverts the
-  toggle → mediaCardToggle(), spawning the client instead of MediaWidget.
-  Wire A (b520a78) sources ~/.config/kidulwm/media.env at login (git-ignored,
-  personal bench paths only). Client deployed fresh to both host paths
-  (was Oct 24 fossil). VM ksd-reset verified: client spawns, 3-pill shell
-  renders, teardown (clean + kill -9) leaves compositor alive.
+  CODE VERIFIED ABOARD: deployed kmedia sha f96982bd == git HEAD 9b6fa05 (R4 wall)
+  byte-identical; kidulwm has mediaCardToggle=3 (client-spawn, R2); media.env +
+  kidulwm-session + bill.kush kplayd=body all present. Library SCAN WORKS (86
+  items — the R4 wall + env seam is alive).
 
-  LIVE ON HOST: NOT YET. Running kidulwm is pid 2854, Nov 18 fossil (no
-  mediaCardToggle string). Session predates media.env source. A host RELOG
-  picks up both — that is the parity gate: eyeball the client showing the
-  86-item library (posters + expansion) BEFORE proceeding to R3. Relog
-  kills this bobdotrix session; CENSUS-NOTES + HANDOFF updated first.
+  BLOCKERS DIAGNOSED + ONE FIXED:
+    1. INTEGER OVERFLOW at Wall.zig:493+505: enterGrid/exitUpPlusOne `n-1` underflows
+       when pill has 0 cards → panic. FIXED (a5b8add): n-1 → n-|1. DEPLOYED to
+       /mnt/ksd/usr/local/bin/kmedia sha 74e3adcf.
+    2. SEGFAULT at 0x40 in buildMediaCards (line 275) ← movePillLeft on LEFT-arrow
+       from TV → Movies. NOT fully diagnosed. Headless pass (walltest sort/card ok);
+       may be Cairo/font-config under empty $HOME on KSD, or a layout corruption.
+       Fresh crash log from new binary will narrow.
 
-  R3 (NEXT SESSION, POST-RELOG PARITY EYEBALL): retire media.zig (2125L) +
-  media_slide.zig (91L) + core/kmedia.zig (480L) + LibraryEntry bridge —
-  106 ref sites in server.zig. Fullscreen-video machinery (kplay_window,
-  placeKplayWindow, curtain) STAYS — client's video presentation path.
-  The media.play door guards on o.media_slide.isOpen() → must re-point
-  at client fullscreen request. build.zig drops kmedia_lib import.
-  This is the one surgery that can kill the daily driver; fresh focused
-  pass required.
+  kplayd STATUS: crash-looped on libOpenCL.so.1 ~25x at last boot before stabilizing
+  (chroot ldd NOW clean — libOpenCL present, ld.so.cache regenerated 00:18, kushd
+  final seat = kplayd pid=236 stable, "listening on /run/user/1001/kplay.sock").
+  Audio stack PROBABLY UP. Verify at next boot: kushd-kplayd.log "listening" at END.
 
-  R4: landing shell re-cut v3 per law 4942892. LANDED (kmedia Wall.zig
-  9b6fa05): content below the bar only, no 5-above row, no empty placecard
-  shell. STILL OPEN: the arc'd outline banner title (identity-only) — the
-  top third renders empty for now. 34 channels + 36 logos shipped to KSD
-  m.2 (local data, no codeberg push); ReleaseSafe kmedia deployed to
-  /mnt/ksd/usr/local/bin/kmedia. NEXT: boot KSD, eyeball wall + sound, read
-  kushd-kidulwm.log / kushd-spawn.log.
+  FRAMETRACE: last session kplay=0, fullscreen enter=0, video revealed=0 — NO
+  playback was ever initiated (client segfaulted on nav before sending open_live
+  to kplayd). Sound = none for same reason.
 
-  CARRIED (claim/carve, frozen): carve-subvolume step 1 per
-  docs/design/carve-subvolume.draft.md. Disk-guard law d25a228.
-  Claim surface (613e280) + gate (c934fea) landed. Step 4 reconciliation
-  (partition→subvolume) + step 5 (signed allocation) deferred.
+  NEXT BOOT ACTION (Barticus):
+    - Boot KSD, open media wall
+    - Navigate pills (LEFT from TV → Movies); if client survives, navigate back
+    - Play a TV channel (Enter on a channel card)
+    - If crash: note which key triggered it; bobdotrix reads fresh logs
+
+  NEXT DOCKET (bobdotrix, post boot):
+    - Read /mnt/ksd/var/log/kushd-kplayd.log → "listening" at END = kplayd UP
+    - Read /mnt/ksd/var/log/kushd-spawn.log → crash traces (if any)
+    - Read /mnt/ksd/var/log/kushd-kidulwm.log → FRAMETRACE kplay=N, fullscreen enter/reveal
+    - If segfault persists: diagnose 0x40 with fresh binary, fix, redeploy
+    - If client survives nav: verify open_live reaches kplayd, then sound+vision
+
+  CARRIED (claim/carve, frozen): carve-subvolume + re-seat + privacy guard +
+  kidulkey lanes — parked behind BITE 2, not blocking.
+
+  kmedia HANDOFF: separate file at /home/dad/dev/kmedia/HANDOFF.md — prior sessions
+  (50-53) are audio-master clock fix + present-throttle investigation. This session's
+  fixes are in CENSUS-NOTES (top) + the kmedia commit history.
 
 ## Trip wires / commands / secrets
 
@@ -59,3 +66,8 @@ sessions with session_search). Live state lives in the ledger, not here.
   Deploy trap: build ReleaseSafe (-Doptimize=ReleaseSafe), mv-over swap
     (sudo cp .new + chmod + mv), .bak kept, NEVER restart the running
     compositor for Barticus — relog is his call.
+  m.2 time barometer (is this the latest boot?):
+    mount | grep /mnt/ksd → ro? → find /mnt/ksd -newermt "YYYY-MM-DD HH:MM" = empty
+    → those logs are the last boot. No guessing.
+  ld.so.cache check: `strings /mnt/ksd/etc/ld.so.cache | grep <libname>` — verify
+    every needed lib is IN the cache before telling Barticus "it'll resolve."
