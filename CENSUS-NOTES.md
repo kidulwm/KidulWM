@@ -1,5 +1,28 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# MEDIA WALL R4 LANDS + CHANNELS SHIPPED (bobdotrix 2026-11-26, GSI): the "content above the
+#   pillsBar / empty wall" bug is CLOSED. Wall.zig 9b6fa05 (kmedia): landing is now the
+#   up_plus_one state — content renders BELOW the bar, nothing above; leaveGrid returns to the
+#   same state; empty library renders calm empty space, never the placecard shell. VM ksd-reset
+#   verified: pill bar centred (TV selected), 5 channel cards BELOW the bar, area ABOVE empty.
+#   CHANNELS SHIPPED to KSD m.2 (LOCAL DATA, not a repo): 34 channels + 36 logos at
+#   /home/kidul/.local/share/kmedia/{tv.m3u,logos/} (logo paths re-pointed /home/dad ->
+#   /home/kidul, 0 personal leaks) + /usr/share/kidul/tv/au.m3u. Wall previously landed on .tv
+#   with ZERO channels = the empty-wall presentation failure.
+#   DEPLOY: ReleaseSafe kmedia -> /mnt/ksd/usr/local/bin/kmedia (sha f96982bd..., 755 root:root),
+#   KSD remounted ro. VM carries the r4 binary too. NOT pushed to codeberg — PUSH POLICY
+#   (Barticus 2026-11-26): keep it LOCAL until the wall is VERIFIED working on KSD, THEN push a
+#   PII-STRIPPED version (channel/stream URLs redacted) to the burg. Channels/logos stay local-only.
+#   NEXT: BOOT KSD and verify the wall actually renders the shipped channels below the bar and
+#   playback fires (BITE 2 — SOUND FIRST: audio DAC is master clock Player.zig:1379, then
+#   vision). READ THE LOGS: kushd-kidulwm.log (scan + classifyKplay reveal chain) +
+#   kushd-spawn.log (kmedia spawn env). Front-end fingerprint (MediaWidget vs kmedia client)
+#   still OPEN — do NOT copy the host video path (black-screen regression); diagnose
+#   decode->dmabuf->texture->surface. Arc'd banner title still OPEN (identity-only; top third
+#   empty for now).
+#   ORIENTATION FIX (why this session drifted): devskills ledger-read is UNCONDITIONAL now, and
+#   situational-awareness carries a KSD ledger lane — read CENSUS/DOCKETS/HANDOFF + reconcile git
+#   EVERY session, cue-word or not.
 # VISION RESTORED — STALE APP_ID TWO-WEEK BLACK (bobdotrix 2026-11-26, GSI): the media player
 #   had been black-with-sound since a stale binary drift, NOT a code bug. The reverse-DNS sweep
 #   (kmedia cec1c0d, 2026-11-11) renamed kplayd's surface app_id "com.kidul.kplay" ->

@@ -39,8 +39,13 @@ sessions with session_search). Live state lives in the ledger, not here.
   This is the one surgery that can kill the daily driver; fresh focused
   pass required.
 
-  R4 after: landing shell re-cut v3 per law 4942892 (arc'd outline banner,
-  identity-only, no 5-above row).
+  R4: landing shell re-cut v3 per law 4942892. LANDED (kmedia Wall.zig
+  9b6fa05): content below the bar only, no 5-above row, no empty placecard
+  shell. STILL OPEN: the arc'd outline banner title (identity-only) — the
+  top third renders empty for now. 34 channels + 36 logos shipped to KSD
+  m.2 (local data, no codeberg push); ReleaseSafe kmedia deployed to
+  /mnt/ksd/usr/local/bin/kmedia. NEXT: boot KSD, eyeball wall + sound, read
+  kushd-kidulwm.log / kushd-spawn.log.
 
   CARRIED (claim/carve, frozen): carve-subvolume step 1 per
   docs/design/carve-subvolume.draft.md. Disk-guard law d25a228.
