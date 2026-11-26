@@ -18,8 +18,22 @@ export KIDULWM_WAYLAND_DISPLAY=wayland-1
 # never sets this — it relies on the patched libwlroots + kushd verdict.
 export KIDULWM_INPUT_GATE=off
 
+# GPU pinning (2026-09-21): NVIDIA is blacklisted (verdict 53). Intel iGPU is
+# the only card — eDP-1 and the TV (DP-3 via USB-C hub) are both card1.
+# WLR_DRM_DEVICES pins card1 explicitly so wlroots never probes a stale card0.
+# settings app later (compositor restart required — wlroots reads this at
+# backend creation only).
+export WLR_DRM_DEVICES=/dev/dri/card1
+
 # stderr/stdout land in a persistent log — /tmp is tmpfs and dies with the
 # reboot, which is exactly when we need the post-mortem (5b64ba9 lesson).
 LOGDIR="$HOME/.local/state/kidulwm"
 mkdir -p "$LOGDIR"
+export KMEDIA_TIMING=1
+
+# Bench media roots (KMEDIA_ROOTS / KMEDIA_MUSIC_ROOT) from a machine-local,
+# git-ignored file. The kmedia client and WM-spawned players inherit these;
+# absent file = legal empty library. Personal path never lives in the repo.
+[ -f "$HOME/.config/kidulwm/media.env" ] && . "$HOME/.config/kidulwm/media.env"
+
 exec /usr/local/bin/kidulwm > "$LOGDIR/session.log" 2>&1
