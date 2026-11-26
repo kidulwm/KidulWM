@@ -17,6 +17,10 @@ RE-CUT v2 (same day): the mark is a TEXTLESS SYMBOL, keyhole at centre — no
 "Kidul Systems" wordmark (the mark says it all, apple-class). Keyless = CFC'd
 dead centre + Time top-right + Weather left; authenticated = top-centre + the
 alias under it, weather/time still shown.
+RE-CUT v3 (2026-11-26, GSI): the app title becomes an ARC'D OUTLINE BANNER
+(§2 re-cut) and the mark is IDENTITY-ONLY — KidulHome + usersBar, nowhere else.
+The logo-in-title idea is PARKED ("subtly later", forbidden for now). Q.A
+resolved: "arc'd" = the letter BASELINE laid on a gentle arc (Barticus's read).
 
 Lane: cross-app (kfiles, kidul-browser, kmedia).
 Related: styles (CFC law, THE PILL, corner language, whispy icons, Granny test),
@@ -55,14 +59,21 @@ disappears; a KISS title tells her what the app does.
    then as display-only context in the left panel (never navable, never on the
    landing).
 
-2. KISS TITLE, never an app id — and it is CENTRED. The top filler is a
-   plain-language title of what the app DOES, written in a really nice hand, dead
-   centre ("in the middle on all"). It tracks the focused pill:
+2. KISS TITLE — never an app id, never the mark: an ARC'D OUTLINE BANNER
+   (RE-CUT v3, 2026-11-26). The top filler is a plain-language title of what the
+   app DOES, drawn as a BANNER: OUTLINE-ONLY lettering (text-path + stroke, no
+   fill — the existing "Kidul TV" technique, src/ui/users_bar.zig:141-152), laid
+   on a GENTLE ARC (the letter baseline rides a shallow curve — cinema, not a
+   flat caption), at BANNER SCALE (noticeably larger than the current mini
+   title), wearing the user's BORDER COLOR. It tracks the focused pill:
        kfiles   FILES -> "Folders & Files"    DRIVES -> "Drives"    SETTINGS -> "Settings"
        browser          -> "Browser"
        kmedia   landing-> "Library"
-   One classy-and-clean text style shared across all three. KISS — explains the
-   app to Granny and any noob, never names the code.
+   One classy style shared across all three. Its single job: tell Granny where
+   she is after she drops down into an app. The mark does NOT appear here — the
+   mark owns identity (KidulHome + usersBar, §6); the title owns navigation
+   (AppHome). A logo may "eventually and very subtly" join the title, but that
+   is PARKED, not part of this ruling.
 
 3. BATIK CORNER ART (not a picture). The corners carry the STYLE of Batik
    pattern — the house's own textile language, subtle, cinematic — rendered in
@@ -169,6 +180,10 @@ placements keyed to seat identity (public-seat.md):
 - Realizes naming.md's "logo — later job": now. The mark's own ART stays a later
   data drop (placeholder wordmark first).
 - Word fix: the mark says "Kidul Systems", never "KidulWorks".
+- RE-CUT v3 (2026-11-26): reverses Q.D of the mark's own v2 ruling ("the mark
+  replaces the text title, no word at all") ONLY as far as AppHome goes — the
+  mark replaces identity text (KidulHome + usersBar) but the APP title survives
+  on AppHome as the arc'd outline banner (§2). The two no longer collide.
 - Reverses nothing else against locked law.
 
 ## Rulings (this lock)
@@ -198,3 +213,12 @@ placements keyed to seat identity (public-seat.md):
   percentage ALPHA transparency, never fade/dim/blur — usersBar full opacity,
   category bar + media peeks transparent (peeks a touch more). NOTHING above the
   bar. Library = the first focused pill on the authenticated UserHome landing.
+- RE-CUT v3 (2026-11-26, "GSI of course"): the mark is IDENTITY-ONLY — it renders
+  on KidulHome (keyless hero) + usersBar (top-centre) and nowhere else ("rest
+  easy, you're on a Kidul System", never promotion). Forget the logo in titles
+  for now — parked. The APP TITLE is the AppHome top-third element: an ARC'D
+  OUTLINE BANNER — outline-only (text-path + stroke, no fill), letter baseline on
+  a gentle arc (cinema over flat), banner scale (larger than the mini "Kidul TV"
+  title), wearing the border colour. One per app: Library / Browser / Folders &
+  Files. Q.A resolved: "arc'd" = the letters' baseline laid on a slight arc
+  (Barticus: "feel over technicality").
