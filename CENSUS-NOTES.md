@@ -1,5 +1,53 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 (bobdotrix, GSI — GR + next: MIRROR-HOST PARITY CUT 1+2 LANDED):
+#   Ran the GREAT RESET (SYSTEM.md → KSD-INDEX → CENSUS) then 'next' = MIRROR-HOST MEDIA
+#   FRONT-END PARITY. Read the code on BOTH sides and landed the two halves that are REAL
+#   divergences. Two of the three "focus" claims in the NIGHT entry were WRONG on re-read —
+#   RETRACTED, do not build them:
+#     RETRACTED (i) "Escape/leaveGrid must clear up_plus_one": R4 landing IS up_plus_one
+#       (landing.md R4 — landing = content below the bar only). The client is
+#       self-consistent; the host only differs because its landing is a control enum.
+#     RETRACTED (ii) "adjustScrollToSelection must clamp to max_scroll_offset": host
+#       computes max_scroll_offset = total_rows - 1 (media.zig:1870), so
+#       clamp(selected_row, 0, total_rows-1) == selected_row. Algebraically identical.
+#       NO CHANGE NEEDED on either.
+#   CUT 1 — MUSIC BACKGROUNDS (the black-screen fault, verified). App.launchMusic set
+#     player_active = true; Wayland.zig:244-256 syncs xdg_toplevel_set_fullscreen FROM
+#     player_active, and App.render() paints black in that state — so audio went
+#     fullscreen-black AND handleKey relayed every key to kplayd (wall dead). The host
+#     music path (server.zig:3642-3659) has NO player mode: kplayCloseAny → kplayOpen →
+#     setMusicNowPlaying → mediaSlideToggle. FIX: new `audio_active`; music sets only that.
+#     tick() drains kplayd events in either state but falls through to the wall clock for
+#     audio; render() blacks only on player_active; Escape stops audio before closing
+#     (kplayd must never outlive its controller).
+#   CUT 2 — TV PILL ORDERING + LANDING (the real focus/tile divergence). The client never
+#     called TvChannels.sortByWatchCounts (App.init did only tv.load()) and rebuild()
+#     always landed focus 0. Host loadTvChannels (media.zig:54-130) sorts most-watched
+#     first and restores the LAST-WATCHED channel from ts= on a last=1 line
+#     (live-tv.md §Watch-state). FIX: WatchState.readText(alloc); App.init sorts tv with
+#     it; Wall reads it once at bind (freed in deinit) and rebuild() sets
+#     focus/list_scroll_offset from TvChannels.lastWatchedIndex() for .tv only
+#     (Movies/Music stay index 0, exactly like the host).
+#   SOUND — CENSUS (A) CORRECTED, and it is NOT a front-end bug: "stream owner reports
+#     'kmedia' not kplayd" is not the client decoding — Player.zig:773
+#     pa_simple_new(null, "kmedia", …) is kplayd registering its OWN pulse stream under the
+#     hardcoded name "kmedia" (true on host AND KSD). ksound LAW 5 (backend.zig:101-106)
+#     reaps a stream the moment its owner pid dies, so the observed "stream appears,
+#     uncorked, then re-cork + gone" with the 233<->234 flip = kplayd being REPLACED
+#     mid-stream. Sound therefore rides the same rootfs gap as faults (C)/(D)
+#     (libigdgmm.so.12 missing → no iHD → software GL; libOpenCL crash-loop). Mirroring
+#     the front-end cannot fix it — it is the new top docket, below.
+#   VERIFIED: zig build clean (0.17.0); walltest PASSES on real roots (sectioned movies
+#     order + headings, expansion strip, episode-art chain, music scanner, CLEAN EXIT).
+#   DEPLOYED: /mnt/ksd/usr/local/bin/kmedia sha f9d989ed (host build sha identical; old →
+#     kmedia.bak-20261127-095507); m.2 remounted ro. kmedia commit da1b9ed signed B&B,
+#     ahead 4 — NOT pushed (live-verify gate). KidulWM census commit follows this entry.
+#   NEXT BOOT (Barticus): (1) MUSIC: Enter on a music card → audio plays with the wall UP
+#     and navigable, no black fullscreen; Escape stops it. (2) TV: watch a channel, back
+#     out, switch pills and return → TV lands on that channel and the most-watched has
+#     risen to the top. (3) Watch kushd-kplayd.log: if the audio stream's pid still flips,
+#     kplayd is dying mid-play and the rootfs docket (C)/(D) is the killer, not the wall.
 # SESSION 2026-11-27 NIGHT (bobdotrix): BITE-2 LIVE-VERIFIED + NEW TOP DOCKET + MODEL FLIPPED.
 #   Barticus booted KSD fresh (logs 09:02-09:05 today). VERIFIED both prior fixes HELD: no
 #   segfault / no integer-overflow (client scans 86 items clean through navigation) + the

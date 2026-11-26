@@ -11,7 +11,31 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-27)
+## Current attack (2026-11-27, updated after the parity cut)
+
+  KPLAYD AUDIO LIFETIME — sound is a ROOTFS gap, not a front-end bug. The
+  2026-11-27 mirror-host parity read landed its two real halves (see below) and
+  killed the misdiagnosis: the pulse stream ksound watches is kplayd's OWN
+  (Player.zig:773 registers it under the hardcoded name "kmedia"), and ksound
+  LAW 5 reaps a stream whose owner pid dies. The 233<->234 flip = kplayd being
+  replaced mid-play. Same class as the missing libigdgmm.so.12 (no iHD -> no
+  VAAPI -> software GL, frames commit but present black) and the libOpenCL
+  exit-127 boot loop.
+
+  LANDED (bobdotrix, kmedia da1b9ed, deployed /mnt/ksd/usr/local/bin/kmedia sha
+  f9d989ed, m.2 back ro):
+    CUT 1 music BACKGROUNDS — new `audio_active`; music no longer sets
+      player_active, so Wayland.zig never calls xdg_toplevel_set_fullscreen and
+      render() keeps painting the wall. Keys stay local; Escape stops audio.
+    CUT 2 TV pill mirrors host — watch.state read once (WatchState.readText),
+      tv.sortByWatchCounts in App.init, rebuild() lands .tv on
+      TvChannels.lastWatchedIndex() (live-tv.md §Watch-state).
+    RETRACTED (do not build): "leaveGrid must clear up_plus_one" (R4 landing IS
+      up_plus_one) and "adjustScrollToSelection must clamp" (host
+      max_scroll_offset = total_rows-1, the clamp is a no-op).
+  VERIFIED: zig build clean; walltest PASSES on real roots (CLEAN EXIT).
+
+## Prior attack (2026-11-27 morning — BITE 2, superseded)
 
   BITE 2 — PROVE SOUND + VISION ON KSD. Session 2026-11-27 (bobdotrix) diagnosed
   the first live-TV-attempt post-re-slice.
@@ -40,10 +64,12 @@ sessions with session_search). Live state lives in the ledger, not here.
   to kplayd). Sound = none for same reason.
 
   NEXT BOOT ACTION (Barticus):
-    - Boot KSD, open media wall
-    - Navigate pills (LEFT from TV → Movies); if client survives, navigate back
-    - Play a TV channel (Enter on a channel card)
-    - If crash: note which key triggered it; bobdotrix reads fresh logs
+    - MUSIC: Enter a music card → audio plays, wall stays UP and navigable, NO
+      black fullscreen; Escape stops it.
+    - TV: watch a channel, back out, switch pills and return → TV lands on that
+      channel and the most-watched has risen to the top.
+    - Then watch /mnt/ksd/var/log/kushd-kplayd.log: if the stream's pid still
+      flips mid-play, kplayd is dying (rootfs) — that is the current docket.
 
   NEXT DOCKET (bobdotrix, post boot):
     - Read /mnt/ksd/var/log/kushd-kplayd.log → "listening" at END = kplayd UP
