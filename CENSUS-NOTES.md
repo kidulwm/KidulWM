@@ -1,5 +1,29 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 NIGHT (bobdotrix): BITE-2 LIVE-VERIFIED + NEW TOP DOCKET + MODEL FLIPPED.
+#   Barticus booted KSD fresh (logs 09:02-09:05 today). VERIFIED both prior fixes HELD: no
+#   segfault / no integer-overflow (client scans 86 items clean through navigation) + the
+#   cross-uid fix worked (kplayd log = 27 `open` commands landed — was 0 last boot). The wall
+#   SHOWS Movies + Music now. Playback STILL broken — four issues named from the logs:
+#     (A) NO SOUND — ksound watches the stream appear (vol 1.00, uncorked) then re-cork+gone
+#         with a pid 233<->234 respawn flip; stream owner reports 'kmedia' (the CLIENT), role
+#         Movie/Music — NOT kplayd. Arch says kplayd owns decode+audio.
+#     (B) MUSIC -> BLACK SCREEN — fullscreen presentation engaged for audio (reveal=648
+#         plateau, kplay climbing 44->1261). Music must BACKGROUND (mirror host), not lift
+#         the curtain to black.
+#     (C) VAAPI hw-decode DOWN — libigdgmm.so.12 missing -> iHD_drv_video.so won't load ->
+#         EGL/GLES2 software fallback ("zero-copy present", frames commit but can present black).
+#     (D) kplayd still crash-loops libOpenCL.so.1 at boot (status 32512 = exit 127) ~25x before
+#         settling (kushd reseats 291->235->236->234). The "chroot ldd clean" note did NOT hold.
+#   RULING (Barticus): the R4 client must MIRROR the HOST front-end (media.zig MediaWidget,
+#   LIVE + correct) EXACTLY — playback, focus-movement, tile-reset. Only legal diff vs host =
+#   kushd backend. #59 PARTITIONS parked [LATER]. NEW TOP DOCKET = MIRROR-HOST MEDIA PARITY
+#   (code comparison) — first move for the fresh LLM: line-by-line host media.zig vs kmedia R4
+#   Wall.zig/App.zig (play-handoff / focus / tile-reset), name the diverging sites, report
+#   before cutting; R3 (retire media.zig) stays GATED on live parity.
+#   MODEL: default flipped deepseek/deepseek-v4-pro -> deepseek/deepseek-v4.1-flash-1017
+#   (Nous 80%-off promo ~$0.03in/$0.12out per 1M; same 1M ctx, +vision, ~3-4x cheaper). GSI.
+#
 # SESSION 2026-11-27 (bobdotrix, GSI — THE FRONTEND FIX): diagnosed from the last boot's
 #   fresh logs and found BOTH real bugs are in the new R4 CLIENT code (Barticus called it):
 #   deployed sha 74e3adcf == a5b8add (overflow fix) yet STILL threw `integer overflow`
