@@ -1,5 +1,24 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION WRAP-UP (bobdotrix 2026-11-26, GSI): MEDIA PLAYER REBUILD DIRECTION LOCKED.
+#   Barticus wants ONE working library/media player, NOT the test card nor the kmedia client shells.
+#   Architecturally the "buttery" playback is SEALED in kmedia src/player/ (Player.zig 3366L + MpvPlayer) exposed
+#   only through libkmedia.zig facade; kplayd = thin daemon hosting it on kplay.sock (~/dev/kmedia). The front-ends
+#   (compositor media.zig MediaWidget + media_slide.zig + Mod4+m wire; kmedia client App.zig+Wall.zig+Wayland.zig;
+#   dead mediaCardToggle() in server.zig) are THROWAWAY presentation. Plan = KEEP engine+kplayd+Scanner/WatchState/
+#   TvChannels/ArtFetcher + all docs/law (silk.md/av-offset/display-sync/kplay-engine); DELETE both shells + dead
+#   toggle; BUILD ONE fresh front-end (Scanner->wall->kplay door) seated by kushd (bill.kush act), NOT a WM keybind.
+#   "minus the top 5 tiles" = the old "most-common/last-used" top-row-above-bar plan — NEVER built, spec-delete only.
+#   LOCKED AS LAW THIS SESSION: landing.md RE-CUT v3 (KidulWM 4942892, signed B&B) — (1) mark is IDENTITY-ONLY on
+#   KidulHome + usersBar, never in app titles ("rest easy, you're on a Kidul System"); (2) AppHome title = ARC'D
+#   OUTLINE BANNER (outline-only text-path+stroke, no fill — the Kidul TV technique at users_bar.zig:141-152), letter
+#   BASELINE on a gentle arc (cinema), banner scale, border colour. One per app: Library/Browser/Folders & Files.
+#   Q.A resolved: "arc'd" = baseline on slight arc, NOT an arch frame. kmedia/ui.md (6583258, signed) synced:
+#   landing = content-below-bar only (up_plus_one state, Wall.zig:118/415), NO 5-above row, NO placecard shell.
+#   OPEN/NOT YET DONE: the fresh front-end BUILD itself; the Mod4+n kfiles spawn dead (launch-kfiles.sh never runs —
+#   keypress not reaching compositor as Mod4+n, keyd is stock passthrough pid 1012, KIDULWM_INPUT_GATE=off on host);
+#   empty media library because lazy scan (media.zig getLibrary->scanCategory) never fired this boot.
+#   NEXT: build the fresh player + chase Mod4+n (kfiles spawn) + empty-library lazy scan.
 # AUDIO SEAT DEPLOYED (bobdotrix 2026-11-26, GSI): corrected bill landed on physical m.2 (nvme1n1 KSD-root) —
 #   pipewire/wireplumber/pipewire-pulse cued->body; kidulwm synced to conductor /usr/local/bin/kidulwm (the repo
 #   bill was STALE pre-re-seat "user /kidulwm-seat"). Deployed bill VERIFIED byte-correct: BODY = seatd +
