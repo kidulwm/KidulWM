@@ -31,6 +31,16 @@ pub const KplayClient = struct {
     pub fn connect(allocator: std.mem.Allocator) Error!KplayClient {
         var pbuf: [256]u8 = undefined;
         const path = blk: {
+            // KPLAY_SOCK = explicit full-path override.
+            if (std.c.getenv("KPLAY_SOCK")) |s| break :blk std.mem.span(s);
+            // KSD: shared SETGID socket dir (re-seat convention) so the
+            // compositor (conductor uid 990) reaches kplayd (seat user 1001)
+            // across the uid boundary — $XDG_RUNTIME_DIR is per-uid.
+            if (std.c.getenv("KIDULWM_WAYLAND_DISPLAY")) |d| {
+                const p = std.mem.span(d);
+                if (std.mem.indexOf(u8, p, "/run/kushd/wayland/") != null)
+                    break :blk std.fmt.bufPrint(&pbuf, "/run/kushd/wayland/kplay.sock", .{}) catch return error.NoRuntimeDir;
+            }
             if (std.c.getenv("XDG_RUNTIME_DIR")) |d|
                 break :blk std.fmt.bufPrint(&pbuf, "{s}/kplay.sock", .{std.mem.span(d)}) catch return error.NoRuntimeDir;
             break :blk std.fmt.bufPrint(&pbuf, "/run/user/{d}/kplay.sock", .{linux.getuid()}) catch return error.NoRuntimeDir;
