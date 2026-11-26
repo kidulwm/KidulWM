@@ -1,5 +1,32 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 (bobdotrix, GSI — THE FRONTEND FIX): diagnosed from the last boot's
+#   fresh logs and found BOTH real bugs are in the new R4 CLIENT code (Barticus called it):
+#   deployed sha 74e3adcf == a5b8add (overflow fix) yet STILL threw `integer overflow`
+#   (Wall.zig:505 n-1) AND `Segmentation fault at 0x40` in buildMediaCards via movePillLeft
+#   (LEFT-arrow from TV -> Movies). The panic/segfault traces NAME the live bugs.
+#   ROOT CAUSE 1 (the "movies/music not showing" + focus-crash bug): App.init() bound the
+#     wall to &self.library/&self.tv/&self.music — pointers into init's OWN stack frame —
+#     then returned App BY VALUE. Those pointers dangle the instant init returns. TV rendered
+#     only because bind() ran while the init-local was still alive; the first pill-switch
+#     (movePillLeft -> rebuild -> buildMediaCards) derefs dead self.lib -> segfault 0x40.
+#     FIX: bind in main.zig AFTER app is at its final address. (kmedia 24fd144)
+#   ROOT CAUSE 2 (silent no-play / no sound): kplayd is `user` uid 1001, the kmedia client
+#     is spawned by the conductor (kidulwm uid 990) — each resolved $XDG_RUNTIME_DIR/kplay.sock
+#     to a DIFFERENT /run/user/<uid>/kplay.sock, so the client's open/open_live NEVER reached
+#     kplayd (frametrace kplay=0, reveal=0). FIX: route kplay.sock through the shared SETGID
+#     /run/kushd/wayland dir when KIDULWM_WAYLAND_DISPLAY marks KSD; KPLAY_SOCK override +
+#     host fallback. (kmedia 24fd144 kplayd+sockPath; KidulWM 0424d47 ipc/kplay_client)
+#   DEPLOYED (all three hashes byte-identical to fresh builds): kmedia 42ead11d, kplayd
+#     0c17ce15, kidulwm 8a030754 -> /mnt/ksd/usr/local/bin/* (old -> *.bak-<ts>). m.2 remounted ro.
+#   NEXT BOOT VERIFY (Barticus): open wall -> LEFT to Movies (was the segfault) should now
+#     show the 86-item movie tiles + focus moves; RIGHT to Music -> tracks; Enter on a
+#     channel/track -> SOUND. Watch kushd-kplayd.log for `open`/`open_live` lines + kidulwm
+#     frametrace kplay>0 / "video revealed". If still silent, check the socket exists at
+#     /run/kushd/wayland/kplay.sock (not /run/user/<uid>).
+#   kmedia: ahead 3 (a5b8add + 24fd144 + one more). KidulWM: ahead 4. BOTH committed+signed,
+#     NOT pushed (Bercus policy: push after KSD live-verified).
+#
 # SESSION 2026-11-27 (bobdotrix): KSD first-live-TV-attempt post-re-slice. CODE VERIFIED
 #   ABOARD (deployed kmedia sha f96982bd == git HEAD 9b6fa05 byte-identical; kidulwm has
 #   mediaCardToggle=3 = client-spawn build; kidulwm-session + media.env + bill.kush kplayd=body
