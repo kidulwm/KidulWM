@@ -1,5 +1,41 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 (bobdotrix, LATER — SINK CAPS: THE PLAYER NOW ASKS THE SINK; kmedia TREE
+#   DELIBERATELY LEFT DIRTY, DO NOT COMMIT):
+#   Barticus: "a movie should surf the card's channels, be it 2.1, 5.1 or atmos" — pointing at
+#   the Kogan, which has never been read because it has not been attached since.
+#   THE LIE WAS IN THE PLAYER, not the graph: Player.zig carried `AUDIO_CHANNELS = 2`. Every 5.1
+#   film was resampled into a stereo pa_simple stream BEFORE the graph saw it — centre mixed into
+#   L/R, dialogue with it. The inverse was just as live: an 8ch sink was never offered 8ch. This
+#   is separate from, and does NOT explain, the live silence (mixer/amp verdict stands above).
+#   LANDED (uncommitted by instruction):
+#     * kmedia src/player/SinkCaps.zig — EDID CEA-861 audio data block parse from
+#       /sys/class/drm/cardN-CONNECTOR/edid (LPCM max channel count), quantised to real layouts
+#       (3->2, 5->2, 7->6, 8->8), KMEDIA_AUDIO_CHANNELS override outranks EDID, every failure =
+#       2ch (unknown must never read as capable). POSIX IO via the c_std shim — Zig 0.17 has no
+#       std.fs, and the first draft was written against std.fs before being torn out.
+#     * Player.zig — aud_channels decided per OPEN (no module constant), av_channel_layout_default
+#       on the source side, explicit pa_channel_map above 2ch (otherwise the server derives a
+#       layout from the bare count and a guessed layout is a silent channel swap), fold guard
+#       x0.707 only when folding really happens, mono still dupes to stereo. Law: min(sink,
+#       source), never up-mix.
+#     * law: kmedia/docs/law/audio-sink.md (8 rules + the evidence table + the open list).
+#     * build steps: `zig build sinkcaps` (10 unit tests), `zig build sinkpolicy` (end-to-end).
+#   PROVEN: 10/10 unit tests; 4/4 end-to-end through Player.open() with real 6ch/mono files —
+#   (no override, panel EDID 2ch) out=2 headroom .707 | (override 6) out=6 | (override 8, 6ch
+#   source) out=6 | (override 6, mono) out=2. Case 1 read `via edid`, not fallback, so the
+#   detector is parsing a real blob. Deployed kplayd sha 514a7ed5… (4,681,760B), NEEDED set
+#   identical, rollback /usr/local/bin/kplayd.prev-20261127-1241. Drive back to ro.
+#   NOT PROVEN: the Kogan's own EDID claim (TV unattached); the 8ch branch has met an 8ch stream
+#   but never a real 8ch sink.
+#   BARTICUS INSTRUCTION (standing, overrides house hygiene): "keep it as is until we have a
+#   working player; once we can prove it works, then we commit 'minus the PII'". So kmedia stays
+#   DIRTY and is NOT committed now — not even to save the work. If a relog kills this session,
+#   the tree is the artifact; do not tidy it away. When the player is proven: commit, sign as
+#   B&B, and strip PII first (the harness defaults are /tmp paths; the deploy script lives in
+#   scratch, not in the repo).
+#
+
 # SESSION 2026-11-27 (bobdotrix, GSI — CONT: "STILL NOTHING PLAYS" — THE PRIOR ROOT CAUSE WAS
 #   MISREAD; VAAPI FIXED FOR REAL; THE GRAPH NOW PROVES ITSELF):
 #   Barticus: music opens and stays open, no sound, video not tried. Re-read the 10:57 trail

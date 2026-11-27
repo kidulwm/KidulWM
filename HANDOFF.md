@@ -11,7 +11,45 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-27 late — AUDIO SINK: KSD HAS NO udev)
+## Current attack (2026-11-27 later — SINK CAPS: THE PLAYER ASKS THE SINK)
+
+  Barticus: "a movie should surf the card's channels, be it 2.1, 5.1 or atmos."
+  The player was lying: Player.zig hardcoded `AUDIO_CHANNELS = 2`, so every 5.1
+  film was folded to stereo BEFORE the graph saw it (centre mixed into L/R,
+  dialogue with it) and an 8ch sink was never offered 8ch. Channels are now read
+  per open from the sink's EDID; out = min(sink, source); never up-mix; the
+  x0.707 fold guard applies only when a fold really happens. Law:
+  kmedia/docs/law/audio-sink.md (8 rules + evidence + the open list).
+
+  LANDED + DEPLOYED (bobdotrix, kmedia — TREE DELIBERATELY DIRTY, see below):
+    src/player/SinkCaps.zig  EDID CEA-861 LPCM parse from /sys/class/drm,
+                             quantise 1/2/6/8, KMEDIA_AUDIO_CHANNELS override,
+                             every failure = 2ch (unknown never reads as capable)
+    src/player/Player.zig    aud_channels decided per open, av layout default,
+                             explicit pa_channel_map above 2ch, mono dupes to 2
+    build steps              `zig build sinkcaps`    10/10 unit tests
+                             `zig build sinkpolicy`  4/4 end-to-end cases
+    deployed                 /mnt/ksd/usr/local/bin/kplayd sha 514a7ed5 (4,681,760B)
+                             rollback  .prev-20261127-1241 (4,429,888 = this morning)
+                             NEEDED set identical to the old binary; drive back to ro
+
+  DO NOT COMMIT THE kmedia TREE. Barticus, verbatim: "keep it as is until we
+  have a working player; once we can prove it works, then we commit 'minus the
+  PII'." The dirty tree IS the artifact if a relog kills this session.
+
+  NEXT BOOT ACTION (Barticus) — read this journal line before touching anything:
+    [player] audio out Nch (sink Mch via edid|override|fallback, source Kch)
+  M is what the Kogan actually claims; it settles the question the whole session
+  argued about. Then test Turing Red (TrueHD 8ch) and one AC-3 5.1 title. If the
+  panel lies, KMEDIA_AUDIO_CHANNELS=<n> outranks EDID and logs `via override`.
+
+  SEPARATE, STILL OPEN: the live SILENCE. CENSUS top (today) lands it downstream
+  of the graph — mixer/amp, not code, not config, not timing. amixer + alsactl
+  are now ON the drive, so the next boot can READ and unmute hw:0,3 (HDMI)
+  instead of guessing. VAAPI is CLOSED (proven: iHD + libigdgmm -> "VA-API hw
+  decode armed", silicon decoding at 1x).
+
+## Prior attack (2026-11-27 late — AUDIO SINK: KSD HAS NO udev)
 
   ONE CAUSE FOR NO-SOUND AND NO-VISION: there has never been a sink in the KSD
   audio graph. libspa-alsa.so on the image ships exactly one enumerator,
@@ -36,7 +74,10 @@ sessions with session_search). Live state lives in the ledger, not here.
       client_stop | new_open | shell_closed`. kidulwm has NO send_close, so the
       next boot's act log names why playback ends.
   DEPLOY RULE: kplayd builds ReleaseSafe (4.43MB); plain `zig build` = 14MB Debug.
-  STILL OPEN: VAAPI down (libigdgmm.so.12 absent -> iHD won't load, software GL).
+  VAAPI: CLOSED 2026-11-27 (libigdgmm.so.12 shipped; iHD loads, "VA-API hw decode
+  armed", silicon decoding proven at 1x). The "one cause" framing above is
+  RETIRED by CENSUS top: the sinks landed and the graph is proven, and the live
+  silence sits downstream of it (mixer/amp).
 
 ## Prior attack (2026-11-27, the parity cut — SUPERSEDED, attribution RETIRED)
 
