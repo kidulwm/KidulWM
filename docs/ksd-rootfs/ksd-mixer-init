@@ -1,0 +1,42 @@
+#!/bin/bash
+# ksd-mixer-init — the mixer KSD never restores.
+#
+# WHY: KSD has no udev and no init, so nothing ever runs `alsactl restore`.
+# The HDA codec therefore comes up with whatever the BIOS/firmware left in its
+# amp registers — which on this box is not guaranteed to be unmuted at 0 dB.
+# The kernel parses the ALC295 with the GENERIC patch on KSD
+# (dmesg: "snd_hda_codec_generic hdaudioC0D0: autoconfig for Generic"),
+# so the codec's own fixup defaults do not apply either.
+#
+# What this does: print the mixer BEFORE (that print is the evidence — if the
+# live boot shows Master/Speaker muted or at 0, that was the silence), then set
+# the sane desktop default (full, unmuted), then print AFTER.
+#
+# Auto-Mute Mode is left alone (DOCKET #65, Barticus-ruled LOW): it needs a
+# deliberate decision, not a boot default.
+#
+# Runs from /usr/local/bin/pipewire-session BEFORE pipewire starts, in the
+# audio organ's own uid, so it holds the "audio" group and /dev/snd access.
+# Bash builtins only — the image has no coreutils (no cut/tail/sleep).
+PATH=/usr/local/bin
+LOG=/var/log/kushd-mixer.log
+if ! : >>"$LOG" 2>/dev/null; then
+    LOG="${XDG_RUNTIME_DIR:-/tmp}/ksd-mixer.log"
+    : >>"$LOG" 2>/dev/null || LOG=/dev/null
+fi
+exec >>"$LOG" 2>&1
+
+read -r up _ < /proc/uptime
+printf '=== ksd-mixer-init %ss ===\n' "$up"
+for c in Master Speaker Headphone PCM "Auto-Mute Mode"; do
+    printf -- '--- before: %s\n' "$c"
+    amixer -c0 sget "$c" 2>&1
+done
+amixer -c0 sset Master 100% unmute    >/dev/null 2>&1
+amixer -c0 sset Speaker 100% unmute   >/dev/null 2>&1
+amixer -c0 sset Headphone 100% unmute >/dev/null 2>&1
+amixer -c0 sset PCM 100% unmute       >/dev/null 2>&1
+for c in Master Speaker Headphone PCM; do
+    printf -- '--- after: %s\n' "$c"
+    amixer -c0 sget "$c" 2>&1
+done

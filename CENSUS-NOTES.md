@@ -1,5 +1,86 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 (bobdotrix, GSI — CONT: "STILL NOTHING PLAYS" — THE PRIOR ROOT CAUSE WAS
+#   MISREAD; VAAPI FIXED FOR REAL; THE GRAPH NOW PROVES ITSELF):
+#   Barticus: music opens and stays open, no sound, video not tried. Re-read the 10:57 trail
+#   from the DRIVE first (never the host repo) — and the m.2 tail retires the morning's
+#   attribution:
+#     (1) THE KEYS ARE WIRED. The client log carries `[key wall]` syms + 29x `[app] music bg:
+#         …/Into The Quiet - The Go To Sleep track.flac`, and kushd-kplayd.log carries 24x
+#         `close: reason=new_open (file)` + 25x `client_close`. Enter on a music card DOES
+#         reach the play door. Everything else landed on UNBOUND letters (the wall accepts
+#         only h/j/k/l, Enter, Escape, p) = "the border just moves".
+#     (2) THE CLOSE PAIRS ARE CORRECT: every second press runs stopPlayback -> close -> open.
+#         No isDone, no crash, no lost surface, no segmentation in that boot.
+#         CORRECTION (Barticus, by ear, same session): "when it doesn't close out properly it
+#         crackles ... more than one item is in the system playing; I often have to close the
+#         player and start a new track for the crackle to go away." His ear outranks my log
+#         reading — a log line cannot prove the pulse server holds one stream, only that
+#         kplayd asked for a close. Two concrete things came out of that:
+#           * MY OWN HARNESS LEAKED SIX PLAYERS. Each chroot repro (pipewire + wireplumber +
+#             pipewire-pulse + kplayd, uid 1001, REAL card0) outlived its script, was
+#             reparented to systemd --user, and kept a live pa_simple stream. Six KSD graphs
+#             plus Barticus's session on one DAC = crackle that looks exactly like "the old
+#             playback never closed". 23 processes swept. RULE: never point the chroot
+#             harness at the hardware sink; give it a null sink, and always end with a sweep
+#             that matches /proc/<pid>/root == the drive (pkill -f patterns match your own
+#             command line and kill your own shell — burned three times).
+#           * THE PILE-UP IS NOW INSTRUMENTED, not argued: ksd-streamwatch (in the rootfs set,
+#             started by pipewire-session) logs every sink-input with application.name /
+#             media.name / media.role / process.binary plus open PCM states whenever the
+#             count moves off 1. Next crackle names the owner.
+#     (3) "NEVER REACHES STREAMING(4)" PROVES NOTHING. Reproduced the whole chain in the
+#         chroot on the real hardware with the IMAGE's pipewire/wireplumber/pulse/ksound/
+#         kplayd: the song audibly played, pcm0p sat at state: RUNNING, and ksound still
+#         logged only 0->1, 1->3, never 4. The morning's "no sink / parks in PAUSED" reading
+#         of that line is RETIRED. The sink drop-in is still correct architecture (no udev =
+#         zero enumeration) but it was NOT the proven cause of the silence.
+#     (4) THE CHAIN WORKS ON THIS IMAGE, HOST PARITY: same uids/groups/umask/XDG_RUNTIME_DIR/
+#         HOME, same 1.6.9 wireplumber policy, default.audio.sink = analog-stereo, 6 links,
+#         pcm0p RUNNING with the position clocking at exactly 1x. Also reproduced with
+#         wireplumber seated the SAME INSTANT as pipewire (the live bill shape) — still fine.
+#         So the live silence is downstream of the graph: mixer/amp, not code, not config,
+#         not timing.
+#     (5) ZERO-COPY: the code IS in the deployed kplayd (Tier-1 dmabuf: vaExportSurfaceHandle
+#         -> EGLImage -> composite; strings confirm `dmabuf zero-copy import live`). What was
+#         missing was the VAAPI leg: iHD_drv_video.so has one NEEDED the image never shipped,
+#         libigdgmm.so.12. libva found the driver, called __vaDriverInit_1_24, died ->
+#         "Failed to initialise VAAPI connection" -> software decode, and the shell's
+#         "EGL/GLES2 zero-copy present" line was true of EGL and a lie about decode.
+#   FIXED + PROVEN THIS SESSION:
+#     * /mnt/ksd/usr/lib/libigdgmm.so.12(.10.0) (host intel-gmmlib 22.10.0, exact match for
+#       the same iHD build). BEFORE/AFTER on the image, same movie, same player:
+#         without -> `[VAAPI] Failed to initialise VAAPI connection: -1`
+#         with    -> `[player] VA-API hw decode armed (device ctx live)` +
+#                    `ACTIVE (silicon decoding)`, 8s of Oppenheimer at 1x.
+#     * THE AUDIO-PROOF SET (tracked: KidulWM/docs/ksd-rootfs/), because the boot could not
+#       prove itself: KSD shipped NO pw-cli, NO pw-dump, NO wpctl, NO alsa-utils, and pipewire
+#       logged at warn. Now on the drive: /usr/local/bin/{pw-dump,pw-cli,amixer,alsactl}
+#       (host 1.6.9 / alsa-utils 1.2.16, deps satisfied), 20-ksd-log.conf = log.level 3,
+#       pipewire-session (bill: pipewire act now execs THIS: runs ksd-mixer-init, arms
+#       ksd-audio-census at 8s, then exec pipewire — uid/groups/pid/respawn unchanged),
+#       ksd-mixer-init, ksd-audio-census -> /var/log/kushd-audiocensus.log + kushd-mixer.log.
+#     * FIRST CENSUS RUN (real /dev, live graph, audio uid) FOUND THE SILENCE CANDIDATE:
+#       `Speaker: Playback 0 [0%] [-65.25dB] [off]` and codec pin 0x14 (speaker) Amp-Out
+#       `[0x80 0x80]` = MUTED, while Headphone sits 100% [on]. KSD has no udev and no init,
+#       so nothing has EVER run `alsactl restore` — the ALC295 keeps firmware amps. That is
+#       the leading cause of "graph fine, DAC clocking, no sound".
+#   PITFALLS BURNED IN (cost real time, do not re-learn):
+#     * THE IMAGE HAS NO COREUTILS AND NO BUSYBOX. /bin and /usr/bin are the same dir with
+#       exactly 7 entries (bash, htop, pipewire, pipewire-pulse, seatd, sh, wireplumber).
+#       No grep/head/cut/tr/sleep/paste/seq — scripts on KSD must be BASH BUILTINS ONLY
+#       (builtin sleep = `exec 9</dev/null; read -r -t N -u 9`). First census draft silently
+#       logged "grep: command not found" 20 times.
+#     * /var/log is root-owned: the audio uid cannot create a log there. Pre-create 0666 logs
+#       at deploy, and keep a fallback to $XDG_RUNTIME_DIR.
+#     * `read -r st _ < status` puts "state:" in st; the value is field 2.
+#   NEXT BOOT (Barticus): read /mnt/ksd/var/log/kushd-audiocensus.log + kushd-mixer.log.
+#     If the census shows pcm0p RUNNING with links >= 2 while he still hears nothing, the
+#     mixer init is the fix and the log says what the amps were. If it shows links 0 with a
+#     default sink present, the fault is the session manager's target — the new pw-dump line
+#     names it. A movie should now also print `VA-API hw decode ACTIVE`.
+#   OWED: boot-verify; then retire the "no sink = no sound" wording in the docket above.
+#
 # SESSION 2026-11-27 (bobdotrix, GSI — GR + next: AUDIO SINK ROOT CAUSE FOUND + FIXED):
 #   Barticus: still nothing plays (music either), all five audio/WM procs visible in htop,
 #   laptop warms up — "is kidulwm crash-looping and dropping everything that plays?"

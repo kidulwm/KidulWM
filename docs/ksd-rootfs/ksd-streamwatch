@@ -1,0 +1,50 @@
+#!/bin/bash
+# ksd-streamwatch — catches the pile-up while it is happening.
+#
+# WHY: "when it doesn't close out properly it crackles ... more than one item is
+# in the system playing; closing the player and starting a new track clears it."
+# That is a statement about the PULSE SERVER's sink-input list, so this records
+# that list with the proplist that names each stream's owner
+# (application.name / media.name / media.role / process.binary), plus the PCM
+# states. It logs when the count CHANGES and on every tick while count > 1.
+#
+# Bash builtins only (KSD ships no coreutils: no date/grep/wc/sleep).
+PATH=/usr/local/bin:/usr/bin:/bin
+LOG=/var/log/kushd-streamwatch.log
+if ! : >>"$LOG" 2>/dev/null; then
+    LOG="${XDG_RUNTIME_DIR:-/tmp}/ksd-streamwatch.log"
+    : >>"$LOG" 2>/dev/null || exit 0
+fi
+exec >>"$LOG" 2>&1
+PULSE="${XDG_RUNTIME_DIR:-/tmp}/pulse/native"
+
+read -r up _ < /proc/uptime
+printf '=== watch start %ss (pulse=%s)\n' "$up" "$PULSE"
+last=-1
+while :; do
+    exec 9</dev/null; read -r -t 2 -u 9
+    out=$(pactl -s "$PULSE" list sink-inputs 2>&1)
+    cnt=0
+    while IFS= read -r l; do
+        case $l in 'Sink Input #'*) ((cnt++));; esac
+    done <<<"$out"
+    # log on change, and on every tick once there is more than one stream
+    if ((cnt != last)) || ((cnt > 1)); then
+        last=$cnt
+        read -r up _ < /proc/uptime
+        printf '=== %ss  sink-inputs=%d\n' "$up" "$cnt"
+        while IFS= read -r l; do
+            case $l in
+                'Sink Input #'*|*'State:'*|*'application.name'*|*'media.name'*|*'media.role'*|*'application.process.binary'*|*'kmedia'*)
+                    printf '  %s\n' "${l#  }";;
+            esac
+        done <<<"$out"
+        for p in /proc/asound/card*/pcm*p/sub0/status; do
+            [[ -f $p ]] || continue
+            read -r a b < "$p" 2>/dev/null
+            v=${b:-$a}
+            [[ $v == closed || $v == CLOSED || -z $v ]] && continue
+            printf '  %s: %s\n' "$p" "$v"
+        done
+    fi
+done

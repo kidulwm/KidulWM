@@ -1,0 +1,75 @@
+#!/bin/bash
+# ksd-audio-census — one shot per boot, written where the host can read it.
+#
+# WHY THIS EXISTS: /mnt/ksd/var/log has never had a way to see the audio GRAPH.
+# KSD ships no pw-cli / pw-dump / wpctl / alsa-utils, so every "nothing plays"
+# hunt has been log archaeology over lines that cannot distinguish "no sink"
+# from "sink present but unlinked". This writes the ground truth: the session
+# manager's default sink, the node list, the link count, every PCM state, the
+# codec's amp registers, and the mixer values — the things that decide whether
+# a stream is audible.
+#
+# HARD RULE: this image has NO coreutils, NO busybox, NO /usr/bin/env. /bin and
+# /usr/bin are the same dir holding exactly bash/htop/pipewire/pipewire-pulse/
+# seatd/sh/wireplumber. So: bash builtins ONLY (no grep/head/cut/tr/sleep/paste).
+# Everything else we ship lives in /usr/local/bin (pw-dump, pw-cli, amixer).
+PATH=/usr/local/bin
+LOG=/var/log/kushd-audiocensus.log
+if ! : >>"$LOG" 2>/dev/null; then
+    LOG="${XDG_RUNTIME_DIR:-/tmp}/ksd-audiocensus.log"
+    : >>"$LOG" 2>/dev/null || exit 0
+fi
+exec >>"$LOG" 2>&1
+
+read -r up _ < /proc/uptime
+printf '=== ksd-audio-census %ss uptime ===\n' "$up"
+
+# settle: wait for the socket (builtin sleep: `read -t` on /dev/null)
+i=0
+while ((i < 24)); do
+    [[ -S ${XDG_RUNTIME_DIR}/pipewire-0 ]] && break
+    exec 9</dev/null; read -r -t 0.5 -u 9
+    ((i++))
+done
+
+printf -- '--- default sink (the session manager decision):\n'
+mapfile -t d < <(pw-dump 2>/dev/null)
+for l in "${d[@]}"; do
+    case $l in *'"default.audio.sink"'*) printf '%s\n' "$l"; break;; esac
+done
+
+printf -- '--- nodes (sinks + streams):\n'
+mapfile -t n < <(pw-cli ls Node 2>/dev/null)
+for l in "${n[@]}"; do
+    case $l in *node.name*|*media.class*) printf '%s\n' "$l";; esac
+done
+
+printf -- '--- links: '
+count=0
+mapfile -t k < <(pw-cli ls Link 2>/dev/null)
+for l in "${k[@]}"; do
+    case $l in *'type PipeWire:Interface:Link'*) ((count++));; esac
+done
+printf '%d\n' "$count"
+
+printf -- '--- pcm states (RUNNING = the DAC is clocking):\n'
+for p in /proc/asound/card*/pcm*c/sub0/status /proc/asound/card*/pcm*p/sub0/status; do
+    [[ -f $p ]] || continue
+    read -r _ sv < "$p" 2>/dev/null
+    printf '%s: %s\n' "$p" "${sv:-?}"
+done
+
+printf -- '--- codec 0 amps (bit7 = mute; 0x80 = muted at 0 dB):\n'
+if [[ -r "/proc/asound/card0/codec#0" ]]; then
+    while IFS= read -r l; do
+        case $l in
+            Node\ 0x*|*'Amp-Out vals'*|*'[Jack]'*) printf '%s\n' "$l";;
+        esac
+    done < "/proc/asound/card0/codec#0"
+fi
+
+printf -- '--- mixer:\n'
+for c in Master Speaker Headphone PCM; do
+    printf '%s:\n' "$c"
+    amixer -c0 sget "$c" 2>&1
+done

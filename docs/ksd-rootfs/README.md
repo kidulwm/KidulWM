@@ -9,6 +9,47 @@ Deploy one file:
     sudo -S -p '' install -o root -g root -m 644 <file> /mnt/ksd/etc/.../<name>
     sudo -S -p '' sync && sudo -S -p '' mount -o remount,ro /mnt/ksd
 
+## THE AUDIO-PROOF SET (2026-11-27, bobdotrix) — added because the graph was unprovable
+
+Two sessions of "nothing plays" were diagnosed from E/W log lines that cannot
+distinguish "no sink" from "sink present, stream unlinked". These four files
+make the boot prove itself, and one of them fixes a real gap:
+
+  pipewire-session  -> /usr/local/bin/   bill: pipewire act execs THIS, not
+                       /usr/bin/pipewire. Runs ksd-mixer-init, arms
+                       ksd-audio-census for 8s in, then execs pipewire (uid,
+                       groups, pid, respawn semantics unchanged).
+  ksd-mixer-init    -> /usr/local/bin/   KSD has no udev and no init, so
+                       NOTHING ever runs `alsactl restore`: the ALC295 keeps
+                       whatever amps the firmware left. Prints the amps
+                       before/after (that print IS the evidence) and sets
+                       Master/Speaker/Headphone/PCM 100% unmuted.
+                       Auto-Mute Mode is deliberately untouched (DOCKET #65).
+  ksd-audio-census  -> /usr/local/bin/   one-shot graph dump -> 
+                       /var/log/kushd-audiocensus.log: default sink, node
+                       list, link count, every PCM's state, codec amp
+                       registers (0x80 = muted), mixer values.
+  pw-dump / pw-cli  -> /usr/local/bin/   KSD shipped NO pipewire tooling at
+                       all (no pw-cli, no pw-dump, no wpctl, no alsa-utils).
+                       Host copies, both 1.6.9, deps satisfied by the image.
+  amixer / alsactl  -> /usr/local/bin/   alsa-utils 1.2.16, same libasound
+                       major as the image (1.2.16.1).
+  20-ksd-log.conf   -> /etc/pipewire/pipewire.conf.d/  log.level = 3 (info):
+                       ALSA device opens, adapter creation, node/link churn
+                       now land in /var/log/kushd-pipewire.log every boot.
+
+## libigdgmm.so.12  ->  /usr/lib/ (the missing VAAPI leg)
+
+iHD_drv_video.so (the Intel VA-API driver, 42 MB, on the image since Aug) has
+one NEEDED the image never shipped: `libigdgmm.so.12`. Without it libva finds
+the driver, calls `__vaDriverInit_1_24`, and gets a load failure — ffmpeg logs
+`Failed to initialise VAAPI connection` and every decode falls back to software.
+Host intel-gmmlib 22.10.0 (libigdgmm.so.12.10.0) is the exact match for the
+same iHD build. Proven on the image: with it, our own player logs
+`[player] VA-API hw decode armed (device ctx live)` then
+`ACTIVE (silicon decoding)`; with the symlink hidden, back to the failure.
+
+
 ## 10-ksd-alsa.conf  ->  /etc/pipewire/pipewire.conf.d/
 
 KSD has no udev, and libspa-alsa.so's only device enumerator is

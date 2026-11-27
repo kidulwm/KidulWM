@@ -1,0 +1,18 @@
+#!/bin/bash
+# pipewire-session — the audio organ's launcher (bill: pipewire -> THIS).
+#
+# kushd's bill seats one exe per act. The audio organ needs two one-shot jobs
+# before/around pipewire that KSD has no init to run:
+#   ksd-mixer-init     restore a sane mixer (no udev -> nothing ever runs
+#                      alsactl restore; the codec keeps the BIOS's amps)
+#   ksd-audio-census   dump the graph 8s in (KSD ships no pw-cli/pw-dump)
+# Both log to /var/log. Then exec pipewire so the act's pid, uid, groups and
+# kushd's respawn-on-death semantics are exactly what they were before.
+#
+# Bash builtins only — the image has no coreutils, so no `sleep`: the delay is
+# `read -t` on /dev/null.
+PATH=/usr/local/bin
+[[ -x /usr/local/bin/ksd-mixer-init ]] && /usr/local/bin/ksd-mixer-init
+[[ -x /usr/local/bin/ksd-streamwatch ]] && /usr/local/bin/ksd-streamwatch &
+( exec 9</dev/null; read -r -t 8 -u 9; /usr/local/bin/ksd-audio-census ) &
+exec /usr/bin/pipewire
