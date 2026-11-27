@@ -55,7 +55,9 @@
 #     advancing, pcm3p closed, sink vol 1.00. Sink description now names it:
 #     "Built-in Audio - speakers + headphone jack (KSD)". Auto-Mute Mode is
 #     Disabled, so jack + speakers are live together (plugging in does not mute
-#     the speakers) — needs a mixer writer KSD does not have; own item, not a
+#     the speakers) — that needs a mixer write KSD cannot make yet: DOCKET #65,
+#     urgency LOW, Barticus-ruled 2026-11-27 ("leave it if it sounds ok, but the
+#     laptop speakers will crack before the external one"). Own item, not a
 #     sink problem.
 #   NEXT BOOT (Barticus): (1) MUSIC: Enter on a music card → audible, wall stays up, no
 #     black fullscreen. (2) MOVIE: Enter → if it still bails, grep kushd-kplayd.log for
