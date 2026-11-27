@@ -44,6 +44,19 @@
 #     kplayd is ReleaseSafe (4.43MB). Build kplayd with `zig build -Doptimize=ReleaseSafe`.
 #   STILL OPEN: VAAPI down (libigdgmm.so.12 absent → iHD won't load, software GL) —
 #     separate docket; no ALSA state file on the drive (nothing has ever opened the card).
+#   JACK (Barticus asked: is the headphone jack on the sink list?): it needs no
+#     entry of its own — the analog sink IS the jack. /proc/asound/pcm has ONE
+#     analog playback PCM ("00-00: ALC295 Analog"); the jack is codec pin 0x21
+#     "[Jack] HP Out", the speakers pin 0x14, both on DAC 0x02. A second adapter
+#     on hw:0,0 would fail (a hw PCM opens once). PROVEN full chain in the chroot
+#     with the image's pipewire+wireplumber+pipewire-pulse: untargeted pulse
+#     stream (= kplayd's pa_simple shape) -> default.audio.sink = the analog
+#     node -> sink state running, stream running, pcm0p RUNNING with hw_ptr
+#     advancing, pcm3p closed, sink vol 1.00. Sink description now names it:
+#     "Built-in Audio - speakers + headphone jack (KSD)". Auto-Mute Mode is
+#     Disabled, so jack + speakers are live together (plugging in does not mute
+#     the speakers) — needs a mixer writer KSD does not have; own item, not a
+#     sink problem.
 #   NEXT BOOT (Barticus): (1) MUSIC: Enter on a music card → audible, wall stays up, no
 #     black fullscreen. (2) MOVIE: Enter → if it still bails, grep kushd-kplayd.log for
 #     `close: reason=` — that line now names the cause. (3) `wpctl status` equivalent is
