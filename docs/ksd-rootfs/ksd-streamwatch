@@ -1,12 +1,24 @@
 #!/bin/bash
-# ksd-streamwatch — catches the pile-up while it is happening.
+# ksd-streamwatch — the crackle instrument. Answers "is more than one thing
+# playing, and is the DAC starving or overflowing?" while it happens.
 #
-# WHY: "when it doesn't close out properly it crackles ... more than one item is
-# in the system playing; closing the player and starting a new track clears it."
-# That is a statement about the PULSE SERVER's sink-input list, so this records
-# that list with the proplist that names each stream's owner
-# (application.name / media.name / media.role / process.binary), plus the PCM
-# states. It logs when the count CHANGES and on every tick while count > 1.
+# WHY THIS WAS REWRITTEN (2026-11-27, boot 13:01): the first version shelled out
+# to `pactl`, which the KSD image does NOT ship. It logged exactly one line
+# (`sink-inputs=0`) and went quiet — a dead instrument that reads as "no pile-up
+# found". KSD DOES ship pw-cli (pw-dump/pw-cli/amixer/alsactl landed for the
+# audio-proof set), so the census is read from the graph itself.
+#
+# Two independent traces, because the ear cannot tell them apart:
+#   1. STREAM CENSUS — every audio playback node in the graph, with the proplist
+#      that names its owner (application.name / media.name / media.role /
+#      node.name). Dumped in full whenever the count changes, and EVERY tick
+#      while count > 1. This is the pile-up ("multiples of the same track").
+#   2. DAC OCCUPANCY — /proc/asound pcm status `delay` (frames queued in the
+#      hardware buffer), `avail`, and state, on a rolling heartbeat. A flat
+#      trace = the pacer is stable. delay pinned at avail_max = the player is
+#      over-writing (buffer overflow -> PipeWire drops -> crackle). delay at 0 =
+#      underrun (DAC repeats/drops a period -> crackle). This is the ONE trace
+#      the "pacer target vs real sink latency" question needs.
 #
 # Bash builtins only (KSD ships no coreutils: no date/grep/wc/sleep).
 PATH=/usr/local/bin:/usr/bin:/bin
@@ -16,35 +28,62 @@ if ! : >>"$LOG" 2>/dev/null; then
     : >>"$LOG" 2>/dev/null || exit 0
 fi
 exec >>"$LOG" 2>&1
-PULSE="${XDG_RUNTIME_DIR:-/tmp}/pulse/native"
 
 read -r up _ < /proc/uptime
-printf '=== watch start %ss (pulse=%s)\n' "$up" "$PULSE"
+printf '=== watch start %ss (pw-cli census; pcm occupancy heartbeat)\n' "$up"
+
 last=-1
+tick=0
 while :; do
     exec 9</dev/null; read -r -t 2 -u 9
-    out=$(pactl -s "$PULSE" list sink-inputs 2>&1)
+    tick=$((tick + 1))
+    read -r up _ < /proc/uptime
+
+    out=$(pw-cli ls Node 2>&1)
     cnt=0
     while IFS= read -r l; do
-        case $l in 'Sink Input #'*) ((cnt++));; esac
+        case $l in
+            *'media.class = "Stream/Output/Audio"'*) cnt=$((cnt + 1));;
+        esac
     done <<<"$out"
-    # log on change, and on every tick once there is more than one stream
+
+    # ── 1. stream census: full node dump on change, or while piled up ──────
     if ((cnt != last)) || ((cnt > 1)); then
         last=$cnt
-        read -r up _ < /proc/uptime
         printf '=== %ss  sink-inputs=%d\n' "$up" "$cnt"
         while IFS= read -r l; do
             case $l in
-                'Sink Input #'*|*'State:'*|*'application.name'*|*'media.name'*|*'media.role'*|*'application.process.binary'*|*'kmedia'*)
-                    printf '  %s\n' "${l#  }";;
+                *'id '*', type PipeWire:Interface:Node'*|\
+                *'node.name = '*|\
+                *'media.class = '*|\
+                *'application.name = '*|\
+                *'application.process.binary = '*|\
+                *'media.name = '*|\
+                *'media.role = '*|\
+                *'object.serial = '*)
+                    printf '  %s\n' "$l";;
             esac
         done <<<"$out"
-        for p in /proc/asound/card*/pcm*p/sub0/status; do
-            [[ -f $p ]] || continue
-            read -r a b < "$p" 2>/dev/null
-            v=${b:-$a}
-            [[ $v == closed || $v == CLOSED || -z $v ]] && continue
-            printf '  %s: %s\n' "$p" "$v"
-        done
     fi
+
+    # ── 2. DAC occupancy: every tick while a stream exists ─────────────────
+    for p in /proc/asound/card*/pcm*p/sub0/status; do
+        [[ -f $p ]] || continue
+        st=""; dly=""; av=""; avmax=""; hw=""
+        while IFS= read -r line; do
+            case $line in
+                state:*)    st=${line#state:};;
+                delay*)     dly=${line#*:};;
+                avail:*)    av=${line#*:};;
+                avail_max*) avmax=${line#*:};;
+                hw_ptr*)    hw=${line#*:};;
+            esac
+        done < "$p"
+        st=${st# }
+        [[ $st == closed || $st == CLOSED || -z $st ]] && continue
+        if ((cnt > 0)) || ((tick % 15 == 0)); then
+            printf '=== %ss  tick pcm=%s delay=%s avail=%s/%s hw_ptr=%s in=%d\n' \
+                "$up" "$st" "${dly# }" "${av# }" "${avmax# }" "${hw# }" "$cnt"
+        fi
+    done
 done
