@@ -11,7 +11,42 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-27 later — SINK CAPS: THE PLAYER ASKS THE SINK)
+## Current attack (2026-11-27 last — "WE HAVE SOUND": AMP FIX HELD, THREE FAULTS OPEN)
+
+  Sound is AUDIBLE on KSD. The silence was never code: ksd-mixer.log shows
+  Master 0% [-65.25dB] [off] before ksd-mixer-init and 87 [100%] [0dB] [on]
+  after. Nothing else changed. What stands between us and a working player:
+
+  (a) MUSIC CRACKLE — "like multiples of the same track". NOT a pile-up: the
+      boot's pipewire log holds exactly ONE kmedia node at a time (six
+      create/destroy cycles, zero overlap). Lead suspect: the latency-feedback
+      pacer targets a hardcoded 100ms while the graph reports the node at
+      1440/48000 = 30ms, so the correction is permanently ~ -35ms and the
+      player over-writes the sink until PipeWire drops the overflow. Music is
+      also the only 44.1k->48k swresample path. The instrument that would have
+      said so was DEAD — ksd-streamwatch called `pactl`, which the image does
+      not ship; it logged one `sink-inputs=0` line and went silent. REWRITTEN
+      to pw-cli + a DAC delay/avail/hw_ptr trace, deployed. One boot decides.
+
+  (b) MOVIE, NO PICTURE — VA-API ACTIVE, P010 whole-surface import live,
+      kplay composited 1281 frames, then isDone at 26.7s of a 3h film. Test:
+      play one 8-bit NV12 film. Shows -> the P010 sampler is the fault.
+      Also black -> the display path is.
+
+  (c) TV DEAD — it IS attached: DP-3 3840x2160@30, enabled, and FRAMETRACE-OUT
+      freezes it at rendered=126 while eDP-1 climbs to 3779. Its hdmi-stereo
+      sink IS enumerated but is not the default (nothing routes to it), and the
+      TV channels need network + a CA store (bundle + `ca_file` LANDED this
+      session; DNS was still failing at 03:02).
+
+  LANDED + DEPLOYED this session: kplayd sha 912921c1 (4,682,064B, ca_file at
+  both live-open sites; rollback .prev-20261127-1316), ksd-streamwatch 3,686B,
+  /etc/ssl/certs/ca-certificates.crt 185,311B. Drive back to ro. Prior slice
+  (SINK CAPS, EDID LPCM) landed in the census entry below it.
+
+  DO NOT COMMIT THE kmedia TREE. Barticus, verbatim: "keep it as is until we
+  have a working player; once we can prove it works, then we commit 'minus the
+  PII'." The dirty tree IS the artifact if a relog kills this session.
 
   Barticus: "a movie should surf the card's channels, be it 2.1, 5.1 or atmos."
   The player was lying: Player.zig hardcoded `AUDIO_CHANNELS = 2`, so every 5.1

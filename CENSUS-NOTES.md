@@ -1,5 +1,61 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 (bobdotrix, GSI — GR + next: "WE HAVE SOUND" — THE AMP FIX HELD; THREE
+#   SEPARATE FAULTS NAMED FROM THE 13:01 BOOT. Music crackles "like multiples of the same track";
+#   movies have sound and NO picture; the TV does nothing at all (and it IS attached)):
+#   (1) SOUND EXISTS — PROVEN, AND IT WAS THE MIXER. /var/log/kushd-mixer.log: Master
+#       `Playback 0 [0%] [-65.25dB] [off]` BEFORE ksd-mixer-init, `Playback 87 [100%] [0.00dB]
+#       [on]` AFTER, Speaker + Headphone both 100% [on]. That was the whole silence. Nothing in
+#       the player, the graph or the bill changed to produce sound — the amps did.
+#   (2) THE CRACKLE IS NOT A PILE-UP. The boot's pipewire log holds exactly ONE kmedia node at a
+#       time: `(kmedia-51) creating -> suspended` / `destroy` six times, back-to-back, never
+#       overlapping (03:01:39-03:02:06, :15-:18, :18-:20, :23-:29, :29-:40, :49-03:03:06). So
+#       "multiples of the same track" is NOT two players in the sink. THE INSTRUMENT THAT WOULD
+#       HAVE SAID SO WAS DEAD: ksd-streamwatch shelled out to `pactl`, which the image does not
+#       ship — it logged `sink-inputs=0` once at 1.30s and went silent forever, which reads as
+#       "no pile-up found". REWRITTEN: census from `pw-cli ls Node` + a per-tick DAC occupancy
+#       trace (`/proc/asound ... status` delay/avail/hw_ptr). Deployed.
+#   (3) LEADING CRACKLE SUSPECT (unproven): THE PACER FIGHTS THE SINK. The graph reports the
+#       kmedia node's latency as `1440/48000` = 30ms (`check_properties() (kmedia-0) latency:0/0 ->
+#       1440/48000`), while Player.zig's latency-feedback pacer targets a hardcoded
+#       `target_latency_us = 100_000`. Against a 30ms sink the correction `(latency-target)/2` is
+#       permanently ~-35ms, so every chunk is written ~35ms early, the buffer fills, and PipeWire
+#       drops/repeats the overflow — crackle plus "multiples", worse the longer it runs, from the
+#       very first playback. Music is also the ONLY 44.1k->48k swresample path (the film is 48k
+#       native). ONE boot of the new streamwatch decides it: delay sawtoothing up to avail_max and
+#       resetting = overflow; delay at 0 = underrun.
+#   (4) MOVIE: DECODE + IMPORT ARE FINE, THE PICTURE IS NOT. `[player] VA-API hw decode ACTIVE`,
+#       `[gl] va export: fourcc=0x30313050 objects=1 layers=2` (P010, 10-bit),
+#       `[gl] whole-surface import live (P010, separate layers)`, then
+#       `close: reason=isDone pos_us=26725915 dur_us=10822187000` — a 3-hour film declared DONE at
+#       26.7s. kidulwm composited `kplay=1281` frames, so something WAS drawn. Two candidates, one
+#       test: (a) the P010 external-sampler path draws black, (b) the frame reached DP-3, which
+#       stopped rendering (see 5). Play an 8-bit (NV12) film next boot: it shows -> P010 is the
+#       fault; it also shows nothing -> the display path is.
+#   (5) THE TV IS ATTACHED AND ITS OUTPUT STALLS. `output[2]: DP-3 mode=3840x2160@30000 scale=2.00
+#       box=1920,0 enabled=true`, and FRAMETRACE-OUT at the log tail: eDP-1 climbs 3239 -> 3779
+#       while DP-3 is FROZEN at `rendered=126`. The TV's last frame is ~4s into the boot; after
+#       that the compositor never damages that output again. That is the TV's "zero vision".
+#   (6) TV SOUND: THE SINK EXISTS, NOTHING ROUTES TO IT. `alsa_output.pci-0000_00_1f.3.hdmi-stereo-0`
+#       is enumerated (the TV being attached is what made it appear — proof the display-audio
+#       device was never the missing piece), but the default sink is analog-stereo and kplayd asks
+#       for the default. ksound is the only router; it has no display-sink policy yet.
+#   (7) TV CHANNELS: NO NETWORK TRUST AND NO CA STORE. kplayd `new_open (live)` ->
+#       `Failed to resolve hostname i.mjh.nz` and `tls: Peer certificate failed verification`. The
+#       image shipped NO /etc/ssl at all. LANDED: host CA bundle -> /etc/ssl/certs/ca-certificates.crt
+#       (185,311B) AND `ca_file` wired into both live-open option dicts in Player.zig — gnutls's
+#       default trust store on this build is the p11-kit module, which the image also lacks, so
+#       implicit discovery could never have worked. kboot forks knetd at boot, but DNS was still
+#       failing at 03:02 — network-at-boot is its own question.
+#   DEPLOYED: kplayd sha 912921c1… (ReleaseFast 4,682,064B — the ca_file constant only; rollback
+#     /usr/local/bin/kplayd.prev-20261127-1316), ksd-streamwatch 3,686B, CA bundle. Drive -> ro.
+#   PITFALL BURNED: `ldd` does not exist on the image either. The deploy script's
+#     `ldd | grep -c "not found"` counts the shell's own "ldd: command not found", so it reports a
+#     missing dependency that is not there. Check with `readelf -d | NEEDED` against
+#     /mnt/ksd/usr/lib instead (this session: missing=0).
+#   NEXT BOOT (Barticus): read kushd-streamwatch.log FIRST (delay/avail trace + any count>1 owner
+#     dump), kushd-kplayd.log for the TV channel line, and try one 8-bit film.
+
 # SESSION 2026-11-27 (bobdotrix, LATER — SINK CAPS: THE PLAYER NOW ASKS THE SINK; kmedia TREE
 #   DELIBERATELY LEFT DIRTY, DO NOT COMMIT):
 #   Barticus: "a movie should surf the card's channels, be it 2.1, 5.1 or atmos" — pointing at
