@@ -1,5 +1,55 @@
 # KSD RESET LEDGER — live state (bobdotrix, migrated from media census 2026-09-20)
 #
+# SESSION 2026-11-27 (bobdotrix, GSI — GR + next: AUDIO SINK ROOT CAUSE FOUND + FIXED):
+#   Barticus: still nothing plays (music either), all five audio/WM procs visible in htop,
+#   laptop warms up — "is kidulwm crash-looping and dropping everything that plays?"
+#   VERDICT ON THE CRASH-LOOP THEORY: NO. kidulwm is not looping. The m.2 trail is
+#   APPEND-ONLY ACROSS BOOTS and reads like a storm if you don't scope it: 76 "KidulWM
+#   boot" banners = 49 kushd seatings ≈ one per BOOT, not 76 restarts in one boot; the
+#   tail incarnation logged 130 FRAMETRACE lines (≈4 min) = it ran the whole boot. The
+#   49 "bill: 13 acts" lines are 49 BOOTS. The last seating block ENDS the file with no
+#   death after it = ZERO deaths in the 10:01 boot. The 5 `Segmentation`/10
+#   BackendCreateFailed are historical (pre a5b8add/24fd144). "Extra kidulwm in htop
+#   yellow" = THREADS of one compositor (host also shows kidulwm + kidulwm-session +
+#   sddm-helper). Heat = software decode + software GL (no VAAPI/EGL), not a hot loop.
+#   REAL ROOT CAUSE — KSD HAS NO AUDIO SINK, AND NEVER HAS. One cause, both symptoms.
+#     libspa-alsa.so on the image ships exactly ONE enumerator: api.alsa.enum.udev
+#     (imports udev_device_new_from_syspath / udev_monitor_receive_device). KSD has no
+#     /lib/udev, no udevd and no /run/udev database, so WirePlumber's monitor.alsa
+#     enumerates ZERO devices — silently: /var/log/kushd-wireplumber.log is 125KB and
+#     carries NO alsa line and NO udev line in 49 boots. With no sink in the graph,
+#     kplayd's pa_simple stream ("kmedia", hardcoded name) links to nothing and parks:
+#     ksound shows state 1->3 (corked=false) then 3->1 then gone — PAUSED, never
+#     STREAMING(4). The player tears down with it. That is "no sound" AND "nothing on
+#     screen", and it is NOT kplayd lifetime (the prior docket's attribution is retired).
+#   FIX LANDED: /mnt/ksd/etc/pipewire/pipewire.conf.d/10-ksd-alsa.conf — two sinks built
+#     from api.alsa.pcm.sink via the adapter factory (libpipewire-module-adapter.so +
+#     api.alsa.pcm.sink are both aboard; module-alsa-sink does NOT exist in 1.6.9):
+#     analog hw:0,0 = default (priority.session 1000, host parity), HDMI hw:0,3 = TV (900).
+#     No udev, no daemon, no new process. Drive synced + remounted ro.
+#   PROVEN, not assumed: chrooted the IMAGE's own pipewire against real /dev (tmpfs on
+#     /mnt/ksd/run, bind /dev,/proc,/sys, `chroot --userspec=1000:1000 --groups=995,983`)
+#     and read the graph with the host's pw-cli (both 1.6.9): both nodes present,
+#     media.class="Audio/Sink", state=suspended (idle), error=None. Pitfall: the KSD
+#     rootfs has NO /usr/bin/env and NO pw-cli — chroot must inherit env, and setpriv
+#     cannot chroot (CAP_SYS_CHROOT is gone after --reuid); use chroot --userspec.
+#   SECOND FAULT, INSTRUMENTED (cause not yet proven): kushd-kplayd.log's 10:01 tail
+#     shows kplayd opening a 15-PGS-stream matroska, "shell live", "parented to slide",
+#     then "[player] close: threads joined" ~1s later — 3x. kidulwm contains NO
+#     send_close/xdg_toplevel_send_close, so the survivor set is isDone / client
+#     close|stop / a fresh open. kplayd now prints `[kplayd] close: reason=...` with
+#     pos_us/dur_us (kmedia 4237e89, deployed ReleaseSafe sha 963c486d; old
+#     0c17ce15 -> kplayd.bak-20261127-101911).
+#   DEPLOY RULE FOUND: plain `zig build` produces a 14MB DEBUG kplayd; the drive's
+#     kplayd is ReleaseSafe (4.43MB). Build kplayd with `zig build -Doptimize=ReleaseSafe`.
+#   STILL OPEN: VAAPI down (libigdgmm.so.12 absent → iHD won't load, software GL) —
+#     separate docket; no ALSA state file on the drive (nothing has ever opened the card).
+#   NEXT BOOT (Barticus): (1) MUSIC: Enter on a music card → audible, wall stays up, no
+#     black fullscreen. (2) MOVIE: Enter → if it still bails, grep kushd-kplayd.log for
+#     `close: reason=` — that line now names the cause. (3) `wpctl status` equivalent is
+#     absent on KSD; the ground truth is kushd-kplayd.log gaining a real stream + ksound
+#     logging state ->4 (STREAMING).
+#
 # SESSION 2026-11-27 (bobdotrix, GSI — GR + next: MIRROR-HOST PARITY CUT 1+2 LANDED):
 #   Ran the GREAT RESET (SYSTEM.md → KSD-INDEX → CENSUS) then 'next' = MIRROR-HOST MEDIA
 #   FRONT-END PARITY. Read the code on BOTH sides and landed the two halves that are REAL

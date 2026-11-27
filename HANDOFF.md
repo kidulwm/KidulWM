@@ -11,9 +11,38 @@ sessions with session_search). Live state lives in the ledger, not here.
   3. CENSUS-NOTES.md              the ledger — latest verdict = current position
   4. DOCKETS.draft.md             open work — top non-DONE docket = next action
 
-## Current attack (2026-11-27, updated after the parity cut)
+## Current attack (2026-11-27 late — AUDIO SINK: KSD HAS NO udev)
 
-  KPLAYD AUDIO LIFETIME — sound is a ROOTFS gap, not a front-end bug. The
+  ONE CAUSE FOR NO-SOUND AND NO-VISION: there has never been a sink in the KSD
+  audio graph. libspa-alsa.so on the image ships exactly one enumerator,
+  `api.alsa.enum.udev`; KSD has no /lib/udev, no udevd, no /run/udev, so
+  WirePlumber's monitor.alsa enumerates zero devices and says nothing
+  (kushd-wireplumber.log: 0 alsa lines, 0 udev lines, 49 boots). kplayd's
+  pa_simple stream then parks in PAUSED and the player tears down with it.
+
+  The "kidulwm crash-loop" theory is DEAD: 76 boot banners = 49 boots (~one
+  each), the tail incarnation logged 130 FRAMETRACE lines = it ran the whole
+  boot, and the last kushd seating block ends the file with no death after it.
+  Yellow kidulwm rows in htop = threads of one compositor. Heat = software
+  decode/GL (no VAAPI), not a loop.
+
+  LANDED (bobdotrix):
+    /mnt/ksd/etc/pipewire/pipewire.conf.d/10-ksd-alsa.conf — adapter sinks from
+      api.alsa.pcm.sink: analog hw:0,0 default (1000), HDMI hw:0,3 TV (900).
+      Chroot-proven with the host's pw-cli against real /dev: both Audio/Sink,
+      error=None. No udev, no daemon, no new process.
+    kplayd close-reason instrumentation (kmedia 4237e89, deployed ReleaseSafe
+      sha 963c486d): `[kplayd] close: reason=isDone pos/dur | client_close |
+      client_stop | new_open | shell_closed`. kidulwm has NO send_close, so the
+      next boot's act log names why playback ends.
+  DEPLOY RULE: kplayd builds ReleaseSafe (4.43MB); plain `zig build` = 14MB Debug.
+  STILL OPEN: VAAPI down (libigdgmm.so.12 absent -> iHD won't load, software GL).
+
+## Prior attack (2026-11-27, the parity cut — SUPERSEDED, attribution RETIRED)
+
+  KPLAYD AUDIO LIFETIME — sound is a ROOTFS gap, not a front-end bug.
+  (RETIRED 2026-11-27 late: kplayd is not being replaced mid-stream — it writes
+  into a graph with no sink. See the current attack above.) The
   2026-11-27 mirror-host parity read landed its two real halves (see below) and
   killed the misdiagnosis: the pulse stream ksound watches is kplayd's OWN
   (Player.zig:773 registers it under the hardcoded name "kmedia"), and ksound
